@@ -31,11 +31,11 @@ describe('VaultApp onboarding', () => {
 
     expect(await screen.findByText('Hardware path')).toBeTruthy()
     fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: DEMO_HARDWARE_PUB } })
-    await user.click(screen.getByRole('button', { name: 'Use this key' }))
+    await user.click(screen.getByRole('button', { name: 'I control this key' }))
 
     expect(await screen.findByText('Recovery key')).toBeTruthy()
     fireEvent.change(screen.getByTestId('recovery-pub'), { target: { value: DEMO_RECOVERY_PUB } })
-    await user.click(screen.getByRole('button', { name: 'Use this key' }))
+    await user.click(screen.getByRole('button', { name: 'I control this key' }))
 
     expect(await screen.findByText('Spending rules')).toBeTruthy()
     await user.click(screen.getByTestId('cap-20000'))

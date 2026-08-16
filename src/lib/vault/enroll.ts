@@ -65,7 +65,9 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
   throw new Error('authenticator did not return PRF')
 }
 
-export async function enrollWithPasskey(): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
+export async function enrollWithPasskey(
+  enrollmentToken = '',
+): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
@@ -122,12 +124,16 @@ export async function enrollWithPasskey(): Promise<{ status: VaultStatus; enroll
   }
   prf.fill(0)
   phoneRoutineSecret.fill(0)
-  await vaultPost('/v1/register', {
-    credentialId: enrollment.credId,
-    webauthnP256: enrollment.webauthnP256,
-    phoneDirectP256: enrollment.phoneDirectP256,
-    phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
-  })
+  await vaultPost(
+    '/v1/register',
+    {
+      credentialId: enrollment.credId,
+      webauthnP256: enrollment.webauthnP256,
+      phoneDirectP256: enrollment.phoneDirectP256,
+      phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
+    },
+    enrollmentToken ? { 'X-Vault-Enrollment-Token': enrollmentToken } : {},
+  )
   const live = requireStatusIdentity(await vaultGet<VaultStatus>('/v1/status'))
   return { status: live, enrollment }
 }

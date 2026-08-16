@@ -12,6 +12,7 @@
     "ecmaVersion": 12,
     "sourceType": "module"
   },
+  "ignorePatterns": ["src/lib/vault/ceremony/**"],
   "settings": {
     "import/resolver": {
       "typescript": {}

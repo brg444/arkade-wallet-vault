@@ -16,8 +16,8 @@ export default function VaultSavings() {
         <Padded>
           <FlexCol>
             <Text wrap>
-              Savings cannot be spent with the passkey on this phone. Moving this bitcoin later needs your backup
-              wallet.
+              Savings cannot be spent with the passkey on this phone. Moving this bitcoin later needs hardware plus
+              recovery. Do not fund this address from the faucet if you want to try a phone spend.
             </Text>
             {savingsAddress ? <QrCode value={savingsAddress} /> : null}
             <Text small wrap>

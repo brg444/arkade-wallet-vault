@@ -1,0 +1,168 @@
+import { vaultGet, vaultPost } from './api'
+import { scriptHexFromAddress } from './bitcoin'
+import { createAuthorizeRetryState } from './ceremony/authorizeretry.js'
+import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth.js'
+import {
+  assertArkadeChallenge,
+  assertDirectP256,
+  assertPhoneRoutineBIP340Pub,
+  hexToBytes as ceremonyHex,
+  phoneRoutineSignPSBT,
+  validateAuthorizedPSBT,
+  validateBoundPSBT,
+  validateDraftPSBT,
+} from './ceremony/psbtcheck.js'
+import type { EnrollmentSecrets } from './enroll'
+import { bytesToHex, hexToBytes } from './hex'
+import type { VaultStatus } from './types'
+
+const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
+const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
+const retry = createAuthorizeRetryState()
+
+export interface LiveSpendInput {
+  enrollment: EnrollmentSecrets
+  status: VaultStatus
+  destAddress: string
+  amountSats: number
+  feeSats: number
+  prevTxHex: string
+  vout: number
+}
+
+function prfFrom(cred: PublicKeyCredential): Uint8Array | null {
+  const ext = cred.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }
+  const first = ext?.prf?.results?.first
+  return first ? new Uint8Array(first) : null
+}
+
+function requireRPID(status: VaultStatus): string {
+  const rpId = String(status.rpId || '').toLowerCase()
+  if (!rpId || rpId !== location.hostname.toLowerCase()) {
+    throw new Error('deployment RP ID does not match this signing client host')
+  }
+  if (status.clientOrigin !== location.origin) {
+    throw new Error('deployment origin does not match this signing client origin')
+  }
+  return rpId
+}
+
+export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: string; challenge: string }> {
+  const { enrollment: rec, status } = input
+  const recipientScript = scriptHexFromAddress(input.destAddress, status.network)
+  const intent = {
+    prevTxHex: input.prevTxHex,
+    vout: input.vout,
+    recipientScript,
+    recipientAmount: input.amountSats,
+    fee: input.feeSats,
+  }
+  const reviewKey = JSON.stringify(intent)
+  retry.clearUnless(reviewKey)
+
+  const draft = await vaultPost<{ psbt: string }>('/v1/draft', intent)
+  const parsed = validateDraftPSBT({
+    draftB64: draft.psbt,
+    prevTxHex: intent.prevTxHex,
+    vout: String(intent.vout),
+    recipientScript: intent.recipientScript,
+    recipientAmount: String(intent.recipientAmount),
+    fee: String(intent.fee),
+    operationalScriptHex: status.operationalScript,
+    operationalAddress: status.operationalAddress,
+    network: status.network,
+  })
+  const rpId = requireRPID(status)
+  const pre = await vaultPost<{ challenge: string }>('/v1/preflight', { psbt: draft.psbt })
+  const challengeHex = assertArkadeChallenge(parsed.arkadeChallenge, pre.challenge)
+  const challenge = ceremonyHex(challengeHex, 32)
+  const get = (await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId,
+      allowCredentials: [{ type: 'public-key', id: hexToBytes(rec.credId) }],
+      userVerification: 'required',
+      extensions: { prf: { eval: { first: PRF_SALT } } },
+    },
+  })) as PublicKeyCredential | null
+  if (!get) throw new Error('The operation was aborted.')
+  const prf = prfFrom(get)
+  if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
+
+  let scalar: Uint8Array | undefined
+  let phoneRoutineSecret: Uint8Array | undefined
+  try {
+    const live = await vaultGet<VaultStatus>('/v1/status')
+    assertPhoneRoutineBIP340Pub(rec.phoneRoutineBip340Pub, rec.phoneRoutineBip340Pub, live.phoneRoutineBip340Pub)
+    assertDirectP256(rec.phoneDirectP256, rec.phoneDirectP256, live.phoneDirectP256)
+    const derived = await deriveDirectP256(prf)
+    scalar = derived.scalar
+    assertDirectP256(bytesToHex(derived.pub), rec.phoneDirectP256, live.phoneDirectP256)
+    const directSig = bytesToHex(signDirectP256(scalar, challenge))
+    const assertion = {
+      credentialId: rec.credId,
+      clientDataJSON: bytesToHex(new Uint8Array(get.response.clientDataJSON)),
+      authenticatorData: bytesToHex(new Uint8Array((get.response as AuthenticatorAssertionResponse).authenticatorData)),
+      signature: bytesToHex(new Uint8Array((get.response as AuthenticatorAssertionResponse).signature)),
+    }
+    const bound = await vaultPost<{ psbt: string }>('/v1/bind', { psbt: draft.psbt, directSig, ...assertion })
+    validateBoundPSBT({
+      draftB64: draft.psbt,
+      boundB64: bound.psbt,
+      prevTxHex: intent.prevTxHex,
+      vout: String(intent.vout),
+      recipientScript: intent.recipientScript,
+      recipientAmount: String(intent.recipientAmount),
+      fee: String(intent.fee),
+      directSig,
+      operationalScriptHex: live.operationalScript,
+      operationalAddress: live.operationalAddress,
+      network: live.network,
+    })
+    const kek = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
+      await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    )
+    phoneRoutineSecret = new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
+    )
+    const signed = phoneRoutineSignPSBT(bound.psbt, phoneRoutineSecret)
+    retry.stage(
+      reviewKey,
+      { psbt: signed, ...assertion },
+      {
+        submittedB64: signed,
+        phoneRoutineBip340PubHex: rec.phoneRoutineBip340Pub,
+        tweakedVaultCosignerXOnly: live.tweakedVaultCosignerXOnly,
+        tweakedArkadeCosignerXOnly: live.tweakedArkadeCosignerXOnly,
+      },
+      challengeHex,
+    )
+    const out = await vaultPost<{ signedPsbt: string; replay?: boolean }>('/v1/authorize', {
+      psbt: signed,
+      ...assertion,
+    })
+    const authorized = validateAuthorizedPSBT({
+      submittedB64: signed,
+      authorizedB64: out.signedPsbt,
+      phoneRoutineBip340PubHex: rec.phoneRoutineBip340Pub,
+      tweakedVaultCosignerXOnly: live.tweakedVaultCosignerXOnly,
+      tweakedArkadeCosignerXOnly: live.tweakedArkadeCosignerXOnly,
+    })
+    retry.markAuthorized(reviewKey, {
+      challengeHex,
+      expectedTxid: authorized.transactionId,
+      replay: out.replay === true,
+    })
+    const published = await vaultPost<{ txid: string }>('/v1/publish', { challenge: challengeHex })
+    if (published.txid !== authorized.transactionId) {
+      throw new Error('published txid does not match the authorized transaction')
+    }
+    return { txid: published.txid, challenge: challengeHex }
+  } finally {
+    zeroBytes(prf, scalar, phoneRoutineSecret)
+  }
+}

@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { useContext, useEffect } from 'react'
 import Button from '../../components/Button'
 import Content from '../../components/Content'
 import ErrorMessage from '../../components/Error'
@@ -22,11 +22,25 @@ export default function VaultHome() {
     dailyRemaining,
     error,
     navigate,
+    faucetUrl,
+    liveNetwork,
     networkLabel,
+    operationalAddress,
     preview,
+    refreshBalance,
     reset,
     setup,
   } = useContext(VaultContext)
+
+  useEffect(() => {
+    if (!liveNetwork) return
+    void refreshBalance()
+    const onFocus = () => {
+      void refreshBalance()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [liveNetwork, refreshBalance])
 
   const used = Math.max(0, dailyLimit - dailyRemaining)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
@@ -56,7 +70,7 @@ export default function VaultHome() {
                 {prettyAmount(amountSats)}
               </Text>
               <Text color='neutral-600' small>
-                {preview ? 'Demo balance · not on a chain' : networkLabel}
+                {liveNetwork ? 'Mutinynet · live coins' : preview ? 'Demo balance · not on a chain' : networkLabel}
               </Text>
             </FlexCol>
             <FlexCol gap='0.35rem'>
@@ -113,7 +127,23 @@ export default function VaultHome() {
           </FlexCol>
         </Padded>
       </Content>
-      {preview || amountSats === 0 ? (
+      {liveNetwork ? (
+        <div style={{ padding: '0 1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <Button
+            onClick={() =>
+              window.open(operationalAddress ? `${faucetUrl}?address=${operationalAddress}` : faucetUrl, '_blank')
+            }
+            label='Open Mutinynet faucet'
+            secondary
+          />
+          <Button
+            onClick={() => void refreshBalance()}
+            disabled={busy}
+            label={busy ? 'Checking…' : 'Refresh balance'}
+            clear
+          />
+        </div>
+      ) : preview || amountSats === 0 ? (
         <div style={{ padding: '0 1rem 1.25rem' }}>
           <Button onClick={addTestCoins} disabled={busy} label={busy ? 'Adding…' : 'Add demo coins'} secondary />
         </div>

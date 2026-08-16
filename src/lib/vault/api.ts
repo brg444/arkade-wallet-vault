@@ -6,18 +6,18 @@ export async function vaultGet<T>(path: string): Promise<T> {
   return vaultRequest<T>(path)
 }
 
-export async function vaultPost<T>(path: string, body: unknown): Promise<T> {
-  return vaultRequest<T>(path, JSON.stringify(body))
+export async function vaultPost<T>(path: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
+  return vaultRequest<T>(path, JSON.stringify(body), extraHeaders)
 }
 
-async function vaultRequest<T>(path: string, bodyJSON?: string): Promise<T> {
+async function vaultRequest<T>(path: string, bodyJSON?: string, extraHeaders: Record<string, string> = {}): Promise<T> {
   const base = authorizerBase()
   const hasBody = bodyJSON != null
   const res = await fetch(`${base}${path}`, {
     method: hasBody ? 'POST' : 'GET',
     headers: hasBody
-      ? { 'Content-Type': 'application/json', Accept: 'application/json' }
-      : { Accept: 'application/json' },
+      ? { 'Content-Type': 'application/json', Accept: 'application/json', ...extraHeaders }
+      : { Accept: 'application/json', ...extraHeaders },
     body: hasBody ? bodyJSON : undefined,
   })
   const text = await readBounded(res)

@@ -16,7 +16,7 @@ export const PAYMENT_CAP_CHOICES = [20_000, 50_000] as const
 export const DAILY_LIMIT_CHOICES = [50_000, 100_000] as const
 
 export interface RecoveryProfile {
-  id: 'demo' | 'week'
+  id: 'demo' | 'week' | 'mutinynet'
   label: string
   detail: string
   operationalCsvBlocks: number
@@ -36,6 +36,13 @@ export const RECOVERY_PROFILES: RecoveryProfile[] = [
     label: 'Longer delay',
     detail: 'Spending after 144 blocks. Savings after 4,032.',
     operationalCsvBlocks: 144,
+    savingsCsvBlocks: 4032,
+  },
+  {
+    id: 'mutinynet',
+    label: 'Mutinynet delay',
+    detail: 'Spending after 288 blocks. Savings after 4,032.',
+    operationalCsvBlocks: 288,
     savingsCsvBlocks: 4032,
   },
 ]

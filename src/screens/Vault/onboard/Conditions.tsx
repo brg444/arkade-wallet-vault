@@ -7,12 +7,46 @@ import { VaultContext } from '../../../providers/vault'
 import { ChoiceCard, OnboardLayout } from './Layout'
 
 export default function VaultConditions() {
-  const { confirmConditions, navigate, setCondition, setup } = useContext(VaultContext)
+  const { confirmConditions, liveNetwork, navigate, setCondition, setup, status } = useContext(VaultContext)
   const profile =
     RECOVERY_PROFILES.find(
       (item) =>
         item.operationalCsvBlocks === setup.operationalCsvBlocks && item.savingsCsvBlocks === setup.savingsCsvBlocks,
     ) || RECOVERY_PROFILES[0]
+
+  if (liveNetwork) {
+    const txCap = status?.txCap || setup.txCapSats
+    const daily = status?.periodAllowance || setup.dailyLimitSats
+    const opCsv = status?.operationalCsvBlocks || setup.operationalCsvBlocks
+    const savCsv = status?.savingsCsvBlocks || setup.savingsCsvBlocks
+    return (
+      <OnboardLayout
+        title='Spending rules'
+        step={4}
+        onBack={() => navigate('recovery')}
+        actions={<Button onClick={confirmConditions} label='These are the live rules' />}
+      >
+        <Text wrap>
+          This Mutinynet vault already enforces these phone limits. The app cannot loosen them. Hardware plus recovery
+          can still sweep everything.
+        </Text>
+        <Text color='neutral-600' tiny>
+          Per payment
+        </Text>
+        <Text small>{prettyAmount(txCap)}</Text>
+        <Text color='neutral-600' tiny>
+          Each calendar day
+        </Text>
+        <Text small>{prettyAmount(daily)}</Text>
+        <Text color='neutral-600' tiny>
+          If the phone is gone
+        </Text>
+        <Text small wrap>
+          Spending after {opCsv} blocks. Savings after {savCsv}.
+        </Text>
+      </OnboardLayout>
+    )
+  }
 
   return (
     <OnboardLayout
@@ -51,7 +85,7 @@ export default function VaultConditions() {
       <Text color='neutral-600' tiny>
         If the phone is gone
       </Text>
-      {RECOVERY_PROFILES.map((item) => (
+      {RECOVERY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
         <ChoiceCard
           key={item.id}
           title={item.label}
@@ -67,8 +101,7 @@ export default function VaultConditions() {
         />
       ))}
       <Text color='neutral-600' tiny wrap>
-        The hosted demo service still enforces 50,000 per payment and 100,000 per day. Your choices apply in this app
-        and are saved with the vault plan.
+        Preview mode only. A live Mutinynet vault uses the service policy instead of these choices.
       </Text>
     </OnboardLayout>
   )

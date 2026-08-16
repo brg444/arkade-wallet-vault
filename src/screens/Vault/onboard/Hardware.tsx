@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
@@ -8,8 +8,13 @@ import { VaultContext } from '../../../providers/vault'
 import { OnboardLayout } from './Layout'
 
 export default function VaultHardware() {
-  const { applyHardware, error, navigate, setup } = useContext(VaultContext)
-  const [value, setValue] = useState(setup.hardwareIsDemo ? '' : setup.hardwarePub)
+  const { applyHardware, error, navigate, setup, status } = useContext(VaultContext)
+  const required = status?.externalOwnerWalletPub || ''
+  const [value, setValue] = useState(required || (setup.hardwareIsDemo ? '' : setup.hardwarePub))
+
+  useEffect(() => {
+    if (required) setValue(required)
+  }, [required])
 
   return (
     <OnboardLayout
@@ -19,14 +24,17 @@ export default function VaultHardware() {
       onBack={() => navigate('design')}
       actions={
         <>
-          <Button onClick={() => applyHardware(value)} label='Use this key' />
-          <Button onClick={() => applyHardware(DEMO_HARDWARE_PUB, true)} label='Use a demo key for now' secondary />
+          <Button onClick={() => applyHardware(value)} label='I control this key' />
+          {required ? null : (
+            <Button onClick={() => applyHardware(DEMO_HARDWARE_PUB, true)} label='Use a demo key for now' secondary />
+          )}
         </>
       }
     >
       <Text wrap>
-        Add the public key of a hardware wallet or another external signer. This is the only path that can fully sweep
-        or change the vault, and it never lives in this phone.
+        {required
+          ? 'This Mutinynet vault is already bound to the hardware key below. Confirm you can sign with that wallet. The phone will never hold its private key.'
+          : 'Add the public key of a hardware wallet or another external signer. This is the only path that can fully sweep or change the vault, and it never lives in this phone.'}
       </Text>
       <Input
         label='Compressed public key'
