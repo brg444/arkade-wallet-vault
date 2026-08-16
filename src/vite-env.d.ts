@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_DEV_NSEC?: string
   readonly VITE_BOLTZ_URL?: string
   readonly VITE_DELEGATOR_URL?: string
+  readonly VITE_VAULT_MODE?: string
+  readonly VITE_VAULT_API?: string
   // Add other env variables as needed
 }
 
