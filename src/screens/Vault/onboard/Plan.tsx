@@ -1,23 +1,13 @@
 import { useContext } from 'react'
 import Button from '../../../components/Button'
 import Text from '../../../components/Text'
+import FingerprintIcon from '../../../icons/Fingerprint'
+import SafeIcon from '../../../icons/Safe'
+import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import { prettyAmount } from '../../../lib/format'
-import { shortKey } from '../../../lib/vault/setup'
 import { VaultContext } from '../../../providers/vault'
+import { KeyCard, PolicyTimeline } from '../ui'
 import { OnboardLayout } from './Layout'
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <Text color='neutral-600' tiny>
-        {label}
-      </Text>
-      <Text small wrap>
-        {value}
-      </Text>
-    </div>
-  )
-}
 
 export default function VaultPlan() {
   const { finishPlan, liveNetwork, navigate, setup } = useContext(VaultContext)
@@ -30,19 +20,35 @@ export default function VaultPlan() {
     >
       <Text wrap>
         {liveNetwork
-          ? 'The Mutinynet addresses are created when you add the passkey. Until then this is the plan the phone will use.'
+          ? 'Addresses are created when you add the passkey. Check that each key and rule matches what you intend.'
           : 'Nothing is locked on-chain yet. This is the plan this phone will treat as the vault.'}
       </Text>
-      <Row
-        label='Hardware / external'
-        value={`${shortKey(setup.hardwarePub)}${setup.hardwareIsDemo ? ' · demo key' : ''}`}
+      <KeyCard
+        icon={<ShieldCheckOutlineIcon />}
+        title='Hardware'
+        role={setup.hardwareIsDemo ? 'Demo key — not protection' : 'Sweep and change'}
+        fingerprint={setup.hardwarePub}
+        status='You hold this'
       />
-      <Row label='Recovery' value={`${shortKey(setup.recoveryPub)}${setup.recoveryIsDemo ? ' · demo key' : ''}`} />
-      <Row label='Phone may send' value={`${prettyAmount(setup.txCapSats)} per payment`} />
-      <Row label='Phone may send today' value={prettyAmount(setup.dailyLimitSats)} />
-      <Row
-        label='Recovery delay'
-        value={`${setup.operationalCsvBlocks} blocks for spending · ${setup.savingsCsvBlocks} for savings`}
+      <KeyCard
+        icon={<SafeIcon />}
+        title='Recovery'
+        role={setup.recoveryIsDemo ? 'Demo key — not protection' : 'Delayed path if the phone is gone'}
+        fingerprint={setup.recoveryPub}
+        status='You hold this'
+      />
+      <KeyCard
+        icon={<FingerprintIcon />}
+        title='This phone'
+        role={`${prettyAmount(setup.txCapSats)} per payment`}
+        status='Next'
+      />
+      <PolicyTimeline
+        txCap={setup.txCapSats}
+        dailyLimit={setup.dailyLimitSats}
+        operationalBlocks={setup.operationalCsvBlocks}
+        savingsBlocks={setup.savingsCsvBlocks}
+        network={liveNetwork ? 'mutinynet' : undefined}
       />
       <Text color='neutral-600' small wrap>
         Next you add the phone passkey. That is only the daily spending key. It cannot replace the two keys above.

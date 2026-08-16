@@ -36,6 +36,7 @@ export type VaultScreen =
   | 'review'
   | 'success'
   | 'savings'
+  | 'keys'
 
 export interface VaultSpend {
   address: string

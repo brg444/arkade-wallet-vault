@@ -2,7 +2,9 @@ import { useContext, useState } from 'react'
 import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
+import FingerprintIcon from '../../../icons/Fingerprint'
 import { VaultContext } from '../../../providers/vault'
+import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultPasskey() {
@@ -28,14 +30,20 @@ export default function VaultPasskey() {
       }
     >
       <Text wrap>
-        The passkey unlocks the phone spending key on this device. It is not the hardware wallet, and it cannot spend
-        savings.
+        This phone becomes the daily spending key. It cannot sweep the vault, and it cannot spend savings. Open this
+        exact site whenever you want to use the passkey — it sticks to this address.
       </Text>
+      <KeyCard
+        icon={<FingerprintIcon />}
+        title='This device'
+        role='Approves ordinary payments up to today’s limit'
+        status={liveNetwork ? 'Live enroll' : 'Preview ok'}
+      />
       {liveNetwork ? (
         <>
           <Text wrap>
-            This Mutinynet vault requires the one-time enrollment token from the operator. After the first successful
-            registration the token is burned.
+            The operator gives you a one-time invite. After the first successful passkey it is burned and cannot be
+            reused.
           </Text>
           <Input
             label='Enrollment token'
@@ -47,13 +55,10 @@ export default function VaultPasskey() {
         </>
       ) : (
         <Text wrap>
-          If the vault service is offline, you can still enter with the plan you just saved. Balance will stay empty
-          until you fund it.
+          If the vault service is offline, you can still enter with the plan you just saved. Balance stays empty until
+          you fund it.
         </Text>
       )}
-      <Text color='neutral-600' tiny wrap>
-        Open this page as the exact site you intend to keep using. Passkeys stick to that address.
-      </Text>
     </OnboardLayout>
   )
 }

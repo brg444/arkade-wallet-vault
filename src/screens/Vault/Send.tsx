@@ -12,9 +12,13 @@ import Text from '../../components/Text'
 import { prettyAmount } from '../../lib/format'
 import { isVaultBitcoinAddress } from '../../lib/vault/bitcoin'
 import { VaultContext } from '../../providers/vault'
+import { Meter, Pill } from './ui'
 
 export default function VaultSend() {
-  const { amountSats, error, navigate, reviewSpend, setSpendDraft, spend } = useContext(VaultContext)
+  const { amountSats, dailyRemaining, error, liveNetwork, navigate, reviewSpend, setSpendDraft, spend, setup } =
+    useContext(VaultContext)
+  const used = Math.max(0, setup.dailyLimitSats - dailyRemaining)
+  const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
 
   return (
     <>
@@ -22,9 +26,11 @@ export default function VaultSend() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <Text color='neutral-600' small>
-              Available {prettyAmount(amountSats)}
-            </Text>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <Pill>Daily phone path</Pill>
+              <Pill>{prettyAmount(amountSats)} available</Pill>
+            </div>
+            <Text wrap>This uses today’s phone limit and your passkey. Hardware and savings stay unused.</Text>
             <InputAddress
               label='To'
               placeholder='Bitcoin address'
@@ -43,14 +49,19 @@ export default function VaultSend() {
               testId='vault-send-amount'
             />
             <Text color='neutral-600' tiny wrap>
-              Network fee {prettyAmount(spend.fee)}. Max 50,000 sats per payment. Use a confirmed Mutinynet coin.
+              Network fee {prettyAmount(spend.fee)}. Max {prettyAmount(setup.txCapSats)} per payment.
+              {liveNetwork ? ' Use a confirmed Mutinynet coin.' : ''}
             </Text>
+            <Text color='neutral-600' tiny>
+              Phone may spend {prettyAmount(dailyRemaining)} of {prettyAmount(setup.dailyLimitSats)} today
+            </Text>
+            <Meter ratio={ratio} label='Daily spending remaining' />
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={reviewSpend} label='Continue' />
+        <Button onClick={reviewSpend} label='Review this send' />
       </ButtonsOnBottom>
     </>
   )

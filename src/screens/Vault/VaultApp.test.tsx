@@ -53,5 +53,10 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByTestId('vault-balance').textContent).toMatch(/^0/)
     expect(screen.getByText(/not on a chain/i)).toBeTruthy()
     expect(screen.getByText(/Phone may spend/)).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /This phone Daily spending/i }))
+    expect(await screen.findByText('Keys')).toBeTruthy()
+    expect(screen.getByText(/Vault service/)).toBeTruthy()
+    expect(screen.getByText(/Today, from this phone/)).toBeTruthy()
   })
 })

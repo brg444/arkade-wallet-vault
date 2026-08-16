@@ -6,11 +6,14 @@ import FlexCol from '../../components/FlexCol'
 import FlexRow from '../../components/FlexRow'
 import Padded from '../../components/Padded'
 import Text from '../../components/Text'
+import FingerprintIcon from '../../icons/Fingerprint'
 import ReceiveIcon from '../../icons/Receive'
+import SafeIcon from '../../icons/Safe'
 import SendIcon from '../../icons/Send'
+import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import { prettyAmount } from '../../lib/format'
-import { shortKey } from '../../lib/vault/setup'
 import { VaultContext } from '../../providers/vault'
+import { KeyCard, Meter, Panel, Pill } from './ui'
 
 export default function VaultHome() {
   const {
@@ -30,6 +33,7 @@ export default function VaultHome() {
     refreshBalance,
     reset,
     setup,
+    status,
   } = useContext(VaultContext)
 
   useEffect(() => {
@@ -44,6 +48,9 @@ export default function VaultHome() {
 
   const used = Math.max(0, dailyLimit - dailyRemaining)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
+  const phoneReady = Boolean(status?.enrolled)
+  const hardwareStatus = setup.hardwareIsDemo ? 'Demo' : setup.hardwarePub ? 'Ready' : 'Needed'
+  const recoveryStatus = setup.recoveryIsDemo ? 'Demo' : setup.recoveryPub ? 'Ready' : 'Needed'
 
   return (
     <>
@@ -65,65 +72,62 @@ export default function VaultHome() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <FlexCol gap='0.25rem' margin='2rem 0 0.5rem 0'>
+            <FlexCol gap='0.25rem' margin='1.25rem 0 0.25rem 0'>
               <Text bigger heading medium testId='vault-balance'>
                 {prettyAmount(amountSats)}
               </Text>
-              <Text color='neutral-600' small>
-                {liveNetwork ? 'Mutinynet · live coins' : preview ? 'Demo balance · not on a chain' : networkLabel}
-              </Text>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <Pill>
+                  {liveNetwork ? 'Mutinynet · live coins' : preview ? 'Demo balance · not on a chain' : networkLabel}
+                </Pill>
+                <Pill>{phoneReady ? 'Daily path ready' : 'Preview'}</Pill>
+              </div>
             </FlexCol>
             <FlexCol gap='0.35rem'>
               <Text color='neutral-600' tiny>
                 Phone may spend {prettyAmount(dailyRemaining)} of {prettyAmount(dailyLimit)} today
               </Text>
-              <div
-                aria-label='Daily spending remaining'
-                style={{ width: '100%', height: 6, borderRadius: 99, background: 'var(--neutral-200, #2a2a2a)' }}
-              >
-                <div
-                  style={{
-                    width: `${Math.round(ratio * 100)}%`,
-                    height: '100%',
-                    borderRadius: 99,
-                    background: 'var(--logo-color, #6ee7b7)',
-                  }}
-                />
-              </div>
+              <Meter ratio={ratio} label='Daily spending remaining' />
             </FlexCol>
-            <FlexRow padding='0.5rem 0 0 0'>
+            <FlexRow padding='0.35rem 0 0 0'>
               <Button main icon={<SendIcon />} label='Send' disabled={!canSend} onClick={() => navigate('send')} />
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
             </FlexRow>
             <ErrorMessage error={Boolean(error)} text={error} />
-            <button
-              type='button'
-              onClick={() => navigate('savings')}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                textAlign: 'left',
-                cursor: 'pointer',
-                width: '100%',
-              }}
-            >
-              <FlexCol gap='0.15rem'>
-                <Text color='neutral-600' tiny>
-                  Savings
-                </Text>
-                <Text small>Locked — hardware + recovery only</Text>
-              </FlexCol>
-            </button>
-            <FlexCol gap='0.15rem'>
+            <Panel onClick={() => navigate('savings')}>
               <Text color='neutral-600' tiny>
-                Hardware
+                Savings
               </Text>
-              <Text small>
-                {shortKey(setup.hardwarePub)}
-                {setup.hardwareIsDemo ? ' · demo' : ''}
+              <Text small>Locked — hardware + recovery only</Text>
+            </Panel>
+            <div>
+              <Text color='neutral-600' tiny>
+                Keys
               </Text>
-            </FlexCol>
+            </div>
+            <KeyCard
+              icon={<FingerprintIcon />}
+              title='This phone'
+              role='Daily spending'
+              status={phoneReady ? 'Healthy' : 'Preview'}
+              onClick={() => navigate('keys')}
+            />
+            <KeyCard
+              icon={<ShieldCheckOutlineIcon />}
+              title='Hardware'
+              role='Sweep and change'
+              status={hardwareStatus}
+              fingerprint={setup.hardwarePub}
+              onClick={() => navigate('keys')}
+            />
+            <KeyCard
+              icon={<SafeIcon />}
+              title='Recovery'
+              role='If this phone is gone'
+              status={recoveryStatus}
+              fingerprint={setup.recoveryPub}
+              onClick={() => navigate('keys')}
+            />
           </FlexCol>
         </Padded>
       </Content>
