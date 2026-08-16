@@ -7,19 +7,18 @@ import Header from '../../components/Header'
 import Padded from '../../components/Padded'
 import QrCode from '../../components/QrCode'
 import Text from '../../components/Text'
+import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { VaultContext } from '../../providers/vault'
-import { useToast } from '../../components/Toast'
 
 export default function VaultReceive() {
-  const { descriptor, navigate, status } = useContext(VaultContext)
+  const { navigate, operationalAddress } = useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
-  const address = descriptor?.operational.address || status?.operationalAddress || ''
 
   const handleCopy = async () => {
-    if (!address) return
-    await copyToClipboard(address)
+    if (!operationalAddress) return
+    await copyToClipboard(operationalAddress)
     setCopied(true)
     toast('Address copied')
   }
@@ -31,17 +30,17 @@ export default function VaultReceive() {
         <Padded>
           <FlexCol>
             <Text small wrap>
-              Fund only the Operational address. Savings is a separate user-only output and is not this QR.
+              Send test bitcoin to this spending address. Do not send real bitcoin.
             </Text>
-            {address ? <QrCode value={address} /> : <Text>No Operational address imported.</Text>}
-            <Text centered small wrap>
-              {address || '—'}
+            {operationalAddress ? <QrCode value={operationalAddress} /> : <Text>No address yet.</Text>}
+            <Text centered small wrap testId='receive-address'>
+              {operationalAddress || '—'}
             </Text>
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={handleCopy} disabled={!address} label={copied ? 'Copied' : 'Copy address'} />
+        <Button onClick={handleCopy} disabled={!operationalAddress} label={copied ? 'Copied' : 'Copy address'} />
       </ButtonsOnBottom>
     </>
   )
