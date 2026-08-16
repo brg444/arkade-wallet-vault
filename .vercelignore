@@ -1,0 +1,8 @@
+node_modules
+src/test
+playwright.config.ts
+regtest
+mockup
+docs
+*.md
+.env.regtest

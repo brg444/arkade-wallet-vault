@@ -36,11 +36,12 @@ export default defineConfig({
     basicAuth(),
     react(),
     tailwindcss(),
-    eslint({
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: ['src/test/**/*.ts', 'src/test/**/*.tsx'],
-      cache: false,
-    }),
+    !process.env.VERCEL &&
+      eslint({
+        include: ['src/**/*.ts', 'src/**/*.tsx'],
+        exclude: ['src/test/**/*.ts', 'src/test/**/*.tsx'],
+        cache: false,
+      }),
     process.env.HTTPS === 'true' && basicSsl(),
   ].filter(Boolean),
   server: {
