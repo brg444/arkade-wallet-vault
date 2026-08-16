@@ -10,6 +10,7 @@ import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { VaultContext } from '../../providers/vault'
+import { Pill } from './ui'
 
 export default function VaultReceive() {
   const { faucetUrl, liveNetwork, navigate, operationalAddress } = useContext(VaultContext)
@@ -29,14 +30,21 @@ export default function VaultReceive() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              <Pill>Spending address</Pill>
+              {liveNetwork ? <Pill>Mutinynet only</Pill> : <Pill>Test coins</Pill>}
+            </div>
             <Text small wrap>
               {liveNetwork
-                ? 'This is a Mutinynet address. Fund it from the Mutinynet faucet. Do not send mainnet bitcoin.'
+                ? 'This is a Mutinynet address. Fund it from the faucet, then wait for a confirmation before sending. Do not send mainnet bitcoin.'
                 : 'Send test bitcoin to this spending address. Do not send real bitcoin.'}
             </Text>
             {operationalAddress ? <QrCode value={operationalAddress} /> : <Text>No address yet.</Text>}
             <Text centered small wrap testId='receive-address'>
               {operationalAddress || '—'}
+            </Text>
+            <Text color='neutral-600' tiny wrap>
+              Coins sent here can use the daily phone path. Savings is a different address.
             </Text>
           </FlexCol>
         </Padded>

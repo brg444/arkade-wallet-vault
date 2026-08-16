@@ -76,17 +76,20 @@ export default function VaultWelcome() {
               >
                 {ready ? <SmallLogo /> : null}
               </div>
-              <div style={{ padding: '0.75rem 0 1rem 4px' }}>
+              <div style={{ padding: '0.75rem 0 0.6rem 4px' }}>
                 <Text heading big>
                   A vault, not a hot wallet
                 </Text>
               </div>
-              <Point icon={<BoltOutlineIcon />} text='The phone can spend a little, every day, with your passkey' />
+              <Text color='neutral-600' small wrap>
+                One vault. Three keys. Daily spends use this phone. Sweeping it never does.
+              </Text>
+              <Point icon={<BoltOutlineIcon />} text='This phone can spend a little every day, with your passkey' />
               <Point
                 icon={<ShieldCheckOutlineIcon />}
-                text='A hardware or external wallet is required to empty or change the vault'
+                text='Hardware plus recovery can empty or change the vault. The phone cannot'
               />
-              <Point icon={<SafeIcon />} text='Savings is a separate lock. The phone never has a key to it' />
+              <Point icon={<SafeIcon />} text='Savings is a separate lock. The passkey has no key to it' />
               <Text color='neutral-600' small wrap>
                 Mutinynet test bitcoin only. Do not send real bitcoin. Setup takes about two minutes.
               </Text>

@@ -6,6 +6,9 @@ import FlexCol from '../../../components/FlexCol'
 import Header from '../../../components/Header'
 import Padded from '../../../components/Padded'
 import Text from '../../../components/Text'
+import { StepRail } from '../ui'
+
+const STEP_LABELS = ['Design', 'Hardware', 'Recovery', 'Rules', 'Review', 'Phone']
 
 export function OnboardLayout({
   title,
@@ -30,8 +33,9 @@ export function OnboardLayout({
       <Content noRefresh>
         <Padded>
           <FlexCol>
+            <StepRail step={step} total={total} />
             <Text color='neutral-600' tiny>
-              Step {step} of {total}
+              {STEP_LABELS[step - 1] || `Step ${step}`} · {step} of {total}
             </Text>
             {children}
             <ErrorMessage error={Boolean(error)} text={error || ''} />

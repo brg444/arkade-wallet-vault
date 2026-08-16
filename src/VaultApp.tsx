@@ -1,5 +1,6 @@
 import { useContext, useEffect } from 'react'
 import { VaultContext } from './providers/vault'
+import './screens/Vault/vault.css'
 import VaultHome from './screens/Vault/Home'
 import VaultReceive from './screens/Vault/Receive'
 import VaultReview from './screens/Vault/Review'
@@ -7,6 +8,7 @@ import VaultSavings from './screens/Vault/Savings'
 import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
 import VaultWelcome from './screens/Vault/Welcome'
+import VaultKeys from './screens/Vault/Keys'
 import VaultConditions from './screens/Vault/onboard/Conditions'
 import VaultDesign from './screens/Vault/onboard/Design'
 import VaultHardware from './screens/Vault/onboard/Hardware'
@@ -17,7 +19,7 @@ import VaultRecovery from './screens/Vault/onboard/Recovery'
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
   useEffect(() => {
-    document.title = 'Daily spending vault'
+    document.title = 'Spending vault'
   }, [])
   const pages = {
     welcome: <VaultWelcome />,
@@ -33,6 +35,7 @@ export default function VaultApp() {
     review: <VaultReview />,
     success: <VaultSuccess />,
     savings: <VaultSavings />,
+    keys: <VaultKeys />,
   }
   const page = pages[screen] || <VaultWelcome />
   return (

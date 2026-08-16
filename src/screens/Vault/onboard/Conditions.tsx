@@ -2,8 +2,10 @@ import { useContext } from 'react'
 import Button from '../../../components/Button'
 import Text from '../../../components/Text'
 import { prettyAmount } from '../../../lib/format'
+import { delayLabel } from '../../../lib/vault/policy'
 import { DAILY_LIMIT_CHOICES, PAYMENT_CAP_CHOICES, RECOVERY_PROFILES } from '../../../lib/vault/setup'
 import { VaultContext } from '../../../providers/vault'
+import { PolicyTimeline } from '../ui'
 import { ChoiceCard, OnboardLayout } from './Layout'
 
 export default function VaultConditions() {
@@ -27,22 +29,19 @@ export default function VaultConditions() {
         actions={<Button onClick={confirmConditions} label='These are the live rules' />}
       >
         <Text wrap>
-          This Mutinynet vault already enforces these phone limits. The app cannot loosen them. Hardware plus recovery
-          can still sweep everything.
+          These limits are already on the Mutinynet vault. This phone cannot loosen them. Hardware plus recovery can
+          still sweep everything.
         </Text>
-        <Text color='neutral-600' tiny>
-          Per payment
-        </Text>
-        <Text small>{prettyAmount(txCap)}</Text>
-        <Text color='neutral-600' tiny>
-          Each calendar day
-        </Text>
-        <Text small>{prettyAmount(daily)}</Text>
-        <Text color='neutral-600' tiny>
-          If the phone is gone
-        </Text>
-        <Text small wrap>
-          Spending after {opCsv} blocks. Savings after {savCsv}.
+        <PolicyTimeline
+          txCap={txCap}
+          dailyLimit={daily}
+          operationalBlocks={opCsv}
+          savingsBlocks={savCsv}
+          network={status?.network}
+        />
+        <Text color='neutral-600' tiny wrap>
+          Daily path: {prettyAmount(txCap)} per payment, {prettyAmount(daily)} per day. Recovery delay{' '}
+          {delayLabel(opCsv, status?.network)}.
         </Text>
       </OnboardLayout>
     )
@@ -57,7 +56,7 @@ export default function VaultConditions() {
     >
       <Text wrap>These limits apply to the phone path only. Hardware plus recovery can still sweep everything.</Text>
       <Text color='neutral-600' tiny>
-        Per payment
+        Largest daily send
       </Text>
       {PAYMENT_CAP_CHOICES.map((sats) => (
         <ChoiceCard
