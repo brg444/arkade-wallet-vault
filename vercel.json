@@ -1,0 +1,17 @@
+{
+  "buildCommand": "bun run build:vault",
+  "installCommand": "bun install",
+  "outputDirectory": "dist",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/v1/:path*",
+      "destination": "https://reproductive-belief-consult-photographers.trycloudflare.com/v1/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://reproductive-belief-consult-photographers.trycloudflare.com/health"
+    },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ]
+}

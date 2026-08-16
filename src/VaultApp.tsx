@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { useContext, useEffect } from 'react'
 import { VaultContext } from './providers/vault'
 import VaultHome from './screens/Vault/Home'
 import VaultReceive from './screens/Vault/Receive'
@@ -10,6 +10,9 @@ import VaultWelcome from './screens/Vault/Welcome'
 
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
+  useEffect(() => {
+    document.title = 'Daily spending vault'
+  }, [])
   const page =
     screen === 'receive' ? (
       <VaultReceive />
