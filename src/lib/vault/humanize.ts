@@ -1,14 +1,25 @@
 export function humanizeVaultError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
   const msg = raw.toLowerCase()
-  if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed')) {
-    return 'Cannot reach the vault service. You can still look around, or start the service and try again.'
+  if (
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('load failed') ||
+    msg.includes('vault service is not running') ||
+    msg.includes('request failed (5') ||
+    msg.includes('authorizer status 5') ||
+    msg.includes('econnrefused')
+  ) {
+    return 'The vault service is not running. Start it, then try Set up with passkey again. You can still look around first.'
   }
   if (msg.includes('authorizer status') || msg.includes('unreachable')) {
     return 'The vault service is not responding. Check that it is running, then try again.'
   }
+  if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
+    return 'Open this page as http://localhost:3003 — 127.0.0.1 will not work with the passkey.'
+  }
   if (msg.includes('rp id') || msg.includes('origin does not match') || msg.includes('signing client')) {
-    return 'This page is on a different address than the vault expects. You can look around here, or open the address the vault was set up with.'
+    return 'This page is on a different address than the vault expects. Open http://localhost:3003 and try again.'
   }
   if (msg.includes('prf')) {
     return 'This device or browser cannot create the kind of passkey this vault needs. Try Safari or Chrome on this computer.'
