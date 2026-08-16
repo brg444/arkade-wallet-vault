@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
+import { DEMO_HARDWARE_PUB, DEMO_RECOVERY_PUB } from '../../lib/vault/setup'
 import { VaultProvider } from '../../providers/vault'
 import VaultApp from '../../VaultApp'
 
@@ -16,35 +17,41 @@ function renderVault() {
   )
 }
 
-describe('VaultApp non-developer flow', () => {
-  it('walks welcome to receive and a preview send', async () => {
+describe('VaultApp onboarding', () => {
+  it('requires hardware, recovery, and rules before the wallet home', async () => {
     const user = userEvent.setup()
     renderVault()
 
-    expect(await screen.findByText('Daily spending vault')).toBeTruthy()
-    expect(screen.queryByLabelText('Vault descriptor JSON')).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Look around first' }))
+    expect(await screen.findByText('A vault, not a hot wallet')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Look around first' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Set up this vault' }))
+
+    expect(await screen.findByText('How it is built')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'I understand — continue' }))
+
+    expect(await screen.findByText('Hardware path')).toBeTruthy()
+    fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: DEMO_HARDWARE_PUB } })
+    await user.click(screen.getByRole('button', { name: 'Use this key' }))
+
+    expect(await screen.findByText('Recovery key')).toBeTruthy()
+    fireEvent.change(screen.getByTestId('recovery-pub'), { target: { value: DEMO_RECOVERY_PUB } })
+    await user.click(screen.getByRole('button', { name: 'Use this key' }))
+
+    expect(await screen.findByText('Spending rules')).toBeTruthy()
+    await user.click(screen.getByTestId('cap-20000'))
+    await user.click(screen.getByTestId('daily-50000'))
+    await user.click(screen.getByRole('button', { name: 'Save these rules' }))
+
+    expect(await screen.findByText('Your vault plan')).toBeTruthy()
+    expect(screen.getByText('20,000 SATS per payment')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Looks right — continue' }))
+
+    expect(await screen.findByText('Phone passkey')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Enter without a passkey' }))
 
     expect(await screen.findByText('Spending')).toBeTruthy()
-    expect(screen.getByTestId('vault-balance').textContent).toMatch(/SATS/)
-
-    await user.click(screen.getByRole('button', { name: 'Receive' }))
-    expect(await screen.findByText(/do not send real bitcoin/i)).toBeTruthy()
-    expect(screen.getByTestId('receive-address').textContent).toMatch(/^bcrt1/)
-
-    await user.click(screen.getByLabelText('Go back'))
-    await user.click(screen.getByRole('button', { name: 'Send' }))
-    fireEvent.change(screen.getByPlaceholderText('Bitcoin address'), {
-      target: { value: 'bcrt1p40xfaupmdqysq0c6m5m6q0c6m5m6q0c6m5m6q0c6m5m6q0c6m5mq7n0d2p' },
-    })
-    fireEvent.change(screen.getByTestId('vault-send-amount'), { target: { value: '20000' } })
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
-
-    expect(await screen.findByText('Review')).toBeTruthy()
-    expect(screen.getByText('20,000 SATS')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Looks good' }))
-    expect(await screen.findByText('Preview only — nothing left this device.')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Done' }))
-    expect(await screen.findByText('Spending')).toBeTruthy()
+    expect(screen.getByTestId('vault-balance').textContent).toMatch(/^0/)
+    expect(screen.getByText(/not on a chain/i)).toBeTruthy()
+    expect(screen.getByText(/Phone may spend/)).toBeTruthy()
   })
 })
