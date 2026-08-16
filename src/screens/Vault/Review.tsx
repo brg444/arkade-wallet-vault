@@ -39,8 +39,8 @@ export default function VaultReview() {
             <Line label='Total' value={prettyAmount(spend.amount + spend.fee)} />
             <Text color='neutral-600' small wrap>
               {preview
-                ? 'This is a preview. Nothing is broadcast. On a live vault you would approve with your passkey now.'
-                : 'Approve with your passkey to send. This uses today’s spending limit, not savings.'}
+                ? 'This uses the phone path only. Demo coins are not on a chain. Hardware plus recovery would still be required to sweep the vault.'
+                : 'Approve with your passkey. This uses today’s phone limit, not savings or the hardware key.'}
             </Text>
           </FlexCol>
         </Padded>

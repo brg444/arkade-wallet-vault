@@ -9,6 +9,7 @@ import Text from '../../components/Text'
 import ReceiveIcon from '../../icons/Receive'
 import SendIcon from '../../icons/Send'
 import { prettyAmount } from '../../lib/format'
+import { shortKey } from '../../lib/vault/setup'
 import { VaultContext } from '../../providers/vault'
 
 export default function VaultHome() {
@@ -24,9 +25,10 @@ export default function VaultHome() {
     networkLabel,
     preview,
     reset,
+    setup,
   } = useContext(VaultContext)
 
-  const used = dailyLimit - dailyRemaining
+  const used = Math.max(0, dailyLimit - dailyRemaining)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
 
   return (
@@ -54,13 +56,12 @@ export default function VaultHome() {
                 {prettyAmount(amountSats)}
               </Text>
               <Text color='neutral-600' small>
-                {networkLabel}
-                {preview ? ' · Preview' : ''}
+                {preview ? 'Demo balance · not on a chain' : networkLabel}
               </Text>
             </FlexCol>
             <FlexCol gap='0.35rem'>
               <Text color='neutral-600' tiny>
-                {prettyAmount(dailyRemaining)} left of {prettyAmount(dailyLimit)} today
+                Phone may spend {prettyAmount(dailyRemaining)} of {prettyAmount(dailyLimit)} today
               </Text>
               <div
                 aria-label='Daily spending remaining'
@@ -81,11 +82,6 @@ export default function VaultHome() {
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
             </FlexRow>
             <ErrorMessage error={Boolean(error)} text={error} />
-            {amountSats === 0 ? (
-              <Text color='neutral-600' small wrap>
-                Receive test bitcoin, or add test coins if this vault is running locally.
-              </Text>
-            ) : null}
             <button
               type='button'
               onClick={() => navigate('savings')}
@@ -102,15 +98,24 @@ export default function VaultHome() {
                 <Text color='neutral-600' tiny>
                   Savings
                 </Text>
-                <Text small>Locked — not spendable from this phone</Text>
+                <Text small>Locked — hardware + recovery only</Text>
               </FlexCol>
             </button>
+            <FlexCol gap='0.15rem'>
+              <Text color='neutral-600' tiny>
+                Hardware
+              </Text>
+              <Text small>
+                {shortKey(setup.hardwarePub)}
+                {setup.hardwareIsDemo ? ' · demo' : ''}
+              </Text>
+            </FlexCol>
           </FlexCol>
         </Padded>
       </Content>
       {preview || amountSats === 0 ? (
         <div style={{ padding: '0 1rem 1.25rem' }}>
-          <Button onClick={addTestCoins} disabled={busy} label={busy ? 'Adding…' : 'Add test coins'} secondary />
+          <Button onClick={addTestCoins} disabled={busy} label={busy ? 'Adding…' : 'Add demo coins'} secondary />
         </div>
       ) : null}
     </>

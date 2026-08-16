@@ -45,5 +45,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('dust')) {
     return 'That amount is too small to send.'
   }
+  if (msg.includes('33-byte') || msg.includes('compressed public key') || msg.includes('secp256k1')) {
+    return 'Paste a compressed public key from the device (it starts with 02 or 03). Never paste a seed.'
+  }
+  if (msg.includes('different key') || msg.includes('must be different')) {
+    return 'Hardware and recovery have to be two different keys.'
+  }
   return raw.charAt(0).toUpperCase() + raw.slice(1)
 }
