@@ -73,12 +73,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [authorizerOrigin],
   )
 
-  const importStatusJson = useCallback((raw: string) => {
-    const next = parseStatusJson(raw)
-    setStatus(next)
-    setError('')
-    if (next.enrolled && watch) setScreen('home')
-  }, [watch])
+  const importStatusJson = useCallback(
+    (raw: string) => {
+      const next = parseStatusJson(raw)
+      setStatus(next)
+      setError('')
+      if (next.enrolled && watch) setScreen('home')
+    },
+    [watch],
+  )
 
   const reset = useCallback(() => {
     clearWatchRecord()

@@ -82,43 +82,43 @@ if (vaultMode) {
     </ErrorBoundary>,
   )
 } else {
-root.render(
-  // <React.StrictMode>
-  <DevModeProvider>
-    <NavigationProvider>
-      <ConfigProvider>
-        <AspProvider>
-          <NotificationsProvider>
-            <FiatProvider>
-              <FlowProvider>
-                <WalletProvider>
-                  <SwapsProvider>
-                    <LnurlProvider>
-                      <LimitsProvider>
-                        <FeesProvider>
-                          <OptionsProvider>
-                            <NudgeProvider>
-                              <AnnouncementProvider>
-                                <ToastProvider>
-                                  <ErrorBoundary>
-                                    <App />
-                                  </ErrorBoundary>
-                                </ToastProvider>
-                              </AnnouncementProvider>
-                            </NudgeProvider>
-                          </OptionsProvider>
-                        </FeesProvider>
-                      </LimitsProvider>
-                    </LnurlProvider>
-                  </SwapsProvider>
-                </WalletProvider>
-              </FlowProvider>
-            </FiatProvider>
-          </NotificationsProvider>
-        </AspProvider>
-      </ConfigProvider>
-    </NavigationProvider>
-  </DevModeProvider>,
-  // </React.StrictMode>,
-)
+  root.render(
+    // <React.StrictMode>
+    <DevModeProvider>
+      <NavigationProvider>
+        <ConfigProvider>
+          <AspProvider>
+            <NotificationsProvider>
+              <FiatProvider>
+                <FlowProvider>
+                  <WalletProvider>
+                    <SwapsProvider>
+                      <LnurlProvider>
+                        <LimitsProvider>
+                          <FeesProvider>
+                            <OptionsProvider>
+                              <NudgeProvider>
+                                <AnnouncementProvider>
+                                  <ToastProvider>
+                                    <ErrorBoundary>
+                                      <App />
+                                    </ErrorBoundary>
+                                  </ToastProvider>
+                                </AnnouncementProvider>
+                              </NudgeProvider>
+                            </OptionsProvider>
+                          </FeesProvider>
+                        </LimitsProvider>
+                      </LnurlProvider>
+                    </SwapsProvider>
+                  </WalletProvider>
+                </FlowProvider>
+              </FiatProvider>
+            </NotificationsProvider>
+          </AspProvider>
+        </ConfigProvider>
+      </NavigationProvider>
+    </DevModeProvider>,
+    // </React.StrictMode>,
+  )
 }
