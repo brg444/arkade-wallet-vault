@@ -29,7 +29,8 @@ export default function VaultDesign() {
         is not a cloud backup of the passkey.
       </Text>
       <Text color='neutral-600' small wrap>
-        The service that cosigns daily spends cannot move savings, and cannot change these rules by itself.
+        The service that cosigns daily spends cannot move savings, and cannot change these rules by itself. This hosted
+        demo is a live Mutinynet vault, not a simulated balance.
       </Text>
     </OnboardLayout>
   )

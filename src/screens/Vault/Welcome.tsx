@@ -88,7 +88,7 @@ export default function VaultWelcome() {
               />
               <Point icon={<SafeIcon />} text='Savings is a separate lock. The phone never has a key to it' />
               <Text color='neutral-600' small wrap>
-                Test bitcoin only. Setup takes about two minutes.
+                Mutinynet test bitcoin only. Do not send real bitcoin. Setup takes about two minutes.
               </Text>
             </div>
           </FlexCol>

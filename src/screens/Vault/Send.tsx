@@ -43,7 +43,7 @@ export default function VaultSend() {
               testId='vault-send-amount'
             />
             <Text color='neutral-600' tiny wrap>
-              Network fee {prettyAmount(spend.fee)}. Max 50,000 sats per payment.
+              Network fee {prettyAmount(spend.fee)}. Max 50,000 sats per payment. Use a confirmed Mutinynet coin.
             </Text>
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>

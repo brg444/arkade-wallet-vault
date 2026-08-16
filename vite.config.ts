@@ -39,7 +39,7 @@ export default defineConfig({
     !process.env.VERCEL &&
       eslint({
         include: ['src/**/*.ts', 'src/**/*.tsx'],
-        exclude: ['src/test/**/*.ts', 'src/test/**/*.tsx'],
+        exclude: ['src/test/**/*.ts', 'src/test/**/*.tsx', 'src/lib/vault/ceremony/**'],
         cache: false,
       }),
     process.env.HTTPS === 'true' && basicSsl(),
@@ -53,6 +53,11 @@ export default defineConfig({
         ? {
             '/v1': vaultAuthorizerProxy(),
             '/health': vaultAuthorizerProxy(),
+            '/esplora': {
+              target: 'https://mempool.mutinynet.arkade.sh',
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/esplora/, '/api'),
+            },
           }
         : undefined,
   },

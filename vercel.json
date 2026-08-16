@@ -12,6 +12,10 @@
       "source": "/health",
       "destination": "https://reproductive-belief-consult-photographers.trycloudflare.com/health"
     },
+    {
+      "source": "/esplora/:path*",
+      "destination": "https://mempool.mutinynet.arkade.sh/api/:path*"
+    },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

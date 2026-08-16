@@ -8,8 +8,9 @@ import { prettyAmount } from '../../lib/format'
 import { VaultContext } from '../../providers/vault'
 
 export default function VaultSuccess() {
-  const { lastSend, navigate, preview } = useContext(VaultContext)
+  const { lastSend, lastTxid, liveNetwork, navigate, preview } = useContext(VaultContext)
   const amount = lastSend ? prettyAmount(lastSend.amount) : 'Payment'
+  const explorer = lastTxid ? `https://mempool.mutinynet.arkade.sh/tx/${lastTxid}` : ''
 
   return (
     <>
@@ -17,10 +18,19 @@ export default function VaultSuccess() {
       <Content noRefresh>
         <Success
           headline={amount}
-          text={preview ? 'Preview only — nothing left this device.' : 'Your payment was submitted.'}
+          text={
+            lastTxid
+              ? `Broadcast on Mutinynet · ${lastTxid.slice(0, 12)}…`
+              : preview
+                ? 'Preview only — nothing left this device.'
+                : 'Your payment was submitted.'
+          }
         />
       </Content>
       <ButtonsOnBottom>
+        {liveNetwork && explorer ? (
+          <Button onClick={() => window.open(explorer, '_blank')} label='View on Mutinynet' secondary />
+        ) : null}
         <Button onClick={() => navigate('home')} label='Done' />
       </ButtonsOnBottom>
     </>

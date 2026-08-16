@@ -20,7 +20,7 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export default function VaultPlan() {
-  const { finishPlan, navigate, setup } = useContext(VaultContext)
+  const { finishPlan, liveNetwork, navigate, setup } = useContext(VaultContext)
   return (
     <OnboardLayout
       title='Your vault plan'
@@ -28,7 +28,11 @@ export default function VaultPlan() {
       onBack={() => navigate('conditions')}
       actions={<Button onClick={finishPlan} label='Looks right — continue' />}
     >
-      <Text wrap>Nothing is locked on-chain yet. This is the plan this phone will treat as the vault.</Text>
+      <Text wrap>
+        {liveNetwork
+          ? 'The Mutinynet addresses are created when you add the passkey. Until then this is the plan the phone will use.'
+          : 'Nothing is locked on-chain yet. This is the plan this phone will treat as the vault.'}
+      </Text>
       <Row
         label='Hardware / external'
         value={`${shortKey(setup.hardwarePub)}${setup.hardwareIsDemo ? ' · demo key' : ''}`}

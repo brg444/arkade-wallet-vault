@@ -56,3 +56,5 @@ claude.md
 HANDOVER*.md
 TASKS.md
 *.agents.md
+.vercel
+.env*

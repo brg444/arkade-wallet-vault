@@ -2,6 +2,7 @@ import { useContext } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from '../../components/Content'
+import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
 import Header from '../../components/Header'
 import Padded from '../../components/Padded'
@@ -23,7 +24,7 @@ function Line({ label, value }: { label: string; value: string }) {
 }
 
 export default function VaultReview() {
-  const { approvePreviewSend, navigate, preview, spend } = useContext(VaultContext)
+  const { approvePreviewSend, busy, error, liveNetwork, navigate, preview, spend } = useContext(VaultContext)
 
   return (
     <>
@@ -40,13 +41,21 @@ export default function VaultReview() {
             <Text color='neutral-600' small wrap>
               {preview
                 ? 'This uses the phone path only. Demo coins are not on a chain. Hardware plus recovery would still be required to sweep the vault.'
-                : 'Approve with your passkey. This uses today’s phone limit, not savings or the hardware key.'}
+                : liveNetwork
+                  ? 'Approve with your passkey. This broadcasts a real Mutinynet transaction from the spending address. Savings and the hardware key stay unused.'
+                  : 'Approve with your passkey. This uses today’s phone limit, not savings or the hardware key.'}
             </Text>
+            <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={approvePreviewSend} label={preview ? 'Looks good' : 'Approve with passkey'} />
+        <Button
+          onClick={approvePreviewSend}
+          disabled={busy}
+          loading={busy}
+          label={busy ? 'Signing…' : preview ? 'Looks good' : 'Approve with passkey'}
+        />
       </ButtonsOnBottom>
     </>
   )

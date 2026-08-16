@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
@@ -8,8 +8,13 @@ import { VaultContext } from '../../../providers/vault'
 import { OnboardLayout } from './Layout'
 
 export default function VaultRecovery() {
-  const { applyRecovery, error, navigate, setup } = useContext(VaultContext)
-  const [value, setValue] = useState(setup.recoveryIsDemo ? '' : setup.recoveryPub)
+  const { applyRecovery, error, navigate, setup, status } = useContext(VaultContext)
+  const required = status?.recoveryKeyPub || ''
+  const [value, setValue] = useState(required || (setup.recoveryIsDemo ? '' : setup.recoveryPub))
+
+  useEffect(() => {
+    if (required) setValue(required)
+  }, [required])
 
   return (
     <OnboardLayout
@@ -19,14 +24,17 @@ export default function VaultRecovery() {
       onBack={() => navigate('hardware')}
       actions={
         <>
-          <Button onClick={() => applyRecovery(value)} label='Use this key' />
-          <Button onClick={() => applyRecovery(DEMO_RECOVERY_PUB, true)} label='Use a demo recovery key' secondary />
+          <Button onClick={() => applyRecovery(value)} label='I control this key' />
+          {required ? null : (
+            <Button onClick={() => applyRecovery(DEMO_RECOVERY_PUB, true)} label='Use a demo recovery key' secondary />
+          )}
         </>
       }
     >
       <Text wrap>
-        Add a second offline key. After the delay you choose, this key alone can recover spending or savings if the
-        phone is lost. It must not be the same as the hardware key.
+        {required
+          ? 'Recovery is already bound on this Mutinynet vault. Confirm you control the key below. After the delay it can recover funds without the phone.'
+          : 'Add a second offline key. After the delay you choose, this key alone can recover spending or savings if the phone is lost. It must not be the same as the hardware key.'}
       </Text>
       <Input
         label='Compressed public key'

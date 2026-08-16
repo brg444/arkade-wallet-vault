@@ -12,7 +12,7 @@ import { copyToClipboard } from '../../lib/clipboard'
 import { VaultContext } from '../../providers/vault'
 
 export default function VaultReceive() {
-  const { navigate, operationalAddress } = useContext(VaultContext)
+  const { faucetUrl, liveNetwork, navigate, operationalAddress } = useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
 
@@ -30,7 +30,9 @@ export default function VaultReceive() {
         <Padded>
           <FlexCol>
             <Text small wrap>
-              Send test bitcoin to this spending address. Do not send real bitcoin.
+              {liveNetwork
+                ? 'This is a Mutinynet address. Fund it from the Mutinynet faucet. Do not send mainnet bitcoin.'
+                : 'Send test bitcoin to this spending address. Do not send real bitcoin.'}
             </Text>
             {operationalAddress ? <QrCode value={operationalAddress} /> : <Text>No address yet.</Text>}
             <Text centered small wrap testId='receive-address'>
@@ -41,6 +43,13 @@ export default function VaultReceive() {
       </Content>
       <ButtonsOnBottom>
         <Button onClick={handleCopy} disabled={!operationalAddress} label={copied ? 'Copied' : 'Copy address'} />
+        {liveNetwork && operationalAddress ? (
+          <Button
+            onClick={() => window.open(`${faucetUrl}?address=${operationalAddress}`, '_blank')}
+            label='Open Mutinynet faucet'
+            secondary
+          />
+        ) : null}
       </ButtonsOnBottom>
     </>
   )
