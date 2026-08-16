@@ -48,6 +48,7 @@
   "scripts": {
     "prepare": "husky install",
     "start": "pnpm git-info && pnpm build:worker && vite",
+    "start:vault": "cross-env VITE_VAULT_MODE=1 vite --port 3003",
     "start:mainnet": "pnpm git-info && pnpm build:worker && cross-env VITE_ARK_SERVER=https://arkade.computer VITE_BOLTZ_URL=https://api.boltz.exchange vite",
     "build": "pnpm git-info && pnpm build:worker && vite build",
     "build:worker": "vite build -c vite.worker.config.ts",

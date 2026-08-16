@@ -22,6 +22,8 @@ import { AnnouncementProvider } from './providers/announcements'
 import { ToastProvider } from './components/Toast'
 import ErrorBoundary from './components/ErrorBoundary'
 import { DevModeProvider } from './providers/devMode'
+import { VaultProvider } from './providers/vault'
+import VaultApp from './VaultApp'
 
 // Initialize Sentry only in production and when DSN is provided
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
@@ -47,10 +49,12 @@ if (shouldInitializeSentry(sentryDsn)) {
   })
 }
 
+const vaultMode = import.meta.env.VITE_VAULT_MODE === '1'
+
 // Pre-register service worker so activation happens in parallel with page
 // bootstrap (ASP fetch, auth check, etc.). On cold starts this saves the
 // full activation wait from the critical path; on warm starts it's a no-op.
-if ('serviceWorker' in navigator) {
+if (!vaultMode && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/wallet-service-worker.mjs').catch(() => {})
 
   // check if there's a service worker controlling the page
@@ -67,6 +71,17 @@ if ('serviceWorker' in navigator) {
 
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
 
+if (vaultMode) {
+  root.render(
+    <ErrorBoundary>
+      <ToastProvider>
+        <VaultProvider>
+          <VaultApp />
+        </VaultProvider>
+      </ToastProvider>
+    </ErrorBoundary>,
+  )
+} else {
 root.render(
   // <React.StrictMode>
   <DevModeProvider>
@@ -106,3 +121,4 @@ root.render(
   </DevModeProvider>,
   // </React.StrictMode>,
 )
+}

@@ -28,6 +28,13 @@ export default defineConfig({
     port: 3002,
     host: true,
     allowedHosts: ['.trycloudflare.com'],
+    proxy:
+      process.env.VITE_VAULT_MODE === '1'
+        ? {
+            '/v1': 'http://127.0.0.1:8787',
+            '/health': 'http://127.0.0.1:8787',
+          }
+        : undefined,
   },
   build: {
     emptyOutDir: true,
