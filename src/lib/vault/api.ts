@@ -21,14 +21,24 @@ async function vaultRequest<T>(path: string, bodyJSON?: string): Promise<T> {
     body: hasBody ? bodyJSON : undefined,
   })
   const text = await readBounded(res)
-  let data: any
-  try {
-    data = JSON.parse(text)
-  } catch {
-    throw new Error(text || `Request failed (${res.status})`)
+  if (!res.ok) {
+    let message = text.trim()
+    try {
+      const data = JSON.parse(text) as { error?: string }
+      if (data?.error) message = data.error
+    } catch {
+      // proxy/HTML bodies are not useful to show
+    }
+    if (!message || res.status >= 500) {
+      throw new Error('vault service is not running')
+    }
+    throw new Error(message)
   }
-  if (!res.ok) throw new Error(data.error || text || `Request failed (${res.status})`)
-  return data as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error('vault service is not running')
+  }
 }
 
 async function readBounded(res: Response): Promise<string> {

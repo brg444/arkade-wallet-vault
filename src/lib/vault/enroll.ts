@@ -66,6 +66,9 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
 }
 
 export async function enrollWithPasskey(): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
+  if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
+    throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
+  }
   const status = requireStatusIdentity(await vaultGet<VaultStatus>('/v1/status'))
   const rpId = requireRPID(status)
   const cred = (await navigator.credentials.create({
