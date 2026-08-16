@@ -55,7 +55,10 @@ export default function VaultHome() {
               }
             />
             <Row label='Network' value={descriptor?.network || status?.network || '—'} />
-            <Row label='Descriptor hash' value={descriptorHash ? fingerprint(descriptorHash, 6) : 'import full descriptor'} />
+            <Row
+              label='Descriptor hash'
+              value={descriptorHash ? fingerprint(descriptorHash, 6) : 'import full descriptor'}
+            />
             <Row
               label='PhoneRoutine'
               value={fingerprint(descriptor?.keys.phoneRoutineBip340 || status?.phoneRoutineBip340Pub || '')}

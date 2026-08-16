@@ -83,7 +83,12 @@ export default function VaultInit() {
       </Content>
       <ButtonsOnBottom>
         <Button onClick={handleImport} disabled={!raw.trim()} label='Import descriptor' />
-        <Button onClick={handleFetch} disabled={busy} label={busy ? 'Fetching…' : 'Fetch authorizer status'} secondary />
+        <Button
+          onClick={handleFetch}
+          disabled={busy}
+          label={busy ? 'Fetching…' : 'Fetch authorizer status'}
+          secondary
+        />
         {import.meta.env.DEV ? <Button onClick={handleSample} label='Fill sample JSON' clear /> : null}
       </ButtonsOnBottom>
     </>
