@@ -586,7 +586,7 @@ function maskEmulatorWitness(script) {
     const entry = parseEmulatorPacket(packet.data);
     return {
       type: packet.type,
-      data: encodeEmulatorPacket({ vin: entry.vin, script: entry.script, witness: [] }),
+      data: encodeEmulatorPacketMasked({ vin: entry.vin, script: entry.script }),
     };
   });
   return found ? encodeExtensionScript(masked) : script;
@@ -689,7 +689,10 @@ export function encodeExtensionScript(packets) {
 export function encodeEmulatorPacket(entry) {
   const script = toBytes(entry.script);
   const witness = (entry.witness || []).map(toBytes);
-  const wit = witness.length ? writeTxWitness(witness) : new Uint8Array(0);
+  // Match Go arkade.EmulatorPacket.Serialize: even an empty stack is
+  // psbt.WriteTxWitness output (0x00), then length-prefixed. A zero-length
+  // witness blob is only used in the sighash-masked encoding.
+  const wit = writeTxWitness(witness);
   return concat([
     writeCompactSize(1),
     Uint8Array.of(entry.vin & 0xff, (entry.vin >> 8) & 0xff),
@@ -697,6 +700,17 @@ export function encodeEmulatorPacket(entry) {
     script,
     writeCompactSize(wit.length),
     wit,
+  ]);
+}
+
+export function encodeEmulatorPacketMasked(entry) {
+  const script = toBytes(entry.script);
+  return concat([
+    writeCompactSize(1),
+    Uint8Array.of(entry.vin & 0xff, (entry.vin >> 8) & 0xff),
+    writeCompactSize(script.length),
+    script,
+    writeCompactSize(0),
   ]);
 }
 
