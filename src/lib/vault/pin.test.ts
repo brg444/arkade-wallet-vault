@@ -76,17 +76,13 @@ describe('local address pin', () => {
     expect(() => pinEnrolledStatus(tenantStatus({ operationalAddress: 'tb1pattacker' }), storage)).toThrow(/local pin/)
   })
 
-  it('seeds the funded kiosk from the compiled descriptor, not from status', () => {
+  it('does not seed the retired singleton vault from a compiled address', () => {
     const storage = memoryStorage()
-    const pin = loadAddressPin(storage)
+    expect(loadAddressPin(storage)).toBeNull()
     expect(loadStoredAddressPin(storage)).toBeNull()
-    expect(pin?.operationalAddress).toBe(TRUSTED_KIOSK_PIN_FIELDS.operationalAddress)
-    expect(pin?.pinHash).toBe(trustedKioskPin().pinHash)
-    expect(() => requireStatusMatchesPin(sampleStatus({ operationalAddress: 'tb1pattacker' }), pin!)).toThrow(
-      /local pin/,
-    )
-    expect(() => bindStatusToLocalPin(sampleStatus({ operationalAddress: 'tb1pattacker' }), storage)).toThrow(
-      /local pin/,
+    expect(trustedKioskPin().operationalAddress).toBe(TRUSTED_KIOSK_PIN_FIELDS.operationalAddress)
+    expect(bindStatusToLocalPin(sampleStatus({ operationalAddress: 'tb1pattacker' }), storage).operationalAddress).toBe(
+      'tb1pattacker',
     )
   })
 
@@ -110,10 +106,10 @@ describe('local address pin', () => {
     expect(() => loadAddressPin(storage, 'tenant-b')).toThrow(/hash/)
   })
 
-  it('namespaces pins by vault id and keeps the kiosk seed', () => {
+  it('namespaces pins by vault id', () => {
     const storage = memoryStorage()
     pinEnrolledStatus(tenantStatus(), storage)
-    expect(loadAddressPin(storage)?.vaultId).toBe(VAULT_ID)
+    expect(loadAddressPin(storage)).toBeNull()
     expect(loadAddressPin(storage, 'tenant-b')?.vaultId).toBe('tenant-b')
     expect(loadAddressPin(storage, 'tenant-b')?.operationalAddress).not.toBe(
       TRUSTED_KIOSK_PIN_FIELDS.operationalAddress,
@@ -125,7 +121,7 @@ describe('local address pin', () => {
     pinEnrolledStatus(tenantStatus(), storage)
     clearAddressPin(storage, 'tenant-b')
     expect(loadAddressPin(storage, 'tenant-b')).toBeNull()
-    expect(loadAddressPin(storage)?.vaultId).toBe(VAULT_ID)
+    expect(loadAddressPin(storage)).toBeNull()
   })
 
   it('hashes operational script into the pin', () => {

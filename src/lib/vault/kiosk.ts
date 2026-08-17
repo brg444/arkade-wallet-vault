@@ -1,10 +1,8 @@
 import { VAULT_ID } from './constants'
 import type { AddressPinFields } from './pin'
 
-// Compiled-in Mutinynet first-vault deposit identity (tb1p9llcr…).
-// New tenants do not use this; they pin after enroll/recover.
-// The existing funded Q can be swept and abandoned — this seed is only
-// so the current kiosk QR cannot be swapped before that.
+// Retired singleton identity. Do not seed Receive from this. The funded
+// operational-vault-v1 output can still be swept via hardware+recovery.
 export const TRUSTED_KIOSK_PIN_FIELDS: AddressPinFields = {
   vaultId: VAULT_ID,
   operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
