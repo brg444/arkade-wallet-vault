@@ -2,21 +2,33 @@ import { useContext, useState } from 'react'
 import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
-import { pasteFromClipboard } from '../../../lib/clipboard'
+import { useToast } from '../../../components/Toast'
+import { copyToClipboard, pasteFromClipboard } from '../../../lib/clipboard'
 import { loadStagedEnrollment } from '../../../lib/vault/enrollment'
 import { VaultContext } from '../../../providers/vault'
-import { Detail, Reveal } from '../ui'
+import { Detail } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultProofs() {
   const { busy, error, navigate, submitEnrollmentProofs } = useContext(VaultContext)
+  const { toast } = useToast()
   const staged = loadStagedEnrollment()
   const [ownerProof, setOwnerProof] = useState('')
   const [recoveryProof, setRecoveryProof] = useState('')
+  const message = staged?.popDigest || ''
+
+  const paste = async (into: 'hardware' | 'recovery') => {
+    const next = (await pasteFromClipboard()) || ''
+    if (!next) return
+    if (into === 'hardware') setOwnerProof(next)
+    else setRecoveryProof(next)
+  }
+
   return (
     <OnboardLayout
       title='Approve this vault'
       step={7}
+      total={7}
       error={error}
       onBack={() => navigate('passkey')}
       actions={
@@ -28,7 +40,11 @@ export default function VaultProofs() {
       }
     >
       <Text wrap>
-        Confirm where money will land. Then sign once with hardware and recovery — never paste those private keys.
+        Face ID only made the daily key. Hardware and recovery still have to say this vault is yours — once.
+      </Text>
+      <Text wrap>
+        Copy the message below. Sign it with each of those two keys in your wallet. Paste the two signatures here, not
+        the keys themselves.
       </Text>
       <Detail label='Spending' value={staged?.operationalAddress || 'Not proposed yet'} mono />
       <Detail label='Savings' value={staged?.savingsAddress || 'Not proposed yet'} mono />
@@ -36,34 +52,46 @@ export default function VaultProofs() {
       <Text color='neutral-600' tiny wrap>
         This phone cannot spend Savings.
       </Text>
-      <Reveal label='What to sign'>
-        <Text color='neutral-600' tiny wrap>
-          {staged?.popDigest || 'Create a passkey first.'}
+      <div>
+        <Text color='neutral-600' tiny>
+          Message to sign
         </Text>
-      </Reveal>
+        <button
+          type='button'
+          className='vault-sign-message'
+          data-testid='enrollment-pop'
+          onClick={() => {
+            if (!message) return
+            void copyToClipboard(message)
+            toast('Message copied')
+          }}
+        >
+          {message || 'Create a passkey first.'}
+        </button>
+      </div>
       <Input
-        label='Hardware signature'
+        label='Hardware signed it'
         value={ownerProof}
         onChange={setOwnerProof}
-        placeholder='Paste signature'
+        placeholder='Paste the hardware signature'
         testId='owner-proof'
-      />
-      <Button
-        onClick={async () => setOwnerProof((await pasteFromClipboard()) || ownerProof)}
-        label='Paste hardware signature'
-        clear
+        right={
+          <button type='button' className='vault-inline-paste' onClick={() => void paste('hardware')}>
+            Paste
+          </button>
+        }
       />
       <Input
-        label='Recovery signature'
+        label='Recovery signed it'
         value={recoveryProof}
         onChange={setRecoveryProof}
-        placeholder='Paste signature'
+        placeholder='Paste the recovery signature'
         testId='recovery-proof'
-      />
-      <Button
-        onClick={async () => setRecoveryProof((await pasteFromClipboard()) || recoveryProof)}
-        label='Paste recovery signature'
-        clear
+        right={
+          <button type='button' className='vault-inline-paste' onClick={() => void paste('recovery')}>
+            Paste
+          </button>
+        }
       />
     </OnboardLayout>
   )
