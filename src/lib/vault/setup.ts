@@ -32,7 +32,7 @@ export const RECOVERY_PROFILES: RecoveryProfile[] = [
   {
     id: 'demo',
     label: 'Demo delays',
-    detail: 'This device after 6 blocks. Hardware after 144.',
+    detail: 'This device after 144 blocks. Hardware after 6.',
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
     savingsCsvBlocks: DEFAULT_SAVINGS_CSV_BLOCKS,
   },

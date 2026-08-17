@@ -20,7 +20,7 @@ export default function VaultDesign() {
       <Text wrap>This device spends a little. With hardware, it can move everything.</Text>
       <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spends' />
       <KeyCard icon={<ShieldCheckOutlineIcon />} title='Hardware' role='Controls savings balance and policies' />
-      <KeyCard icon={<SafeIcon />} title='Savings' role='Device + Hardware, or one key after a delay' />
+      <KeyCard icon={<SafeIcon />} title='Savings' role='Device + hardware now. Hardware sooner, this device later.' />
     </OnboardLayout>
   )
 }

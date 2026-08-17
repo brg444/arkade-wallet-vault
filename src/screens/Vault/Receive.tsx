@@ -82,7 +82,7 @@ export default function VaultReceive() {
             </p>
             {dest === 'savings' ? (
               <Text color='neutral-600' tiny wrap>
-                This device cannot spend Savings alone. Device + hardware, or one key after the delay.
+                Device + hardware now. Hardware after the short delay, this device after the long delay.
               </Text>
             ) : (
               <Text color='neutral-600' tiny wrap>
