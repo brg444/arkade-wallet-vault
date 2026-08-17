@@ -93,5 +93,8 @@ export function requireStatusIdentity(status: VaultStatus, expectedVaultId?: str
   if (status.vaultId !== expected) throw new Error('status vault id does not match')
   if (status.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
+  if ('recoveryKeyPub' in status && (status as { recoveryKeyPub?: string }).recoveryKeyPub) {
+    throw new Error('template version is not this release')
+  }
   return status
 }

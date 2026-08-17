@@ -12,8 +12,8 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     vaultId: VAULT_ID,
     templateVersion: TEMPLATE_VERSION,
     policyVersion: POLICY_VERSION,
-    operationalCsvBlocks: 288,
-    savingsCsvBlocks: 4032,
+    operationalCsvBlocks: 6,
+    savingsCsvBlocks: 144,
     operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
     savingsAddress: 'tb1ptest',
     savingsExcludesRoutineCosigners: true,
@@ -52,5 +52,14 @@ describe('status identity binding', () => {
   it('does not treat vault id agreement as a deposit-address bind', () => {
     const swapped = sampleStatus({ operationalAddress: 'tb1pattacker' })
     expect(requireStatusIdentity(swapped).operationalAddress).toBe('tb1pattacker')
+  })
+
+  it('rejects a leftover recovery key or a v3 template', () => {
+    expect(() => requireStatusIdentity(sampleStatus({ recoveryKeyPub: '02' + '11'.repeat(32) } as never))).toThrow(
+      /template version/,
+    )
+    expect(() =>
+      requireStatusIdentity(sampleStatus({ templateVersion: 'phone-direct-p256-routine-3of3-admin-2of2-v3' })),
+    ).toThrow(/template version/)
   })
 })

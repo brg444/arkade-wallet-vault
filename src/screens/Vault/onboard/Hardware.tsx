@@ -36,7 +36,7 @@ export default function VaultHardware() {
       <Text wrap>
         {required
           ? 'This vault already has hardware. Confirm you hold that key.'
-          : 'Which hardware owns this vault? With recovery, it can move everything. Never paste a seed.'}
+          : 'Which hardware owns this vault? With this device, it can move everything. Never paste a seed.'}
       </Text>
       {required ? (
         <KeyCard

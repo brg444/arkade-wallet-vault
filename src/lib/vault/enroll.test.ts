@@ -15,7 +15,6 @@ describe('tenant enrollment identity', () => {
       phoneDirectP256: '03' + '22'.repeat(32),
       phoneRoutineBip340Pub: '02' + '33'.repeat(32),
       externalOwnerWalletXOnly: '44'.repeat(32),
-      recoveryKeyXOnly: '55'.repeat(32),
       descriptorHash: '66'.repeat(32),
     })
     expect(digest.length).toBe(32)
@@ -26,7 +25,6 @@ describe('tenant enrollment identity', () => {
       phoneDirectP256: '03' + '22'.repeat(32),
       phoneRoutineBip340Pub: '02' + '33'.repeat(32),
       externalOwnerWalletXOnly: '44'.repeat(32),
-      recoveryKeyXOnly: '55'.repeat(32),
       descriptorHash: '66'.repeat(32),
     })
     expect(Buffer.from(digest).equals(Buffer.from(other))).toBe(false)
@@ -37,7 +35,6 @@ describe('tenant enrollment identity', () => {
       phoneDirectP256: '03' + '22'.repeat(32),
       phoneRoutineBip340Pub: '02' + '33'.repeat(32),
       externalOwnerWalletXOnly: '44'.repeat(32),
-      recoveryKeyXOnly: '55'.repeat(32),
       descriptorHash: '77'.repeat(32),
     })
     expect(Buffer.from(digest).equals(Buffer.from(swappedTree))).toBe(false)

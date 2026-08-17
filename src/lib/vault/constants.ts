@@ -1,7 +1,9 @@
-// Pinned to poc/2fa-vault/fixture. Changing these is a new template/policy, not a UI tweak.
-export const VAULT_SCHEMA = 'arkade-vault/v3'
+// Pinned v4 contract with the authorizer. New enrollments only.
+// Admin / Savings is PhoneRoutineBIP340 + hardware. No RecoveryKey.
+// CSV: 6 = device-only, 144 = hardware-only. Same pair on Daily and Savings.
+export const VAULT_SCHEMA = 'arkade-vault/v4'
 export const VAULT_ID = 'operational-vault-v1'
-export const TEMPLATE_VERSION = 'phone-direct-p256-routine-3of3-admin-2of2-v3'
+export const TEMPLATE_VERSION = 'phone-direct-p256-routine-3of3-admin-phone-hww-v4'
 export const POLICY_VERSION = 'mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3'
 
 export const TX_RECIPIENT_CAP_SATS = 50_000

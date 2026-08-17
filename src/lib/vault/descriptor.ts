@@ -79,7 +79,6 @@ export function validateDescriptor(d: VaultPublicDescriptor): VaultPublicDescrip
   requireLowerHex(d.keys.phoneRoutineBip340, 'phoneRoutineBip340', COMPRESSED)
   requireLowerHex(d.keys.phoneDirectP256, 'phoneDirectP256', COMPRESSED)
   requireLowerHex(d.keys.externalOwnerWallet, 'externalOwnerWallet', COMPRESSED)
-  requireLowerHex(d.keys.recoveryKey, 'recoveryKey', COMPRESSED)
   requireLowerHex(d.keys.vaultCosignerBase, 'vaultCosignerBase', COMPRESSED)
   requireLowerHex(d.keys.arkadeCosignerBase, 'arkadeCosignerBase', COMPRESSED)
   requireLowerHex(d.keys.tweakedVaultCosigner, 'tweakedVaultCosigner', XONLY)
@@ -89,8 +88,8 @@ export function validateDescriptor(d: VaultPublicDescriptor): VaultPublicDescrip
   return d
 }
 
-// encodeDescriptor is the v3 public-descriptor digest input. Field order is the
-// protocol; do not JSON.stringify this object for hashing.
+// encodeDescriptor is the v4 public-descriptor digest input. Field order is the
+// protocol; do not JSON.stringify this object for hashing. There is no recovery key.
 export function encodeDescriptor(input: VaultPublicDescriptor): Uint8Array {
   const d = validateDescriptor(input)
   const parts: Uint8Array[] = []
@@ -102,7 +101,6 @@ export function encodeDescriptor(input: VaultPublicDescriptor): Uint8Array {
   appendHex(parts, d.keys.phoneRoutineBip340, 'phoneRoutineBip340', COMPRESSED)
   appendHex(parts, d.keys.phoneDirectP256, 'phoneDirectP256', COMPRESSED)
   appendHex(parts, d.keys.externalOwnerWallet, 'externalOwnerWallet', COMPRESSED)
-  appendHex(parts, d.keys.recoveryKey, 'recoveryKey', COMPRESSED)
   appendHex(parts, d.keys.vaultCosignerBase, 'vaultCosignerBase', COMPRESSED)
   appendHex(parts, d.keys.tweakedVaultCosigner, 'tweakedVaultCosigner', XONLY)
   appendHex(parts, d.keys.arkadeCosignerBase, 'arkadeCosignerBase', COMPRESSED)
@@ -141,7 +139,6 @@ function descriptorFieldsFromStatus(status: VaultStatus, savingsScript: string):
       phoneRoutineBip340: status.phoneRoutineBip340Pub || '',
       phoneDirectP256: status.phoneDirectP256 || '',
       externalOwnerWallet: status.externalOwnerWalletPub || '',
-      recoveryKey: status.recoveryKeyPub || '',
       vaultCosignerBase: status.vaultCosignerBasePub || '',
       tweakedVaultCosigner: status.tweakedVaultCosignerXOnly || '',
       arkadeCosignerBase: status.arkadeCosignerBasePub || '',
@@ -174,7 +171,7 @@ function descriptorFieldsFromStatus(status: VaultStatus, savingsScript: string):
   }
 }
 
-// /v1/status does not return the Savings script, so a hashed v3 descriptor
+// /v1/status does not return the Savings script, so a hashed v4 descriptor
 // cannot be built from status alone.
 export function descriptorFromStatusWithSavingsScript(
   status: VaultStatus,

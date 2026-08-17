@@ -82,11 +82,11 @@ export default function VaultReceive() {
             </p>
             {dest === 'savings' ? (
               <Text color='neutral-600' tiny wrap>
-                Hardware + recovery only. This phone cannot spend this.
+                This device cannot spend Savings alone. Device + hardware, or one key after the delay.
               </Text>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This phone can spend this, up to today’s limit.
+                This device can spend this, up to today’s limit.
               </Text>
             )}
           </FlexCol>

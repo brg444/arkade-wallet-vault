@@ -15,7 +15,7 @@ export default function VaultPasskey() {
   return (
     <OnboardLayout
       title='Passkey'
-      step={6}
+      step={5}
       error={error}
       onBack={() => navigate('plan')}
       actions={
@@ -34,7 +34,7 @@ export default function VaultPasskey() {
           ? 'Create a passkey with Face ID. If you see a QR, cancel — that’s another device’s key.'
           : 'Create a passkey on this computer. That’s your daily spend key.'}
       </Text>
-      <KeyCard icon={<FingerprintIcon />} title={onPhone ? 'This phone' : 'This computer'} role='Daily spend' />
+      <KeyCard icon={<FingerprintIcon />} title={onPhone ? 'This device' : 'This computer'} role='Daily spend' />
       {liveNetwork ? (
         <>
           <Input

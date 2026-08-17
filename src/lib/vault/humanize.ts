@@ -30,7 +30,7 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('does not match this vault') ||
     msg.includes('does not have the passkey')
   ) {
-    return 'Wrong passkey. Use the phone or computer that created this vault. On a new phone, scan the QR with that original device.'
+    return 'Wrong passkey. Use the device that created this vault. On a new device, scan the QR with that original device.'
   }
   if (msg.includes('prf')) {
     return 'Chrome on this computer verified the passkey but did not get the unlock secret. That is common over a QR. Open the vault on the iPhone that created it. Safari on a Mac with the same iCloud account may work; Chrome usually will not.'
@@ -79,7 +79,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'Paste a public key. It starts with 02 or 03.'
   }
   if (msg.includes('different key') || msg.includes('must be different')) {
-    return 'Hardware and recovery must be different keys.'
+    return 'Use a different hardware key.'
   }
   return raw.charAt(0).toUpperCase() + raw.slice(1)
 }

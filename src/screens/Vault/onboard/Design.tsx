@@ -17,10 +17,10 @@ export default function VaultDesign() {
       onBack={() => navigate('welcome')}
       actions={<Button onClick={acceptDesign} label='Continue' />}
     >
-      <Text wrap>This phone spends a little. Hardware and recovery move everything.</Text>
-      <KeyCard icon={<FingerprintIcon />} title='This phone' role='Daily spend' />
-      <KeyCard icon={<ShieldCheckOutlineIcon />} title='Hardware' role='Moves everything' />
-      <KeyCard icon={<SafeIcon />} title='Recovery' role='If you lose this phone' />
+      <Text wrap>This device spends a little. With hardware, it can move everything.</Text>
+      <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spend; with hardware, moves everything' />
+      <KeyCard icon={<ShieldCheckOutlineIcon />} title='Hardware' role='With this device, moves everything' />
+      <KeyCard icon={<SafeIcon />} title='Savings' role='No daily path. Device + hardware, or one key after a delay.' />
     </OnboardLayout>
   )
 }

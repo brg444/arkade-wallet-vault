@@ -90,11 +90,11 @@ export default function VaultWelcome() {
                   </Text>
                 </div>
                 <Text color='neutral-600' small wrap>
-                  This phone spends a little. Hardware and recovery move everything else.
+                  This device spends a little. With hardware, it can move everything.
                 </Text>
                 <Point icon={<BoltOutlineIcon />} text='Daily spend with Face ID' />
-                <Point icon={<ShieldCheckOutlineIcon />} text='Hardware + recovery to move everything' />
-                <Point icon={<SafeIcon />} text='Savings stays off this phone' />
+                <Point icon={<ShieldCheckOutlineIcon />} text='This device + hardware to move everything' />
+                <Point icon={<SafeIcon />} text='Savings stays off this device alone' />
                 <Text color='neutral-600' small wrap>
                   Testnet only. Don’t send real bitcoin.
                 </Text>

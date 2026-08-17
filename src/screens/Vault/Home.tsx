@@ -206,7 +206,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                Hardware + recovery only. This phone cannot spend it.
+                This device cannot spend Savings alone. Device + hardware, or one key after the delay.
               </Text>
             )}
 

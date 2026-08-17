@@ -31,7 +31,7 @@ export interface EnrollmentSecrets {
   ciphertext: string
 }
 
-const POP_DOMAIN = new TextEncoder().encode('arkade-2fa-vault/enrollment-pop/v2')
+const POP_DOMAIN = new TextEncoder().encode('arkade-2fa-vault/enrollment-pop/v3')
 
 export function enrollmentPoPDigest(input: {
   vaultId: string
@@ -40,7 +40,6 @@ export function enrollmentPoPDigest(input: {
   phoneDirectP256: string
   phoneRoutineBip340Pub: string
   externalOwnerWalletXOnly: string
-  recoveryKeyXOnly: string
   descriptorHash: string
 }): Uint8Array {
   const out: number[] = [...POP_DOMAIN]
@@ -51,7 +50,6 @@ export function enrollmentPoPDigest(input: {
     hexToBytes(input.phoneDirectP256),
     hexToBytes(input.phoneRoutineBip340Pub),
     hexToBytes(input.externalOwnerWalletXOnly),
-    hexToBytes(input.recoveryKeyXOnly),
     hexToBytes(input.descriptorHash),
   ]) {
     out.push(0)
@@ -103,7 +101,7 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
 
 export async function enrollWithPasskey(
   enrollmentToken: string,
-  roles: { hardwarePub: string; recoveryPub: string },
+  roles: { hardwarePub: string },
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   await beginTenantEnrollment(enrollmentToken, roles)
   return finishTenantEnrollment(enrollmentToken)
@@ -111,7 +109,7 @@ export async function enrollWithPasskey(
 
 export async function beginTenantEnrollment(
   enrollmentToken: string,
-  roles: { hardwarePub: string; recoveryPub: string },
+  roles: { hardwarePub: string },
 ): Promise<{ enrollment: EnrollmentSecrets; descriptor: VaultPublicDescriptor }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
@@ -120,10 +118,6 @@ export async function beginTenantEnrollment(
   if (!token) throw new Error('setup code required')
   const publicStatus = await fetchPublicStatus()
   const hardwareXOnly = xOnly(roles.hardwarePub)
-  const recoveryXOnly = xOnly(roles.recoveryPub)
-  if (hardwareXOnly === recoveryXOnly) {
-    throw new Error('Hardware and recovery must be different keys')
-  }
   const rpId = requireRPID(publicStatus)
   const start = await vaultPost<{
     handle: string
@@ -215,7 +209,6 @@ export async function beginTenantEnrollment(
       phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
       vaultId: start.vaultId,
       externalOwnerWalletXOnly: hardwareXOnly,
-      recoveryKeyXOnly: recoveryXOnly,
     },
     { 'X-Vault-Enrollment-Token': token },
   )
@@ -231,7 +224,6 @@ export async function beginTenantEnrollment(
     authenticatorData: bytesToHex(authData),
     attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
     hardwareXOnly,
-    recoveryXOnly,
     inviteToken: token,
     descriptorHash: proposed.descriptorHash,
     operationalAddress: proposed.descriptor.operational.address,
@@ -264,7 +256,6 @@ export async function finishTenantEnrollment(
       phoneRoutineBip340Pub: staged.phoneRoutineBip340Pub,
       vaultId: staged.vaultId,
       externalOwnerWalletXOnly: staged.hardwareXOnly,
-      recoveryKeyXOnly: staged.recoveryXOnly,
       descriptorHash: staged.descriptorHash,
     },
     { 'X-Vault-Enrollment-Token': token },
