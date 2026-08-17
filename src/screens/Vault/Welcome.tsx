@@ -40,7 +40,8 @@ function Point({ icon, text }: { icon: JSX.Element; text: string }) {
 }
 
 export default function VaultWelcome() {
-  const { navigate } = useContext(VaultContext)
+  const { hasLocalEnrollment, navigate, status } = useContext(VaultContext)
+  const canSignIn = Boolean(status?.enrolled && !hasLocalEnrollment)
   const prefersReduced = useReducedMotion()
   const [ready, setReady] = useState(prefersReduced)
   const [sunrise, setSunrise] = useState(prefersReduced)
@@ -98,7 +99,16 @@ export default function VaultWelcome() {
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={() => navigate('design')} label='Set up this vault' />
+        {canSignIn ? (
+          <>
+            <Button onClick={() => navigate('signin')} label='Sign in with passkey' />
+            <Text color='neutral-600' tiny wrap>
+              This deployment already has a vault. Setup is only for a fresh authorizer.
+            </Text>
+          </>
+        ) : (
+          <Button onClick={() => navigate('design')} label='Set up this vault' />
+        )}
       </ButtonsOnBottom>
     </>
   )

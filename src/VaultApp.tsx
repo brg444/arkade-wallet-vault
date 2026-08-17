@@ -15,6 +15,7 @@ import VaultHardware from './screens/Vault/onboard/Hardware'
 import VaultPasskey from './screens/Vault/onboard/Passkey'
 import VaultPlan from './screens/Vault/onboard/Plan'
 import VaultRecovery from './screens/Vault/onboard/Recovery'
+import VaultSignIn from './screens/Vault/onboard/SignIn'
 
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
@@ -36,6 +37,7 @@ export default function VaultApp() {
     success: <VaultSuccess />,
     savings: <VaultSavings />,
     keys: <VaultKeys />,
+    signin: <VaultSignIn />,
   }
   const page = pages[screen] || <VaultWelcome />
   return (

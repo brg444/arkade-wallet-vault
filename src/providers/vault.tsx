@@ -2,6 +2,7 @@ import { createContext, useCallback, useEffect, useMemo, useState, type ReactNod
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
 import { enrollWithPasskey, type EnrollmentSecrets } from '../lib/vault/enroll'
+import { enablePasskeyLogin, signInWithPasskey } from '../lib/vault/session'
 import { clearEnrollment, loadEnrollment, saveEnrollment } from '../lib/vault/enrollment'
 import { confirmedSpendable, fetchAddressStats, fetchAddressUtxos, fetchTxHex } from '../lib/vault/esplora'
 import { sendRoutineSpend } from '../lib/vault/spend'
@@ -37,6 +38,7 @@ export type VaultScreen =
   | 'success'
   | 'savings'
   | 'keys'
+  | 'signin'
 
 export interface VaultSpend {
   address: string
@@ -59,11 +61,14 @@ interface VaultContextProps {
   dailySpent: number
   demoAvailable: boolean
   enterWithoutPasskey: () => void
+  enablePasskeyLogin: () => Promise<void>
   enroll: (token?: string) => Promise<void>
   enrolled: boolean
   error: string
+  signIn: () => Promise<void>
   finishPlan: () => void
   faucetUrl: string
+  hasLocalEnrollment: boolean
   lastTxid: string
   liveNetwork: boolean
   navigate: (screen: VaultScreen) => void
@@ -103,11 +108,14 @@ export const VaultContext = createContext<VaultContextProps>({
   dailySpent: 0,
   demoAvailable: false,
   enterWithoutPasskey: () => {},
+  enablePasskeyLogin: async () => {},
   enroll: async () => {},
   enrolled: false,
   error: '',
+  signIn: async () => {},
   finishPlan: () => {},
   faucetUrl: 'https://faucet.mutinynet.com/',
+  hasLocalEnrollment: false,
   lastTxid: '',
   liveNetwork: false,
   navigate: () => {},
@@ -348,7 +356,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('This Mutinynet vault requires the recovery key already configured on the service')
         return
       }
-      if (status?.network === 'mutinynet' && token.trim().length < 32) {
+      if (status?.network === 'mutinynet' && status.enrollmentMode === 'token' && token.trim().length < 32) {
         setError('Paste the one-time enrollment token from the operator.')
         return
       }
@@ -361,6 +369,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setStatus(out.status)
         sealPlan()
         setPreview(false)
+        try {
+          setStatus(await enablePasskeyLogin(out.enrollment))
+        } catch (enableErr) {
+          setError(humanizeVaultError(enableErr))
+        }
         await refreshBalance(out.status.operationalAddress)
         setScreen('home')
       } catch (err) {
@@ -371,6 +384,40 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     [refreshBalance, sealPlan, setup, status],
   )
+
+  const enableOtherDevices = useCallback(async () => {
+    if (!enrollment) {
+      setError('Complete setup on this device first')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      setStatus(await enablePasskeyLogin(enrollment))
+    } catch (err) {
+      setError(humanizeVaultError(err))
+    } finally {
+      setBusy(false)
+    }
+  }, [enrollment])
+
+  const signIn = useCallback(async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const out = await signInWithPasskey()
+      setEnrollment(out.enrollment)
+      saveEnrollment(out.enrollment)
+      setStatus(out.status)
+      setPreview(false)
+      await refreshBalance(out.status.operationalAddress)
+      setScreen('home')
+    } catch (err) {
+      setError(humanizeVaultError(err))
+    } finally {
+      setBusy(false)
+    }
+  }, [refreshBalance])
 
   const addTestCoins = useCallback(async () => {
     setBusy(true)
@@ -495,12 +542,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       dailyRemaining,
       dailySpent: status?.enrolled ? (status.periodSpent ?? 0) : Math.max(0, dailyLimit - dailyRemaining),
       demoAvailable,
+      enablePasskeyLogin: enableOtherDevices,
       enterWithoutPasskey,
       enroll,
       enrolled,
       error,
       finishPlan,
       faucetUrl: 'https://faucet.mutinynet.com/',
+      hasLocalEnrollment: Boolean(enrollment),
       lastTxid,
       liveNetwork,
       navigate: (next) => {
@@ -518,6 +567,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setCondition,
       setSpendDraft,
       setup,
+      signIn,
       spend,
       status,
       lastSend,
@@ -534,8 +584,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       dailyLimit,
       dailyRemaining,
       demoAvailable,
+      enableOtherDevices,
+      enrollment,
       enterWithoutPasskey,
       enroll,
+      signIn,
       enrolled,
       error,
       finishPlan,

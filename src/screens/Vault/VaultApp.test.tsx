@@ -24,6 +24,7 @@ describe('VaultApp onboarding', () => {
 
     expect(await screen.findByText('A vault, not a hot wallet')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Look around first' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Sign in with passkey' })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Set up this vault' }))
 
     expect(await screen.findByText('How it is built')).toBeTruthy()
