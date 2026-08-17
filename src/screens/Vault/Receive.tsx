@@ -10,18 +10,23 @@ import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { VaultContext } from '../../providers/vault'
-import { Pill } from './ui'
+import { Panel } from './ui'
+
+type ReceiveDest = 'spend' | 'savings'
 
 export default function VaultReceive() {
-  const { faucetUrl, liveNetwork, navigate, operationalAddress } = useContext(VaultContext)
+  const { account, faucetUrl, liveNetwork, navigate, operationalAddress, savingsAddress } = useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
+  const [dest, setDest] = useState<ReceiveDest>(account === 'savings' ? 'savings' : 'spend')
+
+  const address = dest === 'savings' ? savingsAddress : operationalAddress
 
   const handleCopy = async () => {
-    if (!operationalAddress) return
-    await copyToClipboard(operationalAddress)
+    if (!address) return
+    await copyToClipboard(address)
     setCopied(true)
-    toast('Address copied')
+    toast(dest === 'savings' ? 'Savings address copied' : 'Address copied')
   }
 
   return (
@@ -30,33 +35,67 @@ export default function VaultReceive() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              <Pill>Spending address</Pill>
-              {liveNetwork ? <Pill>Mutinynet only</Pill> : <Pill>Test coins</Pill>}
-            </div>
-            <Text small wrap>
-              {liveNetwork
-                ? 'This is a Mutinynet address. Fund it from the faucet, then wait for a confirmation before sending. Do not send mainnet bitcoin.'
-                : 'Send test bitcoin to this spending address. Do not send real bitcoin.'}
-            </Text>
-            {operationalAddress ? <QrCode value={operationalAddress} /> : <Text>No address yet.</Text>}
-            <Text centered small wrap testId='receive-address'>
-              {operationalAddress || '—'}
-            </Text>
             <Text color='neutral-600' tiny wrap>
-              Coins sent here can use the daily phone path. Savings is a different address.
+              {liveNetwork ? 'Mutinynet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
             </Text>
+            <div className='vault-receive-dests'>
+              <Panel
+                selected={dest === 'spend'}
+                onClick={() => {
+                  setDest('spend')
+                  setCopied(false)
+                }}
+                testId='receive-spend'
+              >
+                <Text small bold>
+                  Daily spend
+                </Text>
+                <Text color='neutral-600' tiny wrap>
+                  Phone can spend
+                </Text>
+              </Panel>
+              <Panel
+                selected={dest === 'savings'}
+                onClick={() => {
+                  setDest('savings')
+                  setCopied(false)
+                }}
+                testId='receive-savings'
+              >
+                <Text small bold>
+                  Savings
+                </Text>
+                <Text color='neutral-600' tiny wrap>
+                  Hardware only
+                </Text>
+              </Panel>
+            </div>
+            {address ? (
+              <div className='vault-receive-qr'>
+                <QrCode value={address} />
+              </div>
+            ) : (
+              <Text>No address yet.</Text>
+            )}
+            <p className='vault-receive-addr' data-testid='receive-address'>
+              {address || '—'}
+            </p>
+            {dest === 'savings' ? (
+              <Text color='neutral-600' tiny wrap>
+                Hardware + recovery only. This phone cannot spend this.
+              </Text>
+            ) : (
+              <Text color='neutral-600' tiny wrap>
+                This phone can spend this, up to today’s limit.
+              </Text>
+            )}
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={handleCopy} disabled={!operationalAddress} label={copied ? 'Copied' : 'Copy address'} />
-        {liveNetwork && operationalAddress ? (
-          <Button
-            onClick={() => window.open(`${faucetUrl}?address=${operationalAddress}`, '_blank')}
-            label='Open Mutinynet faucet'
-            secondary
-          />
+        <Button onClick={handleCopy} disabled={!address} label={copied ? 'Copied' : 'Copy address'} />
+        {liveNetwork && address ? (
+          <Button onClick={() => window.open(`${faucetUrl}?address=${address}`, '_blank')} label='Faucet' secondary />
         ) : null}
       </ButtonsOnBottom>
     </>

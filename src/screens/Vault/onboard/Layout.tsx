@@ -8,7 +8,7 @@ import Padded from '../../../components/Padded'
 import Text from '../../../components/Text'
 import { StepRail } from '../ui'
 
-const STEP_LABELS = ['Design', 'Hardware', 'Recovery', 'Rules', 'Review', 'Phone']
+const STEP_LABELS = ['Setup', 'Hardware', 'Recovery', 'Limits', 'Review', 'Passkey']
 
 export function OnboardLayout({
   title,
@@ -65,15 +65,7 @@ export function ChoiceCard({
       type='button'
       onClick={onClick}
       data-testid={testId}
-      style={{
-        width: '100%',
-        textAlign: 'left',
-        padding: '0.85rem 1rem',
-        borderRadius: 12,
-        border: selected ? '1.5px solid var(--logo-color, #6ee7b7)' : '1px solid var(--neutral-200, #333)',
-        background: selected ? 'var(--neutral-100, #1c1c1c)' : 'transparent',
-        cursor: 'pointer',
-      }}
+      className={selected ? 'vault-panel selected' : 'vault-panel'}
     >
       <Text bold small>
         {title}

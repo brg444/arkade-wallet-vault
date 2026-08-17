@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { delayLabel, humanDuration, truncateAddress } from './policy'
+import { delayLabel, humanDuration, truncateAddress, waitLabel } from './policy'
 
 describe('vault policy copy', () => {
   it('names recovery delays in human time', () => {
+    expect(waitLabel(288, 'mutinynet')).toMatch(/hour/)
+    expect(waitLabel(4032)).toMatch(/day/)
     expect(delayLabel(288, 'mutinynet')).toMatch(/288/)
-    expect(delayLabel(288, 'mutinynet')).toMatch(/hour/)
-    expect(delayLabel(4032)).toMatch(/day/)
     expect(humanDuration(45)).toBe('about a minute')
   })
 

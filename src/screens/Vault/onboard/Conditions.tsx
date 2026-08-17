@@ -2,7 +2,7 @@ import { useContext } from 'react'
 import Button from '../../../components/Button'
 import Text from '../../../components/Text'
 import { prettyAmount } from '../../../lib/format'
-import { delayLabel } from '../../../lib/vault/policy'
+import { waitLabel } from '../../../lib/vault/policy'
 import { DAILY_LIMIT_CHOICES, PAYMENT_CAP_CHOICES, RECOVERY_PROFILES } from '../../../lib/vault/setup'
 import { VaultContext } from '../../../providers/vault'
 import { PolicyTimeline } from '../ui'
@@ -23,15 +23,12 @@ export default function VaultConditions() {
     const savCsv = status?.savingsCsvBlocks || setup.savingsCsvBlocks
     return (
       <OnboardLayout
-        title='Spending rules'
+        title='How much can this phone send?'
         step={4}
         onBack={() => navigate('recovery')}
-        actions={<Button onClick={confirmConditions} label='These are the live rules' />}
+        actions={<Button onClick={confirmConditions} label='Continue' />}
       >
-        <Text wrap>
-          These limits are already on the Mutinynet vault. This phone cannot loosen them. Hardware plus recovery can
-          still sweep everything.
-        </Text>
+        <Text wrap>These limits are already set. This phone can’t raise them.</Text>
         <PolicyTimeline
           txCap={txCap}
           dailyLimit={daily}
@@ -40,8 +37,8 @@ export default function VaultConditions() {
           network={status?.network}
         />
         <Text color='neutral-600' tiny wrap>
-          Daily path: {prettyAmount(txCap)} per payment, {prettyAmount(daily)} per day. Recovery delay{' '}
-          {delayLabel(opCsv, status?.network)}.
+          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day · if you lose this phone,{' '}
+          {waitLabel(opCsv, status?.network)}
         </Text>
       </OnboardLayout>
     )
@@ -49,40 +46,40 @@ export default function VaultConditions() {
 
   return (
     <OnboardLayout
-      title='Spending rules'
+      title='How much can this phone send?'
       step={4}
       onBack={() => navigate('recovery')}
       actions={<Button onClick={confirmConditions} label='Save these rules' />}
     >
-      <Text wrap>These limits apply to the phone path only. Hardware plus recovery can still sweep everything.</Text>
+      <Text wrap>How much this phone can send today.</Text>
       <Text color='neutral-600' tiny>
-        Largest daily send
+        Per send
       </Text>
       {PAYMENT_CAP_CHOICES.map((sats) => (
         <ChoiceCard
           key={sats}
           title={prettyAmount(sats)}
-          detail='Largest single send the phone can approve'
+          detail='Per send'
           selected={setup.txCapSats === sats}
           onClick={() => setCondition({ txCapSats: sats })}
           testId={`cap-${sats}`}
         />
       ))}
       <Text color='neutral-600' tiny>
-        Each calendar day
+        Per day
       </Text>
       {DAILY_LIMIT_CHOICES.map((sats) => (
         <ChoiceCard
           key={sats}
           title={prettyAmount(sats)}
-          detail='Total the phone can approve before tomorrow'
+          detail='Per day'
           selected={setup.dailyLimitSats === sats}
           onClick={() => setCondition({ dailyLimitSats: sats })}
           testId={`daily-${sats}`}
         />
       ))}
       <Text color='neutral-600' tiny>
-        If the phone is gone
+        If you lose this phone
       </Text>
       {RECOVERY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
         <ChoiceCard
@@ -100,7 +97,7 @@ export default function VaultConditions() {
         />
       ))}
       <Text color='neutral-600' tiny wrap>
-        Preview mode only. A live Mutinynet vault uses the service policy instead of these choices.
+        Preview only. A live vault uses the service limits.
       </Text>
     </OnboardLayout>
   )

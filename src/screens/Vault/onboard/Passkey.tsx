@@ -3,6 +3,7 @@ import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
 import FingerprintIcon from '../../../icons/Fingerprint'
+import { isCoarsePhone } from '../../../lib/vault/webauthn'
 import { VaultContext } from '../../../providers/vault'
 import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
@@ -10,9 +11,10 @@ import { OnboardLayout } from './Layout'
 export default function VaultPasskey() {
   const { busy, enterWithoutPasskey, enroll, error, liveNetwork, navigate } = useContext(VaultContext)
   const [token, setToken] = useState('')
+  const onPhone = isCoarsePhone()
   return (
     <OnboardLayout
-      title='Phone passkey'
+      title='Passkey'
       step={6}
       error={error}
       onBack={() => navigate('plan')}
@@ -21,42 +23,34 @@ export default function VaultPasskey() {
           <Button
             onClick={() => enroll(token.trim())}
             disabled={busy || (liveNetwork && token.trim().length < 32)}
-            label={busy ? 'Waiting for your passkey…' : 'Create passkey'}
+            label={busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for passkey…') : 'Create passkey'}
           />
-          {liveNetwork ? null : (
-            <Button onClick={enterWithoutPasskey} disabled={busy} label='Enter without a passkey' secondary />
-          )}
+          {liveNetwork ? null : <Button onClick={enterWithoutPasskey} disabled={busy} label='Skip for now' secondary />}
         </>
       }
     >
       <Text wrap>
-        This phone becomes the daily spending key. It cannot sweep the vault, and it cannot spend savings. Open this
-        exact site whenever you want to use the passkey — it sticks to this address.
+        {onPhone
+          ? 'Create a passkey with Face ID. If you see a QR, cancel — that’s another device’s key.'
+          : 'Create a passkey on this computer. That’s your daily spend key.'}
       </Text>
-      <KeyCard
-        icon={<FingerprintIcon />}
-        title='This device'
-        role='Approves ordinary payments up to today’s limit'
-        status={liveNetwork ? 'Live enroll' : 'Preview ok'}
-      />
+      <KeyCard icon={<FingerprintIcon />} title={onPhone ? 'This phone' : 'This computer'} role='Daily spend' />
       {liveNetwork ? (
         <>
-          <Text wrap>
-            The operator gives you a one-time invite. After the first successful passkey it is burned and cannot be
-            reused.
+          <Text color='neutral-600' tiny wrap>
+            After Face ID, hardware and recovery still have to approve this vault.
           </Text>
           <Input
-            label='Enrollment token'
+            label='Invite'
             value={token}
             onChange={setToken}
-            placeholder='Paste the one-time token'
+            placeholder='Paste your invite'
             testId='enrollment-token'
           />
         </>
       ) : (
-        <Text wrap>
-          If the vault service is offline, you can still enter with the plan you just saved. Balance stays empty until
-          you fund it.
+        <Text color='neutral-600' tiny wrap>
+          You can skip this and fund later.
         </Text>
       )}
     </OnboardLayout>

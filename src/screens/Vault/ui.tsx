@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import Text from '../../components/Text'
 import { prettyAmount } from '../../lib/format'
-import { delayLabel } from '../../lib/vault/policy'
+import { waitLabel } from '../../lib/vault/policy'
 import { shortKey } from '../../lib/vault/setup'
 
 export function IconBubble({ children, small }: { children: ReactNode; small?: boolean }) {
@@ -75,34 +75,39 @@ export function KeyCard({
   role,
   status,
   fingerprint,
+  amount,
   onClick,
 }: {
   icon: ReactNode
   title: string
-  role: string
+  role?: string
   status?: string
   fingerprint?: string
+  amount?: string
   onClick?: () => void
 }) {
   return (
     <Panel onClick={onClick}>
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-        <IconBubble small>{icon}</IconBubble>
+        {icon ? <IconBubble small>{icon}</IconBubble> : null}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text small bold>
             {title}
           </Text>
-          <Text color='neutral-600' tiny wrap>
-            {role}
-          </Text>
+          {role ? (
+            <Text color='neutral-600' tiny wrap>
+              {role}
+            </Text>
+          ) : null}
         </div>
         <div style={{ textAlign: 'right' }}>
-          {status ? (
+          {amount ? <span className='vault-row-amt'>{amount}</span> : null}
+          {!amount && status ? (
             <Text color='neutral-600' tiny>
               {status}
             </Text>
           ) : null}
-          {fingerprint ? (
+          {!amount && fingerprint ? (
             <Text color='neutral-600' tiny>
               {shortKey(fingerprint)}
             </Text>
@@ -115,13 +120,9 @@ export function KeyCard({
 
 export function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div>
-      <Text color='neutral-600' tiny>
-        {label}
-      </Text>
-      <Text small wrap>
-        <span className={mono ? 'vault-mono' : undefined}>{value}</span>
-      </Text>
+    <div className='vault-row'>
+      <span className='vault-row-k'>{label}</span>
+      <span className={mono ? 'vault-row-v vault-mono' : 'vault-row-v'}>{value}</span>
     </div>
   )
 }
@@ -192,20 +193,20 @@ export function PolicyTimeline({
 }) {
   const rows = [
     {
-      title: 'Today, from this phone',
-      detail: `Passkey can send ${prettyAmount(txCap)} at a time, up to ${prettyAmount(dailyLimit)} a day. The vault service must also sign.`,
+      title: 'Daily spend',
+      detail: `${prettyAmount(txCap)} per send, ${prettyAmount(dailyLimit)} a day.`,
     },
     {
-      title: 'If this phone is gone',
-      detail: `Recovery can move spending after ${delayLabel(operationalBlocks, network)}. Hardware is not required for that path.`,
+      title: 'If you lose this phone',
+      detail: `Hardware + recovery after ${waitLabel(operationalBlocks, network)}.`,
     },
     {
-      title: 'Sweep or change the vault',
-      detail: 'Hardware plus recovery. The phone never holds those keys.',
+      title: 'Full access',
+      detail: 'Hardware + recovery. This phone cannot sweep.',
     },
     {
       title: 'Savings',
-      detail: `The passkey cannot touch it. Hardware plus recovery, or recovery alone after ${delayLabel(savingsBlocks, network)}.`,
+      detail: `This phone cannot spend it. Hardware + recovery after ${waitLabel(savingsBlocks, network)}.`,
     },
   ]
   return (

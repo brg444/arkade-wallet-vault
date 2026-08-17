@@ -5,6 +5,7 @@ import Text from '../../../components/Text'
 import { pasteFromClipboard } from '../../../lib/clipboard'
 import { loadStagedEnrollment } from '../../../lib/vault/enrollment'
 import { VaultContext } from '../../../providers/vault'
+import { Detail, Reveal } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultProofs() {
@@ -14,7 +15,7 @@ export default function VaultProofs() {
   const [recoveryProof, setRecoveryProof] = useState('')
   return (
     <OnboardLayout
-      title='Authorize'
+      title='Approve this vault'
       step={7}
       error={error}
       onBack={() => navigate('passkey')}
@@ -22,25 +23,29 @@ export default function VaultProofs() {
         <Button
           onClick={() => void submitEnrollmentProofs(ownerProof, recoveryProof)}
           disabled={busy || ownerProof.trim().length < 128 || recoveryProof.trim().length < 128}
-          label={busy ? 'Checking signatures…' : 'Finish setup'}
+          label={busy ? 'Checking…' : 'Finish setup'}
         />
       }
     >
       <Text wrap>
-        Sign this digest with the hardware and recovery keys you already pasted. Paste the two 64-byte BIP340
-        signatures. Do not paste private keys.
+        Confirm where money will land. Then sign once with hardware and recovery — never paste those private keys.
       </Text>
+      <Detail label='Spending' value={staged?.operationalAddress || 'Not proposed yet'} mono />
+      <Detail label='Savings' value={staged?.savingsAddress || 'Not proposed yet'} mono />
+      {staged?.vaultId ? <Detail label='Vault' value={staged.vaultId} /> : null}
       <Text color='neutral-600' tiny wrap>
-        Spending address {staged?.operationalAddress || 'not proposed yet'}
+        This phone cannot spend Savings.
       </Text>
-      <Text color='neutral-600' tiny wrap>
-        Digest {staged?.popDigest || '—'}
-      </Text>
+      <Reveal label='What to sign'>
+        <Text color='neutral-600' tiny wrap>
+          {staged?.popDigest || 'Create a passkey first.'}
+        </Text>
+      </Reveal>
       <Input
         label='Hardware signature'
         value={ownerProof}
         onChange={setOwnerProof}
-        placeholder='64-byte hex'
+        placeholder='Paste signature'
         testId='owner-proof'
       />
       <Button
@@ -52,7 +57,7 @@ export default function VaultProofs() {
         label='Recovery signature'
         value={recoveryProof}
         onChange={setRecoveryProof}
-        placeholder='64-byte hex'
+        placeholder='Paste signature'
         testId='recovery-proof'
       />
       <Button

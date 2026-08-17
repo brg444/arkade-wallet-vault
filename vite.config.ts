@@ -34,6 +34,23 @@ export default defineConfig({
   },
   plugins: [
     basicAuth(),
+    process.env.VITE_VAULT_MODE === '1' && {
+      name: 'vault-html-identity',
+      transformIndexHtml(html: string) {
+        return html
+          .replaceAll('Arkade Wallet', 'Arkade Vault')
+          .replaceAll('https://arkade.money', 'https://arkade-vault-demo.vercel.app')
+          .replaceAll('arkade.money', 'arkade-vault-demo.vercel.app')
+          .replace(
+            'Your Bitcoin, supercharged. Send payments, swap assets, and lend without giving up your keys.',
+            'Mutinynet spending vault. Do not send real bitcoin.',
+          )
+          .replace(
+            '<script defer data-domain="arkade-vault-demo.vercel.app" src="https://plausible.io/js/script.js"></script>',
+            '',
+          )
+      },
+    },
     react(),
     tailwindcss(),
     !process.env.VERCEL &&
@@ -63,7 +80,7 @@ export default defineConfig({
   },
   build: {
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: process.env.VITE_VAULT_MODE !== '1',
     rollupOptions: {
       external: ['fs'],
     },

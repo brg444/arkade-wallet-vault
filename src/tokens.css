@@ -97,6 +97,7 @@
   --danger: var(--red-700);
   --warning: var(--orange-700);
   --success: var(--green-500);
+  --coral: #eb583c;
 
   /* Named colors */
   --black: #040404;

@@ -1,6 +1,5 @@
 import { hex } from '@scure/base'
 import { Address, OutScript, TEST_NETWORK } from '@scure/btc-signer'
-import { isBTCAddress } from '../address'
 
 const REGTEST_NETWORK = {
   ...TEST_NETWORK,
@@ -8,16 +7,35 @@ const REGTEST_NETWORK = {
   bech32m: 'bcrt',
 }
 
-export function isVaultBitcoinAddress(value: string): boolean {
-  return isBTCAddress(value.trim())
+export function vaultAddressNetwork(network: string) {
+  if (network === 'mutinynet') return TEST_NETWORK
+  if (network === 'regtest') return REGTEST_NETWORK
+  throw new Error('unsupported network')
+}
+
+export function isVaultBitcoinAddress(value: string, network?: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.startsWith('bc1') || /^[13]/.test(trimmed)) return false
+  try {
+    const net = network
+      ? vaultAddressNetwork(network)
+      : trimmed.startsWith('bcrt1')
+        ? REGTEST_NETWORK
+        : trimmed.startsWith('tb1')
+          ? TEST_NETWORK
+          : null
+    if (!net) return false
+    Address(net).decode(trimmed)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function scriptHexFromAddress(address: string, network: string): string {
   const trimmed = address.trim()
-  if (!isVaultBitcoinAddress(trimmed)) throw new Error('not a bitcoin address')
-  const net = network === 'mutinynet' || trimmed.startsWith('tb1') ? TEST_NETWORK : REGTEST_NETWORK
   try {
-    const decoded = Address(net).decode(trimmed)
+    const decoded = Address(vaultAddressNetwork(network)).decode(trimmed)
     return hex.encode(OutScript.encode(decoded))
   } catch {
     throw new Error('not a bitcoin address')

@@ -13,6 +13,7 @@ import { useReducedMotion } from '../../hooks/useReducedMotion'
 import BoltOutlineIcon from '../../icons/BoltOutline'
 import SafeIcon from '../../icons/Safe'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import { isCoarsePhone } from '../../lib/vault/webauthn'
 import { VaultContext } from '../../providers/vault'
 
 function Point({ icon, text }: { icon: JSX.Element; text: string }) {
@@ -44,6 +45,7 @@ export default function VaultWelcome() {
   const { busy, error, hasLocalEnrollment, navigate, signIn, status } = useContext(VaultContext)
   const canSignIn = Boolean(status?.enrolled && !hasLocalEnrollment)
   const signInReady = Boolean(status?.passkeyLoginAvailable)
+  const onPhone = isCoarsePhone()
   const prefersReduced = useReducedMotion()
   const [ready, setReady] = useState(prefersReduced)
   const [sunrise, setSunrise] = useState(prefersReduced)
@@ -64,6 +66,7 @@ export default function VaultWelcome() {
         <Padded>
           <FlexCol between>
             <div
+              className={ready ? 'vault-welcome-stage is-ready' : 'vault-welcome-stage'}
               style={{
                 width: '100%',
                 flex: 1,
@@ -79,28 +82,28 @@ export default function VaultWelcome() {
               >
                 {ready ? <SmallLogo /> : null}
               </div>
-              <div style={{ padding: '0.75rem 0 0.6rem 4px' }}>
-                <Text heading big>
-                  A vault, not a hot wallet
+              <div className='vault-welcome-copy'>
+                <div style={{ padding: '0.9rem 0 0.7rem 4px' }}>
+                  <p className='vault-kicker'>Arkade Vault</p>
+                  <Text heading big>
+                    Your vault
+                  </Text>
+                </div>
+                <Text color='neutral-600' small wrap>
+                  This phone spends a little. Hardware and recovery move everything else.
+                </Text>
+                <Point icon={<BoltOutlineIcon />} text='Daily spend with Face ID' />
+                <Point icon={<ShieldCheckOutlineIcon />} text='Hardware + recovery to move everything' />
+                <Point icon={<SafeIcon />} text='Savings stays off this phone' />
+                <Text color='neutral-600' small wrap>
+                  Testnet only. Don’t send real bitcoin.
                 </Text>
               </div>
-              <Text color='neutral-600' small wrap>
-                One vault. Three keys. Daily spends use this phone. Sweeping it never does.
-              </Text>
-              <Point icon={<BoltOutlineIcon />} text='This phone can spend a little every day, with your passkey' />
-              <Point
-                icon={<ShieldCheckOutlineIcon />}
-                text='Hardware plus recovery can empty or change the vault. The phone cannot'
-              />
-              <Point icon={<SafeIcon />} text='Savings is a separate lock. The passkey has no key to it' />
-              <Text color='neutral-600' small wrap>
-                Mutinynet test bitcoin only. Do not send real bitcoin. Setup takes about two minutes.
-              </Text>
             </div>
           </FlexCol>
         </Padded>
       </Content>
-      <ButtonsOnBottom>
+      <ButtonsOnBottom className={ready ? 'vault-welcome-actions is-ready' : 'vault-welcome-actions'}>
         {canSignIn ? (
           <>
             <ErrorMessage error={Boolean(error)} text={error} />
@@ -109,18 +112,25 @@ export default function VaultWelcome() {
                 onClick={() => void signIn()}
                 disabled={busy}
                 loading={busy}
-                label={busy ? 'Waiting for Face ID…' : 'Sign in with passkey'}
+                label={
+                  busy
+                    ? onPhone
+                      ? 'Waiting for Face ID…'
+                      : 'Waiting for phone QR…'
+                    : onPhone
+                      ? 'Sign in'
+                      : 'Sign in with phone QR'
+                }
               />
             ) : (
               <Text wrap>
-                Your iPhone passkey is only half of it. The first browser that created this vault still holds the locked
-                phone spending key. Open this same site there, tap Keys, then Enable sign-in on other devices. After
-                that, this button will ask for Face ID here.
+                Sign in isn’t enabled yet. On the original device, open Settings and allow other devices. Then come
+                back.
               </Text>
             )}
           </>
         ) : (
-          <Button onClick={() => navigate('design')} label='Set up this vault' />
+          <Button onClick={() => navigate('design')} label='Set up' />
         )}
       </ButtonsOnBottom>
     </>

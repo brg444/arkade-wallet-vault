@@ -53,8 +53,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('api response too large')) {
     return 'The vault sent too much data. Try again.'
   }
+  if (msg.includes('setup code required') || msg.includes('paste your setup code')) {
+    return 'Paste your invite.'
+  }
   if (msg.includes('owner and recovery signatures') || msg.includes('64-byte bip340')) {
-    return 'Sign the enrollment digest with your hardware and recovery keys, then paste the signatures.'
+    return 'Sign once with hardware and recovery, then paste those signatures — not the keys.'
   }
   if (msg.includes('invalid address') || msg.includes('not a bitcoin')) {
     return 'Enter a bitcoin address.'
