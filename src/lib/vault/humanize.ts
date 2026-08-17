@@ -21,8 +21,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('rp id') || msg.includes('origin does not match') || msg.includes('signing client')) {
     return 'This page is on a different address than the vault expects. Open http://localhost:3003 and try again.'
   }
+  if (msg.includes('passkey sign-in must first be enabled') || msg.includes('has not been enabled')) {
+    return 'This phone’s passkey is not enough by itself. Open this same site on the device that first created the vault, tap Keys, then Enable sign-in on other devices.'
+  }
   if (msg.includes('prf')) {
-    return 'This device or browser cannot create the kind of passkey this vault needs. Try Safari or Chrome on this computer.'
+    return 'This device or browser cannot unlock the passkey secret this vault needs. Use Safari on iPhone, not an in-app browser.'
   }
   if (msg.includes('not allowed') || msg.includes('abort') || msg.includes('timed out')) {
     return 'Passkey was cancelled. When you are ready, try again and approve the prompt.'
