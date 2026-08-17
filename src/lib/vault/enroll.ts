@@ -4,6 +4,13 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { vaultPost } from './api'
 import { bytesToHex, hexToBytes } from './hex'
 import { xOnly } from './setup'
+import {
+  clearStagedEnrollment,
+  loadStagedEnrollment,
+  promoteStagedEnrollment,
+  saveStagedEnrollment,
+  type StagedEnrollment,
+} from './enrollment'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
@@ -90,6 +97,12 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
   throw new Error('authenticator did not return PRF')
 }
 
+export function requireTenantEnrollmentProofs(roles: { ownerSecret?: string; recoverySecret?: string }) {
+  if (!roles.ownerSecret || !roles.recoverySecret) {
+    throw new Error('tenant enrollment requires owner and recovery signatures')
+  }
+}
+
 export async function enrollWithPasskey(
   enrollmentToken: string,
   roles: { hardwarePub: string; recoveryPub: string; ownerSecret?: string; recoverySecret?: string },
@@ -99,6 +112,7 @@ export async function enrollWithPasskey(
   }
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
+  requireTenantEnrollmentProofs(roles)
   const publicStatus = await fetchPublicStatus()
   const hardwareXOnly = xOnly(roles.hardwarePub)
   const recoveryXOnly = xOnly(roles.recoveryPub)
@@ -180,24 +194,32 @@ export async function enrollWithPasskey(
     externalOwnerWalletXOnly: hardwareXOnly,
     recoveryKeyXOnly: recoveryXOnly,
   })
-  if (!roles.ownerSecret || !roles.recoverySecret) {
-    prf.fill(0)
-    phoneRoutineSecret.fill(0)
-    throw new Error('tenant enrollment requires owner and recovery signatures')
-  }
   const ownerProof = bytesToHex(schnorr.sign(pop, hexToBytes(roles.ownerSecret)))
   const recoveryProof = bytesToHex(schnorr.sign(pop, hexToBytes(roles.recoverySecret)))
   prf.fill(0)
   phoneRoutineSecret.fill(0)
   const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
+  const staged: StagedEnrollment = {
+    ...enrollment,
+    handle: start.handle,
+    userHandle: start.userId,
+    clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+    authenticatorData: bytesToHex(authData),
+    attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+    hardwareXOnly,
+    recoveryXOnly,
+    ownerProof,
+    recoveryProof,
+  }
+  saveStagedEnrollment(staged)
   await vaultPost(
     '/v1/enroll/finish',
     {
-      handle: start.handle,
-      userHandle: start.userId,
-      clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
-      authenticatorData: bytesToHex(authData),
-      attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+      handle: staged.handle,
+      userHandle: staged.userHandle,
+      clientDataJSON: staged.clientDataJSON,
+      authenticatorData: staged.authenticatorData,
+      attestationObject: staged.attestationObject,
       credentialId: enrollment.credId,
       webauthnP256: enrollment.webauthnP256,
       phoneDirectP256: enrollment.phoneDirectP256,
@@ -211,7 +233,23 @@ export async function enrollWithPasskey(
     { 'X-Vault-Enrollment-Token': token },
   )
   const live = await fetchVaultStatus(undefined, start.vaultId)
+  promoteStagedEnrollment(enrollment)
   return { status: live, enrollment }
+}
+
+export async function reconcileStagedEnrollment(
+  storage: Storage = localStorage,
+): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets } | null> {
+  const staged = loadStagedEnrollment(storage)
+  if (!staged?.vaultId) return null
+  const live = await fetchVaultStatus(undefined, staged.vaultId)
+  if (!live.enrolled) return null
+  promoteStagedEnrollment(staged, storage)
+  return { status: live, enrollment: staged }
+}
+
+export function abandonStagedEnrollment(storage: Storage = localStorage) {
+  clearStagedEnrollment(storage)
 }
 
 export function hexCredentialId(id: string): BufferSource {
