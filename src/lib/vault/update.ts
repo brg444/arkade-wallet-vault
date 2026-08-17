@@ -3,19 +3,34 @@ export function indexAssetName(source: string): string | null {
   return match ? match[0] : null
 }
 
+export function probeIndexUrl(origin: string, now = Date.now()): string {
+  return new URL(`/index.html?check=${now}`, origin).toString()
+}
+
+export function launchUrl(origin: string, pathname: string, now = Date.now()): string {
+  const url = new URL(pathname || '/', origin)
+  url.search = ''
+  url.hash = ''
+  url.searchParams.set('v', String(now))
+  return url.toString()
+}
+
 export async function reloadIfNewerWallet(): Promise<boolean> {
   try {
     const current = indexAssetName(document.documentElement.innerHTML)
-    const href = new URL(location.href)
-    href.searchParams.set('check', String(Date.now()))
-    const res = await fetch(href.toString(), {
+    const res = await fetch(probeIndexUrl(location.origin), {
       cache: 'no-store',
-      headers: { Accept: 'text/html' },
+      headers: {
+        Accept: 'text/html',
+        Pragma: 'no-cache',
+        'Cache-Control': 'no-cache',
+      },
     })
     if (!res.ok) return false
     const next = indexAssetName(await res.text())
     if (!current || !next || current === next) return false
-    location.reload()
+    // iOS home-screen PWAs ignore location.reload() and keep the cached start URL.
+    location.replace(launchUrl(location.origin, location.pathname))
     return true
   } catch {
     return false

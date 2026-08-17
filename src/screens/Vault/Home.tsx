@@ -19,7 +19,6 @@ import { hapticSubtle } from '../../lib/haptics'
 import { truncateAddress } from '../../lib/vault/policy'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext, type VaultAccount } from '../../providers/vault'
-import VaultRefresher from './Refresher'
 import { Meter } from './ui'
 
 function fundableAddress(value: string): string {
@@ -80,7 +79,6 @@ export default function VaultHome() {
   return (
     <>
       <Content noRefresh>
-        <VaultRefresher />
         <Padded>
           <div className='vault-home'>
             <div className='vault-account-bar'>

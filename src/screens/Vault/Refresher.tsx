@@ -4,6 +4,12 @@ import { sleep } from '../../lib/sleep'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../providers/vault'
 
+function atTop() {
+  if (window.scrollY > 0) return false
+  const root = document.querySelector<HTMLElement>('[data-testid="vault-app"] .content')
+  return !root || root.scrollTop <= 0
+}
+
 export default function VaultRefresher() {
   const { refreshBalance } = useContext(VaultContext)
   const [show, setShow] = useState(false)
@@ -12,11 +18,6 @@ export default function VaultRefresher() {
   const running = useRef(false)
 
   useEffect(() => {
-    const root = document.querySelector<HTMLElement>('[data-testid="vault-app"] .content')
-    if (!root) return
-
-    const atTop = () => root.scrollTop <= 0
-
     const run = async () => {
       if (running.current) return
       running.current = true
@@ -58,15 +59,15 @@ export default function VaultRefresher() {
       void run()
     }
 
-    root.addEventListener('touchstart', onTouchStart, { passive: true })
-    root.addEventListener('touchmove', onTouchMove, { passive: false })
-    root.addEventListener('touchend', onTouchEnd)
-    root.addEventListener('wheel', onWheel, { passive: false })
+    document.addEventListener('touchstart', onTouchStart, { passive: true })
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+    document.addEventListener('touchend', onTouchEnd)
+    document.addEventListener('wheel', onWheel, { passive: false })
     return () => {
-      root.removeEventListener('touchstart', onTouchStart)
-      root.removeEventListener('touchmove', onTouchMove)
-      root.removeEventListener('touchend', onTouchEnd)
-      root.removeEventListener('wheel', onWheel)
+      document.removeEventListener('touchstart', onTouchStart)
+      document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('touchend', onTouchEnd)
+      document.removeEventListener('wheel', onWheel)
     }
   }, [refreshBalance])
 
