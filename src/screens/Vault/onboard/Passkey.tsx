@@ -37,9 +37,6 @@ export default function VaultPasskey() {
       <KeyCard icon={<FingerprintIcon />} title={onPhone ? 'This phone' : 'This computer'} role='Daily spend' />
       {liveNetwork ? (
         <>
-          <Text color='neutral-600' tiny wrap>
-            After Face ID, hardware and recovery still have to approve this vault.
-          </Text>
           <Input
             label='Invite'
             value={token}

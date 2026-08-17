@@ -101,33 +101,18 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
   throw new Error('authenticator did not return PRF')
 }
 
-function requireProofHex(value: string | undefined, name: string): string {
-  const hex = String(value || '')
-    .trim()
-    .toLowerCase()
-  if (!/^[0-9a-f]{128}$/.test(hex)) {
-    throw new Error(`${name} must be a 64-byte BIP340 signature`)
-  }
-  return hex
-}
-
-export function requireTenantEnrollmentProofs(roles: { ownerProof?: string; recoveryProof?: string }) {
-  requireProofHex(roles.ownerProof, 'owner signature')
-  requireProofHex(roles.recoveryProof, 'recovery signature')
-}
-
 export async function enrollWithPasskey(
   enrollmentToken: string,
-  roles: { hardwarePub: string; recoveryPub: string; ownerProof?: string; recoveryProof?: string },
+  roles: { hardwarePub: string; recoveryPub: string },
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   await beginTenantEnrollment(enrollmentToken, roles)
-  return finishTenantEnrollment(enrollmentToken, roles)
+  return finishTenantEnrollment(enrollmentToken)
 }
 
 export async function beginTenantEnrollment(
   enrollmentToken: string,
   roles: { hardwarePub: string; recoveryPub: string },
-): Promise<{ enrollment: EnrollmentSecrets; popDigest: string; descriptor: VaultPublicDescriptor }> {
+): Promise<{ enrollment: EnrollmentSecrets; descriptor: VaultPublicDescriptor }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
@@ -238,16 +223,6 @@ export async function beginTenantEnrollment(
   if (localHash !== proposed.descriptorHash) {
     throw new Error('proposed descriptor hash does not match this client')
   }
-  const pop = enrollmentPoPDigest({
-    vaultId: start.vaultId,
-    credentialId: enrollment.credId,
-    webauthnP256: enrollment.webauthnP256,
-    phoneDirectP256: enrollment.phoneDirectP256,
-    phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
-    externalOwnerWalletXOnly: hardwareXOnly,
-    recoveryKeyXOnly: recoveryXOnly,
-    descriptorHash: proposed.descriptorHash,
-  })
   const staged: StagedEnrollment = {
     ...enrollment,
     handle: start.handle,
@@ -259,27 +234,22 @@ export async function beginTenantEnrollment(
     recoveryXOnly,
     inviteToken: token,
     descriptorHash: proposed.descriptorHash,
-    popDigest: bytesToHex(pop),
     operationalAddress: proposed.descriptor.operational.address,
     operationalScript: proposed.descriptor.operational.script,
     savingsAddress: proposed.descriptor.savings.address,
   }
   saveStagedEnrollment(staged)
-  return { enrollment, popDigest: staged.popDigest || '', descriptor: proposed.descriptor }
+  return { enrollment, descriptor: proposed.descriptor }
 }
 
 export async function finishTenantEnrollment(
   enrollmentToken: string,
-  roles: { ownerProof?: string; recoveryProof?: string },
   storage: Storage = localStorage,
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
-  requireTenantEnrollmentProofs(roles)
   const staged = loadStagedEnrollment(storage)
   if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
-  const ownerProof = requireProofHex(roles.ownerProof, 'owner signature')
-  const recoveryProof = requireProofHex(roles.recoveryProof, 'recovery signature')
   await vaultPost(
     '/v1/enroll/finish',
     {
@@ -296,8 +266,6 @@ export async function finishTenantEnrollment(
       externalOwnerWalletXOnly: staged.hardwareXOnly,
       recoveryKeyXOnly: staged.recoveryXOnly,
       descriptorHash: staged.descriptorHash,
-      externalOwnerProof: ownerProof,
-      recoveryProof,
     },
     { 'X-Vault-Enrollment-Token': token },
   )

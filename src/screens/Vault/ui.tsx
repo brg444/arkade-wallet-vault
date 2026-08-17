@@ -38,7 +38,7 @@ export function Panel({
   )
 }
 
-const RAIL = ['design', 'hardware', 'recovery', 'rules', 'review', 'phone', 'approve']
+const RAIL = ['design', 'hardware', 'recovery', 'rules', 'review', 'phone']
 
 export function StepRail({ step, total = 6 }: { step: number; total?: number }) {
   return (

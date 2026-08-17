@@ -13,8 +13,6 @@ import {
   saveSelectedVaultId,
   saveStagedEnrollment,
 } from './enrollment'
-import { requireTenantEnrollmentProofs } from './enroll'
-
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
   return {
@@ -115,9 +113,5 @@ describe('namespaced enrollment store', () => {
     promoteStagedEnrollment({ ...sample, vaultId: 'tenant-b', credId: 'bb' }, storage)
     expect(loadStagedEnrollment(storage)).toBeNull()
     expect(loadEnrollment(storage, 'tenant-b')?.credId).toBe('bb')
-  })
-
-  it('refuses tenant enrollment when owner or recovery signatures are missing', () => {
-    expect(() => requireTenantEnrollmentProofs({})).toThrow(/signature/)
   })
 })
