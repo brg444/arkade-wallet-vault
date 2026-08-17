@@ -128,10 +128,7 @@ export function loadStoredAddressPin(storage: Storage = localStorage, vaultId?: 
 
 export function loadAddressPin(storage: Storage = localStorage, vaultId?: string): AddressPin | null {
   const id = requestedPinId(vaultId, arguments.length > 1)
-  const stored = loadStoredAddressPin(storage, id)
-  if (stored) return stored
-  if (id === VAULT_ID) return trustedKioskPin()
-  return null
+  return loadStoredAddressPin(storage, id)
 }
 
 export function saveAddressPin(pin: AddressPin, storage: Storage = localStorage): AddressPin {
