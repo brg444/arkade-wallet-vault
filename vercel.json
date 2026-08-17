@@ -7,25 +7,22 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'"
+        },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "X-Content-Type-Options", "value": "nosniff" }
       ]
     }
   ],
   "rewrites": [
-    {
-      "source": "/v1/:path*",
-      "destination": "/api/authorizer/v1/:path*"
-    },
-    {
-      "source": "/health",
-      "destination": "/api/authorizer/health"
-    },
+    { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
+    { "source": "/health", "destination": "/api/health" },
     {
       "source": "/esplora/:path*",
       "destination": "https://mempool.mutinynet.arkade.sh/api/:path*"
     },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ]
 }
