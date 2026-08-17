@@ -8,7 +8,6 @@ import {
   SUPPORTED_NETWORKS,
   TEMPLATE_VERSION,
   TX_RECIPIENT_CAP_SATS,
-  VAULT_ID,
   VAULT_SCHEMA,
   type VaultNetwork,
 } from './constants'
@@ -65,7 +64,7 @@ function concat(parts: Uint8Array[]): Uint8Array {
 export function validateDescriptor(d: VaultPublicDescriptor): VaultPublicDescriptor {
   if (d.schema !== VAULT_SCHEMA) throw new Error('unsupported vault schema')
   if (!SUPPORTED_NETWORKS.includes(d.network)) throw new Error(`unsupported network ${d.network}`)
-  if (d.vaultId !== VAULT_ID) throw new Error('unexpected vault id')
+  if (!d.vaultId || String(d.vaultId).trim() === '') throw new Error('vault id required')
   if (d.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
   if (d.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   if (d.policy.recipientDustSats !== DUST_SATS) throw new Error('dust does not match this release')
