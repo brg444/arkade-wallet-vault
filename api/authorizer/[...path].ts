@@ -10,6 +10,9 @@ const HOP_BY_HOP = new Set([
   'host',
 ])
 
+// fetch() rebuffers the body, so these would lie about the bytes we send.
+const REBUFFERED = new Set(['accept-encoding', 'content-encoding', 'content-length', 'content-md5'])
+
 export const MAX_GATEWAY_BYTES = 1024 * 1024
 export const GATEWAY_UPSTREAM_TIMEOUT_MS = 20_000
 const RATE_WINDOW_MS = 60_000
@@ -193,7 +196,8 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
 
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
-    if (!value || HOP_BY_HOP.has(key.toLowerCase())) continue
+    const name = key.toLowerCase()
+    if (!value || HOP_BY_HOP.has(name) || REBUFFERED.has(name)) continue
     headers[key] = Array.isArray(value) ? value.join(',') : value
   }
   const secret = gatewaySecret()
@@ -227,7 +231,9 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   }
   res.statusCode = upstream.status
   upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) res.setHeader(key, value)
+    const name = key.toLowerCase()
+    if (!HOP_BY_HOP.has(name) && !REBUFFERED.has(name)) res.setHeader(key, value)
   })
+  res.setHeader('Content-Length', String(payload.byteLength))
   res.end(payload)
 }
