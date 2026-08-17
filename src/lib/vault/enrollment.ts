@@ -81,8 +81,14 @@ export type StagedEnrollment = EnrollmentSecrets & {
   attestationObject: string
   hardwareXOnly: string
   recoveryXOnly: string
-  ownerProof: string
-  recoveryProof: string
+  inviteToken?: string
+  descriptorHash?: string
+  popDigest?: string
+  operationalAddress?: string
+  operationalScript?: string
+  savingsAddress?: string
+  ownerProof?: string
+  recoveryProof?: string
 }
 
 export function loadStagedEnrollment(storage: Storage = localStorage): StagedEnrollment | null {

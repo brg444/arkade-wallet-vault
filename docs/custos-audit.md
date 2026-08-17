@@ -85,13 +85,13 @@ Hostile `/v1/status` can swap the QR. New faucet deposits go to the attacker. Co
 ## Remediations
 
 1. **Deposit pin.** `fetchVaultStatus` never creates a pin. It only checks an existing one. A pin is written after verified enroll finish or after recovery-binding signatures verify. The funded kiosk (`operational-vault-v1`) is seeded from a compiled-in address/script (`src/lib/vault/kiosk.ts`), not from first-seen status. First-use TOFU is **not** accepted for this demo.
-2. **Railway hostname.** `vercel.json` rewrites `/v1` and `/health` to `/api/authorizer/*` only. The function reads `AUTHORIZER_ORIGIN` and `AUTHORIZER_GATEWAY_SECRET` from server env. Production `authorizerBase()` is empty (same-origin). `VITE_VAULT_API` is ignored in production builds. Direct Railway ingress is **not** disabled from this repo — that is an operator step after the authorizer accepts `X-Vault-Gateway-Secret`.
+2. **Same-origin proxy.** `vercel.json` rewrites `/v1` and `/health` to `/api/authorizer/*`. That function is a CSRF-filtered public proxy: Origin/Sec-Fetch-Site are not caller authentication. It adds `X-Vault-Gateway-Secret` toward Railway, rate-limits by IP, and caps request/response bodies at 1 MiB with a 20s upstream timeout. Production `authorizerBase()` is empty. `VITE_VAULT_API` is ignored in production. Direct Railway ingress must still be restricted by the operator.
 3. **GET cap.** `readBounded` (1 MiB) is shared and counts **UTF-8 bytes** on the non-streaming fallback as well as streamed chunks.
 4. **Local launcher.** Fixture G/2G pubs are refused in **either** owner or recovery role off regtest. `-unsafe-local-signer` remains regtest-only.
 
 `enroll()` still does not pass `ownerSecret` / `recoverySecret`. That is the tenant ceremony, not this client.
 
-Do not migrate the live funded vault. Sweep it if needed and enroll new tenants; they pin after ceremony.
+Do not migrate the live funded vault. Sweep it if needed and enroll new tenants. New authorizer binaries default to `-fresh-only` and refuse a legacy credential database before backup/migrate. Enrollment proposes the descriptor first; owner/recovery sign that hash. The compiled kiosk seed remains until the old Q is swept and retired.
 
 ## Next
 
