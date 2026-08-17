@@ -26,7 +26,6 @@ import {
   isFixturePub,
   parseCompressedPub,
   planReady,
-  sameRole,
   saveSetupPlan,
   type VaultSetupPlan,
 } from '../lib/vault/setup'
@@ -38,7 +37,6 @@ export type VaultScreen =
   | 'welcome'
   | 'design'
   | 'hardware'
-  | 'recovery'
   | 'conditions'
   | 'plan'
   | 'passkey'
@@ -64,7 +62,6 @@ interface VaultContextProps {
   addTestCoins: () => Promise<void>
   amountSats: number
   applyHardware: (raw: string, demo?: boolean) => void
-  applyRecovery: (raw: string, demo?: boolean) => void
   approvePreviewSend: () => Promise<void>
   busy: boolean
   canSend: boolean
@@ -118,7 +115,6 @@ export const VaultContext = createContext<VaultContextProps>({
   addTestCoins: async () => {},
   amountSats: 0,
   applyHardware: () => {},
-  applyRecovery: () => {},
   approvePreviewSend: async () => {},
   busy: false,
   canSend: false,
@@ -271,13 +267,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const sample = useMemo(() => sampleDescriptor(), [])
   const plannedDescriptor = useMemo(() => {
     const base = descriptor || sample
-    if (!setup.hardwarePub || !setup.recoveryPub) return base
+    if (!setup.hardwarePub) return base
     return {
       ...base,
       keys: {
         ...base.keys,
         externalOwnerWallet: setup.hardwarePub,
-        recoveryKey: setup.recoveryPub,
       },
     }
   }, [descriptor, sample, setup])
@@ -311,39 +306,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (status?.externalOwnerWalletPub && hardwarePub !== status.externalOwnerWalletPub) {
           throw new Error('This Mutinynet vault requires the hardware key already configured on the service')
         }
-        if (setup.recoveryPub && sameRole(hardwarePub, setup.recoveryPub)) {
-          throw new Error('Hardware and recovery must be different keys')
-        }
         persist({ ...setup, hardwarePub, hardwareIsDemo: demo })
-        setScreen('recovery')
-      } catch (err) {
-        setError(humanizeVaultError(err))
-      }
-    },
-    [liveNetwork, persist, setup, status?.externalOwnerWalletPub, status?.network],
-  )
-
-  const applyRecovery = useCallback(
-    (raw: string, demo = false) => {
-      setError('')
-      try {
-        const recoveryPub = parseCompressedPub(raw, 'recovery key')
-        if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(recoveryPub)) {
-          throw new Error('Demo keys cannot be used on this vault')
-        }
-        if (status?.recoveryKeyPub && recoveryPub !== status.recoveryKeyPub) {
-          throw new Error('This Mutinynet vault requires the recovery key already configured on the service')
-        }
-        if (setup.hardwarePub && sameRole(recoveryPub, setup.hardwarePub)) {
-          throw new Error('Recovery must be a different key than the hardware wallet')
-        }
-        persist({ ...setup, recoveryPub, recoveryIsDemo: demo })
         setScreen('conditions')
       } catch (err) {
         setError(humanizeVaultError(err))
       }
     },
-    [liveNetwork, persist, setup, status?.recoveryKeyPub, status?.network],
+    [liveNetwork, persist, setup, status?.externalOwnerWalletPub, status?.network],
   )
 
   const setCondition = useCallback(
@@ -432,10 +401,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('This vault expects a different hardware key.')
         return
       }
-      if (status?.recoveryKeyPub && setup.recoveryPub !== status.recoveryKeyPub) {
-        setError('This vault expects a different recovery key.')
-        return
-      }
       if (status?.network === 'mutinynet' && status.enrollmentMode === 'token' && token.trim().length < 32) {
         setError('Paste your invite.')
         return
@@ -445,7 +410,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       try {
         const out = await enrollWithPasskey(token, {
           hardwarePub: setup.hardwarePub,
-          recoveryPub: setup.recoveryPub,
         })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
@@ -546,11 +510,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     if (spend.amount > setup.txCapSats) {
-      setError(`Over this phone’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use hardware + recovery.`)
+      setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use this device + hardware.`)
       return
     }
     if (spend.amount + spend.fee > dailyRemaining) {
-      setError('Over today’s limit. Wait, or use hardware + recovery.')
+      setError('Over today’s limit. Wait, or use this device + hardware.')
       return
     }
     if (spend.amount + spend.fee + DUST_SATS > amountSats) {
@@ -656,7 +620,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       addTestCoins,
       amountSats,
       applyHardware,
-      applyRecovery,
       approvePreviewSend,
       busy,
       canSend: amountSats > DUST_SATS + spend.fee,
@@ -712,7 +675,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       addTestCoins,
       amountSats,
       applyHardware,
-      applyRecovery,
       approvePreviewSend,
       busy,
       confirmConditions,

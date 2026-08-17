@@ -10,26 +10,22 @@ import {
 } from './setup'
 
 describe('vault setup plan', () => {
-  it('accepts compressed hardware and recovery keys that are independent', () => {
+  it('accepts a compressed hardware key and does not require recovery', () => {
     expect(parseCompressedPub(DEMO_HARDWARE_PUB)).toBe(DEMO_HARDWARE_PUB)
     expect(sameRole(DEMO_HARDWARE_PUB, DEMO_RECOVERY_PUB)).toBe(false)
     const plan = {
       ...emptySetupPlan(),
       acceptedDesign: true,
       hardwarePub: DEMO_HARDWARE_PUB,
-      recoveryPub: DEMO_RECOVERY_PUB,
     }
     expect(planReady(plan)).toBe(true)
   })
 
-  it('rejects the same key for hardware and recovery', () => {
+  it('rejects a plan with no hardware key', () => {
     const plan = {
       ...emptySetupPlan(),
       acceptedDesign: true,
-      hardwarePub: DEMO_HARDWARE_PUB,
-      recoveryPub: DEMO_HARDWARE_PUB,
     }
-    expect(sameRole(plan.hardwarePub, plan.recoveryPub)).toBe(true)
     expect(planReady(plan)).toBe(false)
   })
 

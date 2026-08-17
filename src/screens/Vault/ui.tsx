@@ -38,9 +38,9 @@ export function Panel({
   )
 }
 
-const RAIL = ['design', 'hardware', 'recovery', 'rules', 'review', 'phone']
+const RAIL = ['design', 'hardware', 'rules', 'review', 'device']
 
-export function StepRail({ step, total = 6 }: { step: number; total?: number }) {
+export function StepRail({ step, total = 5 }: { step: number; total?: number }) {
   return (
     <div className='vault-rail' aria-hidden>
       {RAIL.slice(0, total).map((id, i) => (
@@ -197,16 +197,16 @@ export function PolicyTimeline({
       detail: `${prettyAmount(txCap)} per send, ${prettyAmount(dailyLimit)} a day.`,
     },
     {
-      title: 'If you lose this phone',
-      detail: `Hardware + recovery after ${waitLabel(operationalBlocks, network)}.`,
+      title: 'If you lose this device',
+      detail: `Other device + Face ID, or hardware after ${waitLabel(savingsBlocks, network)}.`,
     },
     {
-      title: 'Full access',
-      detail: 'Hardware + recovery. This phone cannot sweep.',
+      title: 'If you lose hardware',
+      detail: `This device after ${waitLabel(operationalBlocks, network)}.`,
     },
     {
       title: 'Savings',
-      detail: `This phone cannot spend it. Hardware + recovery after ${waitLabel(savingsBlocks, network)}.`,
+      detail: `This device cannot spend it alone. Device + hardware now, or one key after the delay.`,
     },
   ]
   return (

@@ -26,7 +26,6 @@ export function sampleDescriptor(): VaultPublicDescriptor {
       phoneRoutineBip340: '02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9',
       phoneDirectP256: '02c9afa9d845ba75166b5c215767b1d6934e50c3db36e89b127b8a622b120f6721',
       externalOwnerWallet: '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5',
-      recoveryKey: '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
       vaultCosignerBase: '022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4',
       tweakedVaultCosigner: 'c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5',
       arkadeCosignerBase: '025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc',

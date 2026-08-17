@@ -6,7 +6,6 @@ import Header from '../../components/Header'
 import Padded from '../../components/Padded'
 import Text from '../../components/Text'
 import FingerprintIcon from '../../icons/Fingerprint'
-import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import { waitLabel } from '../../lib/vault/policy'
@@ -31,7 +30,7 @@ export default function VaultKeys() {
           <FlexCol>
             <KeyCard
               icon={<FingerprintIcon />}
-              title='This phone'
+              title='This device'
               role={
                 !phoneCovered
                   ? 'No passkey yet'
@@ -56,27 +55,29 @@ export default function VaultKeys() {
             <KeyCard
               icon={<ShieldCheckOutlineIcon />}
               title='Hardware'
-              role={setup.hardwareIsDemo ? 'Demo key' : 'Moves everything'}
+              role={setup.hardwareIsDemo ? 'Demo key' : 'With this device, moves everything'}
               fingerprint={setup.hardwarePub || status?.externalOwnerWalletPub}
             />
-            <KeyCard
-              icon={<SafeIcon />}
-              title='Recovery'
-              role={`Replaces this phone after ${waitPhone}`}
-              fingerprint={setup.recoveryPub || status?.recoveryKeyPub}
-            />
-            <KeyCard
-              icon={<ServerIcon />}
-              title='Vault service'
-              role='Helps approve daily sends. Cannot spend Savings.'
-            />
+            <KeyCard icon={<ServerIcon />} title='Vault service' role='Daily only. Cannot spend Savings.' />
 
             <Text color='neutral-600' tiny>
               If you lose…
             </Text>
-            <KeyCard title='This phone' role={`Other device + Face ID, or hardware + recovery after ${waitPhone}.`} />
-            <KeyCard title='This browser' role='Reset only wipes this phone. Coins stay with hardware + recovery.' />
-            <KeyCard title='Savings' role={`This phone cannot spend it. Hardware + recovery after ${waitSavings}.`} />
+            <KeyCard
+              title='This device'
+              role={`Other device + Face ID, or hardware after 144 blocks (${waitSavings}).`}
+            />
+            <KeyCard title='Hardware' role={`This device after 6 blocks (${waitPhone}).`} />
+            <KeyCard
+              title='Savings'
+              role='This device cannot spend it alone. Device + hardware now, or one key after the delay.'
+            />
+            {network === 'mutinynet' ? (
+              <Text color='neutral-600' tiny wrap>
+                On Mutinynet a stolen device with the passkey can wait 6 blocks and sweep Savings. Hardware has to move
+                first. Those delays are a demo clock, not months.
+              </Text>
+            ) : null}
             {!addressCovered && status?.enrolled ? (
               <Text color='neutral-600' tiny wrap>
                 Receive is off until this vault’s addresses are pinned.

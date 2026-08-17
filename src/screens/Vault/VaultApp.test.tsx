@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { DEMO_HARDWARE_PUB, DEMO_RECOVERY_PUB } from '../../lib/vault/setup'
+import { DEMO_HARDWARE_PUB } from '../../lib/vault/setup'
 import { VaultProvider } from '../../providers/vault'
 import VaultApp from '../../VaultApp'
 
@@ -18,7 +18,7 @@ function renderVault() {
 }
 
 describe('VaultApp onboarding', () => {
-  it('requires hardware, recovery, and rules before the wallet home', async () => {
+  it('requires hardware and rules before the wallet home', async () => {
     const user = userEvent.setup()
     renderVault()
 
@@ -34,11 +34,7 @@ describe('VaultApp onboarding', () => {
     fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: DEMO_HARDWARE_PUB } })
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText('Who can replace the phone?')).toBeTruthy()
-    fireEvent.change(screen.getByTestId('recovery-pub'), { target: { value: DEMO_RECOVERY_PUB } })
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
-
-    expect(await screen.findByText('How much can this phone send?')).toBeTruthy()
+    expect(await screen.findByText('How much can this device send?')).toBeTruthy()
     await user.click(screen.getByTestId('cap-20000'))
     await user.click(screen.getByTestId('daily-50000'))
     await user.click(screen.getByRole('button', { name: 'Save these rules' }))
@@ -62,7 +58,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByTestId('account-savings'))
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Savings/)
     expect(screen.queryByText(/0 \/ 50,000 available/)).toBeNull()
-    expect(screen.getByText(/This phone cannot spend it/)).toBeTruthy()
+    expect(screen.getByText(/This device cannot spend Savings alone/)).toBeTruthy()
 
     await user.click(screen.getByTestId('account-switcher'))
     await user.click(await screen.findByTestId('account-spend'))
@@ -91,7 +87,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByLabelText('Go back'))
 
     await user.click(await screen.findByTestId('settings-reset'))
-    expect(await screen.findByText('This removes this phone')).toBeTruthy()
+    expect(await screen.findByText('This removes this device')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reset' })).toHaveProperty('disabled', true)
     expect(screen.queryByText('Your vault')).toBeNull()
   })

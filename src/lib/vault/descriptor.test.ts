@@ -3,7 +3,7 @@ import { encodeDescriptor, hashDescriptor, validateDescriptor } from './descript
 import { sampleDescriptor } from './sample'
 import { bytesToHex } from './hex'
 
-describe('v3 public descriptor', () => {
+describe('v4 public descriptor', () => {
   it('encodes and hashes stably', () => {
     const a = hashDescriptor(sampleDescriptor())
     const b = hashDescriptor(sampleDescriptor())
@@ -12,17 +12,27 @@ describe('v3 public descriptor', () => {
     expect(bytesToHex(encodeDescriptor(sampleDescriptor())).length).toBeGreaterThan(100)
   })
 
-  it('changes hash when a role key changes', () => {
+  it('changes hash when hardware or either CSV changes', () => {
     const original = hashDescriptor(sampleDescriptor())
-    const mutated = sampleDescriptor()
-    mutated.keys.recoveryKey = '03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a'
-    expect(hashDescriptor(mutated)).not.toBe(original)
+    const hardware = sampleDescriptor()
+    hardware.keys.externalOwnerWallet = '03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a'
+    expect(hashDescriptor(hardware)).not.toBe(original)
+    const csvPhone = sampleDescriptor()
+    csvPhone.csv.operationalBlocks = 7
+    expect(hashDescriptor(csvPhone)).not.toBe(original)
+    const csvHw = sampleDescriptor()
+    csvHw.csv.savingsBlocks = 145
+    expect(hashDescriptor(csvHw)).not.toBe(original)
+    expect(sampleDescriptor().keys).not.toHaveProperty('recoveryKey')
   })
 
-  it('rejects a v2 template', () => {
+  it('rejects a v3 template and schema', () => {
     const d = sampleDescriptor()
-    d.templateVersion = 'phone-direct-p256-routine-3of3-admin-2of2-v2'
+    d.templateVersion = 'phone-direct-p256-routine-3of3-admin-2of2-v3'
     expect(() => validateDescriptor(d)).toThrow(/template version/)
+    const schema = sampleDescriptor()
+    ;(schema as { schema: string }).schema = 'arkade-vault/v3'
+    expect(() => validateDescriptor(schema)).toThrow(/schema/)
   })
 
   it('rejects savings that include routine cosigners', () => {

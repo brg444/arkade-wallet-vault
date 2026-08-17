@@ -123,8 +123,10 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
         <Padded>
           <CenterScreen>
             <WalletAlternativeIcon />
-            <Text>This removes this phone</Text>
-            <TextSecondary>Coins stay. Hardware and recovery still work. This does not close the vault.</TextSecondary>
+            <Text>This removes this device</Text>
+            <TextSecondary>
+              Coins stay. Hardware and this device’s keys still work. This does not close the vault.
+            </TextSecondary>
           </CenterScreen>
         </Padded>
       </Content>

@@ -23,12 +23,12 @@ export default function VaultConditions() {
     const savCsv = status?.savingsCsvBlocks || setup.savingsCsvBlocks
     return (
       <OnboardLayout
-        title='How much can this phone send?'
-        step={4}
-        onBack={() => navigate('recovery')}
+        title='How much can this device send?'
+        step={3}
+        onBack={() => navigate('hardware')}
         actions={<Button onClick={confirmConditions} label='Continue' />}
       >
-        <Text wrap>These limits are already set. This phone can’t raise them.</Text>
+        <Text wrap>These limits are already set. This device can’t raise them.</Text>
         <PolicyTimeline
           txCap={txCap}
           dailyLimit={daily}
@@ -37,7 +37,7 @@ export default function VaultConditions() {
           network={status?.network}
         />
         <Text color='neutral-600' tiny wrap>
-          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day · if you lose this phone,{' '}
+          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day · if you lose this device,{' '}
           {waitLabel(opCsv, status?.network)}
         </Text>
       </OnboardLayout>
@@ -46,12 +46,12 @@ export default function VaultConditions() {
 
   return (
     <OnboardLayout
-      title='How much can this phone send?'
-      step={4}
-      onBack={() => navigate('recovery')}
+      title='How much can this device send?'
+      step={3}
+      onBack={() => navigate('hardware')}
       actions={<Button onClick={confirmConditions} label='Save these rules' />}
     >
-      <Text wrap>How much this phone can send today.</Text>
+      <Text wrap>How much this device can send today.</Text>
       <Text color='neutral-600' tiny>
         Per send
       </Text>
@@ -79,7 +79,7 @@ export default function VaultConditions() {
         />
       ))}
       <Text color='neutral-600' tiny>
-        If you lose this phone
+        If you lose this device
       </Text>
       {RECOVERY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
         <ChoiceCard

@@ -24,6 +24,23 @@ describe('vault UI lock', () => {
     expect(app).toContain('has-pill-navbar')
   })
 
+  it('forbids recovery chrome and pins v4 device copy', () => {
+    expect(existsSync(resolve(root, 'src/screens/Vault/onboard/Recovery.tsx'))).toBe(false)
+    const app = read('src/VaultApp.tsx')
+    expect(app).not.toMatch(/VaultRecovery/)
+    const keys = read('src/screens/Vault/Keys.tsx')
+    expect(keys).not.toMatch(/Hardware \+ recovery/)
+    expect(keys).not.toMatch(/title='Recovery'/)
+    expect(keys).toMatch(/This device/)
+    expect(keys).toMatch(/144/)
+    expect(keys).toMatch(/6 blocks/)
+    const enroll = read('src/lib/vault/enroll.ts')
+    expect(enroll).not.toMatch(/recoveryKeyXOnly/)
+    const constants = read('src/lib/vault/constants.ts')
+    expect(constants).toContain('arkade-vault/v4')
+    expect(constants).toContain('admin-phone-hww-v4')
+  })
+
   it('rejects the retired singleton home chrome', () => {
     const home = read('src/screens/Vault/Home.tsx')
     expect(home).toContain('account-switcher')

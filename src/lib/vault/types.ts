@@ -4,7 +4,6 @@ export interface VaultKeys {
   phoneRoutineBip340: string
   phoneDirectP256: string
   externalOwnerWallet: string
-  recoveryKey: string
   vaultCosignerBase: string
   tweakedVaultCosigner: string
   arkadeCosignerBase: string
@@ -12,7 +11,7 @@ export interface VaultKeys {
 }
 
 export interface VaultPublicDescriptor {
-  schema: 'arkade-vault/v3'
+  schema: 'arkade-vault/v4'
   network: VaultNetwork
   vaultId: string
   templateVersion: string
@@ -55,7 +54,6 @@ export interface VaultStatus {
   operationalCsvBlocks: number
   savingsCsvBlocks: number
   externalOwnerWalletPub?: string
-  recoveryKeyPub?: string
   vaultCosignerBasePub?: string
   arkadeCosignerBasePub?: string
   arkadeCosignerOrigin?: string

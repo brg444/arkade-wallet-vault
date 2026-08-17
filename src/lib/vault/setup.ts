@@ -7,7 +7,7 @@ import {
 } from './constants'
 import { fingerprint, hexToBytes } from './hex'
 
-export const SETUP_STORE_KEY = 'arkade-vault-setup-v3'
+export const SETUP_STORE_KEY = 'arkade-vault-setup-v4'
 
 export const DEMO_HARDWARE_PUB = '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'
 export const DEMO_RECOVERY_PUB = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
@@ -21,7 +21,7 @@ export const PAYMENT_CAP_CHOICES = [20_000, 50_000] as const
 export const DAILY_LIMIT_CHOICES = [50_000, 100_000] as const
 
 export interface RecoveryProfile {
-  id: 'demo' | 'week' | 'mutinynet'
+  id: 'demo'
   label: string
   detail: string
   operationalCsvBlocks: number
@@ -31,32 +31,16 @@ export interface RecoveryProfile {
 export const RECOVERY_PROFILES: RecoveryProfile[] = [
   {
     id: 'demo',
-    label: 'Short delay',
-    detail: 'This phone after about an hour. Savings after about a day.',
+    label: 'Demo delays',
+    detail: 'This device after 6 blocks. Hardware after 144.',
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
     savingsCsvBlocks: DEFAULT_SAVINGS_CSV_BLOCKS,
-  },
-  {
-    id: 'week',
-    label: 'Longer delay',
-    detail: 'This phone after about a day. Savings after about a month.',
-    operationalCsvBlocks: 144,
-    savingsCsvBlocks: 4032,
-  },
-  {
-    id: 'mutinynet',
-    label: 'Mutinynet delay',
-    detail: 'Spending after 288 blocks. Savings after 4,032.',
-    operationalCsvBlocks: 288,
-    savingsCsvBlocks: 4032,
   },
 ]
 
 export interface VaultSetupPlan {
   hardwarePub: string
-  recoveryPub: string
   hardwareIsDemo: boolean
-  recoveryIsDemo: boolean
   txCapSats: number
   dailyLimitSats: number
   operationalCsvBlocks: number
@@ -68,9 +52,7 @@ export interface VaultSetupPlan {
 export function emptySetupPlan(): VaultSetupPlan {
   return {
     hardwarePub: '',
-    recoveryPub: '',
     hardwareIsDemo: false,
-    recoveryIsDemo: false,
     txCapSats: TX_RECIPIENT_CAP_SATS,
     dailyLimitSats: PERIOD_ALLOWANCE_SATS,
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
@@ -106,8 +88,7 @@ export function sameRole(a: string, b: string): boolean {
 
 export function planReady(plan: VaultSetupPlan): boolean {
   if (!plan.acceptedDesign) return false
-  if (!plan.hardwarePub || !plan.recoveryPub) return false
-  if (sameRole(plan.hardwarePub, plan.recoveryPub)) return false
+  if (!plan.hardwarePub) return false
   if (!PAYMENT_CAP_CHOICES.includes(plan.txCapSats as (typeof PAYMENT_CAP_CHOICES)[number])) return false
   if (!DAILY_LIMIT_CHOICES.includes(plan.dailyLimitSats as (typeof DAILY_LIMIT_CHOICES)[number])) return false
   if (plan.txCapSats > plan.dailyLimitSats) return false

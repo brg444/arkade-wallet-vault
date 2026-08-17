@@ -36,7 +36,8 @@ export default function VaultSavings() {
               <p className='vault-money'>{prettyAmount(savingsSats)}</p>
             </div>
             <Text color='neutral-600' tiny wrap>
-              The passkey cannot spend this. Hardware plus recovery, or recovery after the long delay.
+              This device cannot spend Savings alone. Device + hardware now, or one key after the delay. On Mutinynet a
+              stolen device with the passkey can wait 6 blocks and sweep Savings.
             </Text>
             <Text small wrap testId='savings-address'>
               {savingsAddress || 'No savings address yet.'}

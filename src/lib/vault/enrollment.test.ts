@@ -102,9 +102,6 @@ describe('namespaced enrollment store', () => {
         authenticatorData: 'dd',
         attestationObject: 'ee',
         hardwareXOnly: '11'.repeat(32),
-        recoveryXOnly: '22'.repeat(32),
-        ownerProof: '33'.repeat(64),
-        recoveryProof: '44'.repeat(64),
       },
       storage,
     )
