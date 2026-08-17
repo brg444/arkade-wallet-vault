@@ -18,7 +18,8 @@ export default function VaultSignIn() {
       actions={
         <Button
           onClick={() => void signIn()}
-          disabled={busy || !status?.passkeyLoginAvailable}
+          disabled={busy}
+          loading={busy}
           label={busy ? 'Waiting for your passkey…' : 'Sign in with passkey'}
         />
       }
