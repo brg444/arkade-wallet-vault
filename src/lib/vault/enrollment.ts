@@ -14,16 +14,28 @@ function parseEnrollment(raw: string | null): EnrollmentSecrets | null {
   return rec
 }
 
+function bindEnrollment(rec: EnrollmentSecrets | null, vaultId: string): EnrollmentSecrets | null {
+  if (!rec) return null
+  if (rec.vaultId && rec.vaultId !== vaultId) {
+    throw new Error('enrollment record vault id does not match')
+  }
+  return { ...rec, vaultId }
+}
+
 export function loadEnrollment(storage: Storage = localStorage, vaultId = VAULT_ID): EnrollmentSecrets | null {
   const id = vaultId || VAULT_ID
-  const namespaced = parseEnrollment(storage.getItem(enrollmentStoreKey(id)))
+  const namespaced = bindEnrollment(parseEnrollment(storage.getItem(enrollmentStoreKey(id))), id)
   if (namespaced) return namespaced
-  if (id === VAULT_ID) return parseEnrollment(storage.getItem(ENROLL_STORE))
+  if (id === VAULT_ID) return bindEnrollment(parseEnrollment(storage.getItem(ENROLL_STORE)), id)
   return null
 }
 
 export function saveEnrollment(rec: EnrollmentSecrets, storage: Storage = localStorage, vaultId = VAULT_ID) {
-  storage.setItem(enrollmentStoreKey(vaultId || VAULT_ID), JSON.stringify(rec))
+  const id = vaultId || rec.vaultId || VAULT_ID
+  if (rec.vaultId && rec.vaultId !== id) {
+    throw new Error('enrollment record vault id does not match')
+  }
+  storage.setItem(enrollmentStoreKey(id), JSON.stringify({ ...rec, vaultId: id }))
 }
 
 export function clearEnrollment(storage: Storage = localStorage, vaultId = VAULT_ID) {

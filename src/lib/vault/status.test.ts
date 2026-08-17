@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest'
+import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
+import { parseStatusJson, requireStatusIdentity } from './status'
+import type { VaultStatus } from './types'
+
+function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
+  return {
+    enrolled: true,
+    network: 'mutinynet',
+    clientOrigin: 'https://arkade-vault-demo.vercel.app',
+    rpId: 'arkade-vault-demo.vercel.app',
+    vaultId: VAULT_ID,
+    templateVersion: TEMPLATE_VERSION,
+    policyVersion: POLICY_VERSION,
+    operationalCsvBlocks: 288,
+    savingsCsvBlocks: 4032,
+    operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
+    savingsAddress: 'tb1ptest',
+    savingsExcludesRoutineCosigners: true,
+    periodAllowance: 100000,
+    periodSpent: 0,
+    periodRemaining: 100000,
+    txCap: 50000,
+    absoluteFeeCap: 5000,
+    feerateCapSatVb: 10,
+    ...over,
+  }
+}
+
+describe('status identity binding', () => {
+  it('accepts the requested vault id and rejects a wrong-vault response', () => {
+    const first = requireStatusIdentity(sampleStatus())
+    expect(first.vaultId).toBe(VAULT_ID)
+    expect(() => requireStatusIdentity(sampleStatus(), 'tenant-b')).toThrow(/vault id/)
+    expect(() => requireStatusIdentity(sampleStatus({ vaultId: 'tenant-b' }))).toThrow(/vault id/)
+    expect(() => requireStatusIdentity(sampleStatus({ vaultId: 'tenant-b' }), VAULT_ID)).toThrow(/vault id/)
+  })
+
+  it('binds parseStatusJson to the expected vault', () => {
+    const raw = JSON.stringify(sampleStatus({ vaultId: 'tenant-b' }))
+    expect(parseStatusJson(raw, 'tenant-b').vaultId).toBe('tenant-b')
+    expect(() => parseStatusJson(raw, VAULT_ID)).toThrow(/vault id/)
+  })
+})

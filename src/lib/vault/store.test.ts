@@ -56,4 +56,11 @@ describe('watch-only store', () => {
     expect(loadWatchRecord(storage)?.descriptor.vaultId).toBe(sampleDescriptor().vaultId)
     expect(loadWatchRecord(storage, 'tenant-b')?.descriptor.vaultId).toBe('tenant-b')
   })
+
+  it('rejects a watch record stored under the wrong vault key', () => {
+    const storage = memoryStorage()
+    const rec = saveWatchRecord(sampleDescriptor(), 'http://127.0.0.1:3002', storage)
+    storage.setItem(watchStoreKey('tenant-b'), JSON.stringify(rec))
+    expect(() => loadWatchRecord(storage, 'tenant-b')).toThrow(/vault id/)
+  })
 })

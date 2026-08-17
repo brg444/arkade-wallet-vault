@@ -10,6 +10,7 @@ const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 const DIRECT_INFO = new TextEncoder().encode('arkade-2fa-vault/direct-p256/v1')
 
 export interface EnrollmentSecrets {
+  vaultId?: string
   credId: string
   webauthnP256: string
   phoneDirectP256: string

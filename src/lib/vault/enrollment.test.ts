@@ -54,4 +54,11 @@ describe('namespaced enrollment store', () => {
     expect(loadEnrollment(storage, 'tenant-b')).toBeNull()
     expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
   })
+
+  it('rejects a namespaced record whose vaultId does not match the key', () => {
+    const storage = memoryStorage()
+    storage.setItem(enrollmentStoreKey('tenant-b'), JSON.stringify({ ...sample, vaultId: VAULT_ID }))
+    expect(() => loadEnrollment(storage, 'tenant-b')).toThrow(/vault id/)
+    expect(() => saveEnrollment({ ...sample, vaultId: VAULT_ID }, storage, 'tenant-b')).toThrow(/vault id/)
+  })
 })
