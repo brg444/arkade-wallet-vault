@@ -6,9 +6,15 @@ export function authorizerBase(): string {
   return configured.replace(/\/$/, '')
 }
 
+export function vaultStatusPath(expectedVaultId: string = VAULT_ID): string {
+  const id = expectedVaultId || VAULT_ID
+  return `/v1/status?vault=${encodeURIComponent(id)}`
+}
+
 export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId: string = VAULT_ID): Promise<VaultStatus> {
   const base = authorizerBase()
-  const res = await fetch(`${base}/v1/status`, {
+  const id = expectedVaultId || VAULT_ID
+  const res = await fetch(`${base}${vaultStatusPath(id)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
     signal,
@@ -17,7 +23,7 @@ export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId: st
     throw new Error(`authorizer status ${res.status}`)
   }
   const body = (await res.json()) as VaultStatus
-  return requireStatusIdentity(body, expectedVaultId)
+  return requireStatusIdentity(body, id)
 }
 
 export function parseStatusJson(raw: string, expectedVaultId: string = VAULT_ID): VaultStatus {
