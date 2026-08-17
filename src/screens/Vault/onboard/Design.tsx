@@ -18,9 +18,9 @@ export default function VaultDesign() {
       actions={<Button onClick={acceptDesign} label='Continue' />}
     >
       <Text wrap>This device spends a little. With hardware, it can move everything.</Text>
-      <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spend; with hardware, moves everything' />
-      <KeyCard icon={<ShieldCheckOutlineIcon />} title='Hardware' role='With this device, moves everything' />
-      <KeyCard icon={<SafeIcon />} title='Savings' role='No daily path. Device + hardware, or one key after a delay.' />
+      <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spends' />
+      <KeyCard icon={<ShieldCheckOutlineIcon />} title='Hardware' role='Controls savings balance and policies' />
+      <KeyCard icon={<SafeIcon />} title='Savings' role='Device + Hardware, or one key after a delay' />
     </OnboardLayout>
   )
 }
