@@ -11,6 +11,7 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollment'
+import { pinEnrolledStatus } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
@@ -134,7 +135,11 @@ export async function enrollWithPasskey(
   const cred = (await navigator.credentials.create({
     publicKey: passkeyCreateOptions({
       rp: { name: 'Spending vault', id: start.rpId || rpId },
-      user: { id: hexToBytes(start.userId) as BufferSource, name: start.userName || 'vault', displayName: 'Spending vault' },
+      user: {
+        id: hexToBytes(start.userId) as BufferSource,
+        name: start.userName || 'vault',
+        displayName: 'Spending vault',
+      },
       challenge: hexToBytes(start.challenge) as BufferSource,
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
@@ -233,6 +238,7 @@ export async function enrollWithPasskey(
     { 'X-Vault-Enrollment-Token': token },
   )
   const live = await fetchVaultStatus(undefined, start.vaultId)
+  pinEnrolledStatus(live)
   promoteStagedEnrollment(enrollment)
   return { status: live, enrollment }
 }
@@ -244,6 +250,7 @@ export async function reconcileStagedEnrollment(
   if (!staged?.vaultId) return null
   const live = await fetchVaultStatus(undefined, staged.vaultId)
   if (!live.enrolled) return null
+  pinEnrolledStatus(live, storage)
   promoteStagedEnrollment(staged, storage)
   return { status: live, enrollment: staged }
 }

@@ -5,11 +5,13 @@ import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } 
 import { enablePasskeyLogin, signInWithPasskey } from '../lib/vault/session'
 import {
   clearEnrollment,
+  clearSelectedVaultId,
   loadEnrollment,
   loadSelectedVaultId,
   saveEnrollment,
   saveSelectedVaultId,
 } from '../lib/vault/enrollment'
+import { clearAddressPin, loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { confirmedSpendable, fetchAddressStats, fetchAddressUtxos, fetchTxHex } from '../lib/vault/esplora'
 import { sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
@@ -180,6 +182,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<VaultAccount>('spend')
   const [scanOnSend, setScanOnSend] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
+  const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
 
   useEffect(() => {
     let existing: EnrollmentSecrets | null = null
@@ -195,6 +198,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const selected = loadSelectedVaultId()
       existing = selected ? loadEnrollment(localStorage, selected) : loadEnrollment()
       if (existing?.vaultId) saveSelectedVaultId(existing.vaultId)
+      const pinId = existing?.vaultId || selected
+      setAddressPin(pinId ? loadAddressPin(localStorage, pinId) : null)
       if (existing) {
         setEnrollment(existing)
         setScreen('home')
@@ -211,15 +216,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (recovered) {
           setEnrollment(recovered.enrollment)
           setStatus(recovered.status)
+          setAddressPin(loadAddressPin(localStorage, recovered.status.vaultId))
           setScreen('home')
           return
         }
-        const live = selectedId
-          ? await fetchVaultStatus(undefined, selectedId)
-          : await fetchVaultStatus()
+        const live = selectedId ? await fetchVaultStatus(undefined, selectedId) : await fetchVaultStatus()
         setStatus(live)
-      } catch {
-        // public status may be redacted; tenant status needs a selected id
+        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : ''
+        if (msg.includes('local pin') || msg.includes('not pinned locally')) {
+          setError(humanizeVaultError(err))
+        }
       } finally {
         setStatusKnown(true)
       }
@@ -274,8 +282,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [descriptor, sample, setup])
 
-  const operationalAddress = status?.operationalAddress || ''
-  const savingsAddress = status?.savingsAddress || ''
+  const operationalAddress = addressPin?.operationalAddress || ''
+  const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
   const allowDemoKeys = statusKnown && !liveNetwork
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
@@ -386,8 +394,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [sealPlan, setup])
 
   const refreshBalance = useCallback(
-    async (address = status?.operationalAddress) => {
-      const savings = status?.savingsAddress
+    async (vaultId?: string) => {
+      const id = String(vaultId || status?.vaultId || addressPin?.vaultId || '').trim()
+      const pin = id ? loadAddressPin(localStorage, id) : null
+      const address = pin?.operationalAddress || ''
+      const savings = pin?.savingsAddress || ''
       if (!address && !savings) {
         setChainBalance(0)
         setSavingsBalance(0)
@@ -408,7 +419,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError(humanizeVaultError(err))
       }
     },
-    [status?.operationalAddress, status?.savingsAddress],
+    [addressPin, status?.vaultId],
   )
 
   const enroll = useCallback(
@@ -440,6 +451,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         saveEnrollment(out.enrollment)
         if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
         setStatus(out.status)
+        setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
         sealPlan()
         setPreview(false)
         try {
@@ -447,7 +459,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         } catch {
           setError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
         }
-        await refreshBalance(out.status.operationalAddress)
+        await refreshBalance(out.status.vaultId)
         setScreen('home')
       } catch (err) {
         setError(humanizeVaultError(err))
@@ -484,8 +496,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       saveEnrollment(out.enrollment)
       if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
       setStatus(out.status)
+      setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
       setPreview(false)
-      await refreshBalance(out.status.operationalAddress)
+      await refreshBalance(out.status.vaultId)
       setScreen('home')
     } catch (err) {
       setError(humanizeVaultError(err))
@@ -500,7 +513,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     try {
       if (demoAvailable && status?.enrolled) {
         await vaultPost('/v1/demo/fund', { amount: setup.dailyLimitSats })
-        setStatus(enrollment?.vaultId ? await fetchVaultStatus(undefined, enrollment.vaultId) : await fetchVaultStatus())
+        const funded = enrollment?.vaultId
+          ? await fetchVaultStatus(undefined, enrollment.vaultId)
+          : await fetchVaultStatus()
+        setStatus(funded)
+        if (funded.vaultId) setAddressPin(loadAddressPin(localStorage, funded.vaultId))
       } else {
         setDemoCredit(setup.dailyLimitSats)
         setPreviewSpent(0)
@@ -552,14 +569,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setError('Sign in with the passkey that created this vault.')
           return
         }
-        if (!status.operationalAddress) {
+        if (!operationalAddress) {
           setError('No spending address yet.')
           return
         }
       }
-      if (status?.enrolled && enrollment && status.operationalAddress) {
+      if (status?.enrolled && enrollment && operationalAddress) {
         const need = spend.amount + spend.fee
-        const utxos = await fetchAddressUtxos(status.operationalAddress)
+        const utxos = await fetchAddressUtxos(operationalAddress)
         const coin = confirmedSpendable(utxos, need)
         if (!coin) throw new Error('No confirmed Mutinynet coin is large enough. Fund the spending address first.')
         const prevTxHex = await fetchTxHex(coin.txid)
@@ -575,8 +592,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setLastTxid(result.txid)
         setLastSend(spend)
         setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
-        await refreshBalance()
-        setStatus(enrollment?.vaultId ? await fetchVaultStatus(undefined, enrollment.vaultId) : await fetchVaultStatus())
+        await refreshBalance(status.vaultId)
+        const live = enrollment?.vaultId
+          ? await fetchVaultStatus(undefined, enrollment.vaultId)
+          : await fetchVaultStatus()
+        setStatus(live)
+        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
         setScreen('success')
         return
       }
@@ -596,15 +617,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [enrollment, liveNetwork, refreshBalance, spend, status])
+  }, [enrollment, liveNetwork, operationalAddress, refreshBalance, spend, status])
 
   const reset = useCallback(() => {
+    const selected = loadSelectedVaultId()
     clearSetupPlan()
     clearWatchRecord()
     clearEnrollment()
+    clearAddressPin()
+    if (selected) {
+      clearWatchRecord(localStorage, selected)
+      clearEnrollment(localStorage, selected)
+      clearAddressPin(localStorage, selected)
+    }
+    clearSelectedVaultId()
     setSetup(emptySetupPlan())
     setDescriptor(null)
     setEnrollment(null)
+    setAddressPin(null)
     setPreview(false)
     setDemoCredit(0)
     setPreviewSpent(0)

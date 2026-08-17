@@ -48,4 +48,9 @@ describe('status identity binding', () => {
     expect(() => vaultStatusPath('')).toThrow(/vault id required/)
     expect(() => requireStatusIdentity(sampleStatus(), '')).toThrow(/vault id required/)
   })
+
+  it('does not treat vault id agreement as a deposit-address bind', () => {
+    const swapped = sampleStatus({ operationalAddress: 'tb1pattacker' })
+    expect(requireStatusIdentity(swapped).operationalAddress).toBe('tb1pattacker')
+  })
 })
