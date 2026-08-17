@@ -25,7 +25,9 @@ export default function VaultHome() {
     dailyRemaining,
     error,
     navigate,
+    enablePasskeyLogin,
     faucetUrl,
+    hasLocalEnrollment,
     liveNetwork,
     networkLabel,
     operationalAddress,
@@ -94,6 +96,13 @@ export default function VaultHome() {
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
             </FlexRow>
             <ErrorMessage error={Boolean(error)} text={error} />
+            {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
+              <Button
+                onClick={() => void enablePasskeyLogin()}
+                disabled={busy}
+                label={busy ? 'Waiting for Face ID…' : 'Allow this passkey on other devices'}
+              />
+            ) : null}
             <Panel onClick={() => navigate('savings')}>
               <Text color='neutral-600' tiny>
                 Savings

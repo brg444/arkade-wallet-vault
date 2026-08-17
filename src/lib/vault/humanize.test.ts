@@ -15,6 +15,12 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('The operation was aborted.'))).toMatch(/cancelled/i)
   })
 
+  it('explains a missing recovery envelope', () => {
+    expect(
+      humanizeVaultError(new Error('passkey sign-in must first be enabled on the original enrolled device')),
+    ).toMatch(/first browser|Enable sign-in/i)
+  })
+
   it('explains an origin mismatch', () => {
     expect(humanizeVaultError(new Error('deployment origin does not match this signing client origin'))).toMatch(
       /different address/i,

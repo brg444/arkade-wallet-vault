@@ -164,7 +164,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
       }
       const existing = loadEnrollment()
-      if (existing) setEnrollment(existing)
+      if (existing) {
+        setEnrollment(existing)
+        setScreen('home')
+      }
     } catch {
       clearSetupPlan()
     } finally {

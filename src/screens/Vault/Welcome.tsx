@@ -43,6 +43,7 @@ function Point({ icon, text }: { icon: JSX.Element; text: string }) {
 export default function VaultWelcome() {
   const { busy, error, hasLocalEnrollment, navigate, signIn, status } = useContext(VaultContext)
   const canSignIn = Boolean(status?.enrolled && !hasLocalEnrollment)
+  const signInReady = Boolean(status?.passkeyLoginAvailable)
   const prefersReduced = useReducedMotion()
   const [ready, setReady] = useState(prefersReduced)
   const [sunrise, setSunrise] = useState(prefersReduced)
@@ -95,7 +96,6 @@ export default function VaultWelcome() {
               <Text color='neutral-600' small wrap>
                 Mutinynet test bitcoin only. Do not send real bitcoin. Setup takes about two minutes.
               </Text>
-              <ErrorMessage error={Boolean(error)} text={error} />
             </div>
           </FlexCol>
         </Padded>
@@ -103,15 +103,21 @@ export default function VaultWelcome() {
       <ButtonsOnBottom>
         {canSignIn ? (
           <>
-            <Button
-              onClick={() => void signIn()}
-              disabled={busy}
-              loading={busy}
-              label={busy ? 'Waiting for your passkey…' : 'Sign in with passkey'}
-            />
-            <Text color='neutral-600' tiny wrap>
-              This deployment already has a vault. The passkey prompt should open from this tap.
-            </Text>
+            <ErrorMessage error={Boolean(error)} text={error} />
+            {signInReady ? (
+              <Button
+                onClick={() => void signIn()}
+                disabled={busy}
+                loading={busy}
+                label={busy ? 'Waiting for Face ID…' : 'Sign in with passkey'}
+              />
+            ) : (
+              <Text wrap>
+                Your iPhone passkey is only half of it. The first browser that created this vault still holds the locked
+                phone spending key. Open this same site there, tap Keys, then Enable sign-in on other devices. After
+                that, this button will ask for Face ID here.
+              </Text>
+            )}
           </>
         ) : (
           <Button onClick={() => navigate('design')} label='Set up this vault' />
