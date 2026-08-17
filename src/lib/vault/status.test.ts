@@ -45,5 +45,7 @@ describe('status identity binding', () => {
   it('asks the authorizer for the selected vault id', () => {
     expect(vaultStatusPath()).toBe(`/v1/status?vault=${encodeURIComponent(VAULT_ID)}`)
     expect(vaultStatusPath('tenant-b')).toBe('/v1/status?vault=tenant-b')
+    expect(() => vaultStatusPath('')).toThrow(/vault id required/)
+    expect(() => requireStatusIdentity(sampleStatus(), '')).toThrow(/vault id required/)
   })
 })

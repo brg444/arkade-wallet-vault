@@ -153,7 +153,10 @@ export function verifyRecoveryBindingSignatures(input: {
 }
 
 export function recordFromRecoveryBinding(value: Record<string, string | number>): EnrollmentSecrets {
+  const vaultId = String(value.vaultId || '').trim()
+  if (!vaultId) throw new Error('vault id required')
   return {
+    vaultId,
     credId: String(value.credentialId),
     webauthnP256: String(value.webauthnP256),
     phoneDirectP256: String(value.phoneDirectP256),

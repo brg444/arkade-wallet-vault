@@ -6,14 +6,51 @@ export function authorizerBase(): string {
   return configured.replace(/\/$/, '')
 }
 
-export function vaultStatusPath(expectedVaultId: string = VAULT_ID): string {
-  const id = expectedVaultId || VAULT_ID
+export type PublicAuthorizerStatus = {
+  network: string
+  clientOrigin: string
+  rpId: string
+  templateVersion: string
+  policyVersion: string
+  operationalCsvBlocks: number
+  savingsCsvBlocks: number
+  enrollmentMode: string
+  enrollmentExpiresAt?: string
+}
+
+function requestedVaultId(expectedVaultId: string | undefined, supplied: boolean): string {
+  if (!supplied) return VAULT_ID
+  const id = String(expectedVaultId ?? '').trim()
+  if (!id) throw new Error('vault id required')
+  return id
+}
+
+export function vaultStatusPath(expectedVaultId?: string): string {
+  const id = requestedVaultId(expectedVaultId, arguments.length > 0)
   return `/v1/status?vault=${encodeURIComponent(id)}`
 }
 
-export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId: string = VAULT_ID): Promise<VaultStatus> {
+export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAuthorizerStatus> {
   const base = authorizerBase()
-  const id = expectedVaultId || VAULT_ID
+  const res = await fetch(`${base}/v1/status`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal,
+  })
+  if (!res.ok) {
+    throw new Error(`authorizer status ${res.status}`)
+  }
+  const body = (await res.json()) as PublicAuthorizerStatus
+  if (!body || typeof body !== 'object') throw new Error('status is not an object')
+  if ('vaultId' in body && body.vaultId) throw new Error('public status must not name a vault')
+  if (body.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
+  if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
+  return body
+}
+
+export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId?: string): Promise<VaultStatus> {
+  const base = authorizerBase()
+  const id = requestedVaultId(expectedVaultId, arguments.length > 1)
   const res = await fetch(`${base}${vaultStatusPath(id)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
@@ -26,15 +63,16 @@ export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId: st
   return requireStatusIdentity(body, id)
 }
 
-export function parseStatusJson(raw: string, expectedVaultId: string = VAULT_ID): VaultStatus {
+export function parseStatusJson(raw: string, expectedVaultId?: string): VaultStatus {
   const body = JSON.parse(raw) as VaultStatus
-  return requireStatusIdentity(body, expectedVaultId)
+  return requireStatusIdentity(body, requestedVaultId(expectedVaultId, arguments.length > 1))
 }
 
-export function requireStatusIdentity(status: VaultStatus, expectedVaultId: string = VAULT_ID): VaultStatus {
+export function requireStatusIdentity(status: VaultStatus, expectedVaultId?: string): VaultStatus {
+  const expected = requestedVaultId(expectedVaultId, arguments.length > 1)
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
   if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
-  if (status.vaultId !== expectedVaultId) throw new Error('status vault id does not match')
+  if (status.vaultId !== expected) throw new Error('status vault id does not match')
   if (status.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   return status

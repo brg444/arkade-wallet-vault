@@ -1,4 +1,5 @@
-import { vaultGet, vaultPost } from './api'
+import { vaultPost } from './api'
+import { fetchVaultStatus } from './status'
 import { scriptHexFromAddress } from './bitcoin'
 import { createAuthorizeRetryState } from './ceremony/authorizeretry.js'
 import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth.js'
@@ -15,6 +16,7 @@ import {
 import type { EnrollmentSecrets } from './enroll'
 import { bytesToHex, hexToBytes } from './hex'
 import type { VaultStatus } from './types'
+import { allowPasskey, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -30,12 +32,6 @@ export interface LiveSpendInput {
   vout: number
 }
 
-function prfFrom(cred: PublicKeyCredential): Uint8Array | null {
-  const ext = cred.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }
-  const first = ext?.prf?.results?.first
-  return first ? new Uint8Array(first) : null
-}
-
 function requireRPID(status: VaultStatus): string {
   const rpId = String(status.rpId || '').toLowerCase()
   if (!rpId || rpId !== location.hostname.toLowerCase()) {
@@ -49,6 +45,8 @@ function requireRPID(status: VaultStatus): string {
 
 export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: string; challenge: string }> {
   const { enrollment: rec, status } = input
+  const vaultId = String(status.vaultId || rec.vaultId || '').trim()
+  if (!vaultId) throw new Error('vault id required')
   const recipientScript = scriptHexFromAddress(input.destAddress, status.network)
   const intent = {
     prevTxHex: input.prevTxHex,
@@ -59,8 +57,16 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
   }
   const reviewKey = JSON.stringify(intent)
   retry.clearUnless(reviewKey)
+  const already = retry.completedFor(reviewKey)
+  if (already) {
+    const published = await vaultPost<{ txid: string }>('/v1/publish', { vaultId, challenge: already.challengeHex })
+    if (published.txid !== already.expectedTxid) {
+      throw new Error('published txid does not match the authorized transaction')
+    }
+    return { txid: published.txid, challenge: already.challengeHex }
+  }
 
-  const draft = await vaultPost<{ psbt: string }>('/v1/draft', intent)
+  const draft = await vaultPost<{ psbt: string }>('/v1/draft', { ...intent, vaultId })
   const parsed = validateDraftPSBT({
     draftB64: draft.psbt,
     prevTxHex: intent.prevTxHex,
@@ -73,17 +79,17 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
     network: status.network,
   })
   const rpId = requireRPID(status)
-  const pre = await vaultPost<{ challenge: string }>('/v1/preflight', { psbt: draft.psbt })
+  const pre = await vaultPost<{ challenge: string }>('/v1/preflight', { vaultId, psbt: draft.psbt })
   const challengeHex = assertArkadeChallenge(parsed.arkadeChallenge, pre.challenge)
   const challenge = ceremonyHex(challengeHex, 32)
   const get = (await navigator.credentials.get({
-    publicKey: {
+    publicKey: passkeyGetOptions({
       challenge,
       rpId,
-      allowCredentials: [{ type: 'public-key', id: hexToBytes(rec.credId) }],
+      allowCredentials: [allowPasskey(hexToBytes(rec.credId))],
       userVerification: 'required',
-      extensions: { prf: { eval: { first: PRF_SALT } } },
-    },
+      extensions: prfExtension(PRF_SALT, hexToBytes(rec.credId)),
+    }),
   })) as PublicKeyCredential | null
   if (!get) throw new Error('The operation was aborted.')
   const prf = prfFrom(get)
@@ -92,7 +98,7 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
   let scalar: Uint8Array | undefined
   let phoneRoutineSecret: Uint8Array | undefined
   try {
-    const live = await vaultGet<VaultStatus>('/v1/status')
+    const live = await fetchVaultStatus(undefined, vaultId)
     assertPhoneRoutineBIP340Pub(rec.phoneRoutineBip340Pub, rec.phoneRoutineBip340Pub, live.phoneRoutineBip340Pub)
     assertDirectP256(rec.phoneDirectP256, rec.phoneDirectP256, live.phoneDirectP256)
     const derived = await deriveDirectP256(prf)
@@ -105,7 +111,7 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
       authenticatorData: bytesToHex(new Uint8Array((get.response as AuthenticatorAssertionResponse).authenticatorData)),
       signature: bytesToHex(new Uint8Array((get.response as AuthenticatorAssertionResponse).signature)),
     }
-    const bound = await vaultPost<{ psbt: string }>('/v1/bind', { psbt: draft.psbt, directSig, ...assertion })
+    const bound = await vaultPost<{ psbt: string }>('/v1/bind', { vaultId, psbt: draft.psbt, directSig, ...assertion })
     validateBoundPSBT({
       draftB64: draft.psbt,
       boundB64: bound.psbt,
@@ -142,6 +148,7 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
       challengeHex,
     )
     const out = await vaultPost<{ signedPsbt: string; replay?: boolean }>('/v1/authorize', {
+      vaultId,
       psbt: signed,
       ...assertion,
     })
@@ -157,7 +164,7 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
       expectedTxid: authorized.transactionId,
       replay: out.replay === true,
     })
-    const published = await vaultPost<{ txid: string }>('/v1/publish', { challenge: challengeHex })
+    const published = await vaultPost<{ txid: string }>('/v1/publish', { vaultId, challenge: challengeHex })
     if (published.txid !== authorized.transactionId) {
       throw new Error('published txid does not match the authorized transaction')
     }
