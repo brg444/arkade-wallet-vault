@@ -1,4 +1,5 @@
 import { useContext } from 'react'
+import Button from '../../components/Button'
 import Content from '../../components/Content'
 import FlexCol from '../../components/FlexCol'
 import Header from '../../components/Header'
@@ -13,7 +14,8 @@ import { VaultContext } from '../../providers/vault'
 import { Detail, KeyCard, PolicyTimeline } from './ui'
 
 export default function VaultKeys() {
-  const { liveNetwork, navigate, setup, status } = useContext(VaultContext)
+  const { busy, enablePasskeyLogin, hasLocalEnrollment, liveNetwork, navigate, setup, status } =
+    useContext(VaultContext)
   const network = status?.network || (liveNetwork ? 'mutinynet' : undefined)
   return (
     <>
@@ -28,9 +30,22 @@ export default function VaultKeys() {
             <KeyCard
               icon={<FingerprintIcon />}
               title='This phone'
-              role={status?.enrolled ? 'Passkey enrolled on this origin' : 'Preview — no passkey yet'}
+              role={
+                status?.passkeyLoginAvailable
+                  ? 'Passkey sign-in enabled for other devices'
+                  : status?.enrolled
+                    ? 'Passkey enrolled on this origin'
+                    : 'Preview — no passkey yet'
+              }
               status={status?.enrolled ? 'Healthy' : 'Preview'}
             />
+            {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
+              <Button
+                onClick={() => void enablePasskeyLogin()}
+                disabled={busy}
+                label={busy ? 'Enabling…' : 'Enable sign-in on other devices'}
+              />
+            ) : null}
             <KeyCard
               icon={<ShieldCheckOutlineIcon />}
               title='Hardware'

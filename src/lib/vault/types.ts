@@ -74,6 +74,9 @@ export interface VaultStatus {
   phoneDirectP256?: string
   tweakedVaultCosignerXOnly?: string
   tweakedArkadeCosignerXOnly?: string
+  enrollmentMode?: string
+  passkeyLoginAvailable?: boolean
+  savingsScript?: string
 }
 
 export interface WatchRecord {
