@@ -13,6 +13,8 @@ describe('same-origin authorizer gateway', () => {
     expect(publicAuthorizerPath('/api/health')).toBe('/health')
     expect(publicAuthorizerPath('/api/v1/status')).toBe('/v1/status')
     expect(publicAuthorizerPath('/api/v1/status?vault=x')).toBe('/v1/status?vault=x')
+    expect(publicAuthorizerPath('/api/v1/enroll/start')).toBe('/v1/enroll/start')
+    expect(publicAuthorizerPath('/api/v1/passkey/challenge')).toBe('/v1/passkey/challenge')
     expect(publicAuthorizerPath('/api/authorizer/v1/enroll/start')).toBe('/v1/enroll/start')
   })
 
