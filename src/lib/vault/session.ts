@@ -11,6 +11,7 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeysession'
+import { pinEnrolledStatus } from './pin'
 import { fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
@@ -160,7 +161,9 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
   }
 }
 
-export async function signInWithPasskey(vaultId?: string): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
+export async function signInWithPasskey(
+  vaultId?: string,
+): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
   let phoneRoutineSecret: Uint8Array | undefined
   try {
@@ -201,7 +204,8 @@ export async function signInWithPasskey(vaultId?: string): Promise<{ status: Vau
       phoneRoutineSecret,
     })
     assertRecoveryBindingMatchesStatus(verified, status)
-    return { status: await fetchVaultStatus(undefined, status.vaultId), enrollment: recordFromRecoveryBinding(verified) }
+    pinEnrolledStatus(status)
+    return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf, session?.scalar, phoneRoutineSecret)
   }

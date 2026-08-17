@@ -1,4 +1,5 @@
 import { vaultPost } from './api'
+import { loadAddressPin, requireStatusMatchesPin } from './pin'
 import { fetchVaultStatus } from './status'
 import { scriptHexFromAddress } from './bitcoin'
 import { createAuthorizeRetryState } from './ceremony/authorizeretry.js'
@@ -43,10 +44,20 @@ function requireRPID(status: VaultStatus): string {
   return rpId
 }
 
+function requirePinnedOperational(status: VaultStatus) {
+  const vaultId = String(status.vaultId || '').trim()
+  if (!vaultId) throw new Error('vault id required')
+  const pin = loadAddressPin(localStorage, vaultId)
+  if (!pin) throw new Error('deposit address is not pinned locally')
+  requireStatusMatchesPin(status, pin)
+  return pin
+}
+
 export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: string; challenge: string }> {
   const { enrollment: rec, status } = input
   const vaultId = String(status.vaultId || rec.vaultId || '').trim()
   if (!vaultId) throw new Error('vault id required')
+  const pin = requirePinnedOperational(status)
   const recipientScript = scriptHexFromAddress(input.destAddress, status.network)
   const intent = {
     prevTxHex: input.prevTxHex,
@@ -74,8 +85,8 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
     recipientScript: intent.recipientScript,
     recipientAmount: String(intent.recipientAmount),
     fee: String(intent.fee),
-    operationalScriptHex: status.operationalScript,
-    operationalAddress: status.operationalAddress,
+    operationalScriptHex: pin.operationalScript,
+    operationalAddress: pin.operationalAddress,
     network: status.network,
   })
   const rpId = requireRPID(status)
@@ -99,6 +110,7 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
   let phoneRoutineSecret: Uint8Array | undefined
   try {
     const live = await fetchVaultStatus(undefined, vaultId)
+    requireStatusMatchesPin(live, pin)
     assertPhoneRoutineBIP340Pub(rec.phoneRoutineBip340Pub, rec.phoneRoutineBip340Pub, live.phoneRoutineBip340Pub)
     assertDirectP256(rec.phoneDirectP256, rec.phoneDirectP256, live.phoneDirectP256)
     const derived = await deriveDirectP256(prf)
@@ -121,8 +133,8 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
       recipientAmount: String(intent.recipientAmount),
       fee: String(intent.fee),
       directSig,
-      operationalScriptHex: live.operationalScript,
-      operationalAddress: live.operationalAddress,
+      operationalScriptHex: pin.operationalScript,
+      operationalAddress: pin.operationalAddress,
       network: live.network,
     })
     const kek = await crypto.subtle.deriveKey(

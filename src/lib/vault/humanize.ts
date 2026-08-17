@@ -10,49 +10,69 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('authorizer status 5') ||
     msg.includes('econnrefused')
   ) {
-    return 'The vault service is not running. Start it, then try Set up with passkey again. You can still look around first.'
+    return 'Can’t reach the vault. Try again.'
   }
   if (msg.includes('authorizer status') || msg.includes('unreachable')) {
-    return 'The vault service is not responding. Check that it is running, then try again.'
+    return 'Vault isn’t responding. Try again.'
   }
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
-    return 'Open this page as http://localhost:3003 — 127.0.0.1 will not work with the passkey.'
+    return 'Open this page as http://localhost:3003.'
   }
   if (msg.includes('rp id') || msg.includes('origin does not match') || msg.includes('signing client')) {
-    return 'This page is on a different address than the vault expects. Open http://localhost:3003 and try again.'
+    return 'Wrong site. Open arkade-vault-demo.vercel.app.'
   }
   if (msg.includes('passkey sign-in must first be enabled') || msg.includes('has not been enabled')) {
-    return 'This phone’s passkey is not enough by itself. Open this same site on the device that first created the vault, tap Keys, then Enable sign-in on other devices.'
+    return 'Enable sign-in on the original device first.'
+  }
+  if (
+    msg.includes('passkey authentication failed') ||
+    msg.includes('does not belong') ||
+    msg.includes('does not match this vault') ||
+    msg.includes('does not have the passkey')
+  ) {
+    return 'Wrong passkey. Use the phone or computer that created this vault. On a new phone, scan the QR with that original device.'
   }
   if (msg.includes('prf')) {
-    return 'This device or browser cannot unlock the passkey secret this vault needs. Use Safari on iPhone, not an in-app browser.'
+    return 'Chrome on this computer verified the passkey but did not get the unlock secret. That is common over a QR. Open the vault on the iPhone that created it. Safari on a Mac with the same iCloud account may work; Chrome usually will not.'
   }
   if (msg.includes('not allowed') || msg.includes('abort') || msg.includes('timed out')) {
-    return 'Passkey was cancelled. When you are ready, try again and approve the prompt.'
+    return 'Passkey cancelled.'
+  }
+  if (msg.includes('already set up') || msg.includes('already enrolled')) {
+    return 'This vault already has a passkey. Sign in instead.'
   }
   if (msg.includes('not enrolled') || msg.includes('enroll first')) {
-    return 'Set up a passkey first.'
+    return 'Create a passkey first.'
   }
   if (msg.includes('template version') || msg.includes('policy version')) {
-    return 'This app does not match the vault service version. Update one of them and try again.'
+    return 'This app doesn’t match the vault. Update and try again.'
+  }
+  if (msg.includes('does not match the local pin') || msg.includes('not pinned locally')) {
+    return 'This vault’s deposit address no longer matches the one saved on this device. Do not send coins until that is fixed.'
+  }
+  if (msg.includes('api response too large')) {
+    return 'The vault sent too much data. Try again.'
+  }
+  if (msg.includes('owner and recovery signatures')) {
+    return 'This vault needs owner and recovery signatures before a new passkey can be created.'
   }
   if (msg.includes('invalid address') || msg.includes('not a bitcoin')) {
-    return 'Enter a bitcoin address. Lightning and Ark addresses are not used here.'
+    return 'Enter a bitcoin address.'
   }
   if (msg.includes('exceeds transaction cap') || msg.includes('recipient exceeds')) {
-    return 'That amount is above the per-payment limit.'
+    return 'Over the send limit.'
   }
   if (msg.includes('period allowance')) {
-    return 'That would go over today’s spending limit.'
+    return 'Over today’s limit.'
   }
   if (msg.includes('dust')) {
-    return 'That amount is too small to send.'
+    return 'Too small to send.'
   }
   if (msg.includes('33-byte') || msg.includes('compressed public key') || msg.includes('secp256k1')) {
-    return 'Paste a compressed public key from the device (it starts with 02 or 03). Never paste a seed.'
+    return 'Paste a public key. It starts with 02 or 03.'
   }
   if (msg.includes('different key') || msg.includes('must be different')) {
-    return 'Hardware and recovery have to be two different keys.'
+    return 'Hardware and recovery must be different keys.'
   }
   return raw.charAt(0).toUpperCase() + raw.slice(1)
 }

@@ -1,6 +1,7 @@
+import { readBounded } from './bounded'
 import { authorizerBase } from './status'
 
-const MAX_API_RESPONSE_BYTES = 1024 * 1024
+export { MAX_API_RESPONSE_BYTES, readBounded } from './bounded'
 
 export async function vaultGet<T>(path: string): Promise<T> {
   return vaultRequest<T>(path)
@@ -39,14 +40,6 @@ async function vaultRequest<T>(path: string, bodyJSON?: string, extraHeaders: Re
   } catch {
     throw new Error('vault service is not running')
   }
-}
-
-async function readBounded(res: Response): Promise<string> {
-  const declared = Number(res.headers.get('Content-Length'))
-  if (Number.isFinite(declared) && declared > MAX_API_RESPONSE_BYTES) {
-    throw new Error('API response too large')
-  }
-  return res.text()
 }
 
 export async function fetchDemoInfo(): Promise<{ demo?: boolean } | null> {
