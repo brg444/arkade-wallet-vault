@@ -37,8 +37,8 @@ export default function VaultConditions() {
           network={status?.network}
         />
         <Text color='neutral-600' tiny wrap>
-          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day · if you lose this device,{' '}
-          {waitLabel(opCsv, status?.network)}
+          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day · lose this device, hardware after{' '}
+          {waitLabel(savCsv, status?.network)} · lose hardware, this device after {waitLabel(opCsv, status?.network)}
         </Text>
       </OnboardLayout>
     )

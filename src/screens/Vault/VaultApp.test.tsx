@@ -58,7 +58,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByTestId('account-savings'))
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Savings/)
     expect(screen.queryByText(/0 \/ 50,000 available/)).toBeNull()
-    expect(screen.getByText(/This device cannot spend Savings alone/)).toBeTruthy()
+    expect(screen.getByText(/Hardware after the short delay/)).toBeTruthy()
 
     await user.click(screen.getByTestId('account-switcher'))
     await user.click(await screen.findByTestId('account-spend'))

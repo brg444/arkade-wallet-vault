@@ -65,17 +65,17 @@ export default function VaultKeys() {
             </Text>
             <KeyCard
               title='This device'
-              role={`Other device + Face ID, or hardware after 144 blocks (${waitSavings}).`}
+              role={`Other device + Face ID, or hardware after 6 blocks (${waitSavings}).`}
             />
-            <KeyCard title='Hardware' role={`This device after 6 blocks (${waitPhone}).`} />
+            <KeyCard title='Hardware' role={`This device after 144 blocks (${waitPhone}).`} />
             <KeyCard
               title='Savings'
-              role='This device cannot spend it alone. Device + hardware now, or one key after the delay.'
+              role='Device + hardware now. Hardware after the short delay, this device after the long delay.'
             />
             {network === 'mutinynet' ? (
               <Text color='neutral-600' tiny wrap>
-                On Mutinynet a stolen device with the passkey can wait 6 blocks and sweep Savings. Hardware has to move
-                first. Those delays are a demo clock, not months.
+                On Mutinynet hardware can move after 6 blocks. A stolen device with the passkey has to wait 144 blocks
+                to sweep Savings. Those delays are a demo clock, not months.
               </Text>
             ) : null}
             {!addressCovered && status?.enrolled ? (

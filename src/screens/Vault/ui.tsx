@@ -206,7 +206,7 @@ export function PolicyTimeline({
     },
     {
       title: 'Savings',
-      detail: `This device cannot spend it alone. Device + hardware now, or one key after the delay.`,
+      detail: `Device + hardware now. Hardware after the short delay, this device after the long delay.`,
     },
   ]
   return (
