@@ -1,5 +1,5 @@
 import { p256 } from '@noble/curves/nist.js'
-import { schnorr, secp256k1 } from '@noble/curves/secp256k1.js'
+import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { vaultPost } from './api'
 import { bytesToHex, hexToBytes } from './hex'
@@ -11,9 +11,10 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollment'
-import { pinEnrolledStatus } from './pin'
+import { hashDescriptor } from './descriptor'
+import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
-import type { VaultStatus } from './types'
+import type { VaultPublicDescriptor, VaultStatus } from './types'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
@@ -30,7 +31,7 @@ export interface EnrollmentSecrets {
   ciphertext: string
 }
 
-const POP_DOMAIN = new TextEncoder().encode('arkade-2fa-vault/enrollment-pop/v1')
+const POP_DOMAIN = new TextEncoder().encode('arkade-2fa-vault/enrollment-pop/v2')
 
 export function enrollmentPoPDigest(input: {
   vaultId: string
@@ -40,6 +41,7 @@ export function enrollmentPoPDigest(input: {
   phoneRoutineBip340Pub: string
   externalOwnerWalletXOnly: string
   recoveryKeyXOnly: string
+  descriptorHash: string
 }): Uint8Array {
   const out: number[] = [...POP_DOMAIN]
   for (const field of [
@@ -50,6 +52,7 @@ export function enrollmentPoPDigest(input: {
     hexToBytes(input.phoneRoutineBip340Pub),
     hexToBytes(input.externalOwnerWalletXOnly),
     hexToBytes(input.recoveryKeyXOnly),
+    hexToBytes(input.descriptorHash),
   ]) {
     out.push(0)
     out.push(...field)
@@ -98,22 +101,38 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
   throw new Error('authenticator did not return PRF')
 }
 
-export function requireTenantEnrollmentProofs(roles: { ownerSecret?: string; recoverySecret?: string }) {
-  if (!roles.ownerSecret || !roles.recoverySecret) {
-    throw new Error('tenant enrollment requires owner and recovery signatures')
+function requireProofHex(value: string | undefined, name: string): string {
+  const hex = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (!/^[0-9a-f]{128}$/.test(hex)) {
+    throw new Error(`${name} must be a 64-byte BIP340 signature`)
   }
+  return hex
+}
+
+export function requireTenantEnrollmentProofs(roles: { ownerProof?: string; recoveryProof?: string }) {
+  requireProofHex(roles.ownerProof, 'owner signature')
+  requireProofHex(roles.recoveryProof, 'recovery signature')
 }
 
 export async function enrollWithPasskey(
   enrollmentToken: string,
-  roles: { hardwarePub: string; recoveryPub: string; ownerSecret?: string; recoverySecret?: string },
+  roles: { hardwarePub: string; recoveryPub: string; ownerProof?: string; recoveryProof?: string },
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
+  await beginTenantEnrollment(enrollmentToken, roles)
+  return finishTenantEnrollment(enrollmentToken, roles)
+}
+
+export async function beginTenantEnrollment(
+  enrollmentToken: string,
+  roles: { hardwarePub: string; recoveryPub: string },
+): Promise<{ enrollment: EnrollmentSecrets; popDigest: string; descriptor: VaultPublicDescriptor }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
-  requireTenantEnrollmentProofs(roles)
   const publicStatus = await fetchPublicStatus()
   const hardwareXOnly = xOnly(roles.hardwarePub)
   const recoveryXOnly = xOnly(roles.recoveryPub)
@@ -190,6 +209,35 @@ export async function enrollWithPasskey(
     nonce: bytesToHex(nonce),
     ciphertext: bytesToHex(ciphertext),
   }
+  prf.fill(0)
+  phoneRoutineSecret.fill(0)
+  const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
+  const proposed = await vaultPost<{
+    vaultId: string
+    descriptorHash: string
+    descriptor: VaultPublicDescriptor
+  }>(
+    '/v1/enroll/propose',
+    {
+      handle: start.handle,
+      userHandle: start.userId,
+      clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+      authenticatorData: bytesToHex(authData),
+      attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+      credentialId: enrollment.credId,
+      webauthnP256: enrollment.webauthnP256,
+      phoneDirectP256: enrollment.phoneDirectP256,
+      phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
+      vaultId: start.vaultId,
+      externalOwnerWalletXOnly: hardwareXOnly,
+      recoveryKeyXOnly: recoveryXOnly,
+    },
+    { 'X-Vault-Enrollment-Token': token },
+  )
+  const localHash = hashDescriptor(proposed.descriptor)
+  if (localHash !== proposed.descriptorHash) {
+    throw new Error('proposed descriptor hash does not match this client')
+  }
   const pop = enrollmentPoPDigest({
     vaultId: start.vaultId,
     credentialId: enrollment.credId,
@@ -198,12 +246,8 @@ export async function enrollWithPasskey(
     phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
     externalOwnerWalletXOnly: hardwareXOnly,
     recoveryKeyXOnly: recoveryXOnly,
+    descriptorHash: proposed.descriptorHash,
   })
-  const ownerProof = bytesToHex(schnorr.sign(pop, hexToBytes(roles.ownerSecret)))
-  const recoveryProof = bytesToHex(schnorr.sign(pop, hexToBytes(roles.recoverySecret)))
-  prf.fill(0)
-  phoneRoutineSecret.fill(0)
-  const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
   const staged: StagedEnrollment = {
     ...enrollment,
     handle: start.handle,
@@ -213,10 +257,29 @@ export async function enrollWithPasskey(
     attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
     hardwareXOnly,
     recoveryXOnly,
-    ownerProof,
-    recoveryProof,
+    inviteToken: token,
+    descriptorHash: proposed.descriptorHash,
+    popDigest: bytesToHex(pop),
+    operationalAddress: proposed.descriptor.operational.address,
+    operationalScript: proposed.descriptor.operational.script,
+    savingsAddress: proposed.descriptor.savings.address,
   }
   saveStagedEnrollment(staged)
+  return { enrollment, popDigest: staged.popDigest || '', descriptor: proposed.descriptor }
+}
+
+export async function finishTenantEnrollment(
+  enrollmentToken: string,
+  roles: { ownerProof?: string; recoveryProof?: string },
+  storage: Storage = localStorage,
+): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
+  const token = String(enrollmentToken || '').trim()
+  if (!token) throw new Error('setup code required')
+  requireTenantEnrollmentProofs(roles)
+  const staged = loadStagedEnrollment(storage)
+  if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
+  const ownerProof = requireProofHex(roles.ownerProof, 'owner signature')
+  const recoveryProof = requireProofHex(roles.recoveryProof, 'recovery signature')
   await vaultPost(
     '/v1/enroll/finish',
     {
@@ -225,22 +288,31 @@ export async function enrollWithPasskey(
       clientDataJSON: staged.clientDataJSON,
       authenticatorData: staged.authenticatorData,
       attestationObject: staged.attestationObject,
-      credentialId: enrollment.credId,
-      webauthnP256: enrollment.webauthnP256,
-      phoneDirectP256: enrollment.phoneDirectP256,
-      phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
-      vaultId: start.vaultId,
-      externalOwnerWalletXOnly: hardwareXOnly,
-      recoveryKeyXOnly: recoveryXOnly,
+      credentialId: staged.credId,
+      webauthnP256: staged.webauthnP256,
+      phoneDirectP256: staged.phoneDirectP256,
+      phoneRoutineBip340Pub: staged.phoneRoutineBip340Pub,
+      vaultId: staged.vaultId,
+      externalOwnerWalletXOnly: staged.hardwareXOnly,
+      recoveryKeyXOnly: staged.recoveryXOnly,
+      descriptorHash: staged.descriptorHash,
       externalOwnerProof: ownerProof,
-      recoveryProof: recoveryProof,
+      recoveryProof,
     },
     { 'X-Vault-Enrollment-Token': token },
   )
-  const live = await fetchVaultStatus(undefined, start.vaultId)
-  pinEnrolledStatus(live)
-  promoteStagedEnrollment(enrollment)
-  return { status: live, enrollment }
+  const live = await fetchVaultStatus(undefined, staged.vaultId)
+  const pin = pinFromEnrolledStatus({
+    ...live,
+    operationalAddress: staged.operationalAddress || live.operationalAddress,
+    operationalScript: staged.operationalScript || live.operationalScript,
+    savingsAddress: staged.savingsAddress || live.savingsAddress,
+  })
+  saveAddressPin(pin, storage)
+  requireStatusMatchesPin(live, pin)
+  pinEnrolledStatus(live, storage)
+  promoteStagedEnrollment(staged, storage)
+  return { status: live, enrollment: staged }
 }
 
 export async function reconcileStagedEnrollment(
@@ -250,7 +322,18 @@ export async function reconcileStagedEnrollment(
   if (!staged?.vaultId) return null
   const live = await fetchVaultStatus(undefined, staged.vaultId)
   if (!live.enrolled) return null
-  pinEnrolledStatus(live, storage)
+  if (staged.operationalAddress && staged.operationalScript && staged.savingsAddress) {
+    const pin = pinFromEnrolledStatus({
+      ...live,
+      operationalAddress: staged.operationalAddress,
+      operationalScript: staged.operationalScript,
+      savingsAddress: staged.savingsAddress,
+    })
+    saveAddressPin(pin, storage)
+    requireStatusMatchesPin(live, pin)
+  } else {
+    pinEnrolledStatus(live, storage)
+  }
   promoteStagedEnrollment(staged, storage)
   return { status: live, enrollment: staged }
 }

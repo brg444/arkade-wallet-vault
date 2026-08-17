@@ -33,7 +33,7 @@ describe('humanizeVaultError', () => {
 
   it('explains a missing owner or recovery proof as a ceremony gap', () => {
     expect(humanizeVaultError(new Error('tenant enrollment requires owner and recovery signatures'))).toMatch(
-      /owner and recovery/i,
+      /hardware and recovery/i,
     )
   })
 

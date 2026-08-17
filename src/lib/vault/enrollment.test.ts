@@ -117,7 +117,7 @@ describe('namespaced enrollment store', () => {
     expect(loadEnrollment(storage, 'tenant-b')?.credId).toBe('bb')
   })
 
-  it('refuses tenant enrollment before start when proofs are missing', () => {
-    expect(() => requireTenantEnrollmentProofs({})).toThrow(/owner and recovery/)
+  it('refuses tenant enrollment when owner or recovery signatures are missing', () => {
+    expect(() => requireTenantEnrollmentProofs({})).toThrow(/signature/)
   })
 })
