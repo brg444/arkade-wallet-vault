@@ -2,6 +2,7 @@ import { useCallback, useContext, useRef, useState } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from '../../components/Content'
+import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
 import OnboardingLogo from '../../components/OnboardingLogo'
 import Padded from '../../components/Padded'
@@ -40,7 +41,7 @@ function Point({ icon, text }: { icon: JSX.Element; text: string }) {
 }
 
 export default function VaultWelcome() {
-  const { hasLocalEnrollment, navigate, status } = useContext(VaultContext)
+  const { busy, error, hasLocalEnrollment, navigate, signIn, status } = useContext(VaultContext)
   const canSignIn = Boolean(status?.enrolled && !hasLocalEnrollment)
   const prefersReduced = useReducedMotion()
   const [ready, setReady] = useState(prefersReduced)
@@ -94,6 +95,7 @@ export default function VaultWelcome() {
               <Text color='neutral-600' small wrap>
                 Mutinynet test bitcoin only. Do not send real bitcoin. Setup takes about two minutes.
               </Text>
+              <ErrorMessage error={Boolean(error)} text={error} />
             </div>
           </FlexCol>
         </Padded>
@@ -101,9 +103,14 @@ export default function VaultWelcome() {
       <ButtonsOnBottom>
         {canSignIn ? (
           <>
-            <Button onClick={() => navigate('signin')} label='Sign in with passkey' />
+            <Button
+              onClick={() => void signIn()}
+              disabled={busy}
+              loading={busy}
+              label={busy ? 'Waiting for your passkey…' : 'Sign in with passkey'}
+            />
             <Text color='neutral-600' tiny wrap>
-              This deployment already has a vault. Setup is only for a fresh authorizer.
+              This deployment already has a vault. The passkey prompt should open from this tap.
             </Text>
           </>
         ) : (

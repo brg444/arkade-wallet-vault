@@ -141,9 +141,11 @@ iframe {
   font-size: 0.875rem;
   font-weight: 400;
   letter-spacing: 0%;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0;
   text-transform: uppercase;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   transform: translateY(0);
   transition:
     transform 100ms cubic-bezier(0.165, 0.84, 0.44, 1),
@@ -234,6 +236,9 @@ button.reminder-button {
 
 .buttons-on-bottom {
   padding: 1rem;
+  padding-bottom: max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem));
+  position: relative;
+  z-index: 5;
 }
 
 @media (prefers-reduced-motion: reduce) {
