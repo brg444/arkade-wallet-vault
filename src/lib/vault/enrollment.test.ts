@@ -1,0 +1,57 @@
+import { describe, expect, it } from 'vitest'
+import { VAULT_ID } from './constants'
+import { ENROLL_STORE, clearEnrollment, enrollmentStoreKey, loadEnrollment, saveEnrollment } from './enrollment'
+
+function memoryStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: () => data.clear(),
+    getItem: (key: string) => data.get(key) ?? null,
+    key: (index: number) => Array.from(data.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      data.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      data.set(key, value)
+    },
+  }
+}
+
+const sample = {
+  credId: 'aa',
+  webauthnP256: '02' + 'bb'.repeat(32),
+  phoneDirectP256: '03' + 'cc'.repeat(32),
+  phoneRoutineBip340Pub: '02' + 'dd'.repeat(32),
+  nonce: 'ee'.repeat(12),
+  ciphertext: 'ff'.repeat(48),
+}
+
+describe('namespaced enrollment store', () => {
+  it('reads the unprefixed first-vault key', () => {
+    const storage = memoryStorage()
+    storage.setItem(ENROLL_STORE, JSON.stringify(sample))
+    expect(loadEnrollment(storage)?.credId).toBe('aa')
+    expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
+  })
+
+  it('does not let a second vault read the first vault secrets', () => {
+    const storage = memoryStorage()
+    saveEnrollment(sample, storage, VAULT_ID)
+    saveEnrollment({ ...sample, credId: 'bb' }, storage, 'tenant-b')
+    expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
+    expect(loadEnrollment(storage, 'tenant-b')?.credId).toBe('bb')
+    expect(storage.getItem(enrollmentStoreKey('tenant-b'))).toContain('bb')
+  })
+
+  it('clears only the requested vault', () => {
+    const storage = memoryStorage()
+    saveEnrollment(sample, storage, VAULT_ID)
+    saveEnrollment({ ...sample, credId: 'bb' }, storage, 'tenant-b')
+    clearEnrollment(storage, 'tenant-b')
+    expect(loadEnrollment(storage, 'tenant-b')).toBeNull()
+    expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
+  })
+})

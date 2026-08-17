@@ -1,12 +1,21 @@
-import { WATCH_STORE_KEY } from './constants'
+import { VAULT_ID, WATCH_STORE_KEY } from './constants'
 import { hashDescriptor, validateDescriptor } from './descriptor'
 import type { VaultPublicDescriptor, WatchRecord } from './types'
 
-export function loadWatchRecord(storage: Storage = localStorage): WatchRecord | null {
-  const raw = storage.getItem(WATCH_STORE_KEY)
-  if (!raw) return null
-  const rec = JSON.parse(raw) as WatchRecord
-  return requireWatchRecord(rec)
+export function watchStoreKey(vaultId = VAULT_ID): string {
+  return `${WATCH_STORE_KEY}:${vaultId || VAULT_ID}`
+}
+
+export function loadWatchRecord(storage: Storage = localStorage, vaultId = VAULT_ID): WatchRecord | null {
+  const id = vaultId || VAULT_ID
+  const namespaced = storage.getItem(watchStoreKey(id))
+  if (namespaced) return requireWatchRecord(JSON.parse(namespaced) as WatchRecord)
+  if (id === VAULT_ID) {
+    const raw = storage.getItem(WATCH_STORE_KEY)
+    if (!raw) return null
+    return requireWatchRecord(JSON.parse(raw) as WatchRecord)
+  }
+  return null
 }
 
 export function saveWatchRecord(
@@ -21,12 +30,14 @@ export function saveWatchRecord(
     importedAt: new Date().toISOString(),
     authorizerOrigin,
   }
-  storage.setItem(WATCH_STORE_KEY, JSON.stringify(rec))
+  storage.setItem(watchStoreKey(descriptor.vaultId || VAULT_ID), JSON.stringify(rec))
   return rec
 }
 
-export function clearWatchRecord(storage: Storage = localStorage) {
-  storage.removeItem(WATCH_STORE_KEY)
+export function clearWatchRecord(storage: Storage = localStorage, vaultId = VAULT_ID) {
+  const id = vaultId || VAULT_ID
+  storage.removeItem(watchStoreKey(id))
+  if (id === VAULT_ID) storage.removeItem(WATCH_STORE_KEY)
 }
 
 function requireWatchRecord(rec: WatchRecord): WatchRecord {

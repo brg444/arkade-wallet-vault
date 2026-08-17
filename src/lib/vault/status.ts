@@ -1,4 +1,4 @@
-import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
+import { POLICY_VERSION, TEMPLATE_VERSION } from './constants'
 import type { VaultStatus } from './types'
 
 export function authorizerBase(): string {
@@ -27,7 +27,7 @@ export function parseStatusJson(raw: string): VaultStatus {
 
 export function requireStatusIdentity(status: VaultStatus): VaultStatus {
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
-  if (status.vaultId !== VAULT_ID) throw new Error('unexpected vault id')
+  if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
   if (status.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   return status
