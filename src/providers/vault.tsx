@@ -1,9 +1,15 @@
 import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
-import { enrollWithPasskey, type EnrollmentSecrets } from '../lib/vault/enroll'
+import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/enroll'
 import { enablePasskeyLogin, signInWithPasskey } from '../lib/vault/session'
-import { clearEnrollment, loadEnrollment, saveEnrollment } from '../lib/vault/enrollment'
+import {
+  clearEnrollment,
+  loadEnrollment,
+  loadSelectedVaultId,
+  saveEnrollment,
+  saveSelectedVaultId,
+} from '../lib/vault/enrollment'
 import { confirmedSpendable, fetchAddressStats, fetchAddressUtxos, fetchTxHex } from '../lib/vault/esplora'
 import { sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
@@ -186,7 +192,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setScreen('home')
         }
       }
-      existing = loadEnrollment()
+      const selected = loadSelectedVaultId()
+      existing = selected ? loadEnrollment(localStorage, selected) : loadEnrollment()
+      if (existing?.vaultId) saveSelectedVaultId(existing.vaultId)
       if (existing) {
         setEnrollment(existing)
         setScreen('home')
@@ -196,13 +204,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoaded(true)
     }
-    const statusReq = existing?.vaultId
-      ? fetchVaultStatus(undefined, existing.vaultId)
-      : fetchVaultStatus()
-    statusReq
-      .then((live) => setStatus(live))
-      .catch(() => {})
-      .finally(() => setStatusKnown(true))
+    const selectedId = existing?.vaultId || loadSelectedVaultId()
+    const boot = async () => {
+      try {
+        const recovered = await reconcileStagedEnrollment()
+        if (recovered) {
+          setEnrollment(recovered.enrollment)
+          setStatus(recovered.status)
+          setScreen('home')
+          return
+        }
+        const live = selectedId
+          ? await fetchVaultStatus(undefined, selectedId)
+          : await fetchVaultStatus()
+        setStatus(live)
+      } catch {
+        // public status may be redacted; tenant status needs a selected id
+      } finally {
+        setStatusKnown(true)
+      }
+    }
+    void boot()
     fetchDemoInfo()
       .then((info) => setDemoAvailable(Boolean(info?.demo)))
       .catch(() => setDemoAvailable(false))
@@ -416,6 +438,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
+        if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
         setStatus(out.status)
         sealPlan()
         setPreview(false)
@@ -455,9 +478,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setBusy(true)
     setError('')
     try {
-      const out = await signInWithPasskey()
+      const selected = loadSelectedVaultId()
+      const out = selected ? await signInWithPasskey(selected) : await signInWithPasskey()
       setEnrollment(out.enrollment)
       saveEnrollment(out.enrollment)
+      if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
       setStatus(out.status)
       setPreview(false)
       await refreshBalance(out.status.operationalAddress)

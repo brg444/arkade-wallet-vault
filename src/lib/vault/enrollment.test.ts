@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { VAULT_ID } from './constants'
-import { ENROLL_STORE, clearEnrollment, enrollmentStoreKey, loadEnrollment, saveEnrollment } from './enrollment'
+import {
+  ENROLL_STORE,
+  clearEnrollment,
+  clearSelectedVaultId,
+  enrollmentStoreKey,
+  loadEnrollment,
+  loadSelectedVaultId,
+  loadStagedEnrollment,
+  promoteStagedEnrollment,
+  saveEnrollment,
+  saveSelectedVaultId,
+  saveStagedEnrollment,
+} from './enrollment'
+import { requireTenantEnrollmentProofs } from './enroll'
 
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
@@ -67,5 +80,44 @@ describe('namespaced enrollment store', () => {
     expect(() => loadEnrollment(storage, '')).toThrow(/vault id required/)
     expect(() => saveEnrollment(sample, storage, '')).toThrow(/vault id required/)
     expect(() => enrollmentStoreKey('')).toThrow(/vault id required/)
+  })
+
+  it('persists the selected vault id independently of the first-vault default', () => {
+    const storage = memoryStorage()
+    saveEnrollment({ ...sample, credId: 'bb', vaultId: 'tenant-b' }, storage, 'tenant-b')
+    saveSelectedVaultId('tenant-b', storage)
+    expect(loadSelectedVaultId(storage)).toBe('tenant-b')
+    expect(loadEnrollment(storage, loadSelectedVaultId(storage) || undefined)?.credId).toBe('bb')
+    clearSelectedVaultId(storage)
+    expect(loadSelectedVaultId(storage)).toBeNull()
+  })
+
+  it('stages enrollment before finish and promotes it after confirm', () => {
+    const storage = memoryStorage()
+    saveStagedEnrollment(
+      {
+        ...sample,
+        vaultId: 'tenant-b',
+        handle: 'aa',
+        userHandle: 'bb',
+        clientDataJSON: 'cc',
+        authenticatorData: 'dd',
+        attestationObject: 'ee',
+        hardwareXOnly: '11'.repeat(32),
+        recoveryXOnly: '22'.repeat(32),
+        ownerProof: '33'.repeat(64),
+        recoveryProof: '44'.repeat(64),
+      },
+      storage,
+    )
+    expect(loadStagedEnrollment(storage)?.vaultId).toBe('tenant-b')
+    expect(loadSelectedVaultId(storage)).toBe('tenant-b')
+    promoteStagedEnrollment({ ...sample, vaultId: 'tenant-b', credId: 'bb' }, storage)
+    expect(loadStagedEnrollment(storage)).toBeNull()
+    expect(loadEnrollment(storage, 'tenant-b')?.credId).toBe('bb')
+  })
+
+  it('refuses tenant enrollment before start when proofs are missing', () => {
+    expect(() => requireTenantEnrollmentProofs({})).toThrow(/owner and recovery/)
   })
 })
