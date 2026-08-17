@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
-import { parseStatusJson, requireStatusIdentity } from './status'
+import { parseStatusJson, requireStatusIdentity, vaultStatusPath } from './status'
 import type { VaultStatus } from './types'
 
 function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
@@ -40,5 +40,10 @@ describe('status identity binding', () => {
     const raw = JSON.stringify(sampleStatus({ vaultId: 'tenant-b' }))
     expect(parseStatusJson(raw, 'tenant-b').vaultId).toBe('tenant-b')
     expect(() => parseStatusJson(raw, VAULT_ID)).toThrow(/vault id/)
+  })
+
+  it('asks the authorizer for the selected vault id', () => {
+    expect(vaultStatusPath()).toBe(`/v1/status?vault=${encodeURIComponent(VAULT_ID)}`)
+    expect(vaultStatusPath('tenant-b')).toBe('/v1/status?vault=tenant-b')
   })
 })
