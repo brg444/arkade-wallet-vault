@@ -61,4 +61,11 @@ describe('namespaced enrollment store', () => {
     expect(() => loadEnrollment(storage, 'tenant-b')).toThrow(/vault id/)
     expect(() => saveEnrollment({ ...sample, vaultId: VAULT_ID }, storage, 'tenant-b')).toThrow(/vault id/)
   })
+
+  it('rejects an explicit empty vault id', () => {
+    const storage = memoryStorage()
+    expect(() => loadEnrollment(storage, '')).toThrow(/vault id required/)
+    expect(() => saveEnrollment(sample, storage, '')).toThrow(/vault id required/)
+    expect(() => enrollmentStoreKey('')).toThrow(/vault id required/)
+  })
 })

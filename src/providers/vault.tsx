@@ -15,6 +15,7 @@ import {
   clearSetupPlan,
   emptySetupPlan,
   loadSetupPlan,
+  isFixturePub,
   parseCompressedPub,
   planReady,
   sameRole,
@@ -22,6 +23,8 @@ import {
   type VaultSetupPlan,
 } from '../lib/vault/setup'
 import type { VaultPublicDescriptor, VaultStatus } from '../lib/vault/types'
+
+export type VaultAccount = 'spend' | 'savings'
 
 export type VaultScreen =
   | 'welcome'
@@ -38,6 +41,7 @@ export type VaultScreen =
   | 'success'
   | 'savings'
   | 'keys'
+  | 'settings'
   | 'signin'
 
 export interface VaultSpend {
@@ -48,6 +52,7 @@ export interface VaultSpend {
 
 interface VaultContextProps {
   acceptDesign: () => void
+  account: VaultAccount
   addTestCoins: () => Promise<void>
   amountSats: number
   applyHardware: (raw: string, demo?: boolean) => void
@@ -71,6 +76,7 @@ interface VaultContextProps {
   hasLocalEnrollment: boolean
   lastTxid: string
   liveNetwork: boolean
+  allowDemoKeys: boolean
   navigate: (screen: VaultScreen) => void
   networkLabel: string
   operationalAddress: string
@@ -78,8 +84,13 @@ interface VaultContextProps {
   refreshBalance: () => Promise<void>
   reset: () => void
   reviewSpend: () => void
+  openSendScan: () => void
+  scanOnSend: boolean
+  clearSendScan: () => void
   savingsAddress: string
+  savingsSats: number
   screen: VaultScreen
+  setAccount: (account: VaultAccount) => void
   setCondition: (
     patch: Partial<Pick<VaultSetupPlan, 'txCapSats' | 'dailyLimitSats' | 'operationalCsvBlocks' | 'savingsCsvBlocks'>>,
   ) => void
@@ -95,6 +106,7 @@ const LIVE_FEE = 1500
 
 export const VaultContext = createContext<VaultContextProps>({
   acceptDesign: () => {},
+  account: 'spend',
   addTestCoins: async () => {},
   amountSats: 0,
   applyHardware: () => {},
@@ -118,6 +130,7 @@ export const VaultContext = createContext<VaultContextProps>({
   hasLocalEnrollment: false,
   lastTxid: '',
   liveNetwork: false,
+  allowDemoKeys: false,
   navigate: () => {},
   networkLabel: 'Test network',
   operationalAddress: '',
@@ -125,8 +138,13 @@ export const VaultContext = createContext<VaultContextProps>({
   refreshBalance: async () => {},
   reset: () => {},
   reviewSpend: () => {},
+  openSendScan: () => {},
+  scanOnSend: false,
+  clearSendScan: () => {},
   savingsAddress: '',
+  savingsSats: 0,
   screen: 'welcome',
+  setAccount: () => {},
   setCondition: () => {},
   setSpendDraft: () => {},
   setup: emptySetupPlan(),
@@ -151,9 +169,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
   const [chainBalance, setChainBalance] = useState(0)
+  const [savingsBalance, setSavingsBalance] = useState(0)
   const [loaded, setLoaded] = useState(false)
+  const [account, setAccount] = useState<VaultAccount>('spend')
+  const [scanOnSend, setScanOnSend] = useState(false)
+  const [statusKnown, setStatusKnown] = useState(false)
 
   useEffect(() => {
+    let existing: EnrollmentSecrets | null = null
     try {
       const plan = loadSetupPlan()
       if (plan) {
@@ -163,7 +186,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setScreen('home')
         }
       }
-      const existing = loadEnrollment()
+      existing = loadEnrollment()
       if (existing) {
         setEnrollment(existing)
         setScreen('home')
@@ -173,9 +196,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoaded(true)
     }
-    fetchVaultStatus()
+    const statusReq = existing?.vaultId
+      ? fetchVaultStatus(undefined, existing.vaultId)
+      : fetchVaultStatus()
+    statusReq
       .then((live) => setStatus(live))
       .catch(() => {})
+      .finally(() => setStatusKnown(true))
     fetchDemoInfo()
       .then((info) => setDemoAvailable(Boolean(info?.demo)))
       .catch(() => setDemoAvailable(false))
@@ -225,15 +252,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [descriptor, sample, setup])
 
-  const operationalAddress = status?.operationalAddress || plannedDescriptor.operational.address
-  const savingsAddress = status?.savingsAddress || plannedDescriptor.savings.address
+  const operationalAddress = status?.operationalAddress || ''
+  const savingsAddress = status?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
+  const allowDemoKeys = statusKnown && !liveNetwork
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled
     ? (status.periodRemaining ?? dailyLimit)
     : Math.max(0, dailyLimit - previewSpent)
   const amountSats = status?.enrolled ? chainBalance : demoCredit
-  const enrolled = Boolean(status?.enrolled || enrollment || setup.complete)
+  const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
 
   const acceptDesign = useCallback(() => {
@@ -247,6 +275,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('')
       try {
         const hardwarePub = parseCompressedPub(raw, 'hardware key')
+        if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(hardwarePub)) {
+          throw new Error('Demo keys cannot be used on this vault')
+        }
         if (status?.externalOwnerWalletPub && hardwarePub !== status.externalOwnerWalletPub) {
           throw new Error('This Mutinynet vault requires the hardware key already configured on the service')
         }
@@ -259,7 +290,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError(humanizeVaultError(err))
       }
     },
-    [persist, setup, status?.externalOwnerWalletPub],
+    [liveNetwork, persist, setup, status?.externalOwnerWalletPub, status?.network],
   )
 
   const applyRecovery = useCallback(
@@ -267,6 +298,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('')
       try {
         const recoveryPub = parseCompressedPub(raw, 'recovery key')
+        if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(recoveryPub)) {
+          throw new Error('Demo keys cannot be used on this vault')
+        }
         if (status?.recoveryKeyPub && recoveryPub !== status.recoveryKeyPub) {
           throw new Error('This Mutinynet vault requires the recovery key already configured on the service')
         }
@@ -279,7 +313,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError(humanizeVaultError(err))
       }
     },
-    [persist, setup, status?.recoveryKeyPub],
+    [liveNetwork, persist, setup, status?.recoveryKeyPub, status?.network],
   )
 
   const setCondition = useCallback(
@@ -296,7 +330,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const confirmConditions = useCallback(() => {
     setError('')
     if (setup.txCapSats > setup.dailyLimitSats) {
-      setError('The daily limit must be at least as large as one payment.')
+      setError('Daily limit must be at least one payment.')
       return
     }
     setScreen('plan')
@@ -305,7 +339,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const finishPlan = useCallback(() => {
     setError('')
     if (!planReady(setup)) {
-      setError('Finish hardware, recovery, and rules before continuing.')
+      setError('Finish setup first.')
       return
     }
     setScreen('passkey')
@@ -322,7 +356,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const enterWithoutPasskey = useCallback(() => {
     setError('')
     if (!planReady(setup)) {
-      setError('Finish hardware, recovery, and rules before continuing.')
+      setError('Finish setup first.')
       return
     }
     sealPlan()
@@ -331,42 +365,55 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const refreshBalance = useCallback(
     async (address = status?.operationalAddress) => {
-      if (!address) {
+      const savings = status?.savingsAddress
+      if (!address && !savings) {
         setChainBalance(0)
+        setSavingsBalance(0)
         return
       }
       try {
-        const stats = await fetchAddressStats(address)
-        setChainBalance(Math.max(0, stats.funded - stats.spent))
+        if (address) {
+          const stats = await fetchAddressStats(address)
+          setChainBalance(Math.max(0, stats.funded - stats.spent))
+        }
+        if (savings) {
+          const stats = await fetchAddressStats(savings)
+          setSavingsBalance(Math.max(0, stats.funded - stats.spent))
+        } else {
+          setSavingsBalance(0)
+        }
       } catch (err) {
         setError(humanizeVaultError(err))
       }
     },
-    [status?.operationalAddress],
+    [status?.operationalAddress, status?.savingsAddress],
   )
 
   const enroll = useCallback(
     async (token = '') => {
       if (!planReady(setup)) {
-        setError('Finish hardware, recovery, and rules before creating a passkey.')
+        setError('Finish setup first.')
         return
       }
       if (status?.externalOwnerWalletPub && setup.hardwarePub !== status.externalOwnerWalletPub) {
-        setError('This Mutinynet vault requires the hardware key already configured on the service')
+        setError('This vault expects a different hardware key.')
         return
       }
       if (status?.recoveryKeyPub && setup.recoveryPub !== status.recoveryKeyPub) {
-        setError('This Mutinynet vault requires the recovery key already configured on the service')
+        setError('This vault expects a different recovery key.')
         return
       }
       if (status?.network === 'mutinynet' && status.enrollmentMode === 'token' && token.trim().length < 32) {
-        setError('Paste the one-time enrollment token from the operator.')
+        setError('Paste your setup code.')
         return
       }
       setBusy(true)
       setError('')
       try {
-        const out = await enrollWithPasskey(token)
+        const out = await enrollWithPasskey(token, {
+          hardwarePub: setup.hardwarePub,
+          recoveryPub: setup.recoveryPub,
+        })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
         setStatus(out.status)
@@ -374,8 +421,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setPreview(false)
         try {
           setStatus(await enablePasskeyLogin(out.enrollment))
-        } catch (enableErr) {
-          setError(humanizeVaultError(enableErr))
+        } catch {
+          setError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
         }
         await refreshBalance(out.status.operationalAddress)
         setScreen('home')
@@ -390,7 +437,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const enableOtherDevices = useCallback(async () => {
     if (!enrollment) {
-      setError('Complete setup on this device first')
+      setError('Finish setup first.')
       return
     }
     setBusy(true)
@@ -428,7 +475,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     try {
       if (demoAvailable && status?.enrolled) {
         await vaultPost('/v1/demo/fund', { amount: setup.dailyLimitSats })
-        setStatus(await fetchVaultStatus())
+        setStatus(enrollment?.vaultId ? await fetchVaultStatus(undefined, enrollment.vaultId) : await fetchVaultStatus())
       } else {
         setDemoCredit(setup.dailyLimitSats)
         setPreviewSpent(0)
@@ -448,33 +495,43 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const reviewSpend = useCallback(() => {
     setError('')
-    if (!isVaultBitcoinAddress(spend.address)) {
-      setError('Enter a bitcoin address. Lightning and Ark addresses are not used here.')
+    if (!isVaultBitcoinAddress(spend.address, status?.network || (preview ? 'regtest' : 'mutinynet'))) {
+      setError('Enter a bitcoin address.')
       return
     }
     if (!Number.isInteger(spend.amount) || spend.amount < DUST_SATS) {
-      setError('Enter an amount of at least 330 sats.')
+      setError('At least 330 sats.')
       return
     }
     if (spend.amount > setup.txCapSats) {
-      setError(`That amount is above the per-payment limit of ${setup.txCapSats.toLocaleString()} sats.`)
+      setError(`Over the send limit of ${setup.txCapSats.toLocaleString()} sats.`)
       return
     }
     if (spend.amount + spend.fee > dailyRemaining) {
-      setError('That would go over today’s spending limit.')
+      setError('Over today’s limit.')
       return
     }
-    if (spend.amount + spend.fee > amountSats) {
-      setError('You do not have enough in spending for that payment.')
+    if (spend.amount + spend.fee + DUST_SATS > amountSats) {
+      setError('Leave 330 sats of change.')
       return
     }
     setScreen('review')
-  }, [amountSats, dailyRemaining, setup.txCapSats, spend])
+  }, [amountSats, dailyRemaining, preview, setup.txCapSats, spend, status?.network])
 
   const approvePreviewSend = useCallback(async () => {
     setBusy(true)
     setError('')
     try {
+      if (status?.enrolled) {
+        if (!enrollment) {
+          setError('Sign in with the passkey that created this vault.')
+          return
+        }
+        if (!status.operationalAddress) {
+          setError('No spending address yet.')
+          return
+        }
+      }
       if (status?.enrolled && enrollment && status.operationalAddress) {
         const need = spend.amount + spend.fee
         const utxos = await fetchAddressUtxos(status.operationalAddress)
@@ -494,8 +551,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setLastSend(spend)
         setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
         await refreshBalance()
-        setStatus(await fetchVaultStatus())
+        setStatus(enrollment?.vaultId ? await fetchVaultStatus(undefined, enrollment.vaultId) : await fetchVaultStatus())
         setScreen('success')
+        return
+      }
+      if (status?.enrolled || !preview) {
+        setError('Vault isn’t ready to send.')
         return
       }
       setLastSend(spend)
@@ -527,12 +588,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setLastSend(null)
     setLastTxid('')
     setChainBalance(0)
+    setSavingsBalance(0)
+    setAccount('spend')
+    setScanOnSend(false)
     setScreen('welcome')
   }, [])
 
   const value = useMemo<VaultContextProps>(
     () => ({
       acceptDesign,
+      account,
       addTestCoins,
       amountSats,
       applyHardware,
@@ -555,6 +620,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       hasLocalEnrollment: Boolean(enrollment),
       lastTxid,
       liveNetwork,
+      allowDemoKeys,
       navigate: (next) => {
         setError('')
         setScreen(next)
@@ -565,8 +631,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       refreshBalance,
       reset,
       reviewSpend,
+      openSendScan: () => {
+        setAccount('spend')
+        setScanOnSend(true)
+        setError('')
+        setScreen('send')
+      },
+      scanOnSend,
+      clearSendScan: () => setScanOnSend(false),
       savingsAddress,
+      savingsSats: savingsBalance,
       screen: loaded ? screen : 'welcome',
+      setAccount,
       setCondition,
       setSpendDraft,
       setup,
@@ -577,6 +653,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }),
     [
       acceptDesign,
+      account,
       addTestCoins,
       amountSats,
       applyHardware,
@@ -597,6 +674,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       finishPlan,
       lastTxid,
       liveNetwork,
+      allowDemoKeys,
       lastSend,
       loaded,
       networkLabel,
@@ -605,7 +683,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       refreshBalance,
       reset,
       reviewSpend,
+      scanOnSend,
       savingsAddress,
+      savingsBalance,
       screen,
       setCondition,
       setSpendDraft,

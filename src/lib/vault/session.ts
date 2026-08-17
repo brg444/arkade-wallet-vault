@@ -1,5 +1,5 @@
 import { schnorr } from '@noble/curves/secp256k1.js'
-import { vaultGet, vaultPost } from './api'
+import { vaultPost } from './api'
 import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth.js'
 import type { EnrollmentSecrets } from './enroll'
 import { bytesToHex, hexToBytes } from './hex'
@@ -11,17 +11,12 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeysession'
-import { fetchVaultStatus, requireStatusIdentity } from './status'
+import { fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
+import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
-
-function prfFrom(cred: PublicKeyCredential): Uint8Array | null {
-  const ext = cred.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }
-  const first = ext?.prf?.results?.first
-  return first ? new Uint8Array(first) : null
-}
 
 function requireRPID(status: VaultStatus): string {
   const rpId = String(status.rpId || '').toLowerCase()
@@ -49,21 +44,39 @@ async function beginPasskeySession(
   status: VaultStatus,
   allowCredentialId?: string,
 ) {
-  const issued = await vaultPost<{ challengeId: string; challenge: string }>('/v1/passkey/challenge', { purpose })
+  const issued = await vaultPost<{ challengeId: string; challenge: string; allowCredentialId?: string }>(
+    '/v1/passkey/challenge',
+    { purpose, vaultId: status.vaultId },
+  )
   const challenge = hexToBytes(issued.challenge)
   if (challenge.length !== 32) throw new Error('authorizer returned a malformed passkey challenge')
-  const publicKey: PublicKeyCredentialRequestOptions = {
-    challenge: challenge as BufferSource,
-    rpId: requireRPID(status),
-    userVerification: 'required',
-    extensions: { prf: { eval: { first: PRF_SALT } } } as AuthenticationExtensionsClientInputs,
+  const expectedCred = allowCredentialId || issued.allowCredentialId
+  if (allowCredentialId && issued.allowCredentialId && allowCredentialId !== issued.allowCredentialId) {
+    throw new Error('passkey credential does not match this vault')
   }
-  if (allowCredentialId) {
-    publicKey.allowCredentials = [{ type: 'public-key', id: hexToBytes(allowCredentialId) as BufferSource }]
+  const mode = purpose === 'install-envelope' || isCoarsePhone() ? 'local' : 'hybrid'
+  const publicKey = passkeyGetOptions(
+    {
+      challenge: challenge as BufferSource,
+      rpId: requireRPID(status),
+      userVerification: 'required',
+      extensions: prfExtension(PRF_SALT, expectedCred ? hexToBytes(expectedCred) : undefined),
+      allowCredentials: expectedCred ? [allowPasskey(hexToBytes(expectedCred), mode)] : undefined,
+    },
+    mode,
+  )
+  let got: PublicKeyCredential | null
+  try {
+    got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : ''
+    if (mode === 'hybrid' && expectedCred && (name === 'NotAllowedError' || name === 'InvalidStateError')) {
+      throw new Error('this browser does not have the passkey that created this vault')
+    }
+    throw err
   }
-  const got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
   if (!got) throw new Error('The operation was aborted.')
-  if (allowCredentialId && bytesToHex(new Uint8Array(got.rawId)) !== allowCredentialId) {
+  if (expectedCred && bytesToHex(new Uint8Array(got.rawId)) !== expectedCred) {
     throw new Error('passkey credential does not match this vault')
   }
   const prf = prfFrom(got)
@@ -94,7 +107,9 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
   let phoneRoutineSecret: Uint8Array | undefined
   try {
-    const status = requireStatusIdentity(await vaultGet<VaultStatus>('/v1/status'))
+    const vaultId = rec.vaultId
+    if (!vaultId) throw new Error('vault id required')
+    const status = await fetchVaultStatus(undefined, vaultId)
     if (!status.enrolled) throw new Error('vault is not enrolled')
     session = await beginPasskeySession('install-envelope', status, rec.credId)
     const kek = await deriveKEK(session.prf)
@@ -102,6 +117,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
       await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
     )
     const bindingResponse = await vaultPost<{ binding: string; bindingDigest: string }>('/v1/passkey/binding', {
+      vaultId: status.vaultId,
       envelopeNonce: rec.nonce,
       envelopeCiphertext: rec.ciphertext,
     })
@@ -121,14 +137,20 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
       phoneRoutineSecret,
     })
     await vaultPost('/v1/passkey/install', {
-      ...session.assertion,
+      vaultId,
+      challengeId: session.assertion.challengeId,
+      credentialId: session.assertion.credentialId,
+      clientDataJSON: session.assertion.clientDataJSON,
+      authenticatorData: session.assertion.authenticatorData,
+      signature: session.assertion.signature,
+      directProof: session.assertion.directProof,
       envelopeNonce: rec.nonce,
       envelopeCiphertext: rec.ciphertext,
       binding: bindingResponse.binding,
       bindingDirectSig: bytesToHex(bindingDirectSig),
       bindingPhoneSig: bytesToHex(bindingPhoneSig),
     })
-    const live = requireStatusIdentity(await fetchVaultStatus())
+    const live = await fetchVaultStatus(undefined, vaultId)
     if (!live.passkeyLoginAvailable) {
       throw new Error('authorizer did not persist passkey sign-in recovery data')
     }
@@ -138,11 +160,13 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
   }
 }
 
-export async function signInWithPasskey(): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
+export async function signInWithPasskey(vaultId?: string): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
   let phoneRoutineSecret: Uint8Array | undefined
   try {
-    const status = requireStatusIdentity(await vaultGet<VaultStatus>('/v1/status'))
+    const id = arguments.length > 0 ? String(vaultId ?? '').trim() : undefined
+    if (arguments.length > 0 && !id) throw new Error('vault id required')
+    const status = id ? await fetchVaultStatus(undefined, id) : await fetchVaultStatus()
     if (!status.enrolled) throw new Error('this deployment has not been set up yet')
     if (!status.passkeyLoginAvailable) {
       throw new Error('passkey sign-in must first be enabled on the original enrolled device')
@@ -155,7 +179,7 @@ export async function signInWithPasskey(): Promise<{ status: VaultStatus; enroll
       envelopeCiphertext: string
       bindingDirectSig: string
       bindingPhoneSig: string
-    }>('/v1/passkey/recover', session.assertion)
+    }>('/v1/passkey/recover', { vaultId: status.vaultId, ...session.assertion })
     const parsed = parseRecoveryBinding(recovered.binding)
     if (bytesToHex(session.credentialId) !== parsed.credentialId) {
       throw new Error('selected passkey does not belong to this vault')
@@ -177,7 +201,7 @@ export async function signInWithPasskey(): Promise<{ status: VaultStatus; enroll
       phoneRoutineSecret,
     })
     assertRecoveryBindingMatchesStatus(verified, status)
-    return { status: requireStatusIdentity(await fetchVaultStatus()), enrollment: recordFromRecoveryBinding(verified) }
+    return { status: await fetchVaultStatus(undefined, status.vaultId), enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf, session?.scalar, phoneRoutineSecret)
   }

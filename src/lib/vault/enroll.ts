@@ -1,9 +1,12 @@
 import { p256 } from '@noble/curves/nist.js'
-import { secp256k1 } from '@noble/curves/secp256k1.js'
-import { vaultGet, vaultPost } from './api'
+import { schnorr, secp256k1 } from '@noble/curves/secp256k1.js'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { vaultPost } from './api'
 import { bytesToHex, hexToBytes } from './hex'
-import { requireStatusIdentity } from './status'
+import { xOnly } from './setup'
+import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
+import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -19,7 +22,34 @@ export interface EnrollmentSecrets {
   ciphertext: string
 }
 
-function requireRPID(status: VaultStatus): string {
+const POP_DOMAIN = new TextEncoder().encode('arkade-2fa-vault/enrollment-pop/v1')
+
+export function enrollmentPoPDigest(input: {
+  vaultId: string
+  credentialId: string
+  webauthnP256: string
+  phoneDirectP256: string
+  phoneRoutineBip340Pub: string
+  externalOwnerWalletXOnly: string
+  recoveryKeyXOnly: string
+}): Uint8Array {
+  const out: number[] = [...POP_DOMAIN]
+  for (const field of [
+    new TextEncoder().encode(input.vaultId),
+    hexToBytes(input.credentialId),
+    hexToBytes(input.webauthnP256),
+    hexToBytes(input.phoneDirectP256),
+    hexToBytes(input.phoneRoutineBip340Pub),
+    hexToBytes(input.externalOwnerWalletXOnly),
+    hexToBytes(input.recoveryKeyXOnly),
+  ]) {
+    out.push(0)
+    out.push(...field)
+  }
+  return sha256(new Uint8Array(out))
+}
+
+function requireRPID(status: { rpId?: string; clientOrigin?: string }): string {
   const rpId = String(status.rpId || '').toLowerCase()
   if (!rpId || rpId !== location.hostname.toLowerCase()) {
     throw new Error('deployment RP ID does not match this signing client host')
@@ -28,12 +58,6 @@ function requireRPID(status: VaultStatus): string {
     throw new Error('deployment origin does not match this signing client origin')
   }
   return rpId
-}
-
-function prfFrom(cred: PublicKeyCredential): Uint8Array | null {
-  const ext = cred.getClientExtensionResults() as { prf?: { results?: { first?: ArrayBuffer } } }
-  const first = ext?.prf?.results?.first
-  return first ? new Uint8Array(first) : null
 }
 
 async function compressedES256(response: AuthenticatorAttestationResponse): Promise<Uint8Array> {
@@ -67,40 +91,63 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
 }
 
 export async function enrollWithPasskey(
-  enrollmentToken = '',
+  enrollmentToken: string,
+  roles: { hardwarePub: string; recoveryPub: string; ownerSecret?: string; recoverySecret?: string },
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
-  const status = requireStatusIdentity(await vaultGet<VaultStatus>('/v1/status'))
-  const rpId = requireRPID(status)
+  const token = String(enrollmentToken || '').trim()
+  if (!token) throw new Error('setup code required')
+  const publicStatus = await fetchPublicStatus()
+  const hardwareXOnly = xOnly(roles.hardwarePub)
+  const recoveryXOnly = xOnly(roles.recoveryPub)
+  if (hardwareXOnly === recoveryXOnly) {
+    throw new Error('Hardware and recovery must be different keys')
+  }
+  const rpId = requireRPID(publicStatus)
+  const start = await vaultPost<{
+    handle: string
+    vaultId: string
+    challenge: string
+    rpId: string
+    userId: string
+    userName: string
+  }>('/v1/enroll/start', {}, { 'X-Vault-Enrollment-Token': token })
+  if (!start.vaultId || !start.challenge || !start.handle || !start.userId) {
+    throw new Error('authorizer did not assign a vault')
+  }
   const cred = (await navigator.credentials.create({
-    publicKey: {
-      rp: { name: 'Spending vault', id: rpId },
-      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'vault', displayName: 'Spending vault' },
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
+    publicKey: passkeyCreateOptions({
+      rp: { name: 'Spending vault', id: start.rpId || rpId },
+      user: { id: hexToBytes(start.userId) as BufferSource, name: start.userName || 'vault', displayName: 'Spending vault' },
+      challenge: hexToBytes(start.challenge) as BufferSource,
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
-      extensions: { prf: { eval: { first: PRF_SALT } } },
-    },
+      extensions: prfExtension(PRF_SALT),
+    }),
   })) as PublicKeyCredential | null
   if (!cred) throw new Error('The operation was aborted.')
   let prf = prfFrom(cred)
   if (!prf) {
     const get = (await navigator.credentials.get({
-      publicKey: {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rpId,
-        allowCredentials: [{ type: 'public-key', id: cred.rawId }],
-        userVerification: 'required',
-        extensions: { prf: { eval: { first: PRF_SALT } } },
-      },
+      publicKey: passkeyGetOptions(
+        {
+          challenge: hexToBytes(start.challenge) as BufferSource,
+          rpId: start.rpId || rpId,
+          allowCredentials: [allowPasskey(cred.rawId, true)],
+          userVerification: 'required',
+          extensions: prfExtension(PRF_SALT, new Uint8Array(cred.rawId)),
+        },
+        true,
+      ),
     })) as PublicKeyCredential | null
     prf = get ? prfFrom(get) : null
   }
   if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
 
-  const webauthnP256 = await compressedES256(cred.response as AuthenticatorAttestationResponse)
+  const att = cred.response as AuthenticatorAttestationResponse
+  const webauthnP256 = await compressedES256(att)
   const direct = await deriveDirectP256(prf)
   const phoneRoutineSecret = crypto.getRandomValues(new Uint8Array(32))
   const phoneRoutineBip340Pub = secp256k1.getPublicKey(phoneRoutineSecret, true)
@@ -116,6 +163,7 @@ export async function enrollWithPasskey(
     await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneRoutineSecret),
   )
   const enrollment: EnrollmentSecrets = {
+    vaultId: start.vaultId,
     credId: bytesToHex(new Uint8Array(cred.rawId)),
     webauthnP256: bytesToHex(webauthnP256),
     phoneDirectP256: bytesToHex(direct.pub),
@@ -123,19 +171,46 @@ export async function enrollWithPasskey(
     nonce: bytesToHex(nonce),
     ciphertext: bytesToHex(ciphertext),
   }
+  const pop = enrollmentPoPDigest({
+    vaultId: start.vaultId,
+    credentialId: enrollment.credId,
+    webauthnP256: enrollment.webauthnP256,
+    phoneDirectP256: enrollment.phoneDirectP256,
+    phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
+    externalOwnerWalletXOnly: hardwareXOnly,
+    recoveryKeyXOnly: recoveryXOnly,
+  })
+  if (!roles.ownerSecret || !roles.recoverySecret) {
+    prf.fill(0)
+    phoneRoutineSecret.fill(0)
+    throw new Error('tenant enrollment requires owner and recovery signatures')
+  }
+  const ownerProof = bytesToHex(schnorr.sign(pop, hexToBytes(roles.ownerSecret)))
+  const recoveryProof = bytesToHex(schnorr.sign(pop, hexToBytes(roles.recoverySecret)))
   prf.fill(0)
   phoneRoutineSecret.fill(0)
+  const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
   await vaultPost(
-    '/v1/register',
+    '/v1/enroll/finish',
     {
+      handle: start.handle,
+      userHandle: start.userId,
+      clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+      authenticatorData: bytesToHex(authData),
+      attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
       credentialId: enrollment.credId,
       webauthnP256: enrollment.webauthnP256,
       phoneDirectP256: enrollment.phoneDirectP256,
       phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
+      vaultId: start.vaultId,
+      externalOwnerWalletXOnly: hardwareXOnly,
+      recoveryKeyXOnly: recoveryXOnly,
+      externalOwnerProof: ownerProof,
+      recoveryProof: recoveryProof,
     },
-    enrollmentToken ? { 'X-Vault-Enrollment-Token': enrollmentToken } : {},
+    { 'X-Vault-Enrollment-Token': token },
   )
-  const live = requireStatusIdentity(await vaultGet<VaultStatus>('/v1/status'))
+  const live = await fetchVaultStatus(undefined, start.vaultId)
   return { status: live, enrollment }
 }
 
