@@ -200,7 +200,7 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   const upstream = await fetch(origin + pathAndQuery, {
     method: req.method,
     headers,
-    body,
+    body: body ? new Uint8Array(body) : undefined,
     signal: AbortSignal.timeout(GATEWAY_UPSTREAM_TIMEOUT_MS),
   })
   let payload: Buffer
