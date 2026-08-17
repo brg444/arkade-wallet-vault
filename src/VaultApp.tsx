@@ -13,6 +13,7 @@ import VaultConditions from './screens/Vault/onboard/Conditions'
 import VaultDesign from './screens/Vault/onboard/Design'
 import VaultHardware from './screens/Vault/onboard/Hardware'
 import VaultPasskey from './screens/Vault/onboard/Passkey'
+import VaultProofs from './screens/Vault/onboard/Proofs'
 import VaultPlan from './screens/Vault/onboard/Plan'
 import VaultRecovery from './screens/Vault/onboard/Recovery'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
@@ -30,6 +31,7 @@ export default function VaultApp() {
     conditions: <VaultConditions />,
     plan: <VaultPlan />,
     passkey: <VaultPasskey />,
+    proofs: <VaultProofs />,
     home: <VaultHome />,
     receive: <VaultReceive />,
     send: <VaultSend />,
