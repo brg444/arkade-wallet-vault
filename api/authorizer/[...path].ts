@@ -206,12 +206,18 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 413, 'API request too large')
     return
   }
-  const upstream = await fetch(origin + pathAndQuery, {
-    method: req.method,
-    headers,
-    body: body ? new Uint8Array(body) : undefined,
-    signal: AbortSignal.timeout(GATEWAY_UPSTREAM_TIMEOUT_MS),
-  })
+  let upstream: Response
+  try {
+    upstream = await fetch(origin + pathAndQuery, {
+      method: req.method,
+      headers,
+      body: body ? new Uint8Array(body) : undefined,
+      signal: AbortSignal.timeout(GATEWAY_UPSTREAM_TIMEOUT_MS),
+    })
+  } catch {
+    jsonError(res, 502, 'vault service is not running')
+    return
+  }
   let payload: Buffer
   try {
     payload = await readBoundedUpstream(upstream)
