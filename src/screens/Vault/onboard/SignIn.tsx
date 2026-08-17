@@ -2,12 +2,14 @@ import { useContext } from 'react'
 import Button from '../../../components/Button'
 import Text from '../../../components/Text'
 import FingerprintIcon from '../../../icons/Fingerprint'
+import { isCoarsePhone } from '../../../lib/vault/webauthn'
 import { VaultContext } from '../../../providers/vault'
 import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultSignIn() {
   const { busy, error, navigate, signIn, status } = useContext(VaultContext)
+  const onPhone = isCoarsePhone()
   return (
     <OnboardLayout
       title='Sign in'
@@ -20,27 +22,30 @@ export default function VaultSignIn() {
           onClick={() => void signIn()}
           disabled={busy}
           loading={busy}
-          label={busy ? 'Waiting for your passkey…' : 'Sign in with passkey'}
+          label={
+            busy
+              ? onPhone
+                ? 'Waiting for Face ID…'
+                : 'Waiting for phone QR…'
+              : onPhone
+                ? 'Sign in'
+                : 'Sign in with phone QR'
+          }
         />
       }
     >
       <Text wrap>
-        This vault is already set up. Use the same passkey on this device. Do not create a new one — that would not open
-        this vault.
+        {onPhone
+          ? 'Use Face ID if you set this vault up here. Do not create a new passkey.'
+          : 'This computer will show a QR. Scan it with the iPhone that created the vault, then Face ID there. Do not use Touch ID on this computer and do not create a new passkey.'}
       </Text>
       <KeyCard
         icon={<FingerprintIcon />}
-        title='Existing passkey'
-        role={
-          status?.passkeyLoginAvailable
-            ? 'Discoverable on this site. PRF must be available here.'
-            : 'The original device has not enabled sign-in yet'
-        }
-        status={status?.passkeyLoginAvailable ? 'Ready' : 'Not enabled'}
+        title='Passkey'
+        role={status?.passkeyLoginAvailable ? 'Ready' : 'Not enabled on the original device yet'}
       />
       <Text color='neutral-600' tiny wrap>
-        Synced passkeys do not always carry the PRF secret. If this device cannot unlock, enable sign-in on the original
-        phone first, then try a browser that supports WebAuthn PRF.
+        Don’t create a new passkey.
       </Text>
     </OnboardLayout>
   )

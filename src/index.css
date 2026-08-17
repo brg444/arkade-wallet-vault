@@ -609,9 +609,16 @@ hr {
 
 .pill-nav-icon {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }
 
 .pill-nav-icon svg {
+  width: 24px;
+  height: 24px;
   shape-rendering: geometricPrecision;
 }
 

@@ -9,63 +9,80 @@ import FingerprintIcon from '../../icons/Fingerprint'
 import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
-import { delayLabel } from '../../lib/vault/policy'
+import { waitLabel } from '../../lib/vault/policy'
 import { VaultContext } from '../../providers/vault'
-import { Detail, KeyCard, PolicyTimeline } from './ui'
+import { KeyCard, PolicyTimeline } from './ui'
 
 export default function VaultKeys() {
-  const { busy, enablePasskeyLogin, hasLocalEnrollment, liveNetwork, navigate, setup, status } =
+  const { busy, enablePasskeyLogin, hasLocalEnrollment, liveNetwork, navigate, operationalAddress, setup, status } =
     useContext(VaultContext)
   const network = status?.network || (liveNetwork ? 'mutinynet' : undefined)
+  const waitPhone = waitLabel(status?.operationalCsvBlocks || setup.operationalCsvBlocks, network)
+  const waitSavings = waitLabel(status?.savingsCsvBlocks || setup.savingsCsvBlocks, network)
+  const phoneCovered = Boolean(status?.enrolled)
+  const devicesCovered = Boolean(status?.passkeyLoginAvailable)
+  const addressCovered = Boolean(operationalAddress)
+
   return (
     <>
       <Header text='Keys' back={() => navigate('home')} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <Text wrap>
-              Industry vaults treat keys as devices you can check, not hex strings you memorize. You hold hardware and
-              recovery. This phone only spends the daily path.
-            </Text>
             <KeyCard
               icon={<FingerprintIcon />}
               title='This phone'
               role={
-                status?.passkeyLoginAvailable
-                  ? 'Passkey sign-in enabled for other devices'
-                  : status?.enrolled
-                    ? 'Passkey enrolled on this origin'
-                    : 'Preview — no passkey yet'
+                !phoneCovered
+                  ? 'No passkey yet'
+                  : devicesCovered
+                    ? 'Daily spend · other devices can sign in'
+                    : 'Daily spend · this device only'
               }
-              status={status?.enrolled ? 'Healthy' : 'Preview'}
+              status={phoneCovered ? 'Covered' : 'Needed'}
             />
             {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
               <Button
                 onClick={() => void enablePasskeyLogin()}
                 disabled={busy}
-                label={busy ? 'Enabling…' : 'Enable sign-in on other devices'}
+                label={busy ? 'Enabling…' : 'Allow other devices'}
               />
+            ) : null}
+            {hasLocalEnrollment && status?.passkeyLoginAvailable ? (
+              <Text color='neutral-600' tiny wrap>
+                Another device can sign in and scan the QR from here. Don’t create a new passkey.
+              </Text>
             ) : null}
             <KeyCard
               icon={<ShieldCheckOutlineIcon />}
               title='Hardware'
-              role={setup.hardwareIsDemo ? 'Demo key — not yours' : 'Required to sweep or change the vault'}
+              role={setup.hardwareIsDemo ? 'Demo key' : 'Moves everything'}
               fingerprint={setup.hardwarePub || status?.externalOwnerWalletPub}
-              status={setup.hardwarePub ? 'Confirmed' : 'Missing'}
             />
             <KeyCard
               icon={<SafeIcon />}
               title='Recovery'
-              role={`Delayed path after ${delayLabel(status?.operationalCsvBlocks || setup.operationalCsvBlocks, network)}`}
+              role={`Replaces this phone after ${waitPhone}`}
               fingerprint={setup.recoveryPub || status?.recoveryKeyPub}
-              status={setup.recoveryPub ? 'Confirmed' : 'Missing'}
             />
             <KeyCard
               icon={<ServerIcon />}
               title='Vault service'
-              role='Cosigns daily spends inside the limit. Cannot move savings or change the vault alone.'
-              status='Cannot spend alone'
+              role='Helps approve daily sends. Cannot spend Savings.'
             />
+
+            <Text color='neutral-600' tiny>
+              If you lose…
+            </Text>
+            <KeyCard title='This phone' role={`Other device + Face ID, or hardware + recovery after ${waitPhone}.`} />
+            <KeyCard title='This browser' role='Reset only wipes this phone. Coins stay with hardware + recovery.' />
+            <KeyCard title='Savings' role={`This phone cannot spend it. Hardware + recovery after ${waitSavings}.`} />
+            {!addressCovered && status?.enrolled ? (
+              <Text color='neutral-600' tiny wrap>
+                Receive is off until this vault’s addresses are pinned.
+              </Text>
+            ) : null}
+
             <PolicyTimeline
               txCap={status?.txCap || setup.txCapSats}
               dailyLimit={status?.periodAllowance || setup.dailyLimitSats}
@@ -73,11 +90,6 @@ export default function VaultKeys() {
               savingsBlocks={status?.savingsCsvBlocks || setup.savingsCsvBlocks}
               network={network}
             />
-            {status?.clientOrigin ? <Detail label='Passkeys are bound to' value={status.clientOrigin} mono /> : null}
-            <Text color='neutral-600' tiny wrap>
-              A health check here means the public key is the one this vault expects. Signing still happens on the
-              device that holds the private key.
-            </Text>
           </FlexCol>
         </Padded>
       </Content>

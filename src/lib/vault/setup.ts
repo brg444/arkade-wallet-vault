@@ -32,14 +32,14 @@ export const RECOVERY_PROFILES: RecoveryProfile[] = [
   {
     id: 'demo',
     label: 'Short delay',
-    detail: 'Spending after 6 blocks. Savings after 144.',
+    detail: 'This phone after about an hour. Savings after about a day.',
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
     savingsCsvBlocks: DEFAULT_SAVINGS_CSV_BLOCKS,
   },
   {
     id: 'week',
     label: 'Longer delay',
-    detail: 'Spending after 144 blocks. Savings after 4,032.',
+    detail: 'This phone after about a day. Savings after about a month.',
     operationalCsvBlocks: 144,
     savingsCsvBlocks: 4032,
   },

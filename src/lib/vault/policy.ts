@@ -1,8 +1,10 @@
-export function delayLabel(blocks: number, network?: string): string {
+export function waitLabel(blocks: number, network?: string): string {
   const secondsPerBlock = network === 'mutinynet' ? 30 : 600
-  const seconds = Math.max(0, blocks) * secondsPerBlock
-  const human = humanDuration(seconds)
-  return `${blocks.toLocaleString()} blocks · ${human}`
+  return humanDuration(Math.max(0, blocks) * secondsPerBlock)
+}
+
+export function delayLabel(blocks: number, network?: string): string {
+  return `${blocks.toLocaleString()} blocks · ${waitLabel(blocks, network)}`
 }
 
 export function humanDuration(seconds: number): string {

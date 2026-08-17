@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from '../../components/Content'
@@ -8,17 +8,74 @@ import Header from '../../components/Header'
 import Input from '../../components/Input'
 import InputAddress from '../../components/InputAddress'
 import Padded from '../../components/Padded'
+import Scanner from '../../components/Scanner'
 import Text from '../../components/Text'
-import { prettyAmount } from '../../lib/format'
+import { decodeBip21, isBip21 } from '../../lib/bip21'
+import { prettyAmount, prettyNumber } from '../../lib/format'
 import { isVaultBitcoinAddress } from '../../lib/vault/bitcoin'
 import { VaultContext } from '../../providers/vault'
-import { Meter, Pill } from './ui'
+import { Meter } from './ui'
+
+function payloadFromScan(raw: string): { address: string; amount?: number } {
+  const trimmed = raw.trim()
+  if (isBip21(trimmed)) {
+    try {
+      const decoded = decodeBip21(trimmed)
+      return {
+        address: (decoded.address || '').trim(),
+        amount: decoded.satoshis,
+      }
+    } catch {
+      return { address: trimmed }
+    }
+  }
+  return { address: trimmed }
+}
 
 export default function VaultSend() {
-  const { amountSats, dailyRemaining, error, liveNetwork, navigate, reviewSpend, setSpendDraft, spend, setup } =
-    useContext(VaultContext)
-  const used = Math.max(0, setup.dailyLimitSats - dailyRemaining)
+  const {
+    amountSats,
+    clearSendScan,
+    dailyRemaining,
+    error,
+    navigate,
+    reviewSpend,
+    scanOnSend,
+    setSpendDraft,
+    spend,
+    setup,
+    status,
+    preview,
+  } = useContext(VaultContext)
+  const destNetwork = status?.network || (preview ? 'regtest' : 'mutinynet')
+  const [scan, setScan] = useState(false)
+  const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
+  const used = Math.max(0, setup.dailyLimitSats - availableSpend)
   const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
+
+  useEffect(() => {
+    if (!scanOnSend) return
+    setScan(true)
+    clearSendScan()
+  }, [scanOnSend, clearSendScan])
+
+  if (scan) {
+    return (
+      <Scanner
+        close={() => setScan(false)}
+        label='Bitcoin address'
+        onData={(data) => {
+          const next = payloadFromScan(data)
+          setSpendDraft({
+            address: next.address,
+            ...(next.amount ? { amount: next.amount } : {}),
+          })
+          setScan(false)
+        }}
+        onError={() => setScan(false)}
+      />
+    )
+  }
 
   return (
     <>
@@ -26,19 +83,6 @@ export default function VaultSend() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              <Pill>Daily phone path</Pill>
-              <Pill>{prettyAmount(amountSats)} available</Pill>
-            </div>
-            <Text wrap>This uses today’s phone limit and your passkey. Hardware and savings stay unused.</Text>
-            <InputAddress
-              label='To'
-              placeholder='Bitcoin address'
-              value={spend.address}
-              onChange={(value: string) => setSpendDraft({ address: value.trim() })}
-              openScan={() => {}}
-              validator={isVaultBitcoinAddress}
-            />
             <Input
               label='Amount (sats)'
               type='number'
@@ -48,20 +92,27 @@ export default function VaultSend() {
               placeholder='20000'
               testId='vault-send-amount'
             />
+            <InputAddress
+              label='To'
+              placeholder='Bitcoin address'
+              value={spend.address}
+              onChange={(value: string) => setSpendDraft({ address: value.trim() })}
+              openScan={() => setScan(true)}
+              validator={(value) => isVaultBitcoinAddress(value, destNetwork)}
+            />
             <Text color='neutral-600' tiny wrap>
-              Network fee {prettyAmount(spend.fee)}. Max {prettyAmount(setup.txCapSats)} per payment.
-              {liveNetwork ? ' Use a confirmed Mutinynet coin.' : ''}
+              Fee {prettyAmount(spend.fee)} · max {prettyAmount(setup.txCapSats)} per send
             </Text>
             <Text color='neutral-600' tiny>
-              Phone may spend {prettyAmount(dailyRemaining)} of {prettyAmount(setup.dailyLimitSats)} today
+              {prettyNumber(availableSpend, 0)} / {prettyNumber(setup.dailyLimitSats, 0)} available today
             </Text>
-            <Meter ratio={ratio} label='Daily spending remaining' />
+            <Meter ratio={ratio} label='Available spend' />
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={reviewSpend} label='Review this send' />
+        <Button onClick={reviewSpend} label='Review' />
       </ButtonsOnBottom>
     </>
   )

@@ -1,6 +1,5 @@
 import { useMemo, useRef } from 'react'
 import encodeQR from 'qr'
-import FlexCol from './FlexCol'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 
 interface QrCodeProps {
@@ -186,9 +185,10 @@ export default function QrCode({ value }: QrCodeProps) {
       <svg
         viewBox={`0 0 ${svgSize} ${svgSize}`}
         width='100%'
-        height='100%'
+        height='auto'
+        preserveAspectRatio='xMidYMid meet'
         xmlns='http://www.w3.org/2000/svg'
-        style={{ display: 'block' }}
+        style={{ display: 'block', width: '100%', height: 'auto' }}
       >
         <style>{`
           @keyframes qr-dot-in {
@@ -204,20 +204,5 @@ export default function QrCode({ value }: QrCodeProps) {
     )
   }, [value, prefersReduced])
 
-  return (
-    <FlexCol centered>
-      {svgContent ? (
-        <div
-          style={{
-            borderRadius: '1rem',
-            maxWidth: '340px',
-            overflow: 'hidden',
-            width: '100%',
-          }}
-        >
-          {svgContent}
-        </div>
-      ) : null}
-    </FlexCol>
-  )
+  return svgContent ? <div className='vault-receive-qr'>{svgContent}</div> : null
 }

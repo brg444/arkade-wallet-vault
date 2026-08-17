@@ -446,7 +446,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         return
       }
       if (status?.network === 'mutinynet' && status.enrollmentMode === 'token' && token.trim().length < 32) {
-        setError('Paste your setup code.')
+        setError('Paste your invite.')
         return
       }
       setBusy(true)
@@ -577,11 +577,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     if (spend.amount > setup.txCapSats) {
-      setError(`Over the send limit of ${setup.txCapSats.toLocaleString()} sats.`)
+      setError(`Over this phone’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use hardware + recovery.`)
       return
     }
     if (spend.amount + spend.fee > dailyRemaining) {
-      setError('Over today’s limit.')
+      setError('Over today’s limit. Wait, or use hardware + recovery.')
       return
     }
     if (spend.amount + spend.fee + DUST_SATS > amountSats) {

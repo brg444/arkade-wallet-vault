@@ -1,4 +1,4 @@
-import { useContext, useEffect } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import Button from '../../components/Button'
 import Content from '../../components/Content'
 import ErrorMessage from '../../components/Error'
@@ -6,17 +6,30 @@ import FlexCol from '../../components/FlexCol'
 import FlexRow from '../../components/FlexRow'
 import Padded from '../../components/Padded'
 import Text from '../../components/Text'
-import FingerprintIcon from '../../icons/Fingerprint'
+import { useToast } from '../../components/Toast'
+import SmallLogo from '../../components/SmallLogo'
+import ChevronDownIcon from '../../icons/ChevronDown'
+import QrIcon from '../../icons/Qr'
 import ReceiveIcon from '../../icons/Receive'
-import SafeIcon from '../../icons/Safe'
+import ScanIcon from '../../icons/Scan'
 import SendIcon from '../../icons/Send'
-import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
-import { prettyAmount } from '../../lib/format'
-import { VaultContext } from '../../providers/vault'
-import { KeyCard, Meter, Panel, Pill } from './ui'
+import { copyToClipboard } from '../../lib/clipboard'
+import { prettyNumber } from '../../lib/format'
+import { hapticSubtle } from '../../lib/haptics'
+import { truncateAddress } from '../../lib/vault/policy'
+import { reloadIfNewerWallet } from '../../lib/vault/update'
+import { VaultContext, type VaultAccount } from '../../providers/vault'
+import VaultRefresher from './Refresher'
+import { Meter } from './ui'
+
+function fundableAddress(value: string): string {
+  if (!value || value.startsWith('bcrt1')) return ''
+  return value
+}
 
 export default function VaultHome() {
   const {
+    account,
     addTestCoins,
     amountSats,
     busy,
@@ -25,142 +38,209 @@ export default function VaultHome() {
     dailyRemaining,
     error,
     navigate,
+    openSendScan,
     enablePasskeyLogin,
-    faucetUrl,
     hasLocalEnrollment,
     liveNetwork,
-    networkLabel,
     operationalAddress,
     preview,
     refreshBalance,
-    reset,
-    setup,
+    savingsAddress,
+    savingsSats,
+    setAccount,
     status,
   } = useContext(VaultContext)
+  const { toast } = useToast()
+  const [picker, setPicker] = useState(false)
 
   useEffect(() => {
-    if (!liveNetwork) return
-    void refreshBalance()
+    void reloadIfNewerWallet()
+    if (liveNetwork) void refreshBalance()
     const onFocus = () => {
-      void refreshBalance()
+      void reloadIfNewerWallet()
+      if (liveNetwork) void refreshBalance()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [liveNetwork, refreshBalance])
 
-  const used = Math.max(0, dailyLimit - dailyRemaining)
+  const spending = account === 'spend'
+  const sats = spending ? amountSats : savingsSats
+  const address = fundableAddress(spending ? operationalAddress : savingsAddress)
+  const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
+  const used = Math.max(0, dailyLimit - availableSpend)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
-  const phoneReady = Boolean(status?.enrolled)
-  const hardwareStatus = setup.hardwareIsDemo ? 'Demo' : setup.hardwarePub ? 'Ready' : 'Needed'
-  const recoveryStatus = setup.recoveryIsDemo ? 'Demo' : setup.recoveryPub ? 'Ready' : 'Needed'
+  const satsUnit = sats === 1 ? 'SAT' : 'SATS'
+
+  const choose = (next: VaultAccount) => {
+    setAccount(next)
+    setPicker(false)
+  }
 
   return (
     <>
-      <div className='header'>
-        <FlexRow between>
-          <div style={{ minWidth: '4rem' }} />
-          <p className='title'>Spending</p>
-          <div
-            style={{ minWidth: '4rem', paddingRight: '1rem', textAlign: 'right', cursor: 'pointer' }}
-            onClick={reset}
-            data-testid='vault-reset'
-          >
-            <Text color='neutral-600' tiny>
-              Reset
-            </Text>
-          </div>
-        </FlexRow>
-      </div>
       <Content noRefresh>
+        <VaultRefresher />
         <Padded>
-          <FlexCol>
-            <FlexCol gap='0.25rem' margin='1.25rem 0 0.25rem 0'>
-              <Text bigger heading medium testId='vault-balance'>
-                {prettyAmount(amountSats)}
-              </Text>
-              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <Pill>
-                  {liveNetwork ? 'Mutinynet · live coins' : preview ? 'Demo balance · not on a chain' : networkLabel}
-                </Pill>
-                <Pill>{phoneReady ? 'Daily path ready' : 'Preview'}</Pill>
+          <div className='vault-home'>
+            <div className='vault-account-bar'>
+              <div className='vault-account-lead'>
+                <button
+                  type='button'
+                  className='vault-account-switch'
+                  data-testid='account-switcher'
+                  aria-haspopup='listbox'
+                  aria-expanded={picker}
+                  onClick={() => {
+                    hapticSubtle()
+                    setPicker((open) => !open)
+                  }}
+                >
+                  <span className='vault-account-logo' aria-hidden>
+                    <SmallLogo />
+                  </span>
+                  <span className='vault-account-index'>{spending ? '1/2' : '2/2'}</span>
+                  <span className='vault-account-name'>{spending ? 'Spending' : 'Savings'}</span>
+                  <span className='vault-account-chevron'>
+                    <ChevronDownIcon />
+                  </span>
+                </button>
+                {address ? (
+                  <button
+                    type='button'
+                    className='vault-account-addr'
+                    data-testid='account-address'
+                    onClick={() => {
+                      void copyToClipboard(address)
+                      toast('Address copied')
+                    }}
+                  >
+                    {truncateAddress(address, 6)}
+                  </button>
+                ) : (
+                  <p className='vault-account-addr is-empty'>
+                    {liveNetwork ? 'Mutinynet' : preview ? 'Mutinynet · not on a chain' : 'No address yet'}
+                  </p>
+                )}
               </div>
-            </FlexCol>
-            <FlexCol gap='0.35rem'>
-              <Text color='neutral-600' tiny>
-                Phone may spend {prettyAmount(dailyRemaining)} of {prettyAmount(dailyLimit)} today
+              <div className='vault-account-actions'>
+                <button
+                  type='button'
+                  className='vault-account-qr'
+                  aria-label='Scan'
+                  data-testid='account-scan'
+                  onClick={() => {
+                    hapticSubtle()
+                    openSendScan()
+                  }}
+                >
+                  <ScanIcon />
+                </button>
+                <button
+                  type='button'
+                  className='vault-account-qr'
+                  aria-label='Receive'
+                  data-testid='account-receive'
+                  onClick={() => navigate('receive')}
+                >
+                  <QrIcon />
+                </button>
+              </div>
+            </div>
+            {picker ? (
+              <>
+                <button
+                  type='button'
+                  className='vault-account-dismiss'
+                  aria-label='Close accounts'
+                  onClick={() => setPicker(false)}
+                />
+                <div className='vault-account-menu' role='listbox'>
+                  <button
+                    type='button'
+                    role='option'
+                    aria-selected={spending}
+                    className={spending ? 'vault-account-option is-on' : 'vault-account-option'}
+                    data-testid='account-spend'
+                    onClick={() => choose('spend')}
+                  >
+                    <span>
+                      <span className='vault-account-option-name'>Spending</span>
+                      <span className='vault-account-option-meta'>Phone can spend</span>
+                    </span>
+                    <span className='vault-account-option-amt'>
+                      {prettyNumber(amountSats)} {amountSats === 1 ? 'SAT' : 'SATS'}
+                    </span>
+                  </button>
+                  <button
+                    type='button'
+                    role='option'
+                    aria-selected={!spending}
+                    className={!spending ? 'vault-account-option is-on' : 'vault-account-option'}
+                    data-testid='account-savings'
+                    onClick={() => choose('savings')}
+                  >
+                    <span>
+                      <span className='vault-account-option-name'>Savings</span>
+                      <span className='vault-account-option-meta'>Hardware only</span>
+                    </span>
+                    <span className='vault-account-option-amt'>
+                      {prettyNumber(savingsSats)} {savingsSats === 1 ? 'SAT' : 'SATS'}
+                    </span>
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            <p className='vault-balance-figure' data-testid='vault-balance'>
+              {prettyNumber(sats)}
+              <span className='vault-balance-unit'>{satsUnit}</span>
+            </p>
+
+            {spending ? (
+              <FlexCol gap='0.35rem'>
+                <Text color='neutral-600' tiny>
+                  {prettyNumber(availableSpend, 0)} / {prettyNumber(dailyLimit, 0)} available today
+                </Text>
+                <Meter ratio={ratio} label='Available spend' />
+              </FlexCol>
+            ) : (
+              <Text color='neutral-600' tiny wrap>
+                Hardware + recovery only. This phone cannot spend it.
               </Text>
-              <Meter ratio={ratio} label='Daily spending remaining' />
-            </FlexCol>
-            <FlexRow padding='0.35rem 0 0 0'>
-              <Button main icon={<SendIcon />} label='Send' disabled={!canSend} onClick={() => navigate('send')} />
+            )}
+
+            <ErrorMessage error={Boolean(error)} text={error} />
+            <FlexRow padding='0 0 0.5rem 0'>
+              <Button
+                main
+                icon={<SendIcon />}
+                label='Send'
+                disabled={!spending || !canSend}
+                onClick={() => navigate('send')}
+              />
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
             </FlexRow>
-            <ErrorMessage error={Boolean(error)} text={error} />
+            {status?.enrolled && !operationalAddress ? (
+              <Text color='neutral-600' tiny wrap>
+                Receive is off until this vault’s addresses are pinned.
+              </Text>
+            ) : null}
             {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
               <Button
                 onClick={() => void enablePasskeyLogin()}
                 disabled={busy}
-                label={busy ? 'Waiting for Face ID…' : 'Allow this passkey on other devices'}
+                label={busy ? 'Waiting for Face ID…' : 'Allow other devices'}
               />
             ) : null}
-            <Panel onClick={() => navigate('savings')}>
-              <Text color='neutral-600' tiny>
-                Savings
-              </Text>
-              <Text small>Locked — hardware + recovery only</Text>
-            </Panel>
-            <div>
-              <Text color='neutral-600' tiny>
-                Keys
-              </Text>
-            </div>
-            <KeyCard
-              icon={<FingerprintIcon />}
-              title='This phone'
-              role='Daily spending'
-              status={phoneReady ? 'Healthy' : 'Preview'}
-              onClick={() => navigate('keys')}
-            />
-            <KeyCard
-              icon={<ShieldCheckOutlineIcon />}
-              title='Hardware'
-              role='Sweep and change'
-              status={hardwareStatus}
-              fingerprint={setup.hardwarePub}
-              onClick={() => navigate('keys')}
-            />
-            <KeyCard
-              icon={<SafeIcon />}
-              title='Recovery'
-              role='If this phone is gone'
-              status={recoveryStatus}
-              fingerprint={setup.recoveryPub}
-              onClick={() => navigate('keys')}
-            />
-          </FlexCol>
+          </div>
         </Padded>
       </Content>
-      {liveNetwork ? (
-        <div style={{ padding: '0 1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <Button
-            onClick={() =>
-              window.open(operationalAddress ? `${faucetUrl}?address=${operationalAddress}` : faucetUrl, '_blank')
-            }
-            label='Open Mutinynet faucet'
-            secondary
-          />
-          <Button
-            onClick={() => void refreshBalance()}
-            disabled={busy}
-            label={busy ? 'Checking…' : 'Refresh balance'}
-            clear
-          />
-        </div>
-      ) : preview || amountSats === 0 ? (
+      {liveNetwork || !(preview || amountSats === 0) || !spending ? null : (
         <div style={{ padding: '0 1rem 1.25rem' }}>
           <Button onClick={addTestCoins} disabled={busy} label={busy ? 'Adding…' : 'Add demo coins'} secondary />
         </div>
-      ) : null}
+      )}
     </>
   )
 }

@@ -9,6 +9,7 @@ import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
 import VaultWelcome from './screens/Vault/Welcome'
 import VaultKeys from './screens/Vault/Keys'
+import VaultSettings from './screens/Vault/Settings'
 import VaultConditions from './screens/Vault/onboard/Conditions'
 import VaultDesign from './screens/Vault/onboard/Design'
 import VaultHardware from './screens/Vault/onboard/Hardware'
@@ -17,12 +18,17 @@ import VaultProofs from './screens/Vault/onboard/Proofs'
 import VaultPlan from './screens/Vault/onboard/Plan'
 import VaultRecovery from './screens/Vault/onboard/Recovery'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
+import VaultPillNav, { tabForScreen } from './screens/Vault/PillNav'
+import { bootVaultPrefs } from './lib/vault/prefs'
 
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
   useEffect(() => {
     document.title = 'Spending vault'
+    bootVaultPrefs()
   }, [])
+  const tab = tabForScreen(screen)
+  const showNavbar = Boolean(tab)
   const pages = {
     welcome: <VaultWelcome />,
     design: <VaultDesign />,
@@ -39,12 +45,14 @@ export default function VaultApp() {
     success: <VaultSuccess />,
     savings: <VaultSavings />,
     keys: <VaultKeys />,
+    settings: <VaultSettings />,
     signin: <VaultSignIn />,
   }
   const page = pages[screen] || <VaultWelcome />
   return (
-    <div className='page' data-testid='vault-app'>
+    <div className={showNavbar ? 'page has-pill-navbar' : 'page'} data-testid='vault-app'>
       {page}
+      {tab ? <VaultPillNav visible={showNavbar} active={tab} /> : null}
     </div>
   )
 }
