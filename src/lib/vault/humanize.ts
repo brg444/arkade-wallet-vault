@@ -56,8 +56,12 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('setup code required') || msg.includes('paste your setup code')) {
     return 'Paste your invite.'
   }
-  if (msg.includes('owner and recovery signatures') || msg.includes('64-byte bip340')) {
-    return 'Sign once with hardware and recovery, then paste those signatures — not the keys.'
+  if (
+    msg.includes('owner and recovery signatures') ||
+    msg.includes('64-byte bip340') ||
+    msg.includes('externalownerproof')
+  ) {
+    return 'This vault service still expects a hardware signature. The app no longer asks for one.'
   }
   if (msg.includes('invalid address') || msg.includes('not a bitcoin')) {
     return 'Enter a bitcoin address.'

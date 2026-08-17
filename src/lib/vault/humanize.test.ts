@@ -31,9 +31,9 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('status deposit address does not match the local pin'))).toMatch(/do not send/i)
   })
 
-  it('explains a missing owner or recovery proof as a ceremony gap', () => {
+  it('explains a leftover server proof requirement', () => {
     expect(humanizeVaultError(new Error('tenant enrollment requires owner and recovery signatures'))).toMatch(
-      /hardware and recovery/i,
+      /no longer asks/i,
     )
   })
 

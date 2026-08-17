@@ -1,19 +1,13 @@
 import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
-import {
-  beginTenantEnrollment,
-  finishTenantEnrollment,
-  reconcileStagedEnrollment,
-  type EnrollmentSecrets,
-} from '../lib/vault/enroll'
+import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/enroll'
 import { enablePasskeyLogin, signInWithPasskey } from '../lib/vault/session'
 import {
   clearEnrollment,
   clearSelectedVaultId,
   loadEnrollment,
   loadSelectedVaultId,
-  loadStagedEnrollment,
   saveEnrollment,
   saveSelectedVaultId,
 } from '../lib/vault/enrollment'
@@ -48,7 +42,6 @@ export type VaultScreen =
   | 'conditions'
   | 'plan'
   | 'passkey'
-  | 'proofs'
   | 'home'
   | 'receive'
   | 'send'
@@ -83,7 +76,6 @@ interface VaultContextProps {
   enterWithoutPasskey: () => void
   enablePasskeyLogin: () => Promise<void>
   enroll: (token?: string) => Promise<void>
-  submitEnrollmentProofs: (ownerProof: string, recoveryProof: string) => Promise<void>
   enrolled: boolean
   error: string
   signIn: () => Promise<void>
@@ -138,7 +130,6 @@ export const VaultContext = createContext<VaultContextProps>({
   enterWithoutPasskey: () => {},
   enablePasskeyLogin: async () => {},
   enroll: async () => {},
-  submitEnrollmentProofs: async () => {},
   enrolled: false,
   error: '',
   signIn: async () => {},
@@ -452,32 +443,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       try {
-        await beginTenantEnrollment(token, {
+        const out = await enrollWithPasskey(token, {
           hardwarePub: setup.hardwarePub,
           recoveryPub: setup.recoveryPub,
         })
-        setScreen('proofs')
-      } catch (err) {
-        setError(humanizeVaultError(err))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [setup, status],
-  )
-
-  const submitEnrollmentProofs = useCallback(
-    async (ownerProof: string, recoveryProof: string) => {
-      const staged = loadStagedEnrollment()
-      const token = staged?.inviteToken || ''
-      if (!token) {
-        setError('Create a passkey first.')
-        return
-      }
-      setBusy(true)
-      setError('')
-      try {
-        const out = await finishTenantEnrollment(token, { ownerProof, recoveryProof })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
         if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
@@ -498,7 +467,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [refreshBalance, sealPlan],
+    [refreshBalance, sealPlan, setup, status],
   )
 
   const enableOtherDevices = useCallback(async () => {
@@ -699,7 +668,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       enablePasskeyLogin: enableOtherDevices,
       enterWithoutPasskey,
       enroll,
-      submitEnrollmentProofs,
       enrolled,
       error,
       finishPlan,
@@ -755,7 +723,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       enrollment,
       enterWithoutPasskey,
       enroll,
-      submitEnrollmentProofs,
       signIn,
       enrolled,
       error,
