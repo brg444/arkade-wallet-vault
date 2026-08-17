@@ -3,11 +3,19 @@ import {
   allowAuthorizerPath,
   allowGatewayRate,
   MAX_GATEWAY_BYTES,
+  publicAuthorizerPath,
   readBoundedUpstream,
   sameOriginAllowed,
 } from './[...path]'
 
 describe('same-origin authorizer gateway', () => {
+  it('maps function URLs back to authorizer paths', () => {
+    expect(publicAuthorizerPath('/api/health')).toBe('/health')
+    expect(publicAuthorizerPath('/api/v1/status')).toBe('/v1/status')
+    expect(publicAuthorizerPath('/api/v1/status?vault=x')).toBe('/v1/status?vault=x')
+    expect(publicAuthorizerPath('/api/authorizer/v1/enroll/start')).toBe('/v1/enroll/start')
+  })
+
   it('only proxies health and /v1', () => {
     expect(allowAuthorizerPath('/health')).toBe(true)
     expect(allowAuthorizerPath('/v1/status')).toBe(true)

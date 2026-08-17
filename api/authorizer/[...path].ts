@@ -91,12 +91,21 @@ type VercelLikeRes = {
   end(body?: string | Buffer): void
 }
 
+export function publicAuthorizerPath(url = ''): string {
+  const q = url.includes('?') ? url.slice(url.indexOf('?')) : ''
+  const raw = (url.split('?')[0] || '/').replace(/\/+$/, '') || '/'
+  if (raw === '/api/health' || raw === '/health') return '/health' + q
+  if (raw.startsWith('/api/authorizer/')) return raw.slice('/api/authorizer'.length) + q
+  if (raw === '/api/authorizer') return '/' + q
+  if (raw.startsWith('/api/v1')) return raw.slice('/api'.length) + q
+  return raw + q
+}
+
 function targetPath(req: VercelLikeReq): string {
+  if (req.url) return publicAuthorizerPath(req.url)
   const parts = req.query?.path
   const joined = Array.isArray(parts) ? parts.join('/') : String(parts || '')
-  const path = '/' + joined.replace(/^\/+/, '')
-  const q = req.url && req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''
-  return path + q
+  return '/' + joined.replace(/^\/+/, '')
 }
 
 function declaredLength(headers: Record<string, string | string[] | undefined>): number {
