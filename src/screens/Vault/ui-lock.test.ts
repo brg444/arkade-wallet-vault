@@ -22,6 +22,8 @@ describe('vault UI lock', () => {
     expect(app).toContain('VaultPillNav')
     expect(app).toContain('VaultSettings')
     expect(app).toContain('has-pill-navbar')
+    const content = read('src/components/Content.tsx')
+    expect(content).toContain('VaultRefresher')
   })
 
   it('forbids recovery chrome and pins v4 device copy', () => {

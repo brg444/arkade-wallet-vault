@@ -10,7 +10,6 @@ import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount } from '../../lib/format'
 import { VaultContext } from '../../providers/vault'
-import VaultRefresher from './Refresher'
 
 export default function VaultSavings() {
   const { navigate, savingsAddress, savingsSats } = useContext(VaultContext)
@@ -28,7 +27,6 @@ export default function VaultSavings() {
     <>
       <Header text='Savings' back={() => navigate('home')} />
       <Content noRefresh>
-        <VaultRefresher />
         <Padded>
           <FlexCol>
             <div className='vault-hero'>
