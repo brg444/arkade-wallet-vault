@@ -6,7 +6,7 @@ import {
   publicAuthorizerPath,
   readBoundedUpstream,
   sameOriginAllowed,
-} from './[...path]'
+} from '../../../api/authorizer/[...path]'
 
 describe('same-origin authorizer gateway', () => {
   it('maps function URLs back to authorizer paths', () => {

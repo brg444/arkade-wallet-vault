@@ -1,1 +1,1 @@
-export { default } from '../authorizer/[...path]'
+export { default } from '../authorizer/[...path].js'

@@ -17,12 +17,15 @@
     }
   ],
   "rewrites": [
-    { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
     { "source": "/health", "destination": "/api/health" },
+    { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
     {
       "source": "/esplora/:path*",
       "destination": "https://mempool.mutinynet.arkade.sh/api/:path*"
     },
-    { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!assets/|api/|health(?:/|$)|v1(?:/|$)).*)",
+      "destination": "/index.html"
+    }
   ]
 }
