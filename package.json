@@ -58,6 +58,7 @@
     "test:unit": "vitest run --exclude '**/e2e/**'",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "cross-env VITE_NOSTR_RELAY_URL=http://localhost:10547 playwright test",
+    "test:e2e:vault": "playwright test -c playwright.vault.config.ts",
     "test:e2e:ui": "cross-env VITE_NOSTR_RELAY_URL=http://localhost:10547 playwright test --ui",
     "test:codegen": "playwright codegen localhost:3002",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\"",
