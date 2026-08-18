@@ -1,32 +1,27 @@
-# Vault client
+# Arkade Vault
 
-This branch is the **Mutinynet L1 Taproot vault client**. It is not the
-Arkade VTXO wallet.
-
-The **signer** is a separate process (`cmd/authorizer`). This repo is the
-hostile proposer: a PWA that enrolls a passkey, holds a PRF-wrapped software
-key, and asks the authorizer to cosign.
+A vault on this phone. Daily spend with Face ID. Savings that need
+hardware too. Testnet only. Don’t send real bitcoin.
 
 Live demo: [https://arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
-Mutinynet coins only. Not production custody. Not an HSM. Do not send real
-bitcoin.
+How we talk about it: [docs/voice.md](docs/voice.md)  
+What’s live vs next: [docs/plan.md](docs/plan.md) · [docs/live.md](docs/live.md)
 
-**Now / next:** [docs/plan.md](docs/plan.md)  
-**Live v4 contract:** [docs/live.md](docs/live.md)  
-**Next product (v5):** [docs/v5-overview.md](docs/v5-overview.md)
+This is not the Arkade VTXO wallet. The vault **service** is a separate
+signer. This repo is the phone app.
 
-## What is live today
+## What people use today
 
-The public authorizer still enrolls and spends **v4**:
+- **Spending** — this phone, up to a daily limit
+- **Savings** — this phone and hardware together
+- **Vault service** — helps daily spend, cannot take Savings
+- **Recovery** — optional in the app; the live signer does not mint it yet
 
-- Daily: routine 3-of-3 under a 50k / 100k sat cap
-- Savings: this device + hardware
-- CSV 144 = this device (lost hardware); CSV 6 = hardware (lost device)
-- No RecoveryKey
-
-Hardware can move first on mature Savings. That is why v5 is the next
-product: staging so a theft clock starts *now*, not at the coin’s age.
+Engineers: the live signer is still the v4 program (50k / 100k, CSV 6 /
+144 on Savings). Hardware can move first on a mature Savings coin. The
+next program starts a _new_ waiting period instead. See
+[docs/live.md](docs/live.md).
 
 ## Packaging
 
@@ -46,9 +41,9 @@ Two deployables. One frozen contract pack (template, policy, domains).
 Production does not compile an authorizer URL into the bundle. Vercel adds
 `X-Vault-Gateway-Secret`. `/v1/register` is 404. Enrollment is invite-gated.
 
-| Server env | Role |
-| --- | --- |
-| `AUTHORIZER_ORIGIN` | Railway authorizer-next |
+| Server env                  | Role                       |
+| --------------------------- | -------------------------- |
+| `AUTHORIZER_ORIGIN`         | Railway authorizer-next    |
 | `AUTHORIZER_GATEWAY_SECRET` | Shared with the authorizer |
 
 Do not make trees or caps operator-configurable. New rules are a new

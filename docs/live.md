@@ -1,6 +1,10 @@
-# Live product — v4
+# Live product
 
-What Railway `authorizer-next` and the public demo actually run.
+What people get on [the demo](https://arkade-vault-demo.vercel.app) today:
+Spending on this phone, Savings with hardware, daily limits. No recovery
+on chain. How we say that: [voice.md](voice.md).
+
+What Railway `authorizer-next` actually runs (engineers):
 
 Template `phone-direct-p256-routine-3of3-admin-phone-hww-v4`.  
 Policy `mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3`.  
@@ -42,17 +46,17 @@ Savings: device + hardware PSBT (QR / `HwSign`). No VaultCosigner.
 
 ## Claims (live)
 
-| Claim | Status |
-| --- | --- |
+| Claim                                                         | Status                                                           |
+| ------------------------------------------------------------- | ---------------------------------------------------------------- |
 | Network caller bypasses policy via a generic Mutinynet signer | Closed. Constrained authorizer + one pinned outbound Arkade call |
-| VaultCosigner use is bound to WebAuthn, tx, and budget | Yes, on Routine |
-| Host/root cannot take VaultCosigner | No. Process isolation, not an HSM |
-| Same-origin XSS is tolerated | No. Unlocked PhoneRoutine / PRF are stealable |
-| Browser reconciles the Arkade sighash | Yes, one-input Routine template |
-| Browser derives the full Daily descriptor | Partial. Hashes the proposed v4 blob; Savings tree is rebuilt |
-| Hardware key gen lives in this repo | No. Hardware is an independent pubkey + WIF/hex sign |
-| Cosigner stages are crash-atomic | Staged: reserved → vault_signed → completed |
-| Mainnet / one vault per process | No mainnet. Live is invite multi-tenant |
+| VaultCosigner use is bound to WebAuthn, tx, and budget        | Yes, on Routine                                                  |
+| Host/root cannot take VaultCosigner                           | No. Process isolation, not an HSM                                |
+| Same-origin XSS is tolerated                                  | No. Unlocked PhoneRoutine / PRF are stealable                    |
+| Browser reconciles the Arkade sighash                         | Yes, one-input Routine template                                  |
+| Browser derives the full Daily descriptor                     | Partial. Hashes the proposed v4 blob; Savings tree is rebuilt    |
+| Hardware key gen lives in this repo                           | No. Hardware is an independent pubkey + WIF/hex sign             |
+| Cosigner stages are crash-atomic                              | Staged: reserved → vault_signed → completed                      |
+| Mainnet / one vault per process                               | No mainnet. Live is invite multi-tenant                          |
 
 ## Leftovers
 

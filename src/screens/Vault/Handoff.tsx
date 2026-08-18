@@ -67,8 +67,8 @@ export default function VaultHandoff() {
         <Padded>
           <FlexCol>
             <Text wrap>
-              This phone signed. Share or copy the PSBT into Sparrow, Electrum, or your hardware companion. Paste the
-              signed PSBT back. The hardware key never comes here.
+              This phone signed. Share this with your hardware. Paste the signed transaction back. The hardware secret
+              never comes here.
             </Text>
             <Text color='neutral-600' tiny wrap>
               {prettyAmount(spend.amount)} · BIP174 base64

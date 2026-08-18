@@ -1,25 +1,29 @@
 # Now, next, later
 
-This is the plan. v5 is the next **product**. It is not live on the
-authorizer yet.
+Arkade Vault is a vault on this phone: daily spend with Face ID,
+Savings that need hardware, a vault service that cannot take Savings.
+How we say that: [voice.md](voice.md).
 
-The long mapping: Arkade as a validating cosigner (Safe-like *account*,
-VLS-like *isolation*, Bitcoin Script *exits*). This vault is the first
+The next **program** (v5) is not live on the signer yet. Recovery is
+optional in the app. Do not enroll it against today’s signer.
+
+The long mapping: Arkade as a validating cosigner (Safe-like _account_,
+VLS-like _isolation_, Bitcoin Script _exits_). This vault is the first
 named program on that signer, not the whole platform.
 
 ## Now — keep v4 honest
 
 Live Mutinynet is v4. Do not pretend otherwise.
 
-| Item | Do |
-| --- | --- |
-| Contract | Keep `phone-direct-p256-routine-3of3-admin-phone-hww-v4` + `…onchain-v3` + CSV 144/6 frozen |
-| Client | This PWA. Leftover v4 UTXOs still spend. Do not mint new v4 once v5 enroll is on the authorizer |
-| Server | Railway `authorizer-next`. Invite `/v1/enroll/*`. No `/v1/register` |
-| Leftover v3 | Exact-template quarantine only. Anything else fails closed |
-| Packaging | Two processes, two hosts. Document the split. **Do not extract repos yet** |
-| Policy knobs | None. Caps and trees are the named program |
-| VTXO | Out. Do not merge Ark balances into Home |
+| Item         | Do                                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Contract     | Keep `phone-direct-p256-routine-3of3-admin-phone-hww-v4` + `…onchain-v3` + CSV 144/6 frozen     |
+| Client       | This PWA. Leftover v4 UTXOs still spend. Do not mint new v4 once v5 enroll is on the authorizer |
+| Server       | Railway `authorizer-next`. Invite `/v1/enroll/*`. No `/v1/register`                             |
+| Leftover v3  | Exact-template quarantine only. Anything else fails closed                                      |
+| Packaging    | Two processes, two hosts. Document the split. **Do not extract repos yet**                      |
+| Policy knobs | None. Caps and trees are the named program                                                      |
+| VTXO         | Out. Do not merge Ark balances into Home                                                        |
 
 Client code under `src/lib/vault/v5/` is the next-product prototype. The
 live authorizer still rebuilds v4 descriptors. A v5-only client will fail
@@ -34,17 +38,17 @@ schema 6 `recovery_session`, `DecideReplay` (refuse a second dest), and
 Go execution tests against client initiate/clawback goldens. It does **not**
 yet rebuild or enroll the v5 family — `TemplateVersion` is still v4.
 
-| Item | Do |
-| --- | --- |
-| Why | v4 hardware-after-6 on a mature Savings coin is an attacker hatch. Staging starts a **new** Pending clock |
-| Keys | Phone + hardware + **required** recovery. Recovery starts a hold; it does not spend Normal alone |
-| Graph | Normal → initiate → Pending → clawback to Quarantine **or** claim after CSV |
-| Cosigners | Required on initiate and clawback. **Not** required on mature claim |
-| SQLite | Schema 6: `recovery_session` sign-once oracle. Leftover `recovery_key_compressed` decision is in that RFC |
-| Packaging | Extract **vault-server** (authorizer image + runbook). Keep **vault-client** as this app (later a thin PWA) |
-| Contract pack | One published set of strings both sides pin. New program = new id + golden vectors + leftover class for v4 |
-| Watcher | Persistent alert on every Normal→Pending. Browser watch is not enough for a 6-block race. No auto-clawback |
-| Recovery Kit | Public family + inspect / initiate / clawback / claim. No PhoneRoutine, no hardware WIF |
+| Item          | Do                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Why           | Today, hardware can move mature Savings after a short wait on _that_ coin. Next program: a _new_ waiting period you can cancel |
+| Keys          | This device + hardware. Recovery is **optional**. It starts a waiting period; it does not spend the original coin alone        |
+| Graph         | Normal → initiate → Pending → clawback to Quarantine **or** claim after CSV                                                    |
+| Cosigners     | Required on initiate and clawback. **Not** required on mature claim                                                            |
+| SQLite        | Schema 6: `recovery_session` sign-once oracle. Leftover `recovery_key_compressed` decision is in that RFC                      |
+| Packaging     | Extract **vault-server** (authorizer image + runbook). Keep **vault-client** as this app (later a thin PWA)                    |
+| Contract pack | One published set of strings both sides pin. New program = new id + golden vectors + leftover class for v4                     |
+| Watcher       | Persistent alert on every Normal→Pending. Browser watch is not enough for a 6-block race. No auto-clawback                     |
+| Recovery Kit  | Public family + inspect / initiate / clawback / claim. No PhoneRoutine, no hardware WIF                                        |
 
 Do not:
 
@@ -88,16 +92,16 @@ exits. It does not mean a policy workshop.
 ## Reviewability (Revault shape, not Revault maturity)
 
 A stranger should reconstruct the protocol from a small set of files, with
-one owner per layer. Docs now match that *shape*:
+one owner per layer. Docs now match that _shape_:
 
-| Read this | Owner |
-| --- | --- |
+| Read this                                   | Owner                     |
+| ------------------------------------------- | ------------------------- |
 | [README.md](README.md) → [live.md](live.md) | What is funded today (v4) |
-| [v5-overview.md](v5-overview.md) | Next product |
-| [v5-transactions.md](v5-transactions.md) | Trees and txs |
-| [v5-api.md](v5-api.md) | HTTP / kit CLI |
-| `src/lib/vault/v5/` | Client tx brain |
-| Authorizer `cmd/authorizer` | Signer (still v4 mint) |
+| [v5-overview.md](v5-overview.md)            | Next product              |
+| [v5-transactions.md](v5-transactions.md)    | Trees and txs             |
+| [v5-api.md](v5-api.md)                      | HTTP / kit CLI            |
+| `src/lib/vault/v5/`                         | Client tx brain           |
+| Authorizer `cmd/authorizer`                 | Signer (still v4 mint)    |
 
 That is not operational maturity. There is no one-command unvault/cancel
 race, no always-on watcher, no shared Go/TS goldens, no extracted daemon.

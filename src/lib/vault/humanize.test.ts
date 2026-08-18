@@ -28,7 +28,7 @@ describe('humanizeVaultError', () => {
   })
 
   it('explains a swapped deposit address pin', () => {
-    expect(humanizeVaultError(new Error('status deposit address does not match the local pin'))).toMatch(/do not send/i)
+    expect(humanizeVaultError(new Error('status deposit address does not match the local pin'))).toMatch(/don.t send/i)
   })
 
   it('explains a leftover server proof requirement', () => {

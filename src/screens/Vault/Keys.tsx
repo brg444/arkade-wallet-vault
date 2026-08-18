@@ -25,7 +25,7 @@ export default function VaultKeys() {
 
   return (
     <>
-      <Header text='Keys' back={() => navigate('home')} />
+      <Header text='Security' back={() => navigate('home')} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
@@ -45,7 +45,7 @@ export default function VaultKeys() {
               <Button
                 onClick={() => void enablePasskeyLogin()}
                 disabled={busy}
-                label={busy ? 'Enabling…' : 'Allow other devices'}
+                label={busy ? 'Enabling…' : 'Use on another phone'}
               />
             ) : null}
             {hasLocalEnrollment && status?.passkeyLoginAvailable ? (
@@ -56,7 +56,7 @@ export default function VaultKeys() {
             <KeyCard
               icon={<ShieldCheckOutlineIcon />}
               title='Hardware'
-              role={setup.hardwareIsDemo ? 'Demo key' : 'With this device, moves everything'}
+              role={setup.hardwareIsDemo ? 'Demo key' : 'This phone + hardware moves everything'}
               fingerprint={setup.hardwarePub || status?.externalOwnerWalletPub}
             />
             {setup.recoveryPub || status?.recoveryPub ? (
@@ -67,39 +67,26 @@ export default function VaultKeys() {
                 fingerprint={setup.recoveryPub || status?.recoveryPub}
               />
             ) : (
-              <KeyCard
-                icon={<SafeIcon />}
-                title='Recovery'
-                role='Not added. This vault is this device plus hardware.'
-                status='Leftover'
-              />
+              <KeyCard icon={<SafeIcon />} title='Recovery' role='Not added. This vault is this phone plus hardware.' />
             )}
-            <KeyCard
-              icon={<ServerIcon />}
-              title='Vault service'
-              role='Helps with daily spend. Signs start and cancel. Not the final move.'
-            />
+            <KeyCard icon={<ServerIcon />} title='Vault service' role='Helps with daily spend. Can’t move Savings.' />
 
             <Text color='neutral-600' tiny>
-              If you lose…
+              If you lose one
             </Text>
             <KeyCard
-              title='This device'
+              title='This phone'
               role={`Sign in on another phone, or start recovery with hardware (${waitSavings}).`}
             />
-            <KeyCard title='Hardware' role={`Start recovery from this device (${waitPhone}).`} />
-            <KeyCard
-              title='Savings'
-              role='This device + hardware now. Or start recovery, wait, then move. Cancel leaves out the key that started it.'
-            />
+            <KeyCard title='Hardware' role={`Start recovery from this phone (${waitPhone}).`} />
             {network === 'mutinynet' ? (
               <Text color='neutral-600' tiny wrap>
-                Demo waits: hardware 6 blocks, this device 144, recovery 288. The wait starts when recovery confirms.
+                Testnet waits are short on purpose. They start when recovery confirms.
               </Text>
             ) : null}
             {!addressCovered && status?.enrolled ? (
               <Text color='neutral-600' tiny wrap>
-                Receive is off until this vault’s addresses are pinned.
+                Receive isn’t ready yet. Try again after setup finishes.
               </Text>
             ) : null}
 

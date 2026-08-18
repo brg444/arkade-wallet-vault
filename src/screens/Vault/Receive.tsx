@@ -36,7 +36,7 @@ export default function VaultReceive() {
         <Padded>
           <FlexCol>
             <Text color='neutral-600' tiny wrap>
-              {liveNetwork ? 'Mutinynet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
+              {liveNetwork ? 'Testnet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
             </Text>
             <div className='vault-receive-dests'>
               <Panel
@@ -48,10 +48,10 @@ export default function VaultReceive() {
                 testId='receive-spend'
               >
                 <Text small bold>
-                  Daily spend
+                  Spending
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  This device can spend
+                  This phone, up to today’s limit
                 </Text>
               </Panel>
               <Panel
@@ -66,7 +66,7 @@ export default function VaultReceive() {
                   Savings
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  Device + hardware now
+                  This phone and hardware
                 </Text>
               </Panel>
             </div>
@@ -82,11 +82,11 @@ export default function VaultReceive() {
             </p>
             {dest === 'savings' ? (
               <Text color='neutral-600' tiny wrap>
-                Device + hardware now. Hardware after the short delay, this device after the long delay.
+                This phone can’t spend this alone. Hardware signs too.
               </Text>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This device can spend this, up to today’s limit.
+                This phone can spend this, up to today’s limit.
               </Text>
             )}
           </FlexCol>

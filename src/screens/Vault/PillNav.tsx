@@ -9,7 +9,7 @@ export type VaultTab = 'wallet' | 'vault' | 'settings'
 
 const TABS: { id: VaultTab; label: string; screen: VaultScreen; testId: string; icon: JSX.Element }[] = [
   { id: 'wallet', label: 'Wallet', screen: 'home', testId: 'tab-wallet', icon: <WalletIcon /> },
-  { id: 'vault', label: 'Vault', screen: 'keys', testId: 'tab-vault', icon: <VaultIcon /> },
+  { id: 'vault', label: 'Security', screen: 'keys', testId: 'tab-vault', icon: <VaultIcon /> },
   { id: 'settings', label: 'Settings', screen: 'settings', testId: 'tab-settings', icon: <SettingsIcon /> },
 ]
 

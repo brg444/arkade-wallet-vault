@@ -57,7 +57,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'This app doesn’t match the vault. Update and try again.'
   }
   if (msg.includes('does not match the local pin') || msg.includes('not pinned locally')) {
-    return 'This vault’s deposit address no longer matches the one saved on this device. Do not send coins until that is fixed.'
+    return 'This vault’s receive address no longer matches the one saved on this phone. Don’t send coins until that’s fixed.'
   }
   if (msg.includes('api response too large')) {
     return 'The vault sent too much data. Try again.'
