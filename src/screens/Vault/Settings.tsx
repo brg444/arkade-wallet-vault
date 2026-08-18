@@ -123,9 +123,9 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
         <Padded>
           <CenterScreen>
             <WalletAlternativeIcon />
-            <Text>This removes this device</Text>
+            <Text>Sign out of this browser</Text>
             <TextSecondary>
-              Coins stay. Hardware and this device’s keys still work. This does not close the vault.
+              Coins stay. Sign in again with Face ID. This does not close the vault or delete the passkey.
             </TextSecondary>
           </CenterScreen>
         </Padded>

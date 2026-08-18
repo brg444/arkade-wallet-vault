@@ -9,9 +9,12 @@ import {
   loadSelectedVaultId,
   loadStagedEnrollment,
   promoteStagedEnrollment,
+  findStoredEnrollment,
+  loadSessionLocked,
   saveEnrollment,
   saveSelectedVaultId,
   saveStagedEnrollment,
+  setSessionLocked,
 } from './enrollment'
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
@@ -88,6 +91,17 @@ describe('namespaced enrollment store', () => {
     expect(loadEnrollment(storage, loadSelectedVaultId(storage) || undefined)?.credId).toBe('bb')
     clearSelectedVaultId(storage)
     expect(loadSelectedVaultId(storage)).toBeNull()
+  })
+
+  it('finds a stored enrollment after sign-out without wiping it', () => {
+    const storage = memoryStorage()
+    saveEnrollment({ ...sample, vaultId: 'tenant-b' }, storage, 'tenant-b')
+    saveSelectedVaultId('tenant-b', storage)
+    setSessionLocked(true, storage)
+    expect(loadSessionLocked(storage)).toBe(true)
+    expect(findStoredEnrollment(storage)?.vaultId).toBe('tenant-b')
+    setSessionLocked(false, storage)
+    expect(loadSessionLocked(storage)).toBe(false)
   })
 
   it('stages enrollment before finish and promotes it after confirm', () => {

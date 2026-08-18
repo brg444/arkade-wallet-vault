@@ -2,16 +2,22 @@ import { createContext, useCallback, useEffect, useMemo, useState, type ReactNod
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
 import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/enroll'
-import { enablePasskeyLogin, signInWithPasskey } from '../lib/vault/session'
 import {
-  clearEnrollment,
-  clearSelectedVaultId,
+  discoverVaultIdFromPasskey,
+  enablePasskeyLogin,
+  signInWithPasskey,
+  unlockLocalEnrollment,
+} from '../lib/vault/session'
+import {
+  findStoredEnrollment,
   loadEnrollment,
   loadSelectedVaultId,
+  loadSessionLocked,
   saveEnrollment,
   saveSelectedVaultId,
+  setSessionLocked,
 } from '../lib/vault/enrollment'
-import { clearAddressPin, loadAddressPin, type AddressPin } from '../lib/vault/pin'
+import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
 import {
   broadcastTx,
@@ -35,7 +41,7 @@ import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultBitcoinAddress } from '../lib/vault/bitcoin'
 import { sampleDescriptor } from '../lib/vault/sample'
 import { fetchVaultStatus } from '../lib/vault/status'
-import { clearWatchRecord, saveWatchRecord } from '../lib/vault/store'
+import { saveWatchRecord } from '../lib/vault/store'
 import {
   clearSetupPlan,
   emptySetupPlan,
@@ -100,6 +106,7 @@ interface VaultContextProps {
   finishPlan: () => void
   faucetUrl: string
   hasLocalEnrollment: boolean
+  locked: boolean
   lastTxid: string
   liveNetwork: boolean
   allowDemoKeys: boolean
@@ -155,6 +162,7 @@ export const VaultContext = createContext<VaultContextProps>({
   finishPlan: () => {},
   faucetUrl: 'https://faucet.mutinynet.com/',
   hasLocalEnrollment: false,
+  locked: false,
   lastTxid: '',
   liveNetwork: false,
   allowDemoKeys: false,
@@ -202,6 +210,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [scanOnSend, setScanOnSend] = useState(false)
   const [handoffPsbt, setHandoffPsbt] = useState('')
   const [statusKnown, setStatusKnown] = useState(false)
+  const [locked, setLocked] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
 
   useEffect(() => {
@@ -216,14 +225,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
       }
       const selected = loadSelectedVaultId()
-      existing = selected ? loadEnrollment(localStorage, selected) : loadEnrollment()
+      existing = selected ? loadEnrollment(localStorage, selected) : findStoredEnrollment()
       if (existing?.vaultId) saveSelectedVaultId(existing.vaultId)
       const pinId = existing?.vaultId || selected
       setAddressPin(pinId ? loadAddressPin(localStorage, pinId) : null)
-      if (existing) {
-        setEnrollment(existing)
-        setScreen('home')
-      }
+      const sessionLocked = loadSessionLocked()
+      setLocked(sessionLocked)
+      if (existing) setEnrollment(existing)
+      if (existing && !sessionLocked) setScreen('home')
     } catch {
       clearSetupPlan()
     } finally {
@@ -233,7 +242,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const boot = async () => {
       try {
         const recovered = await reconcileStagedEnrollment()
-        if (recovered) {
+        if (recovered && !loadSessionLocked()) {
           setEnrollment(recovered.enrollment)
           setStatus(recovered.status)
           setAddressPin(loadAddressPin(localStorage, recovered.status.vaultId))
@@ -478,11 +487,30 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setBusy(true)
     setError('')
     try {
+      const local = enrollment || findStoredEnrollment()
+      if (local) {
+        const unlocked = await unlockLocalEnrollment(local)
+        setEnrollment(unlocked)
+        saveEnrollment(unlocked)
+        if (unlocked.vaultId) saveSelectedVaultId(unlocked.vaultId)
+        setSessionLocked(false)
+        setLocked(false)
+        const live = unlocked.vaultId ? await fetchVaultStatus(undefined, unlocked.vaultId) : await fetchVaultStatus()
+        setStatus(live)
+        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        setPreview(false)
+        await refreshBalance(live.vaultId)
+        setScreen('home')
+        return
+      }
       const selected = loadSelectedVaultId()
-      const out = selected ? await signInWithPasskey(selected) : await signInWithPasskey()
+      const vaultId = selected || (await discoverVaultIdFromPasskey())
+      const out = await signInWithPasskey(vaultId)
       setEnrollment(out.enrollment)
       saveEnrollment(out.enrollment)
       if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
+      setSessionLocked(false)
+      setLocked(false)
       setStatus(out.status)
       setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
       setPreview(false)
@@ -493,7 +521,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [refreshBalance])
+  }, [enrollment, refreshBalance])
 
   const addTestCoins = useCallback(async () => {
     setBusy(true)
@@ -701,35 +729,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [account, approveSavingsSend, enrollment, finishBroadcast, operationalAddress, preview, spend, status])
 
   const reset = useCallback(() => {
-    const selected = loadSelectedVaultId()
-    clearSetupPlan()
-    clearWatchRecord()
-    clearEnrollment()
-    clearAddressPin()
-    if (selected) {
-      clearWatchRecord(localStorage, selected)
-      clearEnrollment(localStorage, selected)
-      clearAddressPin(localStorage, selected)
-    }
-    clearSelectedVaultId()
-    setSetup(emptySetupPlan())
-    setDescriptor(null)
-    setEnrollment(null)
-    setAddressPin(null)
+    setSessionLocked(true)
+    setLocked(true)
     setPreview(false)
     setDemoCredit(0)
     setPreviewSpent(0)
     setError('')
-    setSpend({ address: '', amount: 0, fee: DEFAULT_FEE })
+    setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
     setLastSend(null)
     setLastTxid('')
-    setChainBalance(0)
-    setSavingsBalance(0)
     setAccount('spend')
     setScanOnSend(false)
     setHandoffPsbt('')
     setScreen('welcome')
-  }, [])
+  }, [liveNetwork])
 
   const value = useMemo<VaultContextProps>(
     () => ({
@@ -756,6 +769,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       finishPlan,
       faucetUrl: 'https://faucet.mutinynet.com/',
       hasLocalEnrollment: Boolean(enrollment),
+      locked,
       lastTxid,
       liveNetwork,
       allowDemoKeys,
@@ -816,6 +830,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       finishPlan,
       lastTxid,
       liveNetwork,
+      locked,
       allowDemoKeys,
       lastSend,
       loaded,
