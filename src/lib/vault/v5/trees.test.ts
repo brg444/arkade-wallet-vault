@@ -125,13 +125,13 @@ describe('v5 normal', () => {
     expect(new Set(addresses).size).toBe(14)
     expect(family.daily.routine).toBeTruthy()
     expect(family.savings.routine).toBeUndefined()
-    expect(family.daily.address).toBe('tb1pw2cglselgaa8kq5635wupv36uyva2ffmuyj2ln4hkhfjttlwwerq88xuwv')
-    expect(family.savings.address).toBe('tb1ptxr9rq49cxp9wltl5h0l6zm2cxh6zjw4lvdalym68hfg4efk8erqatm5mv')
+    expect(family.daily.address).toBe('tb1pp8ctfhpqwkxnpuyk2fpkfn547a2wnc2lt0l2jxt608ehrwdyquyqtm34r8')
+    expect(family.savings.address).toBe('tb1pze88nd4d9ny6tmp36fwre8e7dhphap52hkx766f5hazfms9gjs7qx3nkjs')
     expect(family.quarantine['savings-hardware'].address).toBe(
       'tb1p6hetvtpddk0sgpfyv7nmtrh7dfzxqu2l04d26zcrhlyy3pdwrpmsd8sw5g',
     )
     expect(family.pending['daily-recovery'].address).toBe(
-      'tb1pxmge3spda6n06wugl05tkr6e8ag5vtg8zcvx5khfrrd7xkpwdcqstchjhj',
+      'tb1pauglx20q6rfkf8wq3sy3z02dn404zzrtluspd6mt6uhclxgkwqpsr48veg',
     )
   })
 

@@ -262,6 +262,8 @@ function assembleTransitionScript(input: {
       pushData(new Uint8Array([DIRECT_P256_CSFS_PREFIX, ...input.phone])),
       new Uint8Array([OP.CHECKSIGFROMSTACK]),
     )
+  } else {
+    parts.push(pushInt(1))
   }
   return concat(...parts)
 }
@@ -285,8 +287,11 @@ export function assertTransitionScript(script: Uint8Array, destScriptHex: string
   if (!script.includes(OP.INSPECTPACKET)) throw new Error('packet not pinned')
   if (!scriptContains(script, pushInt(P2A_VALUE_SATS))) throw new Error('P2A value not pinned')
   // CSFS is only the last opcode. Dest programs can contain 0xcc.
-  const hasCsfs = script.length > 0 && script[script.length - 1] === OP.CHECKSIGFROMSTACK
+  // Unbound scripts end in OP_1 so the emulator stack is exactly one true.
+  const last = script.length > 0 ? script[script.length - 1] : 0
+  const hasCsfs = last === OP.CHECKSIGFROMSTACK
   if (phoneBound !== hasCsfs) throw new Error('PhoneDirect bind mismatch')
+  if (!phoneBound && last !== 0x51) throw new Error('unbound script must leave true on the stack')
 }
 
 export { concat }

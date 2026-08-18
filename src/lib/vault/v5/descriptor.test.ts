@@ -18,13 +18,13 @@ describe('v5 public descriptor', () => {
     expect(d.schema).toBe(V5_SCHEMA)
     expect(d.templateVersion).toBe(V5_TEMPLATE)
     expect(d.keys.recovery).toBe(V5_FIXTURE.recoveryPub)
-    expect(d.daily.address).toBe('tb1pw2cglselgaa8kq5635wupv36uyva2ffmuyj2ln4hkhfjttlwwerq88xuwv')
-    expect(d.savings.address).toBe('tb1ptxr9rq49cxp9wltl5h0l6zm2cxh6zjw4lvdalym68hfg4efk8erqatm5mv')
+    expect(d.daily.address).toBe('tb1pp8ctfhpqwkxnpuyk2fpkfn547a2wnc2lt0l2jxt608ehrwdyquyqtm34r8')
+    expect(d.savings.address).toBe('tb1pze88nd4d9ny6tmp36fwre8e7dhphap52hkx766f5hazfms9gjs7qx3nkjs')
     expect(d.quarantine['savings-hardware'].address).toBe(
       'tb1p6hetvtpddk0sgpfyv7nmtrh7dfzxqu2l04d26zcrhlyy3pdwrpmsd8sw5g',
     )
-    expect(d.pending['daily-recovery'].address).toBe('tb1pxmge3spda6n06wugl05tkr6e8ag5vtg8zcvx5khfrrd7xkpwdcqstchjhj')
-    expect(hashV5Descriptor(d)).toBe('b030128127ce53896a9a449652f1ce9d5d3694fda1569a9d0496a45ef6387f70')
+    expect(d.pending['daily-recovery'].address).toBe('tb1pauglx20q6rfkf8wq3sy3z02dn404zzrtluspd6mt6uhclxgkwqpsr48veg')
+    expect(hashV5Descriptor(d)).toBe('f864eb57894578ef152e1e6d19550206b2c384d14e738c0d3206dde02e6ddcfa')
     expect(d.p2a.valueSats).toBe(240)
     expect(d.tweaks.initiate.daily.phone).not.toEqual(d.tweaks.initiate.savings.phone)
     expect(FAMILY_KEYS.every((key) => d.pending[key] && d.quarantine[key])).toBe(true)
