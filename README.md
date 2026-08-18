@@ -5,9 +5,9 @@ too. Testnet only. Don’t send real bitcoin.
 
 Live demo: [https://arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
-This repo is the PWA. The signer is
-[arkade-vault-server](https://github.com/brg444/arkade-vault-server).
-This is not the Arkade VTXO wallet.
+This repo is the PWA. The signer source and image is
+[arkade-vault-server](https://github.com/brg444/arkade-vault-server)
+(`cmd/authorizer`). This is not the Arkade VTXO wallet.
 
 ## Run
 
