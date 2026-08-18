@@ -14,7 +14,8 @@ hardware. Optional recovery. How we say that: [voice.md](voice.md).
 | [v5-api.md](v5-api.md)                   | HTTP, route table, kit CLI                                    |
 | [v5-recovery-kit.md](v5-recovery-kit.md) | Last-resort file, offline                                     |
 
-Default enroll is v4. v5 only if the tenant adds recovery. Don’t mix those up.
+Enroll is v5 only. Recovery is optional. Leftover v4 coins still load;
+recover those out of band. Don’t mix those up.
 
 ## Not the spec
 

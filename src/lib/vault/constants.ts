@@ -1,5 +1,5 @@
-// Frozen v4 strings. Existing vaults still load. New enrolls are v5 only
-// (`src/lib/vault/v5/constants.ts`). Do not mint v4. Sweep is manual.
+// Leftover v4 strings. Existing vaults still load. New enrolls are v5 only
+// (`src/lib/vault/v5/constants.ts`). Do not mint v4.
 export const VAULT_SCHEMA = 'arkade-vault/v4'
 export const VAULT_ID = 'operational-vault-v1'
 export const TEMPLATE_VERSION = 'phone-direct-p256-routine-3of3-admin-phone-hww-v4'

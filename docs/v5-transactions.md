@@ -1,6 +1,7 @@
 # Arkade Vault v5 transactions
 
-**Next product spec.** Live funded outputs may still be v4 ([live.md](live.md)).
+Live enroll spec. Leftover v4 outputs may still sit on chain until they
+are recovered out of band ([live.md](live.md)).
 
 Canonical wallet builders: `src/lib/vault/v5/`. Reconstruct every tree from the public descriptor. Do not trust client scripts or addresses. The authorizer must rebuild the same family; until Go and TS share goldens, this is a promise.
 
