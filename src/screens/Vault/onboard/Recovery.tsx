@@ -36,24 +36,24 @@ export default function VaultRecovery() {
       }
     >
       <Text wrap>
-        Optional paper key. It starts a hold on a new output. Guardians can send that hold to a vault that excludes this
-        key. Skip and this vault stays this device plus hardware.
+        Optional. If you lose this device or hardware, this key can start recovery. The other keys can cancel it during
+        the wait. Skip and this vault stays this device plus hardware.
       </Text>
-      <KeyCard icon={<SafeIcon />} title='Recovery' role='Break-glass. Not a daily cosigner.' />
+      <KeyCard icon={<SafeIcon />} title='Recovery' role='Starts a waiting period. Not a daily spender.' />
       <Reveal label='Public key' defaultOpen>
         <Input label='Public key' placeholder='02… or 03…' value={value} onChange={setValue} testId='recovery-pub' />
         <Button onClick={async () => setValue((await pasteFromClipboard()) || value)} label='Paste' clear />
       </Reveal>
-      <Reveal label='Secret for proof (optional now)'>
+      <Reveal label='Secret to prove you hold it (optional now)'>
         <Input
           label='32-byte hex secret'
-          placeholder='Used at enroll to sign the descriptor'
+          placeholder='Proves this recovery key is yours'
           value={secret}
           onChange={setSecret}
           testId='recovery-secret'
         />
         <Text color='neutral-600' tiny wrap>
-          Not stored. Needed when the authorizer returns the v5 descriptor hash.
+          Not stored on this phone. Needed only if you add recovery to a live vault.
         </Text>
       </Reveal>
     </OnboardLayout>

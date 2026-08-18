@@ -14,7 +14,7 @@ test('skips optional recovery and reaches the vault home', async ({ page }) => {
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await expect(page.getByText('Recovery key', { exact: true })).toBeVisible()
-  await expect(page.getByText(/optional paper key/i)).toBeVisible()
+  await expect(page.getByText(/waiting period/i)).toBeVisible()
   await page.getByRole('button', { name: 'Skip for now' }).click()
 
   await expect(page.getByText('How much can this device send?', { exact: true })).toBeVisible()

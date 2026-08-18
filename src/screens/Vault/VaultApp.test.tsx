@@ -35,7 +35,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText('Recovery key')).toBeTruthy()
-    expect(screen.getByText(/optional paper key/i)).toBeTruthy()
+    expect(screen.getByText(/waiting period/i)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
     expect(await screen.findByText('How much can this device send?')).toBeTruthy()
@@ -62,7 +62,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByTestId('account-savings'))
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Savings/)
     expect(screen.queryByText(/0 \/ 50,000 available/)).toBeNull()
-    expect(screen.getByText(/start a hold/i)).toBeTruthy()
+    expect(screen.getByText(/waiting period you can cancel/i)).toBeTruthy()
 
     await user.click(screen.getByTestId('account-switcher'))
     await user.click(await screen.findByTestId('account-spend'))

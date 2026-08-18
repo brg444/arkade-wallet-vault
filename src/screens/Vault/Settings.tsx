@@ -299,7 +299,6 @@ export default function VaultSettings() {
               <TextLabel>Security</TextLabel>
               <Row label='Recover' testId='settings-recover' onClick={() => navigate('recover')} />
               <Row label='Recovery Kit' testId='settings-kit' onClick={() => navigate('recover')} />
-              <Row label='Sweep leftover v4' testId='settings-sweep' onClick={() => navigate('recover')} />
               {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
                 <Row
                   label={busy ? 'Enabling…' : 'Allow other devices'}
