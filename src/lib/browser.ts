@@ -1,4 +1,5 @@
-export const isMobileBrowser: boolean = 'ontouchstart' in window || Boolean(navigator.maxTouchPoints)
+export const isMobileBrowser: boolean =
+  typeof window !== 'undefined' && ('ontouchstart' in window || Boolean(navigator.maxTouchPoints))
 
 export const isIOS = (): boolean => {
   const userAgent = window.navigator.userAgent
