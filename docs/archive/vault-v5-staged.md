@@ -1,6 +1,9 @@
 # Handoff: Arkade Vault v5 staged recovery
 
-Read this before changing vault trees, enroll, or recovery. This is the approved plan plus what is already on disk. A new session will not have the old chat.
+**ARCHIVE — not the spec.** Current spec is [../README.md](../README.md).
+This is a session handoff.
+
+Read this before changing vault trees, enroll, or recovery. A new session will not have the old chat.
 
 **Repo:** `/Users/alexb./code/arkade-wallet-vault`  
 **Branch:** `vault-mode`  
@@ -87,11 +90,11 @@ On-chain encrypted descriptor: **later, own review.**
 2. Wallet initiate / clawback / claim PSBTs. Done.
 3. Recovery Kit inspect + offline CLI. Done.
 4. Route layer. Done.
-5. Wallet schema-6 replay store + browser watcher/alerts. Done on the client. Authorizer SQLite schema 6 is the other session.
-6. Enroll + required recovery PoP. Done in the wallet. Authorizer must return a v5 descriptor; this client refuses v4 proposes.
-7. v4→v5 sweep is **manual**. Do not mint v4. Do not add sweep tooling. Existing v4 UTXOs stay until you send them.
+5. Wallet schema-6 replay store + browser watcher/alerts. Done on the client. Authorizer SQLite `recovery_session` + `DecideReplay` added on `pr1-merge` (schema 6). Run `go test ./internal/policy` there.
+6. Enroll + **optional** recovery. Skip → current v4 vault (device + hardware). Add recovery → v5 descriptor + PoP. Authorizer still has to return v5 when recovery is chosen.
+7. v4→v5 sweep is manual. Do not add sweep tooling.
 
-Wallet UI: onboard recovery, Recover + kit in Settings, leftover-v4 warning on Keys if recovery is missing.
+Wallet UI: onboard recovery can be skipped. Recover + kit apply only when a recovery key is set.
 
 ## Prompt for the other session
 
