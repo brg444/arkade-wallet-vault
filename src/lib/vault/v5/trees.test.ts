@@ -2,35 +2,24 @@ import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { P2A_OUTPUT_INDEX, P2A_SCRIPT_HEX, P2A_VALUE_SATS, TRANSITION_SEQUENCE, V5_CSV } from './constants'
 import { contextInternalKey, encodeTreeContext } from './context'
+import { UNSAFE_GENERATOR_2G } from '../setupPlan'
+import { V5_FIXTURE, V5_FIXTURE_FAMILY } from './fixtures'
 import { assertTransitionScript } from './script'
 import { buildNormal, buildPending, buildQuarantine, buildV5Family, pendingDelay, quarantineGuardians } from './trees'
 
-const PHONE = '02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9'
-const HARDWARE = '02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13'
-const RECOVERY = '022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4'
-const VAULT_TWEAK = '03fff97bd5755eeea420453a14355235d382f6472f8568a18b2f057a1460297556'
-const ARKADE_TWEAK = '025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc'
-const initiate = {
-  phone: {
-    vault: '022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01',
-    arkade: '03acd484e2f0c7f65309ad178a9f559abde09796974c57e714c35f110dfc27ccbe',
-  },
-  hardware: {
-    vault: '03a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7',
-    arkade: '03774ae7f858a9411e5ef4246b70c65aac5649980be5c17891bbec17895da008cb',
-  },
-  recovery: {
-    vault: '03d01115d548e7561b15c38f004d734633687cf4419620095bc5b0f47070afe85a',
-    arkade: '03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8',
-  },
-}
+const PHONE = V5_FIXTURE.phonePub
+const HARDWARE = V5_FIXTURE.hardwarePub
+const RECOVERY = V5_FIXTURE.recoveryPub
+const VAULT_TWEAK = V5_FIXTURE.routineVault
+const ARKADE_TWEAK = V5_FIXTURE.routineArkade
+const initiate = V5_FIXTURE.initiate
 
 const base = {
-  vaultId: 'aabbccddeeff00112233445566778899',
+  vaultId: V5_FIXTURE.vaultId,
   phonePub: PHONE,
   hardwarePub: HARDWARE,
   recoveryPub: RECOVERY,
-  network: 'mutinynet',
+  network: V5_FIXTURE.network,
 }
 
 describe('v5 quarantine', () => {
@@ -121,13 +110,7 @@ describe('v5 normal', () => {
   })
 
   it('builds a full family with 2 normals, 6 pending, 6 quarantine', () => {
-    const family = buildV5Family({
-      ...base,
-      routineVault: VAULT_TWEAK,
-      routineArkade: ARKADE_TWEAK,
-      initiate,
-      pending: initiate,
-    })
+    const family = buildV5Family(V5_FIXTURE_FAMILY)
     const addresses = [
       family.daily.address,
       family.savings.address,
@@ -143,8 +126,18 @@ describe('v5 normal', () => {
       'tb1p6hetvtpddk0sgpfyv7nmtrh7dfzxqu2l04d26zcrhlyy3pdwrpmsd8sw5g',
     )
     expect(family.pending['daily-recovery'].address).toBe(
-      'tb1p0a8umug8skudg8c4jr7pldfl8tg3xzmp4tgqcwddy2c5k3jc5qpqncv4fn',
+      'tb1pcg2wwsrjklt6mclhzxp6l72843frqd0gf3lp982f3u6hr67f0tfsm0xaww',
     )
+  })
+
+  it('refuses reused initiate tweaks as pending tweaks and G/2G', () => {
+    expect(() =>
+      buildV5Family({
+        ...V5_FIXTURE_FAMILY,
+        pending: V5_FIXTURE.initiate,
+      }),
+    ).toThrow(/distinct/)
+    expect(() => buildV5Family({ ...V5_FIXTURE_FAMILY, hardwarePub: UNSAFE_GENERATOR_2G })).toThrow(/forbidden/)
   })
 })
 
@@ -159,13 +152,7 @@ describe('v5 P2A lock', () => {
 
 describe('v5 transition dest wiring', () => {
   it('pins each initiate dest to that Pending and each clawback dest to that Quarantine', () => {
-    const family = buildV5Family({
-      ...base,
-      routineVault: VAULT_TWEAK,
-      routineArkade: ARKADE_TWEAK,
-      initiate,
-      pending: initiate,
-    })
+    const family = buildV5Family(V5_FIXTURE_FAMILY)
     for (const kind of ['daily', 'savings'] as const) {
       for (const claimant of ['phone', 'hardware', 'recovery'] as const) {
         const key = `${kind}-${claimant}` as const

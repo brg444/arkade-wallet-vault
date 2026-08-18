@@ -5,7 +5,7 @@ import { encodeUtf8 } from '../hex'
 import { TAPROOT_NUMS_XONLY } from '../savingsTree'
 import { CLAIMANTS, type Claimant, type VaultKind, V5_INTERNAL_TAG, V5_TEMPLATE } from './constants'
 
-function taggedHash(tag: string, ...messages: Uint8Array[]): Uint8Array {
+export function taggedHash(tag: string, ...messages: Uint8Array[]): Uint8Array {
   const tagH = sha256(encodeUtf8(tag))
   const prefix = new Uint8Array(64)
   prefix.set(tagH, 0)

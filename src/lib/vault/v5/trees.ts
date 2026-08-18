@@ -1,7 +1,8 @@
 import { hex } from '@scure/base'
 import { p2tr } from '@scure/btc-signer'
 import { vaultAddressNetwork } from '../bitcoin'
-import { checksigScript, csvChecksigScript, xOnlyFromCompressed } from '../savingsTree'
+import { TAPROOT_NUMS_XONLY, checksigScript, csvChecksigScript, xOnlyFromCompressed } from '../savingsTree'
+import { UNSAFE_GENERATOR_2G, UNSAFE_GENERATOR_G } from '../setupPlan'
 import { type Claimant, type VaultKind, V5_CSV } from './constants'
 import { contextInternalKey } from './context'
 import { buildTransitionScript } from './script'
@@ -55,6 +56,46 @@ function requireDistinct(keys: Uint8Array[], name: string) {
     const hexKey = hex.encode(key)
     if (seen.has(hexKey)) throw new Error(`${name} keys must be x-only distinct`)
     seen.add(hexKey)
+  }
+}
+
+const FORBIDDEN_XONLY = new Set([
+  TAPROOT_NUMS_XONLY,
+  hex.encode(xOnlyFromCompressed(UNSAFE_GENERATOR_G)),
+  hex.encode(xOnlyFromCompressed(UNSAFE_GENERATOR_2G)),
+])
+
+function assertFamilyRoles(input: {
+  phonePub: string
+  hardwarePub: string
+  recoveryPub: string
+  routineVault: string
+  routineArkade: string
+  initiate: InitiateTweaks
+  pending: InitiateTweaks
+}) {
+  const pubs = [
+    input.phonePub,
+    input.hardwarePub,
+    input.recoveryPub,
+    input.routineVault,
+    input.routineArkade,
+    input.initiate.phone.vault,
+    input.initiate.phone.arkade,
+    input.initiate.hardware.vault,
+    input.initiate.hardware.arkade,
+    input.initiate.recovery.vault,
+    input.initiate.recovery.arkade,
+    input.pending.phone.vault,
+    input.pending.phone.arkade,
+    input.pending.hardware.vault,
+    input.pending.hardware.arkade,
+    input.pending.recovery.vault,
+    input.pending.recovery.arkade,
+  ].map(xOnlyFromCompressed)
+  requireDistinct(pubs, 'family')
+  for (const pub of pubs) {
+    if (FORBIDDEN_XONLY.has(hex.encode(pub))) throw new Error('family key is a forbidden point')
   }
 }
 
@@ -206,6 +247,7 @@ export function buildV5Family(input: {
   pending: InitiateTweaks
   network: string
 }) {
+  assertFamilyRoles(input)
   const kinds = ['daily', 'savings'] as const
   const claimants = ['phone', 'hardware', 'recovery'] as const
   const quarantine = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildQuarantine>>

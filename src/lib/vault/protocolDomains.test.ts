@@ -3,12 +3,19 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_SCHEMA } from './constants'
 import { enrollmentPoPDigest } from './tenantEnrollment'
+import { V5_RECOVERY_POP_TAG, V5_SCHEMA, V5_TEMPLATE } from './v5/constants'
 
 describe('frozen wallet protocol domains', () => {
   it('pins the live v4 product strings', () => {
     expect(VAULT_SCHEMA).toBe('arkade-vault/v4')
     expect(TEMPLATE_VERSION).toBe('phone-direct-p256-routine-3of3-admin-phone-hww-v4')
     expect(POLICY_VERSION).toBe('mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3')
+  })
+
+  it('pins the v5 schema, template, and recovery PoP tag', () => {
+    expect(V5_SCHEMA).toBe('arkade-vault/v5')
+    expect(V5_TEMPLATE).toBe('phone-hww-recovery-staged-v5')
+    expect(V5_RECOVERY_POP_TAG).toBe('arkade-vault/v5/recovery-pop')
   })
 
   it('pins client HKDF and enrollment domains in source', () => {
