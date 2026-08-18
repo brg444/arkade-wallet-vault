@@ -42,7 +42,7 @@ describe('tenant enrollment identity', () => {
     expect(Buffer.from(digest).equals(Buffer.from(swappedTree))).toBe(false)
   })
 
-  it('only requires a v5 propose when recovery is being added', () => {
+  it('rejects a leftover v4 propose', () => {
     expect(() => requireV5ProposedDescriptor(sampleDescriptor(), '00'.repeat(32))).toThrow(/v5 vault/)
   })
 })

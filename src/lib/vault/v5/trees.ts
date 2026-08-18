@@ -13,16 +13,15 @@ const UNSPENDABLE_PADDING = new Uint8Array([0x6a])
 
 export type TreeRole = 'quarantine' | 'pending' | 'normal'
 
-export function quarantineGuardians(
-  claimant: Claimant,
-): ['hardware', 'recovery'] | ['phone', 'recovery'] | ['phone', 'hardware'] {
-  if (claimant === 'phone') return ['hardware', 'recovery']
-  if (claimant === 'hardware') return ['phone', 'recovery']
+export function quarantineGuardians(claimant: Claimant, hasRecovery = true): Claimant[] {
+  if (claimant === 'phone') return hasRecovery ? ['hardware', 'recovery'] : ['hardware']
+  if (claimant === 'hardware') return hasRecovery ? ['phone', 'recovery'] : ['phone']
   return ['phone', 'hardware']
 }
 
-export function pendingGuardians(claimant: Claimant): Claimant[] {
-  return (['phone', 'hardware', 'recovery'] as const).filter((role) => role !== claimant)
+export function pendingGuardians(claimant: Claimant, hasRecovery = true): Claimant[] {
+  const roles: Claimant[] = hasRecovery ? ['phone', 'hardware', 'recovery'] : ['phone', 'hardware']
+  return roles.filter((role) => role !== claimant)
 }
 
 export function pendingDelay(claimant: Claimant): number {
@@ -92,17 +91,17 @@ export function buildQuarantine(input: {
   claimant: Claimant
   phonePub: string
   hardwarePub: string
-  recoveryPub: string
+  recoveryPub?: string
   network: string
 }) {
-  const pubs = {
+  const pubs: Record<string, Uint8Array> = {
     phone: xOnlyFromCompressed(input.phonePub),
     hardware: xOnlyFromCompressed(input.hardwarePub),
-    recovery: xOnlyFromCompressed(input.recoveryPub),
   }
-  requireDistinct([pubs.phone, pubs.hardware, pubs.recovery], 'user')
-  const [a, b] = quarantineGuardians(input.claimant)
-  const script = checksigScript([pubs[a], pubs[b]])
+  if (input.recoveryPub) pubs.recovery = xOnlyFromCompressed(input.recoveryPub)
+  requireDistinct(Object.values(pubs), 'user')
+  const names = quarantineGuardians(input.claimant, Boolean(input.recoveryPub))
+  const script = checksigScript(names.map((name) => pubs[name]))
   const internal = contextInternalKey({
     vaultId: input.vaultId,
     kind: input.kind,
@@ -117,7 +116,7 @@ export function buildQuarantine(input: {
     tapInternalKey: payment.tapInternalKey,
     tapLeafScript: payment.tapLeafScript,
     admin: script,
-    guardians: [a, b] as const,
+    guardians: names,
   }
 }
 
@@ -127,21 +126,23 @@ export function buildPending(input: {
   claimant: Claimant
   phonePub: string
   hardwarePub: string
-  recoveryPub: string
+  recoveryPub?: string
   vaultTweak: string
   arkadeTweak: string
   network: string
 }) {
-  const pubs = {
+  const pubs: Record<string, Uint8Array> = {
     phone: xOnlyFromCompressed(input.phonePub),
     hardware: xOnlyFromCompressed(input.hardwarePub),
-    recovery: xOnlyFromCompressed(input.recoveryPub),
   }
+  if (input.recoveryPub) pubs.recovery = xOnlyFromCompressed(input.recoveryPub)
   const vault = xOnlyFromCompressed(input.vaultTweak)
   const arkade = xOnlyFromCompressed(input.arkadeTweak)
-  requireDistinct([pubs.phone, pubs.hardware, pubs.recovery, vault, arkade], 'pending')
+  requireDistinct([...Object.values(pubs), vault, arkade], 'pending')
   const claim = csvChecksigScript(pendingDelay(input.claimant), pubs[input.claimant])
-  const clawbacks = pendingGuardians(input.claimant).map((guardian) => checksigScript([pubs[guardian], vault, arkade]))
+  const clawbacks = pendingGuardians(input.claimant, Boolean(input.recoveryPub)).map((guardian) =>
+    checksigScript([pubs[guardian], vault, arkade]),
+  )
   const scripts = [claim, ...clawbacks, UNSPENDABLE_PADDING]
   const internal = contextInternalKey({
     vaultId: input.vaultId,
@@ -163,14 +164,18 @@ export function buildPending(input: {
   }
 }
 
-export type InitiateTweaks = Record<Claimant, { vault: string; arkade: string }>
+export type InitiateTweaks = {
+  phone: { vault: string; arkade: string }
+  hardware: { vault: string; arkade: string }
+  recovery?: { vault: string; arkade: string }
+}
 
 export function buildNormal(input: {
   vaultId: string
   kind: VaultKind
   phonePub: string
   hardwarePub: string
-  recoveryPub: string
+  recoveryPub?: string
   routineVault?: string
   routineArkade?: string
   initiate: InitiateTweaks
@@ -178,13 +183,13 @@ export function buildNormal(input: {
 }) {
   const phone = xOnlyFromCompressed(input.phonePub)
   const hardware = xOnlyFromCompressed(input.hardwarePub)
-  const recovery = xOnlyFromCompressed(input.recoveryPub)
+  const recovery = input.recoveryPub ? xOnlyFromCompressed(input.recoveryPub) : undefined
+  const claimants = (recovery ? ['phone', 'hardware', 'recovery'] : ['phone', 'hardware']) as Claimant[]
   const tweaks: Uint8Array[] = []
-  for (const claimant of ['phone', 'hardware', 'recovery'] as const) {
-    tweaks.push(
-      xOnlyFromCompressed(input.initiate[claimant].vault),
-      xOnlyFromCompressed(input.initiate[claimant].arkade),
-    )
+  for (const claimant of claimants) {
+    const pair = input.initiate[claimant]
+    if (!pair) throw new Error(`missing ${claimant} initiate tweaks`)
+    tweaks.push(xOnlyFromCompressed(pair.vault), xOnlyFromCompressed(pair.arkade))
   }
   if (input.kind === 'daily') {
     if (!input.routineVault || !input.routineArkade) throw new Error('daily routine tweaks required')
@@ -192,16 +197,16 @@ export function buildNormal(input: {
   } else if (input.routineVault || input.routineArkade) {
     throw new Error('savings must not include routine tweaks')
   }
-  requireDistinct([phone, hardware, recovery, ...tweaks], 'normal')
+  requireDistinct([phone, hardware, ...(recovery ? [recovery] : []), ...tweaks], 'normal')
 
   const admin = checksigScript([phone, hardware])
-  const initiate = (['phone', 'hardware', 'recovery'] as const).map((claimant) =>
-    checksigScript([
-      { phone, hardware, recovery }[claimant],
-      xOnlyFromCompressed(input.initiate[claimant].vault),
-      xOnlyFromCompressed(input.initiate[claimant].arkade),
-    ]),
-  )
+  const role = { phone, hardware, recovery }
+  const initiate = claimants.map((claimant) => {
+    const pair = input.initiate[claimant]!
+    const pub = role[claimant]
+    if (!pub) throw new Error(`missing ${claimant}`)
+    return checksigScript([pub, xOnlyFromCompressed(pair.vault), xOnlyFromCompressed(pair.arkade)])
+  })
   const scripts =
     input.kind === 'daily'
       ? [
@@ -232,7 +237,7 @@ export function buildV5Family(input: {
   vaultId: string
   phonePub: string
   hardwarePub: string
-  recoveryPub: string
+  recoveryPub?: string
   phoneDirectP256: string
   vaultCosignerBase: string
   arkadeCosignerBase: string
@@ -241,20 +246,19 @@ export function buildV5Family(input: {
   network: string
 }) {
   const phoneDirect = hexToBytes(input.phoneDirectP256)
-  assertRoleSet(
-    [
-      input.phonePub,
-      input.hardwarePub,
-      input.recoveryPub,
-      input.vaultCosignerBase,
-      input.arkadeCosignerBase,
-      input.routineVault,
-      input.routineArkade,
-    ],
-    'family bases',
-  )
+  const bases = [
+    input.phonePub,
+    input.hardwarePub,
+    input.vaultCosignerBase,
+    input.arkadeCosignerBase,
+    input.routineVault,
+    input.routineArkade,
+  ]
+  if (input.recoveryPub) bases.splice(2, 0, input.recoveryPub)
+  assertRoleSet(bases, 'family bases')
   const kinds = ['daily', 'savings'] as const
-  const claimants = ['phone', 'hardware', 'recovery'] as const
+  const claimants = (input.recoveryPub ? ['phone', 'hardware', 'recovery'] : ['phone', 'hardware']) as Claimant[]
+  const hasRecovery = Boolean(input.recoveryPub)
   const quarantine = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildQuarantine>>
   const pending = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildPending>>
   const initiateAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
@@ -283,7 +287,7 @@ export function buildV5Family(input: {
           throw new Error(`pending ${key} clawback witness ${got} != ${expectedClawbackWitness}`)
         }
       }
-      const expectedInitiate = initiateWitnessBytes(kind, claimant)
+      const expectedInitiate = initiateWitnessBytes(kind, claimant, hasRecovery)
       initiateAuth[key] = buildTransitionScript({
         destScriptHex: hex.encode(pending[key].script),
         bindPhoneDirect: claimant === 'phone' ? phoneDirect : undefined,
@@ -291,15 +295,19 @@ export function buildV5Family(input: {
       })
     }
   }
-  const dailyInitiate = {
+  const dailyInitiate: InitiateTweaks = {
     phone: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-phone']),
     hardware: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-hardware']),
-    recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-recovery']),
+    ...(hasRecovery
+      ? { recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-recovery']) }
+      : {}),
   }
-  const savingsInitiate = {
+  const savingsInitiate: InitiateTweaks = {
     phone: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-phone']),
     hardware: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-hardware']),
-    recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-recovery']),
+    ...(hasRecovery
+      ? { recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-recovery']) }
+      : {}),
   }
   const daily = buildNormal({
     ...input,
@@ -316,20 +324,20 @@ export function buildV5Family(input: {
   daily.initiate.forEach((script, i) => {
     const claimant = claimants[i]
     const got = collaborativeWitnessBytes(script, controlOf(daily, script))
-    const want = initiateWitnessBytes('daily', claimant)
+    const want = initiateWitnessBytes('daily', claimant, hasRecovery)
     if (got !== want) throw new Error(`daily ${claimant} initiate witness ${got} != ${want}`)
   })
   savings.initiate.forEach((script, i) => {
     const claimant = claimants[i]
     const got = collaborativeWitnessBytes(script, controlOf(savings, script))
-    const want = initiateWitnessBytes('savings', claimant)
+    const want = initiateWitnessBytes('savings', claimant, hasRecovery)
     if (got !== want) throw new Error(`savings ${claimant} initiate witness ${got} != ${want}`)
   })
   assertRoleSet(
     [
       input.phonePub,
       input.hardwarePub,
-      input.recoveryPub,
+      ...(input.recoveryPub ? [input.recoveryPub] : []),
       input.vaultCosignerBase,
       input.arkadeCosignerBase,
       input.routineVault,

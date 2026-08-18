@@ -52,7 +52,7 @@ describe('vault UI lock', () => {
     expect(enroll).toMatch(/recoveryPoP/)
     expect(enroll).toMatch(/wantRecovery/)
     const proof = read('src/lib/vault/v5/enroll.ts')
-    expect(proof).toMatch(/recovery needs a v5 vault/)
+    expect(proof).toMatch(/enroll needs a v5 vault/)
     expect(proof).toMatch(/this setup skipped recovery/)
     const constants = read('src/lib/vault/v5/constants.ts')
     expect(constants).toContain('arkade-vault/v5')

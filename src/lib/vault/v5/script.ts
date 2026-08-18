@@ -10,6 +10,7 @@ import {
   TRANSITION_SEQUENCE,
   type Claimant,
   type VaultKind,
+  WITNESS_BYTES_367,
   WITNESS_BYTES_399,
   WITNESS_BYTES_431,
 } from './constants'
@@ -51,8 +52,12 @@ export const DIRECT_P256_CSFS_PREFIX = 0x11
 
 export const TRANSITION_WITNESS_BYTES = WITNESS_BYTES_399
 
-export function initiateWitnessBytes(kind: VaultKind, claimant: Claimant): number {
-  if (kind === 'daily' && (claimant === 'phone' || claimant === 'hardware')) return WITNESS_BYTES_431
+export function initiateWitnessBytes(kind: VaultKind, claimant: Claimant, hasRecovery = true): number {
+  if (hasRecovery) {
+    if (kind === 'daily' && (claimant === 'phone' || claimant === 'hardware')) return WITNESS_BYTES_431
+    return WITNESS_BYTES_399
+  }
+  if (kind === 'savings' && claimant === 'hardware') return WITNESS_BYTES_367
   return WITNESS_BYTES_399
 }
 

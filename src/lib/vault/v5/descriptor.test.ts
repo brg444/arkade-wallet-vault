@@ -50,8 +50,12 @@ describe('v5 public descriptor', () => {
     expect(original).not.toBe(hashDescriptor(sampleDescriptor()))
   })
 
-  it('rejects missing recovery and G/2G', () => {
-    expect(() => buildV5Descriptor({ ...V5_FIXTURE, recoveryPub: '' })).toThrow(/recovery/)
+  it('allows skipping recovery and still refuses G/2G', () => {
+    const skipped = buildV5Descriptor({ ...V5_FIXTURE, recoveryPub: undefined })
+    expect(skipped.keys.recovery).toBeUndefined()
+    expect(skipped.pending['daily-recovery']).toBeUndefined()
+    expect(skipped.quarantine['daily-phone'].guardians).toEqual(['hardware'])
+    expect(skipped.daily.address).not.toBe(fixtureDescriptor().daily.address)
     expect(() => buildV5Descriptor({ ...V5_FIXTURE, hardwarePub: UNSAFE_GENERATOR_2G })).toThrow(/forbidden/)
     const v4 = sampleDescriptor()
     expect(() => validateDescriptor(v4)).not.toThrow()

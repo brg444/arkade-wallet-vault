@@ -4,8 +4,9 @@ Arkade Vault is a vault on this phone: daily spend with Face ID,
 Savings that need hardware, a vault service that cannot take Savings.
 How we say that: [voice.md](voice.md).
 
-The next **program** (v5) is optional recovery. Skip recovery and enroll
-stays v4. Supply a recovery key and the signer mints v5.
+The only enrollable program is v5. Recovery is optional: skip it and the
+family is this device plus hardware. Add a recovery key and it is a third
+guardian. Leftover v4 coins still spend until you sweep them.
 
 The long mapping: Arkade as a validating cosigner (Safe-like _account_,
 VLS-like _isolation_, Bitcoin Script _exits_). This vault is the first

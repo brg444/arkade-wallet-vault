@@ -5,7 +5,7 @@ One owner per layer. Do not copy this table into the emulator README.
 | Layer | File | Owns |
 | --- | --- | --- |
 | Product language | [voice.md](voice.md) | Names: this device, hardware, vault service, optional recovery |
-| What is funded | [live.md](live.md) | Live Mutinynet: default v4, optional v5 |
+| What is funded | [live.md](live.md) | Live Mutinynet: v5 enroll, leftover v4 coins |
 | Now / next / later | [plan.md](plan.md) | Packaging split, leftover v4, extract |
 | v5 program | [v5-overview.md](v5-overview.md), [v5-transactions.md](v5-transactions.md), [v5-api.md](v5-api.md) | Trees, txs, HTTP, kit |
 | Client entry | [../README.md](../README.md) | This PWA, same-origin `/v1`, contract pack |

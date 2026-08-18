@@ -17,11 +17,11 @@ signer. This repo is the phone app.
 - **Spending** — this phone, up to a daily limit
 - **Savings** — this phone and hardware together
 - **Vault service** — helps daily spend, cannot take Savings
-- **Recovery** — optional. Skip keeps this device plus hardware (v4). Add a recovery key and the signer mints v5.
+- **Recovery** — optional. Skip and the vault is this device plus hardware.
+  Add a recovery key and it can start a waiting period you can cancel.
 
-Engineers: default enroll is still v4 (50k / 100k, CSV 6 / 144 on
-Savings). Hardware can move first on a mature Savings coin. Optional v5
-starts a _new_ waiting period instead. See [docs/live.md](docs/live.md).
+Engineers: new enrolls are v5 only. Leftover v4 UTXOs still spend until
+swept. See [docs/live.md](docs/live.md).
 
 ## Packaging
 
