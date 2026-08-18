@@ -1,3 +1,4 @@
+import { loadSessionView } from './chain'
 import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from './constants'
 import { deriveSession } from './session'
 import { familyFromDescriptor } from './descriptor'
@@ -44,12 +45,15 @@ export type KitCliCommand =
       kit: RecoveryKit
       kind: VaultKind
       claimant: Claimant
-      tip: number
+      tip?: number
       height?: number
       mempool?: boolean
       spent?: 'quarantine' | 'other'
       prevHeight?: number
       requested?: boolean
+      esplora?: string
+      txid?: string
+      vout?: number
     }
 
 function flag(args: string[], name: string): string | undefined {
@@ -98,17 +102,22 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
     if (spentRaw && spentRaw !== 'quarantine' && spentRaw !== 'other') {
       throw new Error('spent must be quarantine or other')
     }
+    const esplora = flag(rest, 'esplora')
+    if (!esplora && !flag(rest, 'tip')) throw new Error('status requires --tip or --esplora')
     return {
       name: 'status',
       kit,
       kind: requireKind(rest),
       claimant: requireClaimant(rest),
-      tip: requireInt(rest, 'tip'),
+      tip: flag(rest, 'tip') ? requireInt(rest, 'tip') : undefined,
       height: flag(rest, 'height') ? requireInt(rest, 'height') : undefined,
       mempool: rest.includes('--mempool'),
       spent: spentRaw === 'quarantine' || spentRaw === 'other' ? spentRaw : undefined,
       prevHeight: flag(rest, 'prev-height') ? requireInt(rest, 'prev-height') : undefined,
       requested: rest.includes('--requested'),
+      esplora,
+      txid: flag(rest, 'txid'),
+      vout: flag(rest, 'vout') ? requireInt(rest, 'vout') : undefined,
     }
   }
   const coin = {
@@ -158,26 +167,8 @@ export function runKitCli(cmd: KitCliCommand): string {
     return lines.join('\n')
   }
   if (cmd.name === 'status') {
-    const key = `${cmd.kind}-${cmd.claimant}` as const
-    const pending = cmd.kit.descriptor.pending[key]
-    const snapshot = deriveSession(pending.delay, {
-      tipHeight: cmd.tip,
-      pending: cmd.height
-        ? { txid: '00', vout: 0, value: 0, confirmed: true, blockHeight: cmd.height }
-        : cmd.mempool
-          ? { txid: '00', vout: 0, value: 0, confirmed: false }
-          : undefined,
-      spends: cmd.spent ? [{ txid: 'ff', confirmed: true, dest: cmd.spent }] : undefined,
-      previouslyConfirmedHeight: cmd.prevHeight,
-      requested: cmd.requested,
-    })
-    return [
-      `${key} ${pending.address}`,
-      `state ${snapshot.state}`,
-      `confirmed ${snapshot.confirmedHeight ?? '-'}`,
-      `remaining ${snapshot.remaining ?? '-'}`,
-      `claimable ${snapshot.claimable ? 'yes' : 'no'}`,
-    ].join('\n')
+    if (cmd.esplora) throw new Error('status --esplora requires runKitCliAsync')
+    return formatStatus(cmd)
   }
   if (cmd.name === 'verify') {
     try {
@@ -215,6 +206,50 @@ export function runKitCli(cmd: KitCliCommand): string {
     network: cmd.kit.descriptor.network,
   })
   return built.psbtHex
+}
+
+function formatStatus(cmd: Extract<KitCliCommand, { name: 'status' }>, view?: Parameters<typeof deriveSession>[1]) {
+  const key = `${cmd.kind}-${cmd.claimant}` as const
+  const pending = cmd.kit.descriptor.pending[key]
+  const snapshot = deriveSession(
+    pending.delay,
+    view || {
+      tipHeight: cmd.tip ?? 0,
+      pending: cmd.height
+        ? { txid: '00', vout: 0, value: 0, confirmed: true, blockHeight: cmd.height }
+        : cmd.mempool
+          ? { txid: '00', vout: 0, value: 0, confirmed: false }
+          : undefined,
+      spends: cmd.spent ? [{ txid: 'ff', confirmed: true, dest: cmd.spent }] : undefined,
+      previouslyConfirmedHeight: cmd.prevHeight,
+      requested: cmd.requested,
+    },
+  )
+  return [
+    `${key} ${pending.address}`,
+    `state ${snapshot.state}`,
+    `confirmed ${snapshot.confirmedHeight ?? '-'}`,
+    `remaining ${snapshot.remaining ?? '-'}`,
+    `claimable ${snapshot.claimable ? 'yes' : 'no'}`,
+  ].join('\n')
+}
+
+export async function runKitCliAsync(cmd: KitCliCommand): Promise<string> {
+  if (cmd.name === 'status' && cmd.esplora) {
+    const key = `${cmd.kind}-${cmd.claimant}` as const
+    const pending = cmd.kit.descriptor.pending[key]
+    const quarantine = cmd.kit.descriptor.quarantine[key]
+    const view = await loadSessionView({
+      base: cmd.esplora,
+      pendingAddress: pending.address,
+      quarantineScriptHex: quarantine.script,
+      outpoint: cmd.txid !== undefined && cmd.vout !== undefined ? { txid: cmd.txid, vout: cmd.vout } : undefined,
+      previouslyConfirmedHeight: cmd.prevHeight,
+      requested: cmd.requested,
+    })
+    return formatStatus(cmd, view)
+  }
+  return runKitCli(cmd)
 }
 
 export { parseRecoveryKit }
