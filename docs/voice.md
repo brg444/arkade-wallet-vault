@@ -51,7 +51,9 @@ implementation names; do not put those in the UI.
 One job per screen. One primary button at the bottom. Security lives
 on Security, not Settings. Settings is theme, about, and sign out.
 Recovery is optional. Skip is the easy path when the field is empty.
-The Recovery Kit is last-resort and lives under Security.
+The Recovery Kit is last-resort and lives under Security. The public
+map can be backed up with the vault. Face ID rebuilds it. No secrets
+go in that backup.
 
 ## Do not use in the product
 

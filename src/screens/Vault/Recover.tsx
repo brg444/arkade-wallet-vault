@@ -42,13 +42,17 @@ const KEY_LABEL: Record<Claimant, string> = {
 
 export default function VaultRecover() {
   const {
+    backupRecoveryKit,
+    busy,
     downloadRecoveryKit,
     error,
+    hasRecoveryKit,
     initiateAlerts,
     navigate,
     operationalAddress,
     recoverEntry,
     recoverExit,
+    restoreRecoveryKit,
     savingsAddress,
   } = useContext(VaultContext)
   const { toast } = useToast()
@@ -280,20 +284,24 @@ export default function VaultRecover() {
         <Padded>
           <FlexCol>
             <Text wrap>
-              The Recovery Kit is a map of this vault. Save it now, somewhere you can find later. It is not a seed. It
-              does not hold your keys.
+              The Recovery Kit is a map of this vault. It is not a seed. It does not hold your keys. Back up the map
+              with this vault, then Face ID can rebuild it on this phone or another phone.
             </Text>
             <KeyCard
-              title='Why you save it'
-              role='If you can’t open this app later, this file is how you rebuild the vault. With a key you still hold, you can start recovery, cancel it, or move coins after the wait — including from the offline tool.'
+              title='On this phone'
+              role={
+                hasRecoveryKit
+                  ? 'The map is here. Save a file if you want a spare, or back it up with the vault.'
+                  : 'No map on this phone yet. Get it with Face ID, or paste a file you saved.'
+              }
             />
             <KeyCard
-              title='When you use it'
-              role='You can’t open this app, or you’re on the offline tool. If this app is open, you already have the map — you don’t need the file. Everyday send and sign-in on a new phone do not use the kit.'
+              title='When you need the file'
+              role='You can’t open this app, and you need the offline tool. Everyday send and sign-in on a new phone do not use the file.'
             />
             <KeyCard
-              title='When you don’t'
-              role='If the vault services are offline, this file cannot start recovery or move coins still on the original address. This phone plus hardware still can. After a wait has already started, you can finish that move without the services.'
+              title='When the file cannot help'
+              role='If the vault services are offline, this map cannot start recovery or move coins still on the original address. This phone plus hardware still can.'
             />
             {report && 'trees' in report ? (
               <Text color='neutral-600' tiny wrap>
@@ -324,8 +332,45 @@ export default function VaultRecover() {
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button label='Save Recovery Kit' testId='download-recovery-kit' onClick={saveKit} />
-        <Button secondary label='Share Recovery Kit' onClick={shareKit} />
+        {hasRecoveryKit ? (
+          <>
+            <Button label='Save Recovery Kit' testId='download-recovery-kit' onClick={saveKit} />
+            <Button
+              secondary
+              label={busy ? 'Waiting for Face ID…' : 'Back up map'}
+              testId='backup-recovery-kit'
+              disabled={busy}
+              onClick={() => {
+                setLocalError('')
+                void (async () => {
+                  try {
+                    const pushed = await backupRecoveryKit()
+                    toast(pushed ? 'Map backed up with this vault' : 'Map saved on this phone')
+                  } catch (err) {
+                    setLocalError(err instanceof Error ? err.message : 'Could not back up the map')
+                  }
+                })()
+              }}
+            />
+          </>
+        ) : (
+          <Button
+            label={busy ? 'Waiting for Face ID…' : 'Get map'}
+            testId='restore-recovery-kit'
+            disabled={busy}
+            onClick={() => {
+              setLocalError('')
+              void (async () => {
+                try {
+                  await restoreRecoveryKit()
+                  toast('Map is on this phone')
+                } catch (err) {
+                  setLocalError(err instanceof Error ? err.message : 'Could not get the map')
+                }
+              })()
+            }}
+          />
+        )}
       </ButtonsOnBottom>
     </>
   )

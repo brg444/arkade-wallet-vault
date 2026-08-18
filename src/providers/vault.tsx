@@ -57,6 +57,7 @@ import { V5_TEMPLATE } from '../lib/vault/v5/constants'
 import { parseRecoverySecret, recoverySecretMatches } from '../lib/vault/v5/enroll'
 import { scalarSecret } from '../lib/vault/v5/fixtures'
 import { buildRecoveryKit } from '../lib/vault/v5/kit'
+import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/v5/kitBackup'
 import { findLocalKit, loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
 import { previewV5Descriptor } from '../lib/vault/v5/preview'
 import {
@@ -105,6 +106,9 @@ interface VaultContextProps {
   applyRecovery: (raw: string, secret?: string, demo?: boolean) => void
   skipRecovery: () => void
   downloadRecoveryKit: () => string
+  backupRecoveryKit: () => Promise<boolean>
+  restoreRecoveryKit: () => Promise<void>
+  hasRecoveryKit: boolean
   initiateAlert: string
   initiateAlerts: InitiateAlert[]
   approvePreviewSend: () => Promise<void>
@@ -169,6 +173,9 @@ export const VaultContext = createContext<VaultContextProps>({
   applyRecovery: () => {},
   skipRecovery: () => {},
   downloadRecoveryKit: () => '',
+  backupRecoveryKit: async () => false,
+  restoreRecoveryKit: async () => {},
+  hasRecoveryKit: false,
   initiateAlert: '',
   initiateAlerts: [],
   approvePreviewSend: async () => {},
@@ -468,14 +475,53 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return next
   }, [localV5Descriptor, persist, setup, status?.enrolled])
 
-  const downloadRecoveryKit = useCallback(() => {
+  const resolveKit = useCallback(() => {
     const id = status?.vaultId || enrollment?.vaultId || ''
     const stored = (id && loadLocalKit(id)) || findLocalKit()
-    const descriptor = stored?.descriptor || localV5Descriptor()
-    if (!descriptor) throw new Error('Finish setup first.')
-    const kit = stored || buildRecoveryKit(descriptor)
+    if (stored) return stored
+    const fromFacts = kitFromFacts({
+      enrollment,
+      status,
+      hardwarePub: setup.hardwarePub,
+      recoveryPub: setup.recoveryPub || status?.recoveryPub,
+    })
+    if (fromFacts) return fromFacts
+    const descriptor = localV5Descriptor()
+    return descriptor ? buildRecoveryKit(descriptor) : null
+  }, [enrollment, localV5Descriptor, setup.hardwarePub, setup.recoveryPub, status])
+
+  const downloadRecoveryKit = useCallback(() => {
+    const kit = resolveKit()
+    if (!kit) throw new Error('No Recovery Kit yet. Add recovery, or get the map with Face ID.')
     return JSON.stringify(kit, null, 2)
-  }, [enrollment?.vaultId, localV5Descriptor, status?.vaultId])
+  }, [resolveKit])
+
+  const backupRecoveryKit = useCallback(async () => {
+    setError('')
+    if (enrollment && status?.enrolled) await unlockLocalEnrollment(enrollment)
+    const kit = resolveKit()
+    if (!kit) throw new Error('This vault has no recovery map. Add recovery on a new vault.')
+    saveLocalKit(kit)
+    const id = kit.descriptor.vaultId
+    return id ? pushMapBackup(id, kit) : false
+  }, [enrollment, resolveKit, status?.enrolled])
+
+  const restoreRecoveryKit = useCallback(async () => {
+    setError('')
+    if (enrollment && status?.enrolled) await unlockLocalEnrollment(enrollment)
+    const id = status?.vaultId || enrollment?.vaultId || ''
+    const pulled = id ? await pullMapBackup(id) : null
+    const kit =
+      pulled ||
+      kitFromFacts({
+        enrollment,
+        status,
+        hardwarePub: setup.hardwarePub,
+        recoveryPub: setup.recoveryPub || status?.recoveryPub,
+      })
+    if (!kit) throw new Error('Could not rebuild the map. Save it while this app is open.')
+    saveLocalKit(kit)
+  }, [enrollment, setup.hardwarePub, setup.recoveryPub, status])
 
   const enterWithoutPasskey = useCallback(() => {
     setError('')
@@ -551,6 +597,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
         sealPlan()
         setPreview(false)
+        if (setup.recoveryPub) {
+          try {
+            const kit = resolveKit()
+            if (kit) {
+              saveLocalKit(kit)
+              await pushMapBackup(kit.descriptor.vaultId, kit)
+            }
+          } catch {
+            // Map stays on this phone if the service cannot store it yet.
+          }
+        }
         try {
           setStatus(await enablePasskeyLogin(out.enrollment))
         } catch {
@@ -566,7 +623,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [refreshBalance, sealPlan, setup, status],
+    [refreshBalance, resolveKit, sealPlan, setup, status],
   )
 
   const enableOtherDevices = useCallback(async () => {
@@ -601,6 +658,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setStatus(live)
         if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
         setPreview(false)
+        try {
+          const pulled = live.vaultId ? await pullMapBackup(live.vaultId) : null
+          const kit =
+            pulled ||
+            kitFromFacts({
+              enrollment: unlocked,
+              status: live,
+              hardwarePub: setup.hardwarePub,
+              recoveryPub: setup.recoveryPub || live.recoveryPub,
+            })
+          if (kit) saveLocalKit(kit)
+        } catch {
+          // Sign-in still succeeds if the map cannot be rebuilt yet.
+        }
         await refreshBalance(live.vaultId)
         setScreen('home')
         return
@@ -616,6 +687,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setStatus(out.status)
       setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
       setPreview(false)
+      try {
+        const pulled = out.status.vaultId ? await pullMapBackup(out.status.vaultId) : null
+        const kit =
+          pulled ||
+          kitFromFacts({
+            enrollment: out.enrollment,
+            status: out.status,
+            hardwarePub: setup.hardwarePub,
+            recoveryPub: setup.recoveryPub || out.status.recoveryPub,
+          })
+        if (kit) saveLocalKit(kit)
+      } catch {
+        // Sign-in still succeeds if the map cannot be rebuilt yet.
+      }
       await refreshBalance(out.status.vaultId)
       setScreen('home')
     } catch (err) {
@@ -623,7 +708,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [enrollment, refreshBalance])
+  }, [enrollment, refreshBalance, setup.hardwarePub, setup.recoveryPub])
 
   const addTestCoins = useCallback(async () => {
     setBusy(true)
@@ -891,6 +976,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       applyRecovery,
       skipRecovery,
       downloadRecoveryKit,
+      backupRecoveryKit,
+      restoreRecoveryKit,
+      hasRecoveryKit: Boolean(resolveKit()),
       initiateAlert,
       initiateAlerts,
       approvePreviewSend,
@@ -965,6 +1053,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       applyRecovery,
       skipRecovery,
       downloadRecoveryKit,
+      backupRecoveryKit,
+      restoreRecoveryKit,
+      resolveKit,
       initiateAlert,
       initiateAlerts,
       approvePreviewSend,

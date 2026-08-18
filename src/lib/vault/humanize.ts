@@ -50,6 +50,12 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('this setup skipped recovery')) {
     return 'This vault came back with recovery, but setup skipped it. Start over and add a recovery key.'
   }
+  if (msg.includes('no recovery map') || msg.includes('No Recovery Kit yet')) {
+    return 'This vault has no recovery map. Add recovery on a new vault, or get the map with Face ID.'
+  }
+  if (msg.includes('Could not rebuild the map')) {
+    return 'Could not rebuild the map. Save it while this app is open.'
+  }
   if (msg.includes('recovery secret')) {
     return 'Paste the recovery secret to prove you hold that key.'
   }
