@@ -4,8 +4,20 @@ import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_SCHEMA } from './constants'
 import { enrollmentPoPDigest } from './tenantEnrollment'
 import { V5_RECOVERY_POP_TAG, V5_SCHEMA, V5_TEMPLATE } from './v5/constants'
+import pack from './contract-pack.json'
 
 describe('frozen wallet protocol domains', () => {
+  it('matches the published contract pack', () => {
+    expect(VAULT_SCHEMA).toBe(pack.programs.v4.schema)
+    expect(TEMPLATE_VERSION).toBe(pack.programs.v4.template)
+    expect(POLICY_VERSION).toBe(pack.programs.v4.policy)
+    expect(V5_SCHEMA).toBe(pack.programs.v5.schema)
+    expect(V5_TEMPLATE).toBe(pack.programs.v5.template)
+    expect(V5_RECOVERY_POP_TAG).toBe(pack.programs.v5.recoveryPopTag)
+    expect(pack.programs.v4.status).toBe('live')
+    expect(pack.programs.v5.status).toBe('next')
+  })
+
   it('pins the live v4 product strings', () => {
     expect(VAULT_SCHEMA).toBe('arkade-vault/v4')
     expect(TEMPLATE_VERSION).toBe('phone-direct-p256-routine-3of3-admin-phone-hww-v4')
