@@ -1,158 +1,118 @@
-# 👾 Arkade Wallet
+# Spending vault
 
-Arkade Wallet is the entry-point to the Arkade ecosystem—a self-custodial Bitcoin wallet delivered as a lightweight Progressive Web App (installable on mobile or desktop in seconds, no app-store gatekeepers). Built around the open-source ARK protocol, it speaks natively to any [arkd](https://github.com/arkade-os/arkd) instance, letting you create, send, and receive Virtual Transaction Outputs (VTXOs) for instant, off-chain pre-confirmations and batched, fee-efficient on-chain settlement.
+This branch is a **Mutinynet L1 Taproot vault client**, not the Arkade VTXO
+wallet. It enrolls a passkey, pins a hardware key, and spends ordinary
+`tb1p…` UTXOs against a public authorizer.
 
-## Screenshots
+Live demo: [https://arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
-<!-- Using a table for more consistent layout -->
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <img src="./mockup/new-wallet.png" alt="New Wallet" width="250">
-    </td>
-    <td width="50%" align="center">
-      <img src="./mockup/home-arkade-wallet.png" alt="Home Screen" width="250">
-    </td>
-  </tr>
-</table>
+It is a demonstration. Mutinynet coins only. Not production custody, not an
+HSM, not an Ark VTXO wallet. Do not send real bitcoin.
 
-## Environment Variables
+## What you get
 
-| Variable                      | Description                                                         | Example Value                                                                        |
-|-------------------------------|---------------------------------------------------------------------|--------------------------------------------------------------------------------------|
-| `VITE_ARK_SERVER`             | Override the default Arkade server URL                              | `VITE_ARK_SERVER=http://localhost:7070`                                              |
-| `VITE_APP_VERSION`            | App version string shown in support diagnostics                     | `VITE_APP_VERSION=1.2.3`                                                             |
-| `VITE_BOLTZ_URL`              | Override the default Boltz swap provider URL for Lightning          | `VITE_BOLTZ_URL=https://boltz-provider-url.com`                                      |
-| `VITE_CHATWOOT_WEBSITE_TOKEN` | ChatWoot website token for customer support integration             | `VITE_CHATWOOT_WEBSITE_TOKEN=your-token`                                             |
-| `VITE_CHATWOOT_BASE_URL`      | ChatWoot server base URL for customer support integration           | `VITE_CHATWOOT_BASE_URL=https://app.chatwoot.com`                                    |
-| `VITE_DELEGATOR_URL`          | Delegator service URL for the wallet service worker                 | `VITE_DELEGATOR_URL=https://delegator.example.com`                                   |
-| `VITE_LENDASAT_IFRAME_URL`    | Override the default LendaSat URL                                   | `VITE_LENDASAT_IFRAME_URL=http://localhost:5173`                                     |
-| `VITE_SATORA_IFRAME_URL`      | Override the default Satora URL                                     | `VITE_SATORA_IFRAME_URL=http://localhost:5174`                                       |
-| `VITE_MAX_PERCENTAGE`         | Override the max fee percentage (default 10)                        | `VITE_MAX_PERCENTAGE=5`                                                              |
-| `VITE_NOSTR_RELAY_URL`        | Override the default Nostr relay URLs for backup                    | `VITE_NOSTR_RELAY_URL=wss://relay.example.com`                                       |
-| `VITE_PSA_MESSAGE`            | Message to show on the wallet index page                            | `VITE_PSA_MESSAGE=@arkade_os on TG for support`                                      |
-| `VITE_SENTRY_DSN`             | Enable Sentry error tracking (only in production, not on localhost) | `VITE_SENTRY_DSN=your-sentry-dsn`                                                    |
-| `VITE_UTXO_MAX_AMOUNT`        | Override the server's utxoMaxAmount                                 | `VITE_UTXO_MAX_AMOUNT=-1`                                                            |
-| `VITE_UTXO_MIN_AMOUNT`        | Override the server's utxoMinAmount                                 | `VITE_UTXO_MIN_AMOUNT=330`                                                           |
-| `VITE_VERIFIED_ASSETS_URL`    | URL to fetch the verified assets list                               | `VITE_VERIFIED_ASSETS_URL=https://arklabshq.github.io/asset-registry/mutinynet.json` |
-| `VITE_VTXO_MAX_AMOUNT`        | Override the server's vtxoMaxAmount                                 | `VITE_VTXO_MAX_AMOUNT=-1`                                                            |
-| `VITE_VTXO_MIN_AMOUNT`        | Override the server's vtxoMinAmount                                 | `VITE_VTXO_MIN_AMOUNT=330`                                                           |
-| `CI`                          | Set to `true` for Continuous Integration environments               | `CI=true`                                                                            |
-| `GENERATE_SOURCEMAP`          | Disable source map generation during build                          | `GENERATE_SOURCEMAP=false`                                                           |
+Two accounts on the same enrolled vault:
 
-## Docker
+| Account | How you spend now | If you lose something |
+| --- | --- | --- |
+| Daily | This device, under a 50k sat send cap and 100k sat daily allowance | Device-only CSV after **144** blocks (~72 min on Mutinynet) |
+| Savings | This device + hardware | Hardware-only CSV after **6** blocks (~3 min); device-only after 144 |
 
-The wallet is available as a Docker image on GitHub Container Registry.
+Hardware can always move first. A stolen phone with the passkey cannot beat
+hardware to Savings.
 
-### Pull and run
+There is no RecoveryKey. Admin is device + hardware. The retired v3
+`RecoveryKey` leaf is not in this product.
 
-```bash
-docker pull ghcr.io/arkade-os/wallet:latest
-docker run -p 8080:80 ghcr.io/arkade-os/wallet:latest
+## On-chain tree
+
+Template `phone-direct-p256-routine-3of3-admin-phone-hww-v4`. Policy
+`mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3`.
+
+Daily (Operational) has four paths:
+
+1. Routine 3-of-3: `PhoneRoutineBIP340` + tweaked VaultCosigner + tweaked
+   ArkadeCosigner
+2. Admin 2-of-2: this device + hardware
+3. CSV + this device (144)
+4. CSV + hardware (6)
+
+Savings has admin plus the same two CSV leaves. No routine path. No
+cosigner can spend Savings.
+
+The passkey does not sign Bitcoin. WebAuthn proves origin / RP / UV off
+chain. A separate PRF-derived P-256 key signs the Arkade sighash. The
+browser keeps a random secp256k1 software key (`PhoneRoutineBIP340`)
+encrypted under the PRF.
+
+## How the pieces talk
+
+```text
+browser  →  Vercel (same-origin /v1)  →  Railway authorizer-next
+                                              ├─ file-backed VaultCosigner
+                                              ├─ SQLite ledger
+                                              └─ outbound HTTPS to pinned Arkade cosigner
 ```
 
-Open [http://localhost:8080](http://localhost:8080) to view the wallet.
+Production never compiles an authorizer URL into the bundle. The page calls
+`/v1` on its own origin. Vercel adds `X-Vault-Gateway-Secret` and proxies
+only allowlisted paths. `/v1/register` is not one of them (404). Enrollment
+is invite-gated `/v1/enroll/start` → `/propose` → `/finish`.
 
-### Runtime configuration
+Server env on Vercel:
 
-Environment variables can be passed at runtime to configure the wallet without rebuilding the image:
+| Name | Role |
+| --- | --- |
+| `AUTHORIZER_ORIGIN` | Railway authorizer-next origin |
+| `AUTHORIZER_GATEWAY_SECRET` | Shared with the authorizer |
 
-```bash
-docker run -p 8080:80 \
-  -e VITE_ARK_SERVER=https://arkade.computer \
-  -e VITE_BOLTZ_URL=https://api.boltz.exchange \
-  ghcr.io/arkade-os/wallet:latest
-```
+## Run it
 
-See the [Environment Variables](#environment-variables) table for all supported variables.
-
-### Build locally
-
-```bash
-docker build -t arkade-wallet .
-
-# With build-time configuration
-docker build \
-  --build-arg VITE_ARK_SERVER=https://arkade.computer \
-  --build-arg VITE_BOLTZ_URL=https://api.boltz.exchange \
-  -t arkade-wallet .
-```
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js v20.19+ or v22.12+ (Required by Vite 7)
-- PNPM >=8
-
-### Installation
-
-Install dependencies
+This workspace uses [Bun](https://bun.sh).
 
 ```bash
-pnpm install
+bun install
+bun run start:vault
 ```
 
-## Development
-
-### `pnpm run start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3002](http://localhost:3002) to view it in the browser.
-
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
-
-### `pnpm run build`
-
-Builds the app for production to the `dist` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-### `pnpm run regtest`
-
-Starts the regtest environment and sets up the arkd instance.\
-Requires Docker to be installed and [Nigiri](https://nigiri.vulpem.com/) to be running with `--ln` flag.
-
-### Funding your local wallet
-To interact with Ark features, you need Regtest coins.
-1. Copy your address from the wallet's **Receive** screen (ensure it starts with bcrt1 for Regtest).
-2. Run the Nigiri faucet command: 
-```bash
-nigiri faucet <bcrt-address>
-```
-
-
-### e2e tests
-
-> note: e2e tests require a regtest environment to be running.
-> `pnpm run regtest` to start and setup the regtest environment.
-
-> note: e2e tests use playwright for ui testing, you may need to run
-> `pnpm exec playwright install` once to download new browsers.
-
-Run the tests with:
+Open [http://localhost:3003](http://localhost:3003). Point the page at a
+local or Mutinynet authorizer with `VITE_VAULT_API` (dev only). Production
+ignores that variable.
 
 ```bash
-pnpm run test:e2e
+bun run test
+bun run lint
+bun run build:vault
 ```
 
-Run the tests in interactive mode with:
+`bun run start` / `bun run build` still build the upstream VTXO wallet.
+That path is not what Vercel deploys.
 
-```bash
-pnpm run test:e2e --ui
-```
+## What this client will refuse
 
-Access the playwright code generator tool with:
+- Generator G or 2G as the hardware key on Mutinynet
+- A status or descriptor that still carries `recoveryKeyPub`
+- A leftover v3 template
+- First-seen TOFU of a deposit address (pin after enroll finish only)
+- Cross-origin `connect` in production (CSP is same-origin)
 
-```bash
-pnpm run test:codegen
-```
+The compiled kiosk addresses in `src/lib/vault/kiosk.ts` are the retired
+empty v3 singleton. They are not seeded into Receive.
 
-## Troubleshooting
-### `address already in use` (Port 5000) on macOS
-macOS AirPlay Receiver uses port 5000 by default, which conflicts with Nigiri.
-- **Fix:** Go to `System Settings > General > AirDrop & Handoff` and disable **AirPlay Receiver**.
+## Honest limits
 
+- Browser-memory software key, not Secure Enclave or attestation
+- Railway + Vercel isolation, not an enclave
+- SQLite has no anti-rollback store
+- The public Arkade cosigner is an availability and privacy dependency
+- Preflight/bind traffic is not private
+- Caps are authorizer policy, not a Bitcoin consensus rule
+
+The authorizer lives in a separate tree (`poc/2fa-vault`). Schema 6, if it
+ever drops the leftover `recovery_key_compressed` column, is a separate RFC.
+
+## Upstream
+
+Forked from [arkade-os/wallet](https://github.com/arkade-os/wallet). The
+VTXO app, Boltz, Nostr backup, and `ghcr.io/arkade-os/wallet` image are
+that project. This branch is the vault-mode client only.
