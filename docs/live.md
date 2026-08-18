@@ -1,14 +1,16 @@
 # Live product
 
 What people get on [the demo](https://arkade-vault-demo.vercel.app) today:
-Spending on this phone, Savings with hardware, daily limits. No recovery
-on chain. How we say that: [voice.md](voice.md).
+Spending on this phone, Savings with hardware, daily limits. Recovery is
+optional. Skip it and the signer mints v4 (no recovery on those coins).
+Add a recovery key and it mints v5. How we say that: [voice.md](voice.md).
 
 What Railway `authorizer-next` actually runs (engineers):
 
-Template `phone-direct-p256-routine-3of3-admin-phone-hww-v4`.  
+Default enroll template `phone-direct-p256-routine-3of3-admin-phone-hww-v4`.  
+Optional enroll template `phone-hww-recovery-staged-v5`.  
 Policy `mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3`.  
-SQLite schema 5. Network Mutinynet.
+SQLite schema 6 (`recovery_session`). Network Mutinynet.
 
 ## Trees
 
@@ -53,7 +55,7 @@ Savings: device + hardware PSBT (QR / `HwSign`). No VaultCosigner.
 | Host/root cannot take VaultCosigner                           | No. Process isolation, not an HSM                                |
 | Same-origin XSS is tolerated                                  | No. Unlocked PhoneRoutine / PRF are stealable                    |
 | Browser reconciles the Arkade sighash                         | Yes, one-input Routine template                                  |
-| Browser derives the full Daily descriptor                     | Partial. Hashes the proposed v4 blob; Savings tree is rebuilt    |
+| Browser derives the full Daily descriptor                     | v4: hashes the proposed blob; Savings rebuilt. v5: both sides rebuild the 14-tree family |
 | Hardware key gen lives in this repo                           | No. Hardware is an independent pubkey + WIF/hex sign             |
 | Cosigner stages are crash-atomic                              | Staged: reserved → vault_signed → completed                      |
 | Mainnet / one vault per process                               | No mainnet. Live is invite multi-tenant                          |

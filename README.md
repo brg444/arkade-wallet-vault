@@ -6,6 +6,7 @@ hardware too. Testnet only. Don’t send real bitcoin.
 Live demo: [https://arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
 How we talk about it: [docs/voice.md](docs/voice.md)  
+Where the spec lives: [docs/architecture.md](docs/architecture.md)  
 What’s live vs next: [docs/plan.md](docs/plan.md) · [docs/live.md](docs/live.md)
 
 This is not the Arkade VTXO wallet. The vault **service** is a separate
@@ -16,18 +17,18 @@ signer. This repo is the phone app.
 - **Spending** — this phone, up to a daily limit
 - **Savings** — this phone and hardware together
 - **Vault service** — helps daily spend, cannot take Savings
-- **Recovery** — optional on new vaults. Skip keeps this device plus hardware. The live signer still mints that simpler vault.
+- **Recovery** — optional. Skip keeps this device plus hardware (v4). Add a recovery key and the signer mints v5.
 
-Engineers: the live signer is still the v4 program (50k / 100k, CSV 6 /
-144 on Savings). Hardware can move first on a mature Savings coin. The
-next program starts a _new_ waiting period instead. See
-[docs/live.md](docs/live.md).
+Engineers: default enroll is still v4 (50k / 100k, CSV 6 / 144 on
+Savings). Hardware can move first on a mature Savings coin. Optional v5
+starts a _new_ waiting period instead. See [docs/live.md](docs/live.md).
 
 ## Packaging
 
-Deployable signer surface: `/Users/alexb./code/arkade-vault-server`
+Deployable signer packaging: [arkade-vault-server](https://github.com/brg444/arkade-vault-server)
 ([contract-pack.json](src/lib/vault/contract-pack.json)). Go still builds
-from the emulator checkout until v5 mint is extracted.
+from [arkade-2fa-vault-poc](https://github.com/brg444/arkade-2fa-vault-poc)
+(`cmd/authorizer`) until that tree is extracted.
 
 ```text
 vault client (this repo, Vercel)
