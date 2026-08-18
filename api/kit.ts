@@ -1,8 +1,9 @@
+import { list, put } from '@vercel/blob'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const DIR = '/tmp/arkade-vault-map'
-const MAX_BYTES = 64 * 1024
+const MAX_BYTES = 96 * 1024
 
 function vaultIdFrom(req: { method?: string; url?: string; body?: unknown }): string {
   if (req.method === 'GET') {
@@ -36,11 +37,46 @@ function readBody(req: { body?: unknown }): unknown {
   return req.body
 }
 
-export default function handler(
+function filePath(vaultId: string) {
+  return join(DIR, `${encodeURIComponent(vaultId)}.json`)
+}
+
+function blobPath(vaultId: string) {
+  return `maps/${encodeURIComponent(vaultId)}.json`
+}
+
+async function readMap(vaultId: string): Promise<unknown | null> {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const { blobs } = await list({ prefix: blobPath(vaultId), limit: 1 })
+    if (!blobs[0]) return null
+    const res = await fetch(blobs[0].url)
+    if (!res.ok) return null
+    return res.json()
+  }
+  try {
+    return JSON.parse(readFileSync(filePath(vaultId), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+async function writeMap(vaultId: string, body: unknown) {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    await put(blobPath(vaultId), JSON.stringify(body), {
+      access: 'public',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    })
+    return
+  }
+  mkdirSync(DIR, { recursive: true })
+  writeFileSync(filePath(vaultId), JSON.stringify(body))
+}
+
+export default async function handler(
   req: { method?: string; url?: string; body?: unknown },
   res: {
-    status: (code: number) => { json: (body: unknown) => void; end: () => void }
-    json: (body: unknown) => void
+    status: (code: number) => { json: (body: unknown) => void }
   },
 ) {
   req = { ...req, body: readBody(req) }
@@ -49,24 +85,14 @@ export default function handler(
     res.status(400).json({ error: 'vault id required' })
     return
   }
-  const path = join(DIR, `${encodeURIComponent(vaultId)}.json`)
-  try {
-    mkdirSync(DIR, { recursive: true })
-  } catch {
-    // already exists
-  }
 
   if (req.method === 'GET') {
-    try {
-      const raw = JSON.parse(readFileSync(path, 'utf8'))
-      if (!isPublicMap(raw)) {
-        res.status(404).json({ error: 'map not found' })
-        return
-      }
-      res.status(200).json(raw)
-    } catch {
+    const raw = await readMap(vaultId)
+    if (!isPublicMap(raw)) {
       res.status(404).json({ error: 'map not found' })
+      return
     }
+    res.status(200).json(raw)
     return
   }
 
@@ -75,7 +101,7 @@ export default function handler(
       res.status(400).json({ error: 'not a vault map backup' })
       return
     }
-    writeFileSync(path, JSON.stringify(req.body))
+    await writeMap(vaultId, req.body)
     res.status(200).json({ ok: true, vaultId })
     return
   }

@@ -45,6 +45,7 @@ describe('vault UI lock', () => {
     expect(recover).toMatch(/not a seed/)
     expect(recover).toMatch(/Back up map/)
     expect(recover).toMatch(/Get map/)
+    expect(recover).toMatch(/Unlock map with hardware/)
     expect(recover).toMatch(/cannot start recovery/)
     const app = read('src/VaultApp.tsx')
     expect(app).toContain('VaultRecovery')
