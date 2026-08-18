@@ -280,20 +280,20 @@ export default function VaultRecover() {
         <Padded>
           <FlexCol>
             <Text wrap>
-              The Recovery Kit is how you get coins out if this app is gone. Save it now, somewhere you can find later.
-              It is not a seed. It does not hold your keys.
+              The Recovery Kit is a map of this vault. Save it now, somewhere you can find later. It is not a seed. It
+              does not hold your keys.
             </Text>
             <KeyCard
               title='Why you save it'
-              role='If this phone app disappears, this file is the map of your vault. With a key you still hold, you can start recovery, cancel it, or move coins after the wait — including from the offline tool.'
+              role='If you can’t open this app later, this file is how you rebuild the vault. With a key you still hold, you can start recovery, cancel it, or move coins after the wait — including from the offline tool.'
             />
             <KeyCard
               title='When you use it'
-              role='This app is gone, or you can’t open it. Everyday send and sign-in on a new phone do not use the kit.'
+              role='You can’t open this app, or you’re on the offline tool. If this app is open, you already have the map — you don’t need the file. Everyday send and sign-in on a new phone do not use the kit.'
             />
             <KeyCard
               title='When you don’t'
-              role='It cannot move coins from the original address if both vault services are gone. This phone plus hardware still can.'
+              role='If the vault services are offline, this file cannot start recovery or move coins still on the original address. This phone plus hardware still can. After a wait has already started, you can finish that move without the services.'
             />
             {report && 'trees' in report ? (
               <Text color='neutral-600' tiny wrap>
