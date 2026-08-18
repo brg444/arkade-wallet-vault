@@ -32,7 +32,7 @@ export default function VaultApp() {
   const pages = {
     welcome: <VaultWelcome />,
     handoff: <VaultHandoff />,
-    hwsign: <VaultHwSign onBack={() => navigate(tab ? 'settings' : 'welcome')} />,
+    hwsign: <VaultHwSign onBack={() => navigate('settings')} />,
     design: <VaultDesign />,
     hardware: <VaultHardware />,
     conditions: <VaultConditions />,
