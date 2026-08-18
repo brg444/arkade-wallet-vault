@@ -416,6 +416,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           throw new Error('Demo keys cannot be used on this vault')
         }
         rememberRecoverySecret(recoveryPub, secret, demo)
+        if (!demo && !recoverySecretRef.current) {
+          throw new Error('Paste the recovery secret to prove you hold that key.')
+        }
         persist({ ...setup, recoveryPub, recoveryIsDemo: demo })
         setScreen('conditions')
       } catch (err) {

@@ -1,4 +1,5 @@
 import { hex } from '@scure/base'
+import { TEST_NETWORK, WIF } from '@scure/btc-signer'
 import { describe, expect, it } from 'vitest'
 import { sampleDescriptor } from '../sample'
 import { bytesToHex } from '../hex'
@@ -41,9 +42,11 @@ describe('v5 enrollment proof', () => {
     ).toThrow(/does not match/)
   })
 
-  it('parses a 32-byte recovery secret', () => {
+  it('parses a 32-byte recovery secret or WIF', () => {
     const secret = scalarSecret(5)
     expect(bytesToHex(parseRecoverySecret(bytesToHex(secret)))).toBe(bytesToHex(secret))
-    expect(() => parseRecoverySecret('aa')).toThrow(/32-byte/)
+    const wif = WIF(TEST_NETWORK).encode(secret)
+    expect(bytesToHex(parseRecoverySecret(wif))).toBe(bytesToHex(secret))
+    expect(() => parseRecoverySecret('aa')).toThrow(/hex or WIF/)
   })
 })

@@ -1,4 +1,5 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js'
+import { TEST_NETWORK, WIF } from '@scure/btc-signer'
 import { bytesToHex, hexToBytes } from '../hex'
 import { xOnly } from '../setupPlan'
 import { V5_SCHEMA } from './constants'
@@ -6,15 +7,22 @@ import { hashV5Descriptor, recoveryXOnly, validateV5Descriptor, type V5PublicDes
 import { recoveryPoPDigest, signRecoveryPoP } from './pop'
 
 export function parseRecoverySecret(raw: string): Uint8Array {
-  const hex = raw.trim().toLowerCase().replace(/^0x/, '')
-  if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error('recovery secret must be 32-byte hex')
-  const bytes = hexToBytes(hex)
-  try {
-    secp256k1.getPublicKey(bytes, true)
-  } catch {
-    throw new Error('recovery secret is not a valid key')
+  const trimmed = raw.trim()
+  const hex = trimmed.toLowerCase().replace(/^0x/, '')
+  if (/^[0-9a-f]{64}$/.test(hex)) {
+    const bytes = hexToBytes(hex)
+    try {
+      secp256k1.getPublicKey(bytes, true)
+    } catch {
+      throw new Error('recovery secret is not a valid key')
+    }
+    return bytes
   }
-  return bytes
+  try {
+    return WIF(TEST_NETWORK).decode(trimmed)
+  } catch {
+    throw new Error('recovery secret must be 64-char hex or WIF')
+  }
 }
 
 export function recoverySecretMatches(secret: Uint8Array, recoveryPub: string): boolean {

@@ -44,7 +44,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('not enrolled') || msg.includes('enroll first')) {
     return 'Create a passkey first.'
   }
-  if (msg.includes('recovery needs a v5 vault') || msg.includes('enrolls v5 only')) {
+  if (
+    msg.includes('recovery needs a v5 vault') ||
+    msg.includes('enrolls v5 only') ||
+    msg.includes('enroll needs a v5 vault')
+  ) {
     return 'This vault service cannot add recovery yet. Skip recovery, or update the service.'
   }
   if (msg.includes('this setup skipped recovery')) {
@@ -56,8 +60,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('Could not rebuild the map')) {
     return 'Could not rebuild the map. Save it while this app is open.'
   }
+  if (msg.includes('recovery secret does not match') || msg.includes('does not match the public key')) {
+    return 'That secret does not match this recovery key.'
+  }
   if (msg.includes('recovery secret')) {
-    return 'Paste the recovery secret to prove you hold that key.'
+    return 'Paste the recovery secret to prove you hold that key. Use 64-character hex or WIF.'
   }
   if (msg.includes('template version') || msg.includes('policy version')) {
     return 'This app doesn’t match the vault. Update and try again.'
@@ -92,6 +99,9 @@ export function humanizeVaultError(err: unknown): string {
   }
   if (msg.includes('33-byte') || msg.includes('compressed public key') || msg.includes('secp256k1')) {
     return 'Paste a public key. It starts with 02 or 03.'
+  }
+  if (msg.includes('recovery must be a different')) {
+    return 'Recovery must be a different key than hardware.'
   }
   if (msg.includes('different key') || msg.includes('must be different')) {
     return 'Use a different hardware key.'
