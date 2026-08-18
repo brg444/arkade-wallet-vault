@@ -24,6 +24,11 @@ Latest v5 start: commit `5e320ce` — `src/lib/vault/v5/` (context NUMS, Quarant
 - Do not require the authorizer to sign mature claims.
 - Do not paste hardware WIF on the daily phone.
 - Do not implement VTXO or Anzen yearly presign in this work.
+- Do not auto-clawback. Alert, do not hold Cancel signatures on a watchtower.
+- Do not Cancel back to Normal (that is phone+hardware again). Quarantine excludes the suspect.
+- Do not pre-sign Emergency / Normal→Pending per UTXO.
+- Do not bake “Unvault cheap / Cancel expensive” into scripts. Fee aggression is at broadcast.
+- Do not add `SIGHASH_ALL|ANYONECANPAY` extra inputs unless dest-pin + P2A are re-proven.
 - Mutinynet only. 6 / 144 / 288 are demo clocks.
 
 ## Locked protocol (v5)
@@ -54,13 +59,23 @@ Implemented as `taprootTweakPubkey(NUMS, context)` in `src/lib/vault/v5/context.
 
 **Tweaks:** `tweakedPub = evenY(base) + TaggedHash("ArkScriptHash", authScript)·G`. Build Quarantine → clawback script → Pending → initiate script → Normal. Daily and Savings each have their own tweak pairs.
 
-**Cosigners:** required for initiate and clawback (Savings too). **Not** required after Pending matures.
+**Cosigners:** required for initiate and clawback (Savings too). **Not** required after Pending matures. They are an **anti-replay oracle**, not a general PSBT signer.
+
+**Sign-once (schema 6):** key is `(vault_id, outpoint, purpose)` where purpose is only `initiate` or `clawback`. Never `claim`. Persist dest + last sighash + signature.
+
+- Same dest + same single input + higher fee → **re-sign** (clawback wins the RBF race this way).
+- Same bytes → same signature.
+- Different dest, second input, or extra outputs → **return nothing**.
+
+Do not bind “same request → same signature” to the exact sighash; a fee bump changes the sighash. Bind dest + input set.
+
+**Alert:** **every** Normal→Pending is hostile until proven otherwise — not only “I clicked Recover.” Stolen-hardware initiate is the attack. Persistent server-side watcher + out-of-band notify. Browser-only watch loses a six-block race. Do not auto-broadcast clawback.
 
 **PoP:** BIP340 over vault id, invite, recovery x-only, full descriptor hash (Normal + 6 Pending + 6 Quarantine), template. Mandatory on v5.
 
-**SQLite schema 6** for sessions (do not redefine schema 5). MAC session rows. One session per `(vault_id, outpoint)`. Reconcile from chain on boot.
+**SQLite schema 6** for sessions (do not redefine schema 5). MAC session rows. One session per `(vault_id, outpoint, purpose)`. Reconcile from chain on boot. `confirmedHeight` / `claimable` are derived, never irreversible.
 
-**Recovery Kit** (not “Emergency Exit”): inspect all trees, initiate and claw back via live cosigners, claim serverlessly, verify before broadcast. Cannot exit Normal if both cosigners are gone.
+**Recovery Kit** (not “Emergency Exit”): public family + outpoint rebuilds initiate / clawback / claim. Inspect, live cosign, claim serverlessly, verify. No PWA required. Cannot exit Normal if both cosigners are gone. Phone+hardware still Admin-exit Normal.
 
 On-chain encrypted descriptor: **later, own review.**
 
@@ -75,7 +90,7 @@ On-chain encrypted descriptor: **later, own review.**
 
 ## Prompt for the other session
 
-> Continue Arkade Vault v5 from `docs/vault-v5-staged.md` on branch `vault-mode`. Code start is `src/lib/vault/v5/` (`5e320ce`). Do not mint v4. Next: Normal 5-leaf tree and goldens, then enroll/PoP. Claims are serverless. P2A is locked. On-chain backup is out of scope for now.
+> Continue Arkade Vault v5 from `docs/vault-v5-staged.md` on branch `vault-mode`. Do not mint v4. Claims are serverless. P2A is locked. Schema 6: sign-once per `(outpoint, initiate|clawback)` dest; re-sign fee bumps; every initiate is an alert. No auto-clawback. On-chain backup is out of scope.
 
 ## Full plan text
 
@@ -165,7 +180,7 @@ Same minus routine. Both policy cosigners sign Savings initiation and clawback.
 
 No `CSV+*` and no `hardware+recovery` on Normal.
 
-Initiation cannot pay an arbitrary dest. Auth scripts only allow: one input, exact Pending, full value − fee, P2A at index 1 value 0 script `51024e73`, packet, RBF sequence.
+Initiation cannot pay an arbitrary dest. Auth scripts only allow: one input, exact Pending, full value − fee, P2A at index 1 value 240 script `51024e73`, packet, RBF sequence.
 
 **Proofs:** hardware/recovery initiation use the Taproot PSBT signature, not PhoneDirectP256. Extra proofs if any bind network, vault id, kind, claimant, outpoint, unsigned tx, template.
 
@@ -195,7 +210,7 @@ BIP340 over vault id, invite handle, recovery x-only, complete v5 descriptor has
 
 ## Watcher
 
-Persistent **server-side** watcher plus out-of-band notify. Chain-derived `confirmedHeight` / `claimable`. States include `reorged | conflicted`.
+Persistent **server-side** watcher plus out-of-band notify. **Every** initiate (signed, mempool, or confirmed) is an alert, not only the Recover button. Chain-derived `confirmedHeight` / `claimable`. States include `reorged | conflicted`. No auto-clawback.
 
 ## On-chain encrypted descriptor
 
@@ -204,6 +219,8 @@ Later. Do not ship x-only-hash share wrap. Needs KEM or enrollment secret, 32-by
 ## Authorizer
 
 Rebuild every descriptor. Initiate/clawback need both cosigners. Mature claim must not. Schema 6 MAC + chain reconcile.
+
+Anti-replay: `(vault_id, outpoint, purpose)` → dest + signature. Re-sign same dest for fee bumps. Second dest or extra input → nothing. Not a generic PSBT signer.
 
 ## Deploy sequence
 
