@@ -68,9 +68,9 @@ On-chain encrypted descriptor: **later, own review.**
 
 1. Context NUMS, trees, dest+P2A+packet auth scripts, derived tweaks.
 2. Wallet initiate / clawback / claim PSBTs (Bitcoin path signed; emulator/Mutinynet relay still open).
-3. Schema 6 + watcher.
-4. Enroll + PoP.
-5. Recovery Kit CLI.
+3. Recovery Kit inspect + offline CLI (`bun scripts/vault-recovery-kit.ts`).
+4. Schema 6 + watcher.
+5. Enroll + PoP.
 6. Keep v4 spend; v4→v5 sweep.
 
 ## Prompt for the other session
