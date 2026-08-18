@@ -60,11 +60,8 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('Could not rebuild the map')) {
     return 'Could not rebuild the map. Save it while this app is open.'
   }
-  if (msg.includes('recovery secret does not match') || msg.includes('does not match the public key')) {
-    return 'That secret does not match this recovery key.'
-  }
-  if (msg.includes('recovery secret')) {
-    return 'Paste the recovery secret to prove you hold that key. Use 64-character hex or WIF.'
+  if (msg.includes('recoverypop') || msg.includes('recovery proof') || msg.includes('recovery secret')) {
+    return 'This vault service still asks for a recovery proof. Skip recovery, or update the service.'
   }
   if (msg.includes('template version') || msg.includes('policy version')) {
     return 'This app doesn’t match the vault. Update and try again.'
