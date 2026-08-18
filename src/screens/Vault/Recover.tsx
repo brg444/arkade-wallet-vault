@@ -10,7 +10,6 @@ import Padded from '../../components/Padded'
 import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
-import { canBrowserShareData, shareData } from '../../lib/share'
 import { fetchAddressUtxos } from '../../lib/vault/esplora'
 import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
 import { familyFromDescriptor } from '../../lib/vault/v5/descriptor'
@@ -54,6 +53,7 @@ export default function VaultRecover() {
     recoverExit,
     restoreRecoveryKit,
     savingsAddress,
+    unlockMapWithHardware,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<'kit' | 'lost'>(recoverEntry)
@@ -69,6 +69,8 @@ export default function VaultRecover() {
   const [claimant, setClaimant] = useState<Claimant>('hardware')
   const [claimDest, setClaimDest] = useState('')
   const [psbtOut, setPsbtOut] = useState('')
+  const [wrapJson, setWrapJson] = useState('')
+  const [hardwareSecret, setHardwareSecret] = useState('')
 
   const kitJson = useMemo(() => {
     try {
@@ -93,23 +95,6 @@ export default function VaultRecover() {
     try {
       downloadJson('arkade-recovery-kit.json', downloadRecoveryKit())
       toast('Recovery Kit saved')
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')
-    }
-  }
-
-  const shareKit = () => {
-    setLocalError('')
-    try {
-      const body = downloadRecoveryKit()
-      void (async () => {
-        if (canBrowserShareData({ text: body, title: 'Recovery Kit' })) {
-          await shareData({ text: body, title: 'Recovery Kit' })
-          return
-        }
-        await copyToClipboard(body)
-        toast('Recovery Kit copied')
-      })()
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')
     }
@@ -316,6 +301,39 @@ export default function VaultRecover() {
                 value={pasted}
                 onChange={setPasted}
                 testId='recovery-kit-json'
+              />
+            </Reveal>
+            <Reveal label='Unlock map with hardware'>
+              <Input
+                label='Hardware wrap'
+                placeholder='Paste the hardware wrap'
+                value={wrapJson}
+                onChange={setWrapJson}
+                testId='hardware-map-wrap'
+              />
+              <Input
+                label='Hardware key'
+                placeholder='WIF or 64-char hex'
+                value={hardwareSecret}
+                onChange={setHardwareSecret}
+                testId='hardware-map-secret'
+              />
+              <Button
+                label='Unlock with hardware'
+                testId='unlock-map-hardware'
+                disabled={!wrapJson.trim() || !hardwareSecret.trim()}
+                onClick={() => {
+                  setLocalError('')
+                  void (async () => {
+                    try {
+                      await unlockMapWithHardware(wrapJson, hardwareSecret)
+                      setHardwareSecret('')
+                      toast('Map unlocked with hardware')
+                    } catch (err) {
+                      setLocalError(err instanceof Error ? err.message : 'Could not unlock the map')
+                    }
+                  })()
+                }}
               />
             </Reveal>
             <KeyCard

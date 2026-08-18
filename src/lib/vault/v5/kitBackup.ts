@@ -1,11 +1,15 @@
+import { secp256k1 } from '@noble/curves/secp256k1.js'
+import { sha256 } from '@noble/hashes/sha2.js'
 import { vaultGet, vaultPost } from '../api'
+import { bytesToHex, hexToBytes, requireLowerHex } from '../hex'
+import { xOnly } from '../setupPlan'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
-import { requireLowerHex } from '../hex'
-import { xOnly } from '../setupPlan'
 import { buildV5Descriptor } from './descriptor'
 import { buildRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
 import { previewV5Descriptor } from './preview'
+
+const WRAP_INFO = new TextEncoder().encode('arkade-vault/map-wrap/v1')
 
 export const MAP_BACKUP_NAME = 'arkade-vault-map'
 export const MAP_BACKUP_VERSION = 1
@@ -14,7 +18,22 @@ export interface MapBackup {
   name: typeof MAP_BACKUP_NAME
   version: typeof MAP_BACKUP_VERSION
   kit: RecoveryKit
+  wrap?: HardwareMapWrap
   backedUpAt: string
+}
+
+export const HARDWARE_WRAP_NAME = 'arkade-vault-map-wrap'
+export const HARDWARE_WRAP_VERSION = 1
+
+export interface HardwareMapWrap {
+  name: typeof HARDWARE_WRAP_NAME
+  version: typeof HARDWARE_WRAP_VERSION
+  vaultId: string
+  kitHash: string
+  hardwareXOnly: string
+  ephemPub: string
+  nonce: string
+  ciphertext: string
 }
 
 export function evenYCompressed(xonly: string): string {
@@ -30,17 +49,81 @@ export function parseMapBackup(raw: unknown): MapBackup {
     name: MAP_BACKUP_NAME,
     version: MAP_BACKUP_VERSION,
     kit: parseRecoveryKit(rec.kit),
+    wrap: rec.wrap ? parseHardwareMapWrap(rec.wrap) : undefined,
     backedUpAt: String(rec.backedUpAt || ''),
   }
 }
 
-export function buildMapBackup(kit: RecoveryKit, now = new Date().toISOString()): MapBackup {
+export function buildMapBackup(kit: RecoveryKit, now = new Date().toISOString(), wrap?: HardwareMapWrap): MapBackup {
   return {
     name: MAP_BACKUP_NAME,
     version: MAP_BACKUP_VERSION,
     kit: parseRecoveryKit(kit),
+    ...(wrap ? { wrap: parseHardwareMapWrap(wrap) } : {}),
     backedUpAt: now,
   }
+}
+
+export function parseHardwareMapWrap(raw: unknown): HardwareMapWrap {
+  const rec = raw as HardwareMapWrap
+  if (!rec || rec.name !== HARDWARE_WRAP_NAME) throw new Error('not a hardware map wrap')
+  if (rec.version !== HARDWARE_WRAP_VERSION) throw new Error('unsupported hardware map wrap')
+  return {
+    name: HARDWARE_WRAP_NAME,
+    version: HARDWARE_WRAP_VERSION,
+    vaultId: String(rec.vaultId || '').trim(),
+    kitHash: requireLowerHex(rec.kitHash, 'kitHash', 32),
+    hardwareXOnly: requireLowerHex(rec.hardwareXOnly, 'hardwareXOnly', 32),
+    ephemPub: requireLowerHex(rec.ephemPub, 'ephemPub', 33),
+    nonce: requireLowerHex(rec.nonce, 'nonce', 12),
+    ciphertext: requireLowerHex(rec.ciphertext, 'ciphertext'),
+  }
+}
+
+async function aesGcmKey(shared: Uint8Array): Promise<CryptoKey> {
+  const material = sha256(Uint8Array.from([...WRAP_INFO, ...shared]))
+  return crypto.subtle.importKey('raw', material, 'AES-GCM', false, ['encrypt', 'decrypt'])
+}
+
+export async function wrapMapForHardware(kit: RecoveryKit, hardwarePub: string): Promise<HardwareMapWrap> {
+  const parsed = parseRecoveryKit(kit)
+  const ephem = secp256k1.utils.randomSecretKey()
+  try {
+    const ephemPub = secp256k1.getPublicKey(ephem, true)
+    const shared = secp256k1.getSharedSecret(ephem, hexToBytes(hardwarePub), true)
+    const key = await aesGcmKey(shared)
+    const nonce = crypto.getRandomValues(new Uint8Array(12))
+    const plaintext = new TextEncoder().encode(JSON.stringify(parsed))
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, plaintext))
+    return {
+      name: HARDWARE_WRAP_NAME,
+      version: HARDWARE_WRAP_VERSION,
+      vaultId: parsed.descriptor.vaultId,
+      kitHash: parsed.descriptorHash,
+      hardwareXOnly: xOnly(hardwarePub),
+      ephemPub: bytesToHex(ephemPub),
+      nonce: bytesToHex(nonce),
+      ciphertext: bytesToHex(sealed),
+    }
+  } finally {
+    ephem.fill(0)
+  }
+}
+
+export async function unwrapMapWithHardware(wrap: HardwareMapWrap, hardwareSecret: Uint8Array): Promise<RecoveryKit> {
+  const parsed = parseHardwareMapWrap(wrap)
+  const pub = secp256k1.getPublicKey(hardwareSecret, true)
+  if (xOnly(bytesToHex(pub)) !== parsed.hardwareXOnly) throw new Error('hardware key does not match this wrap')
+  const shared = secp256k1.getSharedSecret(hardwareSecret, hexToBytes(parsed.ephemPub), true)
+  const key = await aesGcmKey(shared)
+  const opened = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: hexToBytes(parsed.nonce) },
+    key,
+    hexToBytes(parsed.ciphertext),
+  )
+  const kit = parseRecoveryKit(JSON.parse(new TextDecoder().decode(opened)))
+  if (kit.descriptorHash !== parsed.kitHash) throw new Error('unwrapped map does not match this wrap')
+  return kit
 }
 
 export function kitFromFacts(input: {
@@ -104,10 +187,10 @@ export function kitFromFacts(input: {
   }
 }
 
-export async function pushMapBackup(vaultId: string, kit: RecoveryKit): Promise<boolean> {
+export async function pushMapBackup(vaultId: string, kit: RecoveryKit, wrap?: HardwareMapWrap): Promise<boolean> {
   const id = vaultId.trim()
   if (!id) throw new Error('vault id required')
-  const backup = buildMapBackup(kit)
+  const backup = buildMapBackup(kit, undefined, wrap)
   try {
     await vaultPost('/v1/kit', { vaultId: id, ...backup })
     return true
@@ -118,12 +201,13 @@ export async function pushMapBackup(vaultId: string, kit: RecoveryKit): Promise<
   }
 }
 
-export async function pullMapBackup(vaultId: string): Promise<RecoveryKit | null> {
+export async function pullMapBackup(vaultId: string): Promise<{ kit: RecoveryKit; wrap?: HardwareMapWrap } | null> {
   const id = vaultId.trim()
   if (!id) throw new Error('vault id required')
   try {
     const raw = await vaultGet<unknown>(`/v1/kit?vault=${encodeURIComponent(id)}`)
-    return parseMapBackup(raw).kit
+    const backup = parseMapBackup(raw)
+    return { kit: backup.kit, wrap: backup.wrap }
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     if (/404|not found|cannot store|not running|unknown/i.test(msg)) return null

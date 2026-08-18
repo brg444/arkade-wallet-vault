@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { V5_FIXTURE } from './fixtures'
+import { scalarSecret, V5_FIXTURE } from './fixtures'
 import { buildRecoveryKit } from './kit'
 import { previewV5Descriptor } from './preview'
 import { xOnly } from '../setupPlan'
-import { buildMapBackup, evenYCompressed, kitFromFacts, parseMapBackup } from './kitBackup'
+import {
+  buildMapBackup,
+  evenYCompressed,
+  kitFromFacts,
+  parseMapBackup,
+  unwrapMapWithHardware,
+  wrapMapForHardware,
+} from './kitBackup'
 
 describe('vault map backup', () => {
   it('wraps only the public kit', () => {
@@ -44,5 +51,16 @@ describe('vault map backup', () => {
 
   it('lifts an x-only tweak to even-Y compressed', () => {
     expect(evenYCompressed(xOnly(V5_FIXTURE.routineVault))).toMatch(/^02[0-9a-f]{64}$/)
+  })
+
+  it('wraps the map to hardware and opens it with that key only', async () => {
+    const kit = buildRecoveryKit(
+      previewV5Descriptor({ hardwarePub: V5_FIXTURE.hardwarePub, recoveryPub: V5_FIXTURE.recoveryPub }),
+    )
+    const wrap = await wrapMapForHardware(kit, V5_FIXTURE.hardwarePub)
+    expect(wrap.hardwareXOnly).toBe(xOnly(V5_FIXTURE.hardwarePub))
+    const opened = await unwrapMapWithHardware(wrap, scalarSecret(4))
+    expect(opened.descriptorHash).toBe(kit.descriptorHash)
+    await expect(unwrapMapWithHardware(wrap, scalarSecret(5))).rejects.toThrow(/hardware key/)
   })
 })

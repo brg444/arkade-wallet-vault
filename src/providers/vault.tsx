@@ -31,6 +31,7 @@ import {
   buildSavingsPsbt,
   chooseSavingsLeaf,
   finalizeSavingsPsbt,
+  parseHardwareSecret,
   parseIncomingPsbt,
   requireSameSavingsIntent,
   signSavingsPsbt,
@@ -57,7 +58,15 @@ import { V5_TEMPLATE } from '../lib/vault/v5/constants'
 import { parseRecoverySecret, recoverySecretMatches } from '../lib/vault/v5/enroll'
 import { scalarSecret } from '../lib/vault/v5/fixtures'
 import { buildRecoveryKit } from '../lib/vault/v5/kit'
-import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/v5/kitBackup'
+import {
+  kitFromFacts,
+  pullMapBackup,
+  pushMapBackup,
+  unwrapMapWithHardware,
+  wrapMapForHardware,
+  type HardwareMapWrap,
+} from '../lib/vault/v5/kitBackup'
+
 import { findLocalKit, loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
 import { previewV5Descriptor } from '../lib/vault/v5/preview'
 import {
@@ -108,6 +117,7 @@ interface VaultContextProps {
   downloadRecoveryKit: () => string
   backupRecoveryKit: () => Promise<boolean>
   restoreRecoveryKit: () => Promise<void>
+  unlockMapWithHardware: (wrapRaw: string, hardwareSecret: string) => Promise<void>
   hasRecoveryKit: boolean
   initiateAlert: string
   initiateAlerts: InitiateAlert[]
@@ -175,6 +185,7 @@ export const VaultContext = createContext<VaultContextProps>({
   downloadRecoveryKit: () => '',
   backupRecoveryKit: async () => false,
   restoreRecoveryKit: async () => {},
+  unlockMapWithHardware: async () => {},
   hasRecoveryKit: false,
   initiateAlert: '',
   initiateAlerts: [],
@@ -503,8 +514,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (!kit) throw new Error('This vault has no recovery map. Add recovery on a new vault.')
     saveLocalKit(kit)
     const id = kit.descriptor.vaultId
-    return id ? pushMapBackup(id, kit) : false
-  }, [enrollment, resolveKit, status?.enrolled])
+    const hardwarePub = setup.hardwarePub || status?.externalOwnerWalletPub || ''
+    const wrap = hardwarePub ? await wrapMapForHardware(kit, hardwarePub) : undefined
+    return id ? pushMapBackup(id, kit, wrap) : false
+  }, [enrollment, resolveKit, setup.hardwarePub, status?.enrolled, status?.externalOwnerWalletPub])
 
   const restoreRecoveryKit = useCallback(async () => {
     setError('')
@@ -512,7 +525,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const id = status?.vaultId || enrollment?.vaultId || ''
     const pulled = id ? await pullMapBackup(id) : null
     const kit =
-      pulled ||
+      pulled?.kit ||
       kitFromFacts({
         enrollment,
         status,
@@ -522,6 +535,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (!kit) throw new Error('Could not rebuild the map. Save it while this app is open.')
     saveLocalKit(kit)
   }, [enrollment, setup.hardwarePub, setup.recoveryPub, status])
+
+  const unlockMapWithHardware = useCallback(async (wrapRaw: string, hardwareSecret: string) => {
+    setError('')
+    let priv: Uint8Array | undefined
+    try {
+      priv = parseHardwareSecret(hardwareSecret)
+      const wrap = JSON.parse(wrapRaw) as HardwareMapWrap
+      const kit = await unwrapMapWithHardware(wrap, priv)
+      saveLocalKit(kit)
+    } finally {
+      priv?.fill(0)
+    }
+  }, [])
 
   const enterWithoutPasskey = useCallback(() => {
     setError('')
@@ -602,7 +628,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             const kit = resolveKit()
             if (kit) {
               saveLocalKit(kit)
-              await pushMapBackup(kit.descriptor.vaultId, kit)
+              const hardwarePub = setup.hardwarePub || out.status.externalOwnerWalletPub || ''
+              const wrap = hardwarePub ? await wrapMapForHardware(kit, hardwarePub) : undefined
+              await pushMapBackup(kit.descriptor.vaultId, kit, wrap)
             }
           } catch {
             // Map stays on this phone if the service cannot store it yet.
@@ -661,7 +689,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         try {
           const pulled = live.vaultId ? await pullMapBackup(live.vaultId) : null
           const kit =
-            pulled ||
+            pulled?.kit ||
             kitFromFacts({
               enrollment: unlocked,
               status: live,
@@ -690,7 +718,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       try {
         const pulled = out.status.vaultId ? await pullMapBackup(out.status.vaultId) : null
         const kit =
-          pulled ||
+          pulled?.kit ||
           kitFromFacts({
             enrollment: out.enrollment,
             status: out.status,
@@ -978,6 +1006,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       downloadRecoveryKit,
       backupRecoveryKit,
       restoreRecoveryKit,
+      unlockMapWithHardware,
       hasRecoveryKit: Boolean(resolveKit()),
       initiateAlert,
       initiateAlerts,
@@ -1055,6 +1084,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       downloadRecoveryKit,
       backupRecoveryKit,
       restoreRecoveryKit,
+      unlockMapWithHardware,
       resolveKit,
       initiateAlert,
       initiateAlerts,
