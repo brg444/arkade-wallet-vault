@@ -1,55 +1,29 @@
-# Architecture
+# How the pieces fit
 
-Arkade Vault is three public repos and two processes. The protocol lives
-here. The signer lives in vault-server. The emulator tree is a
-dependency, not the product.
+Three repos. Two processes.
 
 ```text
-                    this phone
-                 (arkade-wallet-vault)
-                         |
-                    same-origin /v1
-                         |
-              Vercel gateway (+ secret)
-                         |
-                 vault-authorizer
-              (arkade-vault-server)
-                    /          \
-           SQLite ledger    VaultCosigner (file)
-                    \
-                     pinned HTTPS
-                  public Arkade cosigner
-                 (pkg/arkade script engine)
+this phone
+   talks to /v1 on the same website
+      → vault service
+           keeps a database
+           holds the service key
+           calls a public Arkade signer for the other signature
 ```
 
-## Who owns what
-
-| Layer | Lives in | Owns |
+| Piece | Repo | Job |
 | --- | --- | --- |
-| Product language | root README | Names: this device, hardware, vault service, optional recovery |
-| Trees and txs | [program.md](program.md), `src/lib/vault/v5/` | Client rebuild of the family |
-| Named program strings | `contract-pack.json` (both client and server, byte-identical) | Template, policy, domains |
-| HTTP parse | vault-server `internal/iface/http` | Routes, origin, JSON |
-| Authorize / enroll | vault-server `internal/application` | Policy, reservation, descriptor rebuild |
-| Process bootstrap | vault-server `internal/authorizer` | IKM, ledger open, public emulator pin |
-| Script opcodes | `pkg/arkade` in the emulator repo | Engine only |
-| Image / Compose | vault-server Dockerfiles | How to run the signer |
+| Phone app | this repo | What you tap. Builds the same trees the service does |
+| Vault service | [arkade-vault-server](https://github.com/brg444/arkade-vault-server) | Checks spends. Signs daily spend. Cannot take Savings |
+| Script engine | [arkade-2fa-vault-poc](https://github.com/brg444/arkade-2fa-vault-poc) `pkg/arkade` | Opcodes only |
 
-A stranger should reconstruct the protocol from that table. New rules
-are a new named template, not an env knob.
+The phone app never has the service’s URL baked in. The website in
+front adds a shared secret. You need an invite to enroll.
 
-## What each process is allowed to do
+The service builds its own copy of the vault from the keys it stored.
+It checks the spend against that copy.
 
-| Process | Can | Cannot |
-| --- | --- | --- |
-| Phone | Propose spend, hold PhoneRoutine, Face ID | Invent the Daily `Q` |
-| vault-authorizer | Cosign routine / initiate / clawback after rebuild | Spend Savings, sign claim |
-| Public Arkade cosigner | Second routine / transition signature | See WebAuthn, change dest |
+After a recovery wait is over, moving the coins does not need the
+service.
 
-Claim after Pending matures is serverless. The authorizer must not be
-required.
-
-## Network
-
-Live is Mutinynet. Invite multi-tenant. No mainnet. No
-`/v1/register` on the authorizer.
+Live is Mutinynet. No mainnet.

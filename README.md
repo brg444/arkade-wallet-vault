@@ -1,85 +1,44 @@
 # Arkade Vault
 
-A vault on this phone. Daily spend with Face ID. Savings that need
-hardware too. Recovery is optional.
+Spend from this phone with Face ID. Savings need hardware too. Recovery
+is optional — skip it if you want.
 
-**Live demo:** [arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
+**Demo:** [arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
-> Mutinynet only. Not a custody product. Not an HSM. Do not send real
-> bitcoin. Leftover v4 coins, if any, are recovered out of band.
+Testnet only (Mutinynet). Don’t send real bitcoin.
 
-This repository is the **phone app** (PWA). It is a fork of
-[arkade-os/wallet](https://github.com/arkade-os/wallet) used only as a
-shell. The vault **service** is a separate signer. This is not the Arkade
-VTXO wallet.
+This repo is the phone app. The vault service is a separate program
+([arkade-vault-server](https://github.com/brg444/arkade-vault-server)).
+This is not the Arkade VTXO wallet.
 
-## About the product
+## What you get
 
-Think checking and savings, not an exchange account.
+- **Spending** — this phone, up to a daily limit
+- **Savings** — this phone and a hardware key together
+- **Vault service** — helps daily spend, cannot take Savings
+- **Recovery** — optional. Skip it and the vault is this phone plus
+  hardware. Add it and someone can start a waiting period you can cancel.
+  Recovery cannot spend your everyday coins by itself.
 
-| People say | What it is |
+If someone starts recovery who shouldn’t have, you cancel it. After the
+wait, you move the coins. There is no shortcut where stolen hardware
+sweeps mature Savings after a few blocks.
+
+## Where the code lives
+
+| Repo | What it is |
 | --- | --- |
-| This device | PhoneRoutine (browser software) + Face ID / passkey |
-| Hardware | Independent pubkey. Needed for Savings and admin |
-| Vault service | Validating cosigner. Helps daily spend. Cannot take Savings |
-| Recovery | Optional third guardian. Starts a waiting period you can cancel |
-
-Skip recovery and the vault is this device plus hardware. Add a recovery
-key and it can start a new clock; it cannot spend Normal coins alone.
-
-## Repositories
-
-Same pattern as Revault: one architecture, one repo per process.
-
-| Repo | Owns |
-| --- | --- |
-| **This one** | Phone UI, client trees, contract-pack pin, Vercel gateway |
-| [arkade-vault-server](https://github.com/brg444/arkade-vault-server) | Signer, ledger, enroll, authorize, image |
-| [arkade-2fa-vault-poc](https://github.com/brg444/arkade-2fa-vault-poc) | Emulator script engine (`pkg/arkade`). Not the signer |
+| **This one** | The phone app |
+| [arkade-vault-server](https://github.com/brg444/arkade-vault-server) | The vault service (signs daily spend, keeps the books) |
+| [arkade-2fa-vault-poc](https://github.com/brg444/arkade-2fa-vault-poc) | Script engine only. Not the app, not the service |
 
 ```text
-browser  (this repo, Vercel)
-    same-origin /v1
-        → vault-authorizer  (arkade-vault-server, Railway)
-              VaultCosigner + SQLite
-              outbound HTTPS → pinned public Arkade cosigner
+phone app  →  /v1 on the same site  →  vault service
 ```
 
-The page never embeds the authorizer URL. Vercel adds
-`X-Vault-Gateway-Secret`. Enrollment is invite-gated.
-`POST /v1/register` is not on Mutinynet.
+You need an invite to enroll. More detail: [docs/](docs/README.md).
 
-## How the vault is constructed
-
-Live enroll is `phone-hww-recovery-staged-v5` / `arkade-vault/v5`.
-Trees and delays: [docs/program.md](docs/program.md).
-
-Daily spend is Face ID + a 3-of-3 routine leaf (this device + two
-tweaked cosigners) under a cap. Savings is this device and hardware
-together. There is no singlesig CSV on a Normal coin. A claimant must
-first create a **new** Pending output whose clock starts now.
-
-## Documentation
-
-| Read | What it is |
-| --- | --- |
-| [docs/README.md](docs/README.md) | Index |
-| [docs/architecture.md](docs/architecture.md) | One owner per layer |
-| [docs/program.md](docs/program.md) | Trees, clocks, named program |
-| [docs/security.md](docs/security.md) | What is closed, what is not |
-| [SECURITY.md](SECURITY.md) | How to report a hole |
-
-## This repository
-
-| Path | Description |
-| --- | --- |
-| `src/screens/Vault/` | What people tap |
-| `src/lib/vault/` | Client tx brain |
-| `src/lib/vault/v5/` | Live enroll program |
-| `src/lib/vault/contract-pack.json` | Frozen strings. Keep byte-identical to the server copy |
-| `api/` | Same-origin `/v1` gateway |
-
-## Run
+## Run it
 
 Bun.
 
@@ -88,8 +47,7 @@ bun install
 bun run start:vault
 ```
 
-[http://localhost:3003](http://localhost:3003). Dev-only: `VITE_VAULT_API`.
-Production ignores it.
+[http://localhost:3003](http://localhost:3003)
 
 ```bash
 bun run test
@@ -97,14 +55,13 @@ bun run lint
 bun run build:vault
 ```
 
-`bun run start` / `bun run build` still build the upstream VTXO wallet.
-Vercel deploys `build:vault` only.
+Vercel ships `build:vault` only. The old `bun run start` still builds
+the upstream VTXO wallet.
 
-## Trust, in one screen
+## Be honest about trust
 
-- PhoneRoutine is browser-memory software, not Secure Enclave
-- Railway + Vercel isolation, not VLS / anti-rollback
-- Same-origin XSS can steal an unlocked PhoneRoutine or PRF
-- The public Arkade cosigner is availability and privacy
-- Caps are signer policy, not Bitcoin consensus
-- The process master scalar is IKM. It is never a Taproot signer
+- The key on this phone lives in the browser, not in the Secure Enclave
+- The service runs on Railway, not in an HSM
+- If this site is XSS’d while you’re unlocked, that phone key can be stolen
+- Limits are the service’s rules, not Bitcoin’s
+- Don’t put real money here
