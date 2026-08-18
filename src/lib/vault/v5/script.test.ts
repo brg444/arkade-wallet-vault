@@ -78,6 +78,6 @@ describe('v5 transition auth script', () => {
     const dest = `5120${'cc'.repeat(32)}`
     const script = buildTransitionScript({ destScriptHex: dest })
     assertTransitionScript(script, dest, false)
-    expect(script[script.length - 1]).toBe(OP.DROP)
+    expect(script[script.length - 1]).toBe(0x51)
   })
 })
