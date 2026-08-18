@@ -6,7 +6,7 @@ import { pasteFromClipboard } from '../../../lib/clipboard'
 import { DEMO_RECOVERY_PUB } from '../../../lib/vault/setupPlan'
 import SafeIcon from '../../../icons/Safe'
 import { VaultContext } from '../../../providers/vault'
-import { KeyCard, Reveal } from '../ui'
+import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultRecovery() {
@@ -14,6 +14,7 @@ export default function VaultRecovery() {
   const [value, setValue] = useState(setup.recoveryPub)
   const [secret, setSecret] = useState('')
   const hasKey = value.trim().length > 0
+  const canAdd = hasKey && secret.trim().length > 0
 
   return (
     <OnboardLayout
@@ -23,7 +24,7 @@ export default function VaultRecovery() {
       error={error}
       onBack={() => navigate('hardware')}
       actions={
-        hasKey ? (
+        canAdd ? (
           <>
             <Button onClick={() => applyRecovery(value, secret)} label='Add recovery' />
             <Button onClick={skipRecovery} label='Skip for now' secondary />
@@ -62,18 +63,18 @@ export default function VaultRecovery() {
         Paste
       </button>
       {hasKey ? (
-        <Reveal label='Prove you hold this key'>
+        <>
           <Input
-            label='Secret'
-            placeholder='Only needed on a live vault'
+            label='Prove you hold this key'
+            placeholder='64-char hex or WIF'
             value={secret}
             onChange={setSecret}
             testId='recovery-secret'
           />
           <Text color='neutral-600' tiny wrap>
-            Not stored on this phone. Needed only if you add recovery to a live vault.
+            Used once to prove this key is yours. Not stored on this phone. Without it, skip recovery.
           </Text>
-        </Reveal>
+        </>
       ) : null}
     </OnboardLayout>
   )

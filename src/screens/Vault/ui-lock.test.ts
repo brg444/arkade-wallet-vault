@@ -37,6 +37,8 @@ describe('vault UI lock', () => {
     expect(recovery).toMatch(/Optional/)
     expect(recovery).not.toMatch(/Required/)
     expect(recovery).toMatch(/waiting period/)
+    expect(recovery).toMatch(/Prove you hold this key/)
+    expect(recovery).toMatch(/64-char hex or WIF/)
     const design = read('src/screens/Vault/onboard/Design.tsx')
     expect(design).toMatch(/Optional/)
     expect(design).not.toMatch(/Recovery is required/)

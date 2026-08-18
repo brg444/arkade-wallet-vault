@@ -31,6 +31,14 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('status deposit address does not match the local pin'))).toMatch(/don.t send/i)
   })
 
+  it('explains a missing recovery proof', () => {
+    expect(humanizeVaultError(new Error('recovery secret required to prove the key'))).toMatch(
+      /64-character hex or WIF/i,
+    )
+    expect(humanizeVaultError(new Error('Recovery secret does not match the public key'))).toMatch(/does not match/i)
+    expect(humanizeVaultError(new Error('enroll needs a v5 vault'))).toMatch(/cannot add recovery yet/i)
+  })
+
   it('explains a leftover server proof requirement', () => {
     expect(humanizeVaultError(new Error('tenant enrollment requires owner and recovery signatures'))).toMatch(
       /no longer asks/i,
