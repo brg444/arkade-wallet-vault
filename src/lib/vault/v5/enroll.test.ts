@@ -1,26 +1,19 @@
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
-import { hashDescriptor } from '../descriptor'
 import { sampleDescriptor } from '../sample'
 import { bytesToHex } from '../hex'
 import { buildV5Descriptor, hashV5Descriptor, recoveryXOnly } from './descriptor'
-import {
-  parseRecoverySecret,
-  requireV4ProposedDescriptor,
-  requireV5ProposedDescriptor,
-  signEnrollmentRecoveryPoP,
-} from './enroll'
+import { parseRecoverySecret, requireV5ProposedDescriptor, signEnrollmentRecoveryPoP } from './enroll'
 import { V5_FIXTURE, scalarSecret } from './fixtures'
 import { recoveryPoPDigest, verifyRecoveryPoP } from './pop'
 
 describe('v5 enrollment proof', () => {
-  it('rejects a v4 propose and signs recovery PoP on v5', () => {
-    const v4 = sampleDescriptor()
-    expect(() => requireV5ProposedDescriptor(v4, 'aa'.repeat(32))).toThrow(/v5 vault/)
-    expect(() => requireV4ProposedDescriptor(buildV5Descriptor(V5_FIXTURE), 'aa'.repeat(32))).toThrow(
-      /skipped recovery/,
-    )
-    expect(requireV4ProposedDescriptor(v4, hashDescriptor(v4)).vaultId).toBe(v4.vaultId)
+  it('rejects a leftover propose and signs recovery PoP on v5', () => {
+    const leftover = sampleDescriptor()
+    expect(() => requireV5ProposedDescriptor(leftover, 'aa'.repeat(32))).toThrow(/v5 vault/)
+    const skipped = buildV5Descriptor({ ...V5_FIXTURE, recoveryPub: undefined })
+    expect(skipped.keys.recovery).toBeUndefined()
+    expect(requireV5ProposedDescriptor(skipped, hashV5Descriptor(skipped)).vaultId).toBe(skipped.vaultId)
     const descriptor = buildV5Descriptor(V5_FIXTURE)
     const hash = hashV5Descriptor(descriptor)
     expect(() => requireV5ProposedDescriptor(descriptor, '00'.repeat(32))).toThrow(/hash/)

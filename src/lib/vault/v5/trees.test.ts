@@ -114,6 +114,21 @@ describe('v5 normal', () => {
     ).toThrow(/x-only distinct/)
   })
 
+  it('builds a two-guardian family when recovery is omitted', () => {
+    const family = buildV5Family({ ...V5_FIXTURE_FAMILY, recoveryPub: undefined })
+    expect(family.daily.initiate).toHaveLength(2)
+    expect(family.savings.initiate).toHaveLength(2)
+    expect(family.pending['daily-recovery']).toBeUndefined()
+    expect(family.quarantine['daily-phone'].guardians).toEqual(['hardware'])
+    const addresses = [
+      family.daily.address,
+      family.savings.address,
+      ...Object.values(family.quarantine).map((t) => t.address),
+      ...Object.values(family.pending).map((t) => t.address),
+    ]
+    expect(new Set(addresses).size).toBe(10)
+  })
+
   it('builds a full family with 2 normals, 6 pending, 6 quarantine', () => {
     const family = buildV5Family(V5_FIXTURE_FAMILY)
     const addresses = [

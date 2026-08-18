@@ -1,8 +1,6 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js'
-import { hashDescriptor, validateDescriptor } from '../descriptor'
 import { bytesToHex, hexToBytes } from '../hex'
 import { xOnly } from '../setupPlan'
-import type { VaultPublicDescriptor } from '../types'
 import { V5_SCHEMA } from './constants'
 import { hashV5Descriptor, recoveryXOnly, validateV5Descriptor, type V5PublicDescriptor } from './descriptor'
 import { recoveryPoPDigest, signRecoveryPoP } from './pop'
@@ -36,19 +34,12 @@ export function requireV5ProposedDescriptor(raw: unknown, proposedHash: string):
   return descriptor
 }
 
-export function requireV4ProposedDescriptor(raw: unknown, proposedHash: string): VaultPublicDescriptor {
-  if (proposedSchema(raw) === V5_SCHEMA) throw new Error('this setup skipped recovery')
-  const descriptor = validateDescriptor(raw as VaultPublicDescriptor)
-  const hash = hashDescriptor(descriptor)
-  if (hash !== proposedHash) throw new Error('proposed descriptor hash does not match this client')
-  return descriptor
-}
-
 export function signEnrollmentRecoveryPoP(input: {
   descriptor: V5PublicDescriptor
   inviteHandle: string
   recoverySecret: Uint8Array
 }): { descriptorHash: string; recoveryXOnly: string; recoveryPoP: string } {
+  if (!input.descriptor.keys.recovery) throw new Error('recovery key required')
   if (!recoverySecretMatches(input.recoverySecret, input.descriptor.keys.recovery)) {
     throw new Error('recovery secret does not match the public key')
   }

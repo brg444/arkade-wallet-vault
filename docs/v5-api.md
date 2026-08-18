@@ -1,8 +1,8 @@
 # Arkade Vault v5 API
 
-**Next product spec** for enroll/initiate/clawback. Live HTTP today still
-serves **v4** descriptors on propose. Routine draft/preflight/bind/authorize/publish
-is live for leftover v4 Daily.
+Live enroll spec. Propose and finish always return a **v5** descriptor.
+Recovery is optional. Routine draft/preflight/bind/authorize/publish is
+the Daily pay ceremony on that v5 vault.
 
 The page never embeds the authorizer origin in production. It calls `/v1` on
 its own host. Vercel adds `X-Vault-Gateway-Secret` and proxies only
@@ -11,7 +11,7 @@ allowlisted paths. Origin is a CSRF filter, not authentication.
 Authorizer must **rebuild** descriptors from canonical inputs. Never trust
 client scripts, addresses, or hashes.
 
-## HTTP (live, v4 leftover + v5 enroll client)
+## HTTP
 
 Enrollment is invite-gated.
 
@@ -20,8 +20,8 @@ Enrollment is invite-gated.
 | GET | `/health` | Liveness |
 | GET | `/v1/status?vault=` | Public-enough status. Pin addresses locally after finish. |
 | POST | `/v1/enroll/start` | Header `X-Vault-Enrollment-Token` |
-| POST | `/v1/enroll/propose` | WebAuthn attestation + hardware + recovery x-only |
-| POST | `/v1/enroll/finish` | Same tuple + `recoveryPoP` + `descriptorHash` |
+| POST | `/v1/enroll/propose` | WebAuthn attestation + hardware. Recovery x-only is optional |
+| POST | `/v1/enroll/finish` | Same tuple + `descriptorHash`. `recoveryPoP` only if recovery was supplied |
 | POST | `/v1/passkey/challenge` | Other-device sign-in |
 | POST | `/v1/passkey/binding` | |
 | POST | `/v1/passkey/install` | |
@@ -36,14 +36,14 @@ Enrollment is invite-gated.
 
 ### Enroll
 
-Recovery is optional.
+Recovery is optional. Propose always rebuilds v5.
 
-- No recovery key → propose returns a rebuilt **v4** descriptor.
-- Recovery x-only supplied → propose returns a rebuilt **v5** descriptor.
+- No recovery key → two-guardian family (phone + hardware). 10 trees.
+- Recovery x-only supplied → three-guardian family. 14 trees.
   `finish` then sends BIP340 `recoveryPoP` over
   `tagged_hash("arkade-vault/v5/recovery-pop", vaultId ‖ invite handle ‖ recovery x-only ‖ descriptor hash ‖ template)`.
 
-Skip recovery is a v4 vault. It is not an error.
+Skip recovery is a v5 vault. It is not an error and it is not v4.
 
 ### Daily pay
 
@@ -51,7 +51,7 @@ Unchanged ceremony: draft → preflight → Face ID → bind → authorize → p
 `selectRoute` only allows this from Daily Normal. Do not initiate in order to
 pay.
 
-### Initiate / clawback (authorizer, not fully live)
+### Initiate / clawback (authorizer)
 
 Sign-once oracle. Key `(vault_id, outpoint, purpose)` with purpose
 `initiate` or `clawback` only.
@@ -97,8 +97,10 @@ bun scripts/vault-recovery-kit.ts bump <psbt-hex-or-file> --fee <higher>
 `status --esplora` derives claimable from chain height. Do not persist
 `claimable` as irreversible.
 
-## Leftover v4 sweep
+A two-guardian kit has no recovery claimant. Initiate and clawback still
+need live cosigners.
 
-Settings → Recover → Sweep leftover v4. Daily only. Source is the v4
-operational address. Dest is the v5 Daily address. Uses the existing routine
-ceremony. Savings leftover is not this path.
+## Leftover v4
+
+Existing v4 rows still load. Recover those coins out of band. The client
+must not accept a leftover v4 descriptor on `/v1/enroll/propose`.

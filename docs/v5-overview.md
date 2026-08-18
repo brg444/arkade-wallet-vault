@@ -1,26 +1,25 @@
-# Next program — waiting periods
+# Live enroll — waiting periods
 
 The product is still Arkade Vault: this phone, hardware, vault service.
-This file is the _next signer program_. Live Mutinynet still mints the
-simpler vault. See [live.md](live.md). Voice: [voice.md](voice.md).
+This file is the **only enrollable signer program**. See [live.md](live.md).
+Voice: [voice.md](voice.md).
 
-Once the signer cuts over, new vaults may add recovery. Skip and the
-signer still mints this device plus hardware. Daily spend stays this
-phone, under the cap. If someone starts recovery, a **new** waiting
-period begins. Cancel it if it wasn’t you. After the wait, move the
-coins. There is no “wait out an old Savings coin” shortcut for a stolen
-hardware key.
+New vaults may add recovery. Skip and the signer still mints this device
+plus hardware (v5, two guardians). Daily spend stays this phone, under
+the cap. If someone starts recovery, a **new** waiting period begins.
+Cancel it if it wasn’t you. After the wait, move the coins. There is no
+“wait out an old Savings coin” shortcut for a stolen hardware key.
 
 Engineers: client trees in `src/lib/vault/v5/`. Not an Ark VTXO wallet.
 Mutinynet only.
 
 ## Why staging
 
-`OP_CHECKSEQUENCEVERIFY` ages **that** UTXO. On v4, `CSV(6)+hardware` on
-Savings is an attacker hatch: after six confirms, stolen hardware sweeps
-immediately. v5 removes singlesig CSV from Normal. A claimant must first
-create a **new** Pending output whose clock starts now. Guardians can send
-that hold to a Quarantine that **excludes** the suspect.
+`OP_CHECKSEQUENCEVERIFY` ages **that** UTXO. Leftover v4 `CSV(6)+hardware`
+on Savings is an attacker hatch: after six confirms, stolen hardware
+sweeps immediately. v5 removes singlesig CSV from Normal. A claimant must
+first create a **new** Pending output whose clock starts now. Guardians
+can send that hold to a Quarantine that **excludes** the suspect.
 
 ## Accounts
 
@@ -95,5 +94,5 @@ needs a persistent server-side watcher. That watcher is not shipped.
 | `src/lib/vault/v5/replay.ts`            | Sign-once dest oracle (client copy) |
 | `src/lib/vault/v5/kit.ts` / `kitCli.ts` | Recovery Kit                        |
 | `src/lib/vault/v5/enroll.ts` / `pop.ts` | Recovery PoP                        |
-| `src/lib/vault/v5/sweep.ts`             | Leftover v4 Daily → v5 Daily        |
-| `src/lib/vault/spend.ts`                | v4/v5 Daily routine ceremony        |
+| `src/lib/vault/v5/sweep.ts`             | Leftover v4 Daily helper (manual recover) |
+| `src/lib/vault/spend.ts`                | Daily routine ceremony                    |

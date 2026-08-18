@@ -6,65 +6,59 @@ How we say that: [voice.md](voice.md).
 
 The only enrollable program is v5. Recovery is optional: skip it and the
 family is this device plus hardware. Add a recovery key and it is a third
-guardian. Leftover v4 coins still spend until you sweep them.
+guardian. Leftover v4 coins still load if a row exists; recover those
+funds out of band. Do not mint v4.
 
 The long mapping: Arkade as a validating cosigner (Safe-like _account_,
 VLS-like _isolation_, Bitcoin Script _exits_). This vault is the first
 named program on that signer, not the whole platform.
 
-## Now — keep v4 honest
+## Now — v5 is the only enroll
 
-Live Mutinynet is v4. Do not pretend otherwise.
+| Item         | Do                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| Contract     | Live `phone-hww-recovery-staged-v5` / `arkade-vault/v5`. Recovery optional                  |
+| Client       | This PWA. Skip recovery still enrolls v5 (two guardians). Add recovery → third guardian     |
+| Server       | Railway `authorizer-next`. Invite `/v1/enroll/*`. Propose and finish always mint v5         |
+| Leftover v4  | Existing rows still load. Exact leftover v3 template stays quarantined. No new v4           |
+| Packaging    | Two processes, two hosts. Document the split. **Do not extract repos yet**                  |
+| Policy knobs | None. Caps and trees are the named program                                                  |
+| VTXO         | Out. Do not merge Ark balances into Home                                                    |
 
-| Item         | Do                                                                                              |
-| ------------ | ----------------------------------------------------------------------------------------------- |
-| Contract     | Keep `phone-direct-p256-routine-3of3-admin-phone-hww-v4` + `…onchain-v3` + CSV 144/6 frozen     |
-| Client       | This PWA. Skip recovery mints v4. A tenant who chose v5 keeps leftover v4 UTXOs spendable |
-| Server       | Railway `authorizer-next`. Invite `/v1/enroll/*`. No `/v1/register`                             |
-| Leftover v3  | Exact-template quarantine only. Anything else fails closed                                      |
-| Packaging    | Two processes, two hosts. Document the split. **Do not extract repos yet**                      |
-| Policy knobs | None. Caps and trees are the named program                                                      |
-| VTXO         | Out. Do not merge Ark balances into Home                                                        |
+Client code under `src/lib/vault/v5/` is the live enroll program.
+Skip recovery is a two-guardian v5 vault. It is not an error and it is
+not v4.
 
-Client code under `src/lib/vault/v5/` is the optional-recovery program.
-The live authorizer rebuilds v4 when recovery is skipped and v5 when a
-recovery key is supplied. Do not treat skip-recovery as an error.
+## Next — extract and watch
 
-## Next — v5 is the product
+Named program stays `phone-hww-recovery-staged-v5`. Schema 6 already has
+`recovery_session` and `DecideReplay` (refuse a second dest).
 
-Named program: `phone-hww-recovery-staged-v5` / schema `arkade-vault/v5`.
-
-The authorizer already rebuilds this family when recovery is supplied:
-schema 6 `recovery_session`, `DecideReplay` (refuse a second dest), and
-Go/TS goldens for the 14-tree addresses. Skip recovery and `TemplateVersion`
-stays v4.
-
-| Item          | Do                                                                                                                             |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Why           | Today, hardware can move mature Savings after a short wait on _that_ coin. Next program: a _new_ waiting period you can cancel |
-| Keys          | This device + hardware. Recovery is **optional**. It starts a waiting period; it does not spend the original coin alone        |
-| Graph         | Normal → initiate → Pending → clawback to Quarantine **or** claim after CSV                                                    |
-| Cosigners     | Required on initiate and clawback. **Not** required on mature claim                                                            |
-| SQLite        | Schema 6: `recovery_session` sign-once oracle. Leftover `recovery_key_compressed` decision is in that RFC                      |
-| Packaging     | Extract **vault-server** (authorizer image + runbook). Keep **vault-client** as this app (later a thin PWA)                    |
-| Contract pack | One published set of strings both sides pin. New program = new id + golden vectors + leftover class for v4                     |
-| Watcher       | Persistent alert on every Normal→Pending. Browser watch is not enough for a 6-block race. No auto-clawback                     |
-| Recovery Kit  | Public family + inspect / initiate / clawback / claim. No PhoneRoutine, no hardware WIF                                        |
+| Item          | Do                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| Why           | Hardware must not move mature Savings after a short wait on _that_ coin                     |
+| Keys          | This device + hardware. Recovery is **optional**. It starts a waiting period                |
+| Graph         | Normal → initiate → Pending → clawback to Quarantine **or** claim after CSV                 |
+| Cosigners     | Required on initiate and clawback. **Not** required on mature claim                         |
+| Packaging     | Extract **vault-server** (authorizer image + runbook). Keep **vault-client** as this app    |
+| Contract pack | One published set of strings both sides pin. New program = new id + goldens                 |
+| Watcher       | Persistent alert on every Normal→Pending. No auto-clawback                                  |
+| Recovery Kit  | Public family + inspect / initiate / clawback / claim. No PhoneRoutine, no hardware WIF     |
 
 Do not:
 
 - put singlesig CSV back on Normal
-- treat skip-recovery as an error; v4 is the default when recovery is omitted
+- treat skip-recovery as an error or as a v4 mint
 - require the authorizer on mature claim
 - extract `route/` as a second framework (the table already lives in `v5/route.ts`)
 - board VTXOs in the same PR
 
 ## Later — platform, not this vault’s job
 
-After v5 is the live enroll and the server is its own image:
+After the server is its own image:
 
 - Treat the authorizer as a **validating cosigner** that runs a small
-  registry of named programs (v4 leftover, v5 staged, then others)
+  registry of named programs
 - Steal VLS isolation, anti-rollback, and a chain oracle — today’s
   Railway/env key is not that
 - Miniscript / BIP-388 on Bitcoin-enforced exits
@@ -80,7 +74,7 @@ now     packaging started in /Users/alexb./code/arkade-vault-server
         Go still builds from EMULATOR_ROOT (v5 mint lives there)
         vault-client still this wallet fork
 
-next    authorizer enrolls v5; then lift cmd/authorizer into vault-server
+next    lift cmd/authorizer into vault-server
         thin PWA over src/lib/vault
         both sides import the same contract-pack.json
 
@@ -95,23 +89,22 @@ exits. It does not mean a policy workshop.
 A stranger should reconstruct the protocol from a small set of files, with
 one owner per layer. Docs now match that _shape_:
 
-| Read this                                   | Owner                     |
-| ------------------------------------------- | ------------------------- |
+| Read this                                   | Owner                        |
+| ------------------------------------------- | ---------------------------- |
 | [architecture.md](architecture.md)          | One map, one owner per layer |
 | [README.md](README.md) → [live.md](live.md) | What is funded today         |
-| [v5-overview.md](v5-overview.md)            | Optional recovery program    |
+| [v5-overview.md](v5-overview.md)            | Live enroll program          |
 | [v5-transactions.md](v5-transactions.md)    | Trees and txs                |
 | [v5-api.md](v5-api.md)                      | HTTP / kit CLI               |
 | `src/lib/vault/v5/`                         | Client tx brain              |
-| Authorizer `cmd/authorizer`                 | Signer (v4 default, v5 if recovery) |
+| Authorizer `cmd/authorizer`                 | Signer (v5 enroll only)      |
 
 That is not operational maturity. There is no one-command unvault/cancel
-race, no always-on watcher, no extracted daemon. The next quality jump is
-the extract and leftover v4 spend until swept.
+race, no always-on watcher, no extracted daemon.
 
 ## Order of work
 
-1. Leftover v4 UTXOs spend until swept. Do not mint new v4 after a tenant chooses v5.
+1. Keep leftover v4 rows loadable. Do not mint v4. Recover those coins out of band.
 2. Recovery Kit + persistent watcher (alert only)
 3. Extract vault-server image from the emulator monorepo
 4. Thin PWA over `src/lib/vault`

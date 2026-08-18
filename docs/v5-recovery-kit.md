@@ -1,8 +1,9 @@
 # Recovery Kit
 
-**Next product.** Not required for leftover v4 Savings (use device + hardware
-PSBT). Name it Recovery Kit, not Emergency Exit. It is the public v5 family
-plus enough to finish a hold without the PWA.
+Optional. Download it at enroll whether or not a recovery key was added.
+Not required for leftover v4 Savings (recover those out of band). Name it
+Recovery Kit, not Emergency Exit. It is the public v5 family plus enough
+to finish a hold without the PWA.
 
 The file is JSON: `{ name: "arkade-recovery-kit", version: 1, descriptor, descriptorHash }`.
 No PhoneRoutine secret. No hardware WIF. No PRF.

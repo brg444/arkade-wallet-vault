@@ -16,12 +16,14 @@ describe('frozen wallet protocol domains', () => {
     expect(V5_RECOVERY_POP_TAG).toBe(pack.programs.v5.recoveryPopTag)
     expect(pack.programs.v4.status).toBe('leftover')
     expect(pack.programs.v5.status).toBe('live')
+    expect(pack.programs.v5.recovery).toBe('optional')
   })
 
-  it('pins the live v4 product strings', () => {
+  it('pins leftover v4 strings and the live v5 enroll program', () => {
     expect(VAULT_SCHEMA).toBe('arkade-vault/v4')
     expect(TEMPLATE_VERSION).toBe('phone-direct-p256-routine-3of3-admin-phone-hww-v4')
     expect(POLICY_VERSION).toBe('mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3')
+    expect(V5_TEMPLATE).toBe('phone-hww-recovery-staged-v5')
   })
 
   it('pins the v5 schema, template, and recovery PoP tag', () => {

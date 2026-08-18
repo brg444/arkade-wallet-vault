@@ -20,8 +20,8 @@ signer. This repo is the phone app.
 - **Recovery** — optional. Skip and the vault is this device plus hardware.
   Add a recovery key and it can start a waiting period you can cancel.
 
-Engineers: new enrolls are v5 only. Leftover v4 UTXOs still spend until
-swept. See [docs/live.md](docs/live.md).
+Engineers: new enrolls are v5 only. Recovery is optional. Leftover v4
+UTXOs still load; recover those out of band. See [docs/live.md](docs/live.md).
 
 ## Packaging
 
