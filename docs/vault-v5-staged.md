@@ -38,11 +38,11 @@ Pending --after new CSV: claimant only--> claim (any dest; say so)
 
 CSV on Pending starts when **that** output confirms.
 
-| Suspected claimant | Quarantine 2-of-2 |
-|---|---|
-| Phone | hardware + recovery |
-| Hardware | phone + recovery |
-| Recovery | phone + hardware |
+| Suspected claimant | Quarantine 2-of-2   |
+| ------------------ | ------------------- |
+| Phone              | hardware + recovery |
+| Hardware           | phone + recovery    |
+| Recovery           | phone + hardware    |
 
 Daily and Savings each have 3 Pending + 3 Quarantine. **Internal key is not raw NUMS.** It is NUMS TapTweaked with
 
@@ -50,7 +50,9 @@ Daily and Savings each have 3 Pending + 3 Quarantine. **Internal key is not raw 
 
 Implemented as `taprootTweakPubkey(NUMS, context)` in `src/lib/vault/v5/context.ts` (always a valid x-only; safer than lift_x). Same Go/TS vectors required.
 
-**Fees (frozen):** RBF + exact P2A on every initiate/clawback. Script `51024e73`, value `0`, output index `1`. Sequence must signal RBF (`0xffffffff` forbidden on those txs). Claims may omit P2A; claimant RBFs their own tx.
+**Fees (frozen):** RBF + funded P2A on every initiate/clawback. Script `51024e73`, value `240`, output index `1`, emulator packet at index `2`. Version 2 parent may pay a fee; zero-value P2A is reserved for a later v3/TRUC package. Sequence must signal RBF (`0xffffffff` forbidden). Claims may omit P2A; claimant RBFs their own tx.
+
+**Tweaks:** `tweakedPub = evenY(base) + TaggedHash("ArkScriptHash", authScript)·G`. Build Quarantine → clawback script → Pending → initiate script → Normal. Daily and Savings each have their own tweak pairs.
 
 **Cosigners:** required for initiate and clawback (Savings too). **Not** required after Pending matures.
 
@@ -64,13 +66,12 @@ On-chain encrypted descriptor: **later, own review.**
 
 ## Next implementation slices
 
-1. Finish Normal 5-leaf tree + Go/TS goldens (Quarantine already differs Daily vs Savings).
-2. Auth scripts that pin Pending dest + P2A.
-3. Schema 6 + watcher.
-4. Enroll + PoP.
-5. All three initiate / clawback / claim paths + fee-race tests.
-6. Recovery Kit CLI.
-7. Keep v4 spend; v4→v5 sweep.
+1. Context NUMS, trees, dest+P2A+packet auth scripts, derived tweaks.
+2. Schema 6 + watcher.
+3. Enroll + PoP.
+4. All three initiate / clawback / claim paths + fee-race tests.
+5. Recovery Kit CLI.
+6. Keep v4 spend; v4→v5 sweep.
 
 ## Prompt for the other session
 
@@ -102,10 +103,10 @@ Existing v4 UTXOs stay. Sweep them into v5. **Stop minting v4.**
 
 ## Locked templates
 
-| | Public schema | Recovery | Normal singlesig CSV |
-|---|---|---|---|
-| Legacy only | `arkade-vault/v4` | absent | hardware 6, phone 144 |
-| New enrolls | `arkade-vault/v5` | **required** + PoP | **none** |
+|             | Public schema     | Recovery           | Normal singlesig CSV  |
+| ----------- | ----------------- | ------------------ | --------------------- |
+| Legacy only | `arkade-vault/v4` | absent             | hardware 6, phone 144 |
+| New enrolls | `arkade-vault/v5` | **required** + PoP | **none**              |
 
 - Reject empty/null recovery on v5. No “skip recovery → v4.”
 - Three keys are required so each Quarantine can **exclude the suspected key**.
@@ -142,11 +143,11 @@ Same Go/TS vectors. Quarantine(Daily, recovery) and Quarantine(Savings, recovery
 
 ### Quarantine authority
 
-| Suspected claimant | Quarantine 2-of-2 |
-|---|---|
-| Phone | hardware + recovery |
-| Hardware | phone + recovery |
-| Recovery | phone + hardware |
+| Suspected claimant | Quarantine 2-of-2   |
+| ------------------ | ------------------- |
+| Phone              | hardware + recovery |
+| Hardware           | phone + recovery    |
+| Recovery           | phone + hardware    |
 
 No singlesig on Quarantine. After clawback, rotate the bad key and admin-move to a **fresh** Normal.
 
@@ -174,11 +175,11 @@ Normal→Pending and Pending→Quarantine (except pending CSV) are cosigner with
 
 CSV starts when **this** output confirms.
 
-| Pending | After new CSV | Clawback guardians |
-|---|---|---|
-| (kind, hardware) | `CSV(6)+hardware` | phone; recovery |
-| (kind, phone) | `CSV(144)+phone` | hardware; recovery |
-| (kind, recovery) | `CSV(288)+recovery` | phone; hardware |
+| Pending          | After new CSV       | Clawback guardians |
+| ---------------- | ------------------- | ------------------ |
+| (kind, hardware) | `CSV(6)+hardware`   | phone; recovery    |
+| (kind, phone)    | `CSV(144)+phone`    | hardware; recovery |
+| (kind, recovery) | `CSV(288)+recovery` | phone; hardware    |
 
 Clawback: guardian + two cancel-policy tweaks → that Quarantine. Cancel stays valid after the deadline. First confirm wins.
 

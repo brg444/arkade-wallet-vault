@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { P2A_OUTPUT_INDEX, P2A_SCRIPT_HEX, P2A_VALUE_SATS, TRANSITION_SEQUENCE, V5_CSV } from './constants'
 import { contextInternalKey, encodeTreeContext } from './context'
 import { UNSAFE_GENERATOR_2G } from '../setupPlan'
-import { V5_FIXTURE, V5_FIXTURE_FAMILY } from './fixtures'
+import { compressedFromScalar, V5_FIXTURE, V5_FIXTURE_FAMILY } from './fixtures'
 import { assertTransitionScript } from './script'
+import { tweakPair } from './tweak'
 import { buildNormal, buildPending, buildQuarantine, buildV5Family, pendingDelay, quarantineGuardians } from './trees'
 
 const PHONE = V5_FIXTURE.phonePub
@@ -12,7 +13,11 @@ const HARDWARE = V5_FIXTURE.hardwarePub
 const RECOVERY = V5_FIXTURE.recoveryPub
 const VAULT_TWEAK = V5_FIXTURE.routineVault
 const ARKADE_TWEAK = V5_FIXTURE.routineArkade
-const initiate = V5_FIXTURE.initiate
+const initiate = {
+  phone: { vault: compressedFromScalar(8), arkade: compressedFromScalar(9) },
+  hardware: { vault: compressedFromScalar(10), arkade: compressedFromScalar(11) },
+  recovery: { vault: compressedFromScalar(12), arkade: compressedFromScalar(13) },
+}
 
 const base = {
   vaultId: V5_FIXTURE.vaultId,
@@ -120,43 +125,49 @@ describe('v5 normal', () => {
     expect(new Set(addresses).size).toBe(14)
     expect(family.daily.routine).toBeTruthy()
     expect(family.savings.routine).toBeUndefined()
-    expect(family.daily.address).toBe('tb1phsgz9667w8ksaaeseglzc9mrd7gztfjkkpvkuufs0xf7znkn8lmsjsxuq9')
-    expect(family.savings.address).toBe('tb1p75uz4h76n2cvqezj0euw0mlenefv4v599encenzhf5raaa0ts7sqcjvxxz')
+    expect(family.daily.address).toBe('tb1pw2cglselgaa8kq5635wupv36uyva2ffmuyj2ln4hkhfjttlwwerq88xuwv')
+    expect(family.savings.address).toBe('tb1ptxr9rq49cxp9wltl5h0l6zm2cxh6zjw4lvdalym68hfg4efk8erqatm5mv')
     expect(family.quarantine['savings-hardware'].address).toBe(
       'tb1p6hetvtpddk0sgpfyv7nmtrh7dfzxqu2l04d26zcrhlyy3pdwrpmsd8sw5g',
     )
     expect(family.pending['daily-recovery'].address).toBe(
-      'tb1pcg2wwsrjklt6mclhzxp6l72843frqd0gf3lp982f3u6hr67f0tfsm0xaww',
+      'tb1pxmge3spda6n06wugl05tkr6e8ag5vtg8zcvx5khfrrd7xkpwdcqstchjhj',
     )
   })
 
-  it('refuses reused initiate tweaks as pending tweaks and G/2G', () => {
-    expect(() =>
-      buildV5Family({
-        ...V5_FIXTURE_FAMILY,
-        pending: V5_FIXTURE.initiate,
-      }),
-    ).toThrow(/distinct/)
+  it('derives each tweak from its authorization script and refuses G/2G', () => {
+    const family = buildV5Family(V5_FIXTURE_FAMILY)
+    expect(family.initiateTweaks.daily.phone).toEqual(
+      tweakPair(V5_FIXTURE.vaultCosignerBase, V5_FIXTURE.arkadeCosignerBase, family.initiateAuth['daily-phone']),
+    )
+    expect(family.initiateTweaks.savings.phone).toEqual(
+      tweakPair(V5_FIXTURE.vaultCosignerBase, V5_FIXTURE.arkadeCosignerBase, family.initiateAuth['savings-phone']),
+    )
+    expect(family.initiateTweaks.daily.phone).not.toEqual(family.initiateTweaks.savings.phone)
+    expect(family.pendingTweaks['daily-phone']).toEqual(
+      tweakPair(V5_FIXTURE.vaultCosignerBase, V5_FIXTURE.arkadeCosignerBase, family.clawbackAuth['daily-phone']),
+    )
+    expect(family.pendingTweaks['daily-phone']).not.toEqual(family.pendingTweaks['savings-phone'])
     expect(() => buildV5Family({ ...V5_FIXTURE_FAMILY, hardwarePub: UNSAFE_GENERATOR_2G })).toThrow(/forbidden/)
   })
 })
 
 describe('v5 P2A lock', () => {
-  it('pins the Core P2A script at output 1 with zero value', () => {
+  it('pins a funded Core P2A at output 1', () => {
     expect(P2A_SCRIPT_HEX).toBe('51024e73')
-    expect(P2A_VALUE_SATS).toBe(0)
+    expect(P2A_VALUE_SATS).toBe(240)
     expect(P2A_OUTPUT_INDEX).toBe(1)
     expect(TRANSITION_SEQUENCE).toBe(0xfffffffd)
   })
 })
 
 describe('v5 transition dest wiring', () => {
-  it('pins each initiate dest to that Pending and each clawback dest to that Quarantine', () => {
+  it('pins dest, packet, and PhoneDirect only on phone initiation', () => {
     const family = buildV5Family(V5_FIXTURE_FAMILY)
     for (const kind of ['daily', 'savings'] as const) {
       for (const claimant of ['phone', 'hardware', 'recovery'] as const) {
         const key = `${kind}-${claimant}` as const
-        assertTransitionScript(family.initiateAuth[key], hex.encode(family.pending[key].script), false)
+        assertTransitionScript(family.initiateAuth[key], hex.encode(family.pending[key].script), claimant === 'phone')
         assertTransitionScript(family.clawbackAuth[key], hex.encode(family.quarantine[key].script), false)
       }
     }

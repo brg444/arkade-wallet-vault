@@ -12,11 +12,22 @@ export const V5_CSV = {
 
 /** BIP-331 / Core P2A: OP_1 OP_PUSHBYTES_2 4e73 */
 export const P2A_SCRIPT_HEX = '51024e73'
-export const P2A_VALUE_SATS = 0
-/** Initiate/clawback: out0 dest p2tr, out1 P2A. No packet output on this path. */
+/**
+ * Funded P2A dust. Zero-value P2A is ephemeral dust and needs a zero-fee v3
+ * parent plus a child package. Transitions stay version 2 and pay a parent
+ * fee, so the anchor is funded and included in fee arithmetic.
+ */
+export const P2A_VALUE_SATS = 240
+/** Initiate/clawback: out0 dest p2tr, out1 P2A, out2 emulator packet. */
 export const P2A_OUTPUT_INDEX = 1
+export const PACKET_OUTPUT_INDEX = 2
+export const TRANSITION_OUTPUT_COUNT = 3
 /** RBF-enabled, no CSV. 0xffffffff is forbidden on initiate/clawback. */
 export const TRANSITION_SEQUENCE = 0xfffffffd
+/** 3-of-3 + 97-byte control block (4-leaf Pending / Savings / Daily recovery). */
+export const WITNESS_BYTES_399 = 399
+/** 3-of-3 + 129-byte control block (Daily phone/hardware initiate). */
+export const WITNESS_BYTES_431 = 431
 
 export const VAULT_KINDS = ['daily', 'savings'] as const
 export type VaultKind = (typeof VAULT_KINDS)[number]

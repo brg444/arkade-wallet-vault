@@ -1,11 +1,15 @@
 import { hex } from '@scure/base'
 import { p2tr } from '@scure/btc-signer'
 import { vaultAddressNetwork } from '../bitcoin'
+import { hexToBytes } from '../hex'
 import { TAPROOT_NUMS_XONLY, checksigScript, csvChecksigScript, xOnlyFromCompressed } from '../savingsTree'
 import { UNSAFE_GENERATOR_2G, UNSAFE_GENERATOR_G } from '../setupPlan'
 import { type Claimant, type VaultKind, V5_CSV } from './constants'
 import { contextInternalKey } from './context'
-import { buildTransitionScript } from './script'
+import { buildTransitionScript, clawbackWitnessBytes, collaborativeWitnessBytes, initiateWitnessBytes } from './script'
+import { tweakPair } from './tweak'
+
+const UNSPENDABLE_PADDING = new Uint8Array([0x6a])
 
 export type TreeRole = 'quarantine' | 'pending' | 'normal'
 
@@ -65,38 +69,21 @@ const FORBIDDEN_XONLY = new Set([
   hex.encode(xOnlyFromCompressed(UNSAFE_GENERATOR_2G)),
 ])
 
-function assertFamilyRoles(input: {
-  phonePub: string
-  hardwarePub: string
-  recoveryPub: string
-  routineVault: string
-  routineArkade: string
-  initiate: InitiateTweaks
-  pending: InitiateTweaks
-}) {
-  const pubs = [
-    input.phonePub,
-    input.hardwarePub,
-    input.recoveryPub,
-    input.routineVault,
-    input.routineArkade,
-    input.initiate.phone.vault,
-    input.initiate.phone.arkade,
-    input.initiate.hardware.vault,
-    input.initiate.hardware.arkade,
-    input.initiate.recovery.vault,
-    input.initiate.recovery.arkade,
-    input.pending.phone.vault,
-    input.pending.phone.arkade,
-    input.pending.hardware.vault,
-    input.pending.hardware.arkade,
-    input.pending.recovery.vault,
-    input.pending.recovery.arkade,
-  ].map(xOnlyFromCompressed)
-  requireDistinct(pubs, 'family')
-  for (const pub of pubs) {
+function assertRoleSet(pubs: string[], name: string) {
+  const xonlys = pubs.map(xOnlyFromCompressed)
+  requireDistinct(xonlys, name)
+  for (const pub of xonlys) {
     if (FORBIDDEN_XONLY.has(hex.encode(pub))) throw new Error('family key is a forbidden point')
   }
+}
+
+function controlOf(
+  payment: { leaves?: { script: Uint8Array; controlBlock?: Uint8Array }[] },
+  script: Uint8Array,
+): Uint8Array {
+  const leaf = payment.leaves?.find((item) => hex.encode(item.script) === hex.encode(script))
+  if (!leaf?.controlBlock) throw new Error('leaf control block required')
+  return leaf.controlBlock
 }
 
 export function buildQuarantine(input: {
@@ -154,7 +141,7 @@ export function buildPending(input: {
   requireDistinct([pubs.phone, pubs.hardware, pubs.recovery, vault, arkade], 'pending')
   const claim = csvChecksigScript(pendingDelay(input.claimant), pubs[input.claimant])
   const clawbacks = pendingGuardians(input.claimant).map((guardian) => checksigScript([pubs[guardian], vault, arkade]))
-  const scripts = [claim, ...clawbacks]
+  const scripts = [claim, ...clawbacks, UNSPENDABLE_PADDING]
   const internal = contextInternalKey({
     vaultId: input.vaultId,
     kind: input.kind,
@@ -167,6 +154,7 @@ export function buildPending(input: {
     address: payment.address,
     script: payment.script,
     tapInternalKey: payment.tapInternalKey,
+    leaves: payment.leaves,
     claim,
     clawbacks,
     delay: pendingDelay(input.claimant),
@@ -230,6 +218,7 @@ export function buildNormal(input: {
     address: payment.address,
     script: payment.script,
     tapInternalKey: payment.tapInternalKey,
+    leaves: payment.leaves,
     admin,
     initiate,
     routine: input.kind === 'daily' ? scripts[0] : undefined,
@@ -241,40 +230,121 @@ export function buildV5Family(input: {
   phonePub: string
   hardwarePub: string
   recoveryPub: string
+  phoneDirectP256: string
+  vaultCosignerBase: string
+  arkadeCosignerBase: string
   routineVault: string
   routineArkade: string
-  initiate: InitiateTweaks
-  pending: InitiateTweaks
   network: string
 }) {
-  assertFamilyRoles(input)
+  const phoneDirect = hexToBytes(input.phoneDirectP256)
+  assertRoleSet(
+    [
+      input.phonePub,
+      input.hardwarePub,
+      input.recoveryPub,
+      input.vaultCosignerBase,
+      input.arkadeCosignerBase,
+      input.routineVault,
+      input.routineArkade,
+    ],
+    'family bases',
+  )
   const kinds = ['daily', 'savings'] as const
   const claimants = ['phone', 'hardware', 'recovery'] as const
   const quarantine = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildQuarantine>>
   const pending = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildPending>>
   const initiateAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
   const clawbackAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
+  const pendingTweaks = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof tweakPair>>
+  const expectedClawbackWitness = clawbackWitnessBytes()
   for (const kind of kinds) {
     for (const claimant of claimants) {
       const key = `${kind}-${claimant}` as const
       quarantine[key] = buildQuarantine({ ...input, kind, claimant })
+      clawbackAuth[key] = buildTransitionScript({
+        destScriptHex: hex.encode(quarantine[key].script),
+        witnessBytes: expectedClawbackWitness,
+      })
+      pendingTweaks[key] = tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, clawbackAuth[key])
       pending[key] = buildPending({
         ...input,
         kind,
         claimant,
-        vaultTweak: input.pending[claimant].vault,
-        arkadeTweak: input.pending[claimant].arkade,
+        vaultTweak: pendingTweaks[key].vault,
+        arkadeTweak: pendingTweaks[key].arkade,
       })
-      initiateAuth[key] = buildTransitionScript({ destScriptHex: hex.encode(pending[key].script) })
-      clawbackAuth[key] = buildTransitionScript({ destScriptHex: hex.encode(quarantine[key].script) })
+      for (const clawback of pending[key].clawbacks) {
+        const got = collaborativeWitnessBytes(clawback, controlOf(pending[key], clawback))
+        if (got !== expectedClawbackWitness) {
+          throw new Error(`pending ${key} clawback witness ${got} != ${expectedClawbackWitness}`)
+        }
+      }
+      const expectedInitiate = initiateWitnessBytes(kind, claimant)
+      initiateAuth[key] = buildTransitionScript({
+        destScriptHex: hex.encode(pending[key].script),
+        bindPhoneDirect: claimant === 'phone' ? phoneDirect : undefined,
+        witnessBytes: expectedInitiate,
+      })
     }
   }
+  const dailyInitiate = {
+    phone: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-phone']),
+    hardware: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-hardware']),
+    recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-recovery']),
+  }
+  const savingsInitiate = {
+    phone: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-phone']),
+    hardware: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-hardware']),
+    recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-recovery']),
+  }
+  const daily = buildNormal({
+    ...input,
+    kind: 'daily',
+    initiate: dailyInitiate,
+  })
+  const savings = buildNormal({
+    ...input,
+    kind: 'savings',
+    routineVault: undefined,
+    routineArkade: undefined,
+    initiate: savingsInitiate,
+  })
+  daily.initiate.forEach((script, i) => {
+    const claimant = claimants[i]
+    const got = collaborativeWitnessBytes(script, controlOf(daily, script))
+    const want = initiateWitnessBytes('daily', claimant)
+    if (got !== want) throw new Error(`daily ${claimant} initiate witness ${got} != ${want}`)
+  })
+  savings.initiate.forEach((script, i) => {
+    const claimant = claimants[i]
+    const got = collaborativeWitnessBytes(script, controlOf(savings, script))
+    const want = initiateWitnessBytes('savings', claimant)
+    if (got !== want) throw new Error(`savings ${claimant} initiate witness ${got} != ${want}`)
+  })
+  assertRoleSet(
+    [
+      input.phonePub,
+      input.hardwarePub,
+      input.recoveryPub,
+      input.vaultCosignerBase,
+      input.arkadeCosignerBase,
+      input.routineVault,
+      input.routineArkade,
+      ...claimants.flatMap((claimant) => [dailyInitiate[claimant].vault, dailyInitiate[claimant].arkade]),
+      ...claimants.flatMap((claimant) => [savingsInitiate[claimant].vault, savingsInitiate[claimant].arkade]),
+      ...Object.values(pendingTweaks).flatMap((pair) => [pair.vault, pair.arkade]),
+    ],
+    'family',
+  )
   return {
-    daily: buildNormal({ ...input, kind: 'daily' }),
-    savings: buildNormal({ ...input, kind: 'savings', routineVault: undefined, routineArkade: undefined }),
+    daily,
+    savings,
     quarantine,
     pending,
     initiateAuth,
     clawbackAuth,
+    initiateTweaks: { daily: dailyInitiate, savings: savingsInitiate },
+    pendingTweaks,
   }
 }

@@ -13,8 +13,7 @@ import {
   type VaultNetwork,
 } from '../constants'
 import { bytesToHex, encodeUtf8, hexToBytes, requireLowerHex } from '../hex'
-import { TAPROOT_NUMS_XONLY, xOnlyFromCompressed } from '../savingsTree'
-import { UNSAFE_GENERATOR_2G, UNSAFE_GENERATOR_G } from '../setupPlan'
+import { xOnlyFromCompressed } from '../savingsTree'
 import {
   CLAIMANTS,
   FAMILY_KEYS,
@@ -53,8 +52,8 @@ export interface V5PublicDescriptor {
   }
   tweaks: {
     routine: { vault: string; arkade: string }
-    initiate: InitiateTweaks
-    pending: InitiateTweaks
+    initiate: { daily: InitiateTweaks; savings: InitiateTweaks }
+    pending: Record<FamilyKey, { vault: string; arkade: string }>
   }
   arkadeCosigner: {
     origin: string
@@ -95,8 +94,6 @@ export interface V5DescriptorInput {
   arkadeCosignerBase: string
   routineVault: string
   routineArkade: string
-  initiate: InitiateTweaks
-  pending: InitiateTweaks
   arkadeCosigner: {
     origin: string
     version: string
@@ -183,21 +180,6 @@ function treeRef(script: Uint8Array, address: string): V5TreeRef {
   return { script: hex.encode(script), address }
 }
 
-function assertNoForbiddenOrCollision(pubs: string[]) {
-  const seen = new Set<string>()
-  const forbidden = new Set([
-    TAPROOT_NUMS_XONLY,
-    hex.encode(xOnlyFromCompressed(UNSAFE_GENERATOR_G)),
-    hex.encode(xOnlyFromCompressed(UNSAFE_GENERATOR_2G)),
-  ])
-  for (const pub of pubs) {
-    const xonly = hex.encode(xOnlyFromCompressed(pub))
-    if (forbidden.has(xonly)) throw new Error('descriptor key is a forbidden point')
-    if (seen.has(xonly)) throw new Error('descriptor keys must be x-only distinct')
-    seen.add(xonly)
-  }
-}
-
 export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor {
   const keys = {
     phoneRoutineBip340: requireSecp(input.phonePub, 'phone'),
@@ -207,30 +189,6 @@ export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor 
     vaultCosignerBase: requireSecp(input.vaultCosignerBase, 'vaultCosignerBase'),
     arkadeCosignerBase: requireSecp(input.arkadeCosignerBase, 'arkadeCosignerBase'),
   }
-  const tweaks = {
-    routine: requirePair({ vault: input.routineVault, arkade: input.routineArkade }, 'routine'),
-    initiate: {
-      phone: requirePair(input.initiate.phone, 'initiate.phone'),
-      hardware: requirePair(input.initiate.hardware, 'initiate.hardware'),
-      recovery: requirePair(input.initiate.recovery, 'initiate.recovery'),
-    },
-    pending: {
-      phone: requirePair(input.pending.phone, 'pending.phone'),
-      hardware: requirePair(input.pending.hardware, 'pending.hardware'),
-      recovery: requirePair(input.pending.recovery, 'pending.recovery'),
-    },
-  }
-  assertNoForbiddenOrCollision([
-    keys.phoneRoutineBip340,
-    keys.hardware,
-    keys.recovery,
-    keys.vaultCosignerBase,
-    keys.arkadeCosignerBase,
-    tweaks.routine.vault,
-    tweaks.routine.arkade,
-    ...CLAIMANTS.flatMap((claimant) => [tweaks.initiate[claimant].vault, tweaks.initiate[claimant].arkade]),
-    ...CLAIMANTS.flatMap((claimant) => [tweaks.pending[claimant].vault, tweaks.pending[claimant].arkade]),
-  ])
   if (!input.arkadeCosigner.origin.trim() || !input.arkadeCosigner.version.trim()) {
     throw new Error('arkade cosigner origin and version required')
   }
@@ -239,12 +197,18 @@ export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor 
     phonePub: keys.phoneRoutineBip340,
     hardwarePub: keys.hardware,
     recoveryPub: keys.recovery,
-    routineVault: tweaks.routine.vault,
-    routineArkade: tweaks.routine.arkade,
-    initiate: tweaks.initiate,
-    pending: tweaks.pending,
+    phoneDirectP256: keys.phoneDirectP256,
+    vaultCosignerBase: keys.vaultCosignerBase,
+    arkadeCosignerBase: keys.arkadeCosignerBase,
+    routineVault: input.routineVault,
+    routineArkade: input.routineArkade,
     network: input.network,
   })
+  const tweaks = {
+    routine: requirePair({ vault: input.routineVault, arkade: input.routineArkade }, 'routine'),
+    initiate: family.initiateTweaks,
+    pending: family.pendingTweaks,
+  }
   const pending = {} as V5PublicDescriptor['pending']
   const quarantine = {} as V5PublicDescriptor['quarantine']
   for (const key of FAMILY_KEYS) {
@@ -317,31 +281,42 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
   requireSecp(d.keys.arkadeCosignerBase, 'arkadeCosignerBase')
   requirePair(d.tweaks.routine, 'routine')
   for (const claimant of CLAIMANTS) {
-    requirePair(d.tweaks.initiate[claimant], `initiate.${claimant}`)
-    requirePair(d.tweaks.pending[claimant], `pending.${claimant}`)
+    requirePair(d.tweaks.initiate.daily[claimant], `initiate.daily.${claimant}`)
+    requirePair(d.tweaks.initiate.savings[claimant], `initiate.savings.${claimant}`)
   }
-  assertNoForbiddenOrCollision([
-    d.keys.phoneRoutineBip340,
-    d.keys.hardware,
-    d.keys.recovery,
-    d.keys.vaultCosignerBase,
-    d.keys.arkadeCosignerBase,
-    d.tweaks.routine.vault,
-    d.tweaks.routine.arkade,
-    ...CLAIMANTS.flatMap((claimant) => [d.tweaks.initiate[claimant].vault, d.tweaks.initiate[claimant].arkade]),
-    ...CLAIMANTS.flatMap((claimant) => [d.tweaks.pending[claimant].vault, d.tweaks.pending[claimant].arkade]),
-  ])
+  for (const key of FAMILY_KEYS) {
+    requirePair(d.tweaks.pending[key], `pending.${key}`)
+  }
   const rebuilt = buildV5Family({
     vaultId: d.vaultId,
     phonePub: d.keys.phoneRoutineBip340,
     hardwarePub: d.keys.hardware,
     recoveryPub: d.keys.recovery,
+    phoneDirectP256: d.keys.phoneDirectP256,
+    vaultCosignerBase: d.keys.vaultCosignerBase,
+    arkadeCosignerBase: d.keys.arkadeCosignerBase,
     routineVault: d.tweaks.routine.vault,
     routineArkade: d.tweaks.routine.arkade,
-    initiate: d.tweaks.initiate,
-    pending: d.tweaks.pending,
     network: d.network,
   })
+  for (const claimant of CLAIMANTS) {
+    if (
+      d.tweaks.initiate.daily[claimant].vault !== rebuilt.initiateTweaks.daily[claimant].vault ||
+      d.tweaks.initiate.daily[claimant].arkade !== rebuilt.initiateTweaks.daily[claimant].arkade ||
+      d.tweaks.initiate.savings[claimant].vault !== rebuilt.initiateTweaks.savings[claimant].vault ||
+      d.tweaks.initiate.savings[claimant].arkade !== rebuilt.initiateTweaks.savings[claimant].arkade
+    ) {
+      throw new Error('initiate tweaks do not match derived authorization scripts')
+    }
+  }
+  for (const key of FAMILY_KEYS) {
+    if (
+      d.tweaks.pending[key].vault !== rebuilt.pendingTweaks[key].vault ||
+      d.tweaks.pending[key].arkade !== rebuilt.pendingTweaks[key].arkade
+    ) {
+      throw new Error('pending tweaks do not match derived authorization scripts')
+    }
+  }
   if (d.daily.address !== rebuilt.daily.address || d.daily.script !== hex.encode(rebuilt.daily.script)) {
     throw new Error('daily tree does not match rebuilt descriptor')
   }
@@ -386,13 +361,15 @@ export function encodeV5Descriptor(input: V5PublicDescriptor): Uint8Array {
   appendHex(parts, d.keys.arkadeCosignerBase, 'arkadeCosignerBase', COMPRESSED)
   appendHex(parts, d.tweaks.routine.vault, 'routine.vault', COMPRESSED)
   appendHex(parts, d.tweaks.routine.arkade, 'routine.arkade', COMPRESSED)
-  for (const claimant of CLAIMANTS) {
-    appendHex(parts, d.tweaks.initiate[claimant].vault, `initiate.${claimant}.vault`, COMPRESSED)
-    appendHex(parts, d.tweaks.initiate[claimant].arkade, `initiate.${claimant}.arkade`, COMPRESSED)
+  for (const kind of ['daily', 'savings'] as const) {
+    for (const claimant of CLAIMANTS) {
+      appendHex(parts, d.tweaks.initiate[kind][claimant].vault, `initiate.${kind}.${claimant}.vault`, COMPRESSED)
+      appendHex(parts, d.tweaks.initiate[kind][claimant].arkade, `initiate.${kind}.${claimant}.arkade`, COMPRESSED)
+    }
   }
-  for (const claimant of CLAIMANTS) {
-    appendHex(parts, d.tweaks.pending[claimant].vault, `pending.${claimant}.vault`, COMPRESSED)
-    appendHex(parts, d.tweaks.pending[claimant].arkade, `pending.${claimant}.arkade`, COMPRESSED)
+  for (const key of FAMILY_KEYS) {
+    appendHex(parts, d.tweaks.pending[key].vault, `pending.${key}.vault`, COMPRESSED)
+    appendHex(parts, d.tweaks.pending[key].arkade, `pending.${key}.arkade`, COMPRESSED)
   }
   appendRawText(parts, d.arkadeCosigner.origin, 'arkade origin')
   appendRawText(parts, d.arkadeCosigner.version, 'arkade version')
