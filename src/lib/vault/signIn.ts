@@ -1,7 +1,7 @@
 import { schnorr } from '@noble/curves/secp256k1.js'
 import { vaultPost } from './api'
 import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth.js'
-import type { EnrollmentSecrets } from './enroll'
+import type { EnrollmentSecrets } from './tenantEnrollment'
 import { bytesToHex, hexToBytes } from './hex'
 import {
   assertRecoveryBindingMatchesStatus,
@@ -10,7 +10,7 @@ import {
   recordFromRecoveryBinding,
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
-} from './passkeysession'
+} from './passkeyBinding'
 import { pinEnrolledStatus } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'

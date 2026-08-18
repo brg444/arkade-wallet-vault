@@ -24,6 +24,16 @@ describe('v4 public descriptor', () => {
     csvHw.csv.savingsBlocks = 145
     expect(hashDescriptor(csvHw)).not.toBe(original)
     expect(sampleDescriptor().keys).not.toHaveProperty('recoveryKey')
+    expect(sampleDescriptor().keys).not.toHaveProperty('recoveryKeyXOnly')
+  })
+
+  it('rejects a leftover recovery key field', () => {
+    const d = sampleDescriptor()
+    ;(d.keys as { recoveryKey?: string }).recoveryKey = '02' + '11'.repeat(32)
+    expect(() => validateDescriptor(d)).toThrow(/recovery key/)
+    const xonly = sampleDescriptor()
+    ;(xonly.keys as { recoveryKeyXOnly?: string }).recoveryKeyXOnly = '11'.repeat(32)
+    expect(() => validateDescriptor(xonly)).toThrow(/recovery key/)
   })
 
   it('rejects a v3 template and schema', () => {

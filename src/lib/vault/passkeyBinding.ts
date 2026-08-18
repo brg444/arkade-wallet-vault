@@ -2,7 +2,7 @@ import { schnorr, secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { verifyDirectP256 } from './ceremony/directauth.js'
 import { bytesToHex, hexToBytes } from './hex'
-import type { EnrollmentSecrets } from './enroll'
+import type { EnrollmentSecrets } from './tenantEnrollment'
 import type { VaultStatus } from './types'
 
 const encoder = new TextEncoder()

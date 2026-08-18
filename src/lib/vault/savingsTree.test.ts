@@ -45,4 +45,23 @@ describe('savings tree matches Go v4', () => {
       'c050929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac03aeffb17d3c70a7e2fb72070dc8a32b64a4d7fb426aa1a1cefba3f203d95d292402b1dbd108d9a57536e6c4de708535419951df9e52194bd15556b1191291019',
     )
   })
+
+  it('never puts the retired generator G on a v4 leaf', () => {
+    const retired = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
+    const tree = buildSavingsTree({
+      phonePub: PHONE,
+      hardwarePub: HARDWARE,
+      phoneCsvBlocks: 144,
+      hardwareCsvBlocks: 6,
+      network: 'mutinynet',
+    })
+    const scripts = [
+      bytesToHex(tree.admin.script),
+      bytesToHex(tree.phoneCsv.script),
+      bytesToHex(tree.hardwareCsv.script),
+    ]
+    for (const script of scripts) {
+      expect(script).not.toContain(retired)
+    }
+  })
 })

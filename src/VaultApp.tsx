@@ -4,7 +4,6 @@ import './screens/Vault/vault.css'
 import VaultHome from './screens/Vault/Home'
 import VaultReceive from './screens/Vault/Receive'
 import VaultReview from './screens/Vault/Review'
-import VaultSavings from './screens/Vault/Savings'
 import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
 import VaultHandoff from './screens/Vault/Handoff'
@@ -43,7 +42,6 @@ export default function VaultApp() {
     send: <VaultSend />,
     review: <VaultReview />,
     success: <VaultSuccess />,
-    savings: <VaultSavings />,
     keys: <VaultKeys />,
     settings: <VaultSettings />,
     signin: <VaultSignIn />,

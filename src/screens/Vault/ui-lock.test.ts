@@ -39,11 +39,25 @@ describe('vault UI lock', () => {
     expect(keys).toMatch(/This device/)
     expect(keys).toMatch(/144/)
     expect(keys).toMatch(/6 blocks/)
-    const enroll = read('src/lib/vault/enroll.ts')
+    const enroll = read('src/lib/vault/tenantEnrollment.ts')
     expect(enroll).not.toMatch(/recoveryKeyXOnly/)
+    expect(enroll).not.toMatch(/recoveryKeyPub/)
     const constants = read('src/lib/vault/constants.ts')
     expect(constants).toContain('arkade-vault/v4')
     expect(constants).toContain('admin-phone-hww-v4')
+  })
+
+  it('collapses the obsolete Savings page and keeps the live spend path', () => {
+    expect(existsSync(resolve(root, 'src/screens/Vault/Savings.tsx'))).toBe(false)
+    const app = read('src/VaultApp.tsx')
+    expect(app).not.toMatch(/VaultSavings/)
+    expect(app).not.toMatch(/navigate\('savings'\)/)
+    expect(existsSync(resolve(root, 'src/lib/vault/savingsSpend.ts'))).toBe(true)
+    expect(existsSync(resolve(root, 'src/lib/vault/savingsQr.ts'))).toBe(true)
+    const home = read('src/screens/Vault/Home.tsx')
+    expect(home).toContain('account-savings')
+    expect(home).not.toMatch(/Phone can spend/)
+    expect(home).not.toMatch(/Hardware only/)
   })
 
   it('rejects the retired singleton home chrome', () => {

@@ -14,7 +14,7 @@ import {
   validateBoundPSBT,
   validateDraftPSBT,
 } from './ceremony/psbtcheck.js'
-import type { EnrollmentSecrets } from './enroll'
+import type { EnrollmentSecrets } from './tenantEnrollment'
 import { bytesToHex, hexToBytes } from './hex'
 import type { VaultStatus } from './types'
 import { allowPasskey, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'

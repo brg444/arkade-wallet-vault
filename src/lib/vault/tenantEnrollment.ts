@@ -3,14 +3,14 @@ import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { vaultPost } from './api'
 import { bytesToHex, hexToBytes } from './hex'
-import { xOnly } from './setup'
+import { xOnly } from './setupPlan'
 import {
   clearStagedEnrollment,
   loadStagedEnrollment,
   promoteStagedEnrollment,
   saveStagedEnrollment,
   type StagedEnrollment,
-} from './enrollment'
+} from './enrollmentStore'
 import { hashDescriptor } from './descriptor'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'

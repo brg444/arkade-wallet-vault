@@ -15,7 +15,7 @@ const TABS: { id: VaultTab; label: string; screen: VaultScreen; testId: string; 
 
 export function tabForScreen(screen: VaultScreen): VaultTab | null {
   if (screen === 'home') return 'wallet'
-  if (screen === 'keys' || screen === 'savings') return 'vault'
+  if (screen === 'keys') return 'vault'
   if (screen === 'settings' || screen === 'hwsign') return 'settings'
   return null
 }

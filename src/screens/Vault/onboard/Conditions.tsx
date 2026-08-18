@@ -3,7 +3,7 @@ import Button from '../../../components/Button'
 import Text from '../../../components/Text'
 import { prettyAmount } from '../../../lib/format'
 import { waitLabel } from '../../../lib/vault/policy'
-import { DAILY_LIMIT_CHOICES, PAYMENT_CAP_CHOICES, RECOVERY_PROFILES } from '../../../lib/vault/setup'
+import { DAILY_LIMIT_CHOICES, DELAY_PROFILES, PAYMENT_CAP_CHOICES } from '../../../lib/vault/setupPlan'
 import { VaultContext } from '../../../providers/vault'
 import { PolicyTimeline } from '../ui'
 import { ChoiceCard, OnboardLayout } from './Layout'
@@ -11,10 +11,10 @@ import { ChoiceCard, OnboardLayout } from './Layout'
 export default function VaultConditions() {
   const { confirmConditions, liveNetwork, navigate, setCondition, setup, status } = useContext(VaultContext)
   const profile =
-    RECOVERY_PROFILES.find(
+    DELAY_PROFILES.find(
       (item) =>
         item.operationalCsvBlocks === setup.operationalCsvBlocks && item.savingsCsvBlocks === setup.savingsCsvBlocks,
-    ) || RECOVERY_PROFILES[0]
+    ) || DELAY_PROFILES[0]
 
   if (liveNetwork) {
     const txCap = status?.txCap || setup.txCapSats
@@ -81,7 +81,7 @@ export default function VaultConditions() {
       <Text color='neutral-600' tiny>
         If you lose this device
       </Text>
-      {RECOVERY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
+      {DELAY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
         <ChoiceCard
           key={item.id}
           title={item.label}

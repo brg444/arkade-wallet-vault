@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { enrollmentPoPDigest } from './enroll'
+import { enrollmentPoPDigest } from './tenantEnrollment'
 import { vaultStatusPath } from './status'
 
 describe('tenant enrollment identity', () => {
