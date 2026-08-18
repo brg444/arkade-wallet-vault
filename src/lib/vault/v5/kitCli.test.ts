@@ -68,6 +68,16 @@ describe('v5 Recovery Kit CLI', () => {
     expect(early).toContain('claimable no')
   })
 
+  it('accepts Esplora-backed status without a local tip', () => {
+    const kit = fixtureKit()
+    const cmd = parseKitCli(
+      ['status', 'kit.json', '--kind', 'savings', '--claimant', 'hardware', '--esplora', 'https://mutinynet.com/api'],
+      () => kit,
+    )
+    expect(cmd).toMatchObject({ name: 'status', esplora: 'https://mutinynet.com/api' })
+    expect(() => runKitCli(cmd)).toThrow(/runKitCliAsync/)
+  })
+
   it('refuses a suspect clawback from the CLI', () => {
     const kit = fixtureKit()
     const cmd = parseKitCli(
