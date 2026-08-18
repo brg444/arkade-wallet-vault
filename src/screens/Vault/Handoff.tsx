@@ -9,21 +9,39 @@ import Input from '../../components/Input'
 import Padded from '../../components/Padded'
 import Scanner from '../../components/Scanner'
 import Text from '../../components/Text'
+import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount } from '../../lib/format'
+import { canBrowserShareData, shareData } from '../../lib/share'
 import { encodePsbtFrames, parsePsbtFrame } from '../../lib/vault/savingsQr'
-import { psbtHexToBase64 } from '../../lib/vault/savingsSpend'
+import { psbtFile, psbtHexToBase64 } from '../../lib/vault/savingsSpend'
 import { VaultContext } from '../../providers/vault'
-import { useToast } from '../../components/Toast'
 import PsbtQr from './PsbtQr'
+
+async function sharePsbt(psbtHex: string) {
+  const file = psbtFile(psbtHex)
+  const text = psbtHexToBase64(psbtHex)
+  if (canBrowserShareData({ files: [file] })) {
+    await shareData({ files: [file], title: 'Savings PSBT' })
+    return
+  }
+  if (canBrowserShareData({ text, title: 'Savings PSBT' })) {
+    await shareData({ text, title: 'Savings PSBT' })
+    return
+  }
+  await copyToClipboard(text)
+}
 
 export default function VaultHandoff() {
   const { busy, completeSavingsHandoff, error, handoffPsbt, navigate, spend } = useContext(VaultContext)
   const { toast } = useToast()
-  const frames = useMemo(() => (handoffPsbt ? encodePsbtFrames(psbtHexToBase64(handoffPsbt)) : []), [handoffPsbt])
+  const payload = useMemo(() => (handoffPsbt ? psbtHexToBase64(handoffPsbt) : ''), [handoffPsbt])
+  const frames = useMemo(() => (payload ? encodePsbtFrames(payload) : []), [payload])
   const [frame, setFrame] = useState(0)
   const [scan, setScan] = useState(false)
+  const [showQr, setShowQr] = useState(false)
   const [pasted, setPasted] = useState('')
+  const canShare = Boolean(typeof navigator !== 'undefined' && navigator.share)
 
   const current = frames[Math.min(frame, Math.max(frames.length - 1, 0))] || ''
 
@@ -49,24 +67,50 @@ export default function VaultHandoff() {
         <Padded>
           <FlexCol>
             <Text wrap>
-              This phone signed. Scan this QR on the hardware device, sign there, then scan the signed PSBT back. The
-              hardware key never comes here.
+              This phone signed. Share or copy the PSBT into Sparrow, Electrum, or your hardware companion. Paste the
+              signed PSBT back. The hardware key never comes here.
             </Text>
             <Text color='neutral-600' tiny wrap>
-              {prettyAmount(spend.amount)} · {frames.length > 1 ? `QR ${frame + 1} of ${frames.length}` : 'One QR'}
+              {prettyAmount(spend.amount)} · BIP174 base64
             </Text>
-            <PsbtQr value={current} />
-            {frames.length > 1 ? (
-              <Button label='Next QR' secondary onClick={() => setFrame((n) => (n + 1) % frames.length)} />
-            ) : null}
+            <Input label='PSBT' value={payload} onChange={() => {}} placeholder='PSBT' />
+            <Button
+              label={canShare ? 'Share' : 'Copy PSBT'}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    if (canShare) {
+                      await sharePsbt(handoffPsbt)
+                      return
+                    }
+                    await copyToClipboard(payload)
+                    toast('PSBT copied')
+                  } catch (err) {
+                    const msg = String(err)
+                    if (/abort|cancel/i.test(msg)) return
+                    await copyToClipboard(payload)
+                    toast('PSBT copied')
+                  }
+                })()
+              }}
+            />
             <Button
               label='Copy PSBT'
               secondary
               onClick={() => {
-                void copyToClipboard(psbtHexToBase64(handoffPsbt))
+                void copyToClipboard(payload)
                 toast('PSBT copied')
               }}
             />
+            <Button label={showQr ? 'Hide QR' : 'Show QR'} secondary onClick={() => setShowQr((open) => !open)} />
+            {showQr ? (
+              <>
+                <PsbtQr value={current} />
+                {frames.length > 1 ? (
+                  <Button label='Next QR' secondary onClick={() => setFrame((n) => (n + 1) % frames.length)} />
+                ) : null}
+              </>
+            ) : null}
             <Input label='Signed PSBT' value={pasted} onChange={setPasted} placeholder='Paste signed PSBT' />
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
