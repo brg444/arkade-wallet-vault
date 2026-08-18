@@ -67,9 +67,9 @@ On-chain encrypted descriptor: **later, own review.**
 ## Next implementation slices
 
 1. Context NUMS, trees, dest+P2A+packet auth scripts, derived tweaks.
-2. Schema 6 + watcher.
-3. Enroll + PoP.
-4. All three initiate / clawback / claim paths + fee-race tests.
+2. Wallet initiate / clawback / claim PSBTs (Bitcoin path signed; emulator/Mutinynet relay still open).
+3. Schema 6 + watcher.
+4. Enroll + PoP.
 5. Recovery Kit CLI.
 6. Keep v4 spend; v4→v5 sweep.
 
