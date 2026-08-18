@@ -29,7 +29,7 @@ export function proposedSchema(raw: unknown): string {
 }
 
 export function requireV5ProposedDescriptor(raw: unknown, proposedHash: string): V5PublicDescriptor {
-  if (proposedSchema(raw) !== V5_SCHEMA) throw new Error('recovery needs a v5 vault')
+  if (proposedSchema(raw) !== V5_SCHEMA) throw new Error('enroll needs a v5 vault')
   const descriptor = validateV5Descriptor(raw as V5PublicDescriptor)
   const hash = hashV5Descriptor(descriptor)
   if (hash !== proposedHash) throw new Error('proposed descriptor hash does not match this client')

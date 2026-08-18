@@ -24,6 +24,8 @@ export const PACKET_OUTPUT_INDEX = 2
 export const TRANSITION_OUTPUT_COUNT = 3
 /** RBF-enabled, no CSV. 0xffffffff is forbidden on initiate/clawback. */
 export const TRANSITION_SEQUENCE = 0xfffffffd
+/** 3-of-3 + 65-byte control block (2-guardian Savings hardware initiate). */
+export const WITNESS_BYTES_367 = 367
 /** 3-of-3 + 97-byte control block (4-leaf Pending / Savings / Daily recovery). */
 export const WITNESS_BYTES_399 = 399
 /** 3-of-3 + 129-byte control block (Daily phone/hardware initiate). */
@@ -56,4 +58,18 @@ export const TEMPLATE_REGISTRY = {
 
 export function isKnownTemplate(value: string): value is keyof typeof TEMPLATE_REGISTRY {
   return value in TEMPLATE_REGISTRY
+}
+
+export function familyClaimants(hasRecovery: boolean): Claimant[] {
+  return hasRecovery ? ['phone', 'hardware', 'recovery'] : ['phone', 'hardware']
+}
+
+export function familyKeysFor(hasRecovery: boolean): FamilyKey[] {
+  const keys: FamilyKey[] = []
+  for (const kind of VAULT_KINDS) {
+    for (const claimant of familyClaimants(hasRecovery)) {
+      keys.push(`${kind}-${claimant}`)
+    }
+  }
+  return keys
 }

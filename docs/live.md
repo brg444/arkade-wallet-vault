@@ -7,8 +7,8 @@ Add a recovery key and it mints v5. How we say that: [voice.md](voice.md).
 
 What Railway `authorizer-next` actually runs (engineers):
 
-Default enroll template `phone-direct-p256-routine-3of3-admin-phone-hww-v4`.  
-Optional enroll template `phone-hww-recovery-staged-v5`.  
+Enroll template `phone-hww-recovery-staged-v5` (recovery optional).  
+Leftover template `phone-direct-p256-routine-3of3-admin-phone-hww-v4` (no new mints).  
 Policy `mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3`.  
 SQLite schema 6 (`recovery_session`). Network Mutinynet.
 

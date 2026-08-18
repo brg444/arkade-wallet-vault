@@ -15,8 +15,8 @@ import {
 import { bytesToHex, encodeUtf8, hexToBytes, requireLowerHex } from '../hex'
 import { xOnlyFromCompressed } from '../savingsTree'
 import {
-  CLAIMANTS,
-  FAMILY_KEYS,
+  familyClaimants,
+  familyKeysFor,
   P2A_OUTPUT_INDEX,
   P2A_SCRIPT_HEX,
   P2A_VALUE_SATS,
@@ -46,7 +46,7 @@ export interface V5PublicDescriptor {
     phoneRoutineBip340: string
     phoneDirectP256: string
     hardware: string
-    recovery: string
+    recovery?: string
     vaultCosignerBase: string
     arkadeCosignerBase: string
   }
@@ -80,7 +80,7 @@ export interface V5PublicDescriptor {
   daily: V5TreeRef
   savings: V5TreeRef
   pending: Record<FamilyKey, V5TreeRef & { delay: number }>
-  quarantine: Record<FamilyKey, V5TreeRef & { guardians: readonly [string, string] }>
+  quarantine: Record<FamilyKey, V5TreeRef & { guardians: readonly string[] }>
 }
 
 export interface V5DescriptorInput {
@@ -88,7 +88,7 @@ export interface V5DescriptorInput {
   network: VaultNetwork
   phonePub: string
   hardwarePub: string
-  recoveryPub: string
+  recoveryPub?: string
   phoneDirectP256: string
   vaultCosignerBase: string
   arkadeCosignerBase: string
@@ -185,7 +185,7 @@ export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor 
     phoneRoutineBip340: requireSecp(input.phonePub, 'phone'),
     phoneDirectP256: requireP256(input.phoneDirectP256, 'phoneDirectP256'),
     hardware: requireSecp(input.hardwarePub, 'hardware'),
-    recovery: requireSecp(input.recoveryPub, 'recovery'),
+    ...(input.recoveryPub ? { recovery: requireSecp(input.recoveryPub, 'recovery') } : {}),
     vaultCosignerBase: requireSecp(input.vaultCosignerBase, 'vaultCosignerBase'),
     arkadeCosignerBase: requireSecp(input.arkadeCosignerBase, 'arkadeCosignerBase'),
   }
@@ -211,7 +211,7 @@ export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor 
   }
   const pending = {} as V5PublicDescriptor['pending']
   const quarantine = {} as V5PublicDescriptor['quarantine']
-  for (const key of FAMILY_KEYS) {
+  for (const key of familyKeysFor(Boolean(keys.recovery))) {
     pending[key] = {
       ...treeRef(family.pending[key].script, family.pending[key].address),
       delay: family.pending[key].delay,
@@ -276,15 +276,18 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
   requireSecp(d.keys.phoneRoutineBip340, 'phone')
   requireP256(d.keys.phoneDirectP256, 'phoneDirectP256')
   requireSecp(d.keys.hardware, 'hardware')
-  requireSecp(d.keys.recovery, 'recovery')
+  if (d.keys.recovery) requireSecp(d.keys.recovery, 'recovery')
   requireSecp(d.keys.vaultCosignerBase, 'vaultCosignerBase')
   requireSecp(d.keys.arkadeCosignerBase, 'arkadeCosignerBase')
   requirePair(d.tweaks.routine, 'routine')
-  for (const claimant of CLAIMANTS) {
-    requirePair(d.tweaks.initiate.daily[claimant], `initiate.daily.${claimant}`)
-    requirePair(d.tweaks.initiate.savings[claimant], `initiate.savings.${claimant}`)
+  const hasRecovery = Boolean(d.keys.recovery)
+  const claimants = familyClaimants(hasRecovery)
+  const keys = familyKeysFor(hasRecovery)
+  for (const claimant of claimants) {
+    requirePair(d.tweaks.initiate.daily[claimant]!, `initiate.daily.${claimant}`)
+    requirePair(d.tweaks.initiate.savings[claimant]!, `initiate.savings.${claimant}`)
   }
-  for (const key of FAMILY_KEYS) {
+  for (const key of keys) {
     requirePair(d.tweaks.pending[key], `pending.${key}`)
   }
   const rebuilt = buildV5Family({
@@ -299,17 +302,17 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
     routineArkade: d.tweaks.routine.arkade,
     network: d.network,
   })
-  for (const claimant of CLAIMANTS) {
+  for (const claimant of claimants) {
     if (
-      d.tweaks.initiate.daily[claimant].vault !== rebuilt.initiateTweaks.daily[claimant].vault ||
-      d.tweaks.initiate.daily[claimant].arkade !== rebuilt.initiateTweaks.daily[claimant].arkade ||
-      d.tweaks.initiate.savings[claimant].vault !== rebuilt.initiateTweaks.savings[claimant].vault ||
-      d.tweaks.initiate.savings[claimant].arkade !== rebuilt.initiateTweaks.savings[claimant].arkade
+      d.tweaks.initiate.daily[claimant]!.vault !== rebuilt.initiateTweaks.daily[claimant]!.vault ||
+      d.tweaks.initiate.daily[claimant]!.arkade !== rebuilt.initiateTweaks.daily[claimant]!.arkade ||
+      d.tweaks.initiate.savings[claimant]!.vault !== rebuilt.initiateTweaks.savings[claimant]!.vault ||
+      d.tweaks.initiate.savings[claimant]!.arkade !== rebuilt.initiateTweaks.savings[claimant]!.arkade
     ) {
       throw new Error('initiate tweaks do not match derived authorization scripts')
     }
   }
-  for (const key of FAMILY_KEYS) {
+  for (const key of keys) {
     if (
       d.tweaks.pending[key].vault !== rebuilt.pendingTweaks[key].vault ||
       d.tweaks.pending[key].arkade !== rebuilt.pendingTweaks[key].arkade
@@ -323,7 +326,7 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
   if (d.savings.address !== rebuilt.savings.address || d.savings.script !== hex.encode(rebuilt.savings.script)) {
     throw new Error('savings tree does not match rebuilt descriptor')
   }
-  for (const key of FAMILY_KEYS) {
+  for (const key of keys) {
     if (!d.pending[key] || !d.quarantine[key]) throw new Error(`missing ${key} trees`)
     if (d.pending[key].address !== rebuilt.pending[key].address)
       throw new Error(`${key} pending does not match rebuilt descriptor`)
@@ -337,8 +340,11 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
     if (d.quarantine[key].script !== hex.encode(rebuilt.quarantine[key].script)) {
       throw new Error(`${key} quarantine does not match rebuilt descriptor`)
     }
-    const [a, b] = rebuilt.quarantine[key].guardians
-    if (d.quarantine[key].guardians[0] !== a || d.quarantine[key].guardians[1] !== b) {
+    const want = rebuilt.quarantine[key].guardians
+    if (
+      d.quarantine[key].guardians.length !== want.length ||
+      d.quarantine[key].guardians.some((g, i) => g !== want[i])
+    ) {
       throw new Error(`${key} quarantine guardians do not match`)
     }
   }
@@ -356,18 +362,19 @@ export function encodeV5Descriptor(input: V5PublicDescriptor): Uint8Array {
   appendHex(parts, d.keys.phoneRoutineBip340, 'phone', COMPRESSED)
   appendHex(parts, d.keys.phoneDirectP256, 'phoneDirectP256', COMPRESSED)
   appendHex(parts, d.keys.hardware, 'hardware', COMPRESSED)
-  appendHex(parts, d.keys.recovery, 'recovery', COMPRESSED)
+  if (d.keys.recovery) appendHex(parts, d.keys.recovery, 'recovery', COMPRESSED)
   appendHex(parts, d.keys.vaultCosignerBase, 'vaultCosignerBase', COMPRESSED)
   appendHex(parts, d.keys.arkadeCosignerBase, 'arkadeCosignerBase', COMPRESSED)
   appendHex(parts, d.tweaks.routine.vault, 'routine.vault', COMPRESSED)
   appendHex(parts, d.tweaks.routine.arkade, 'routine.arkade', COMPRESSED)
+  const hasRecovery = Boolean(d.keys.recovery)
   for (const kind of ['daily', 'savings'] as const) {
-    for (const claimant of CLAIMANTS) {
-      appendHex(parts, d.tweaks.initiate[kind][claimant].vault, `initiate.${kind}.${claimant}.vault`, COMPRESSED)
-      appendHex(parts, d.tweaks.initiate[kind][claimant].arkade, `initiate.${kind}.${claimant}.arkade`, COMPRESSED)
+    for (const claimant of familyClaimants(hasRecovery)) {
+      appendHex(parts, d.tweaks.initiate[kind][claimant]!.vault, `initiate.${kind}.${claimant}.vault`, COMPRESSED)
+      appendHex(parts, d.tweaks.initiate[kind][claimant]!.arkade, `initiate.${kind}.${claimant}.arkade`, COMPRESSED)
     }
   }
-  for (const key of FAMILY_KEYS) {
+  for (const key of familyKeysFor(hasRecovery)) {
     appendHex(parts, d.tweaks.pending[key].vault, `pending.${key}.vault`, COMPRESSED)
     appendHex(parts, d.tweaks.pending[key].arkade, `pending.${key}.arkade`, COMPRESSED)
   }
@@ -389,16 +396,18 @@ export function encodeV5Descriptor(input: V5PublicDescriptor): Uint8Array {
   appendText(parts, d.daily.address, 'daily.address')
   appendHex(parts, d.savings.script, 'savings.script', d.savings.script.length / 2)
   appendText(parts, d.savings.address, 'savings.address')
-  for (const key of FAMILY_KEYS) {
+  for (const key of familyKeysFor(hasRecovery)) {
     appendHex(parts, d.pending[key].script, `${key}.pending.script`, d.pending[key].script.length / 2)
     appendText(parts, d.pending[key].address, `${key}.pending.address`)
     appendU32(parts, d.pending[key].delay, `${key}.pending.delay`)
   }
-  for (const key of FAMILY_KEYS) {
+  for (const key of familyKeysFor(hasRecovery)) {
     appendHex(parts, d.quarantine[key].script, `${key}.quarantine.script`, d.quarantine[key].script.length / 2)
     appendText(parts, d.quarantine[key].address, `${key}.quarantine.address`)
     appendText(parts, d.quarantine[key].guardians[0], `${key}.guardian0`)
-    appendText(parts, d.quarantine[key].guardians[1], `${key}.guardian1`)
+    if (d.quarantine[key].guardians[1]) {
+      appendText(parts, d.quarantine[key].guardians[1], `${key}.guardian1`)
+    }
   }
   return concat(parts)
 }
@@ -408,6 +417,7 @@ export function hashV5Descriptor(d: V5PublicDescriptor): string {
 }
 
 export function recoveryXOnly(d: V5PublicDescriptor): string {
+  if (!d.keys.recovery) throw new Error('recovery key is not on this vault')
   return hex.encode(xOnlyFromCompressed(d.keys.recovery))
 }
 

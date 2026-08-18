@@ -11,12 +11,7 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollmentStore'
-import {
-  parseRecoverySecret,
-  requireV4ProposedDescriptor,
-  requireV5ProposedDescriptor,
-  signEnrollmentRecoveryPoP,
-} from './v5/enroll'
+import { parseRecoverySecret, requireV5ProposedDescriptor, signEnrollmentRecoveryPoP } from './v5/enroll'
 import { saveLocalKit } from './v5/kitStore'
 import { buildRecoveryKit } from './v5/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
@@ -267,7 +262,11 @@ export async function beginTenantEnrollment(
       saveLocalKit(buildRecoveryKit(descriptor))
       return { enrollment, descriptor }
     }
-    const descriptor = requireV4ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
+    const descriptor = requireV5ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
+    if (descriptor.keys.recovery) throw new Error('this setup skipped recovery')
+    if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
+      throw new Error('proposed hardware key does not match this client')
+    }
     const staged: StagedEnrollment = {
       ...enrollment,
       handle: start.handle,
@@ -278,12 +277,13 @@ export async function beginTenantEnrollment(
       hardwareXOnly,
       inviteToken: token,
       descriptorHash: proposed.descriptorHash,
-      operationalAddress: descriptor.operational.address,
-      operationalScript: descriptor.operational.script,
+      operationalAddress: descriptor.daily.address,
+      operationalScript: descriptor.daily.script,
       savingsAddress: descriptor.savings.address,
     }
     saveStagedEnrollment(staged)
-    return { enrollment }
+    saveLocalKit(buildRecoveryKit(descriptor))
+    return { enrollment, descriptor }
   } finally {
     recoverySecret?.fill(0)
   }
