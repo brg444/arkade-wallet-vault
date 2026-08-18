@@ -1,16 +1,26 @@
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
+import { hashDescriptor } from '../descriptor'
 import { sampleDescriptor } from '../sample'
 import { bytesToHex } from '../hex'
 import { buildV5Descriptor, hashV5Descriptor, recoveryXOnly } from './descriptor'
-import { parseRecoverySecret, requireV5ProposedDescriptor, signEnrollmentRecoveryPoP } from './enroll'
+import {
+  parseRecoverySecret,
+  requireV4ProposedDescriptor,
+  requireV5ProposedDescriptor,
+  signEnrollmentRecoveryPoP,
+} from './enroll'
 import { V5_FIXTURE, scalarSecret } from './fixtures'
 import { recoveryPoPDigest, verifyRecoveryPoP } from './pop'
 
 describe('v5 enrollment proof', () => {
   it('rejects a v4 propose and signs recovery PoP on v5', () => {
     const v4 = sampleDescriptor()
-    expect(() => requireV5ProposedDescriptor(v4, 'aa'.repeat(32))).toThrow(/enrolls v5 only/)
+    expect(() => requireV5ProposedDescriptor(v4, 'aa'.repeat(32))).toThrow(/v5 vault/)
+    expect(() => requireV4ProposedDescriptor(buildV5Descriptor(V5_FIXTURE), 'aa'.repeat(32))).toThrow(
+      /skipped recovery/,
+    )
+    expect(requireV4ProposedDescriptor(v4, hashDescriptor(v4)).vaultId).toBe(v4.vaultId)
     const descriptor = buildV5Descriptor(V5_FIXTURE)
     const hash = hashV5Descriptor(descriptor)
     expect(() => requireV5ProposedDescriptor(descriptor, '00'.repeat(32))).toThrow(/hash/)

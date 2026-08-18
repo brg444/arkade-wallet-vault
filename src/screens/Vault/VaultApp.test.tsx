@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { DEMO_HARDWARE_PUB, DEMO_RECOVERY_PUB } from '../../lib/vault/setupPlan'
+import { DEMO_HARDWARE_PUB } from '../../lib/vault/setupPlan'
 import { VaultProvider } from '../../providers/vault'
 import VaultApp from '../../VaultApp'
 
@@ -35,8 +35,8 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText('Recovery key')).toBeTruthy()
-    fireEvent.change(screen.getByTestId('recovery-pub'), { target: { value: DEMO_RECOVERY_PUB } })
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByText(/optional paper key/i)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
     expect(await screen.findByText('How much can this device send?')).toBeTruthy()
     await user.click(screen.getByTestId('cap-20000'))
