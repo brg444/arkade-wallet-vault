@@ -87,7 +87,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByLabelText('Go back'))
 
     await user.click(await screen.findByTestId('settings-reset'))
-    expect(await screen.findByText('This removes this device')).toBeTruthy()
+    expect(await screen.findByText('Sign out of this browser')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Reset' })).toHaveProperty('disabled', true)
     expect(screen.queryByText('Your vault')).toBeNull()
   })

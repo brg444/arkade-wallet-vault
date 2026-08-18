@@ -4,6 +4,7 @@ import { VAULT_ID } from './constants'
 export const ENROLL_STORE = 'arkade-vault-enroll-secrets-v3'
 export const SELECTED_VAULT_STORE = 'arkade-vault-selected-v1'
 export const ENROLL_STAGE_STORE = 'arkade-vault-enroll-staged-v1'
+export const SESSION_LOCK_STORE = 'arkade-vault-session-lock-v1'
 
 function requestedEnrollmentId(vaultId: string | undefined, supplied: boolean): string {
   if (!supplied) return VAULT_ID
@@ -71,6 +72,32 @@ export function saveSelectedVaultId(vaultId: string, storage: Storage = localSto
 
 export function clearSelectedVaultId(storage: Storage = localStorage) {
   storage.removeItem(SELECTED_VAULT_STORE)
+}
+
+export function loadSessionLocked(storage: Storage = localStorage): boolean {
+  return storage.getItem(SESSION_LOCK_STORE) === '1'
+}
+
+export function setSessionLocked(locked: boolean, storage: Storage = localStorage) {
+  if (locked) storage.setItem(SESSION_LOCK_STORE, '1')
+  else storage.removeItem(SESSION_LOCK_STORE)
+}
+
+export function findStoredEnrollment(storage: Storage = localStorage): EnrollmentSecrets | null {
+  const selected = loadSelectedVaultId(storage)
+  if (selected) {
+    const rec = loadEnrollment(storage, selected)
+    if (rec) return rec
+  }
+  const legacy = loadEnrollment(storage)
+  if (legacy) return legacy
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i)
+    if (!key || !key.startsWith(`${ENROLL_STORE}:`)) continue
+    const rec = parseEnrollment(storage.getItem(key))
+    if (rec) return bindEnrollment(rec, rec.vaultId || key.slice(ENROLL_STORE.length + 1))
+  }
+  return null
 }
 
 export type StagedEnrollment = EnrollmentSecrets & {

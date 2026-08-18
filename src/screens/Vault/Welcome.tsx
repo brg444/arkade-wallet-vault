@@ -42,9 +42,8 @@ function Point({ icon, text }: { icon: JSX.Element; text: string }) {
 }
 
 export default function VaultWelcome() {
-  const { busy, error, hasLocalEnrollment, navigate, signIn, status } = useContext(VaultContext)
-  const canSignIn = Boolean(status?.enrolled && !hasLocalEnrollment)
-  const signInReady = Boolean(status?.passkeyLoginAvailable)
+  const { busy, error, hasLocalEnrollment, locked, navigate, signIn } = useContext(VaultContext)
+  const canSignIn = locked || !hasLocalEnrollment
   const onPhone = isCoarsePhone()
   const prefersReduced = useReducedMotion()
   const [ready, setReady] = useState(prefersReduced)
@@ -104,38 +103,24 @@ export default function VaultWelcome() {
         </Padded>
       </Content>
       <ButtonsOnBottom className={ready ? 'vault-welcome-actions is-ready' : 'vault-welcome-actions'}>
+        <ErrorMessage error={Boolean(error)} text={error} />
         {canSignIn ? (
-          <>
-            <ErrorMessage error={Boolean(error)} text={error} />
-            {signInReady ? (
-              <Button
-                onClick={() => void signIn()}
-                disabled={busy}
-                loading={busy}
-                label={
-                  busy
-                    ? onPhone
-                      ? 'Waiting for Face ID…'
-                      : 'Waiting for phone QR…'
-                    : onPhone
-                      ? 'Sign in'
-                      : 'Sign in with phone QR'
-                }
-              />
-            ) : (
-              <Text wrap>
-                Sign in isn’t enabled yet. On the original device, open Settings and allow other devices. Then come
-                back.
-              </Text>
-            )}
-            <Button onClick={() => navigate('hwsign')} label='Sign with hardware' secondary />
-          </>
-        ) : (
-          <>
-            <Button onClick={() => navigate('design')} label='Set up' />
-            <Button onClick={() => navigate('hwsign')} label='Sign with hardware' secondary />
-          </>
-        )}
+          <Button
+            onClick={() => void signIn()}
+            disabled={busy}
+            loading={busy}
+            label={
+              busy
+                ? onPhone
+                  ? 'Waiting for Face ID…'
+                  : 'Waiting for phone QR…'
+                : onPhone
+                  ? 'Sign in'
+                  : 'Sign in with phone QR'
+            }
+          />
+        ) : null}
+        <Button onClick={() => navigate('design')} label='Set up' secondary={canSignIn} />
       </ButtonsOnBottom>
     </>
   )

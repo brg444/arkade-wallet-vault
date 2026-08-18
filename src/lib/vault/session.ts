@@ -12,7 +12,7 @@ import {
   verifyRecoveryBindingSignatures,
 } from './passkeysession'
 import { pinEnrolledStatus } from './pin'
-import { fetchVaultStatus } from './status'
+import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
@@ -159,6 +159,62 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
   } finally {
     zeroBytes(session?.prf, session?.scalar, phoneRoutineSecret)
   }
+}
+
+export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<EnrollmentSecrets> {
+  const publicStatus = await fetchPublicStatus()
+  const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
+  if (rpId !== location.hostname.toLowerCase()) {
+    throw new Error('deployment RP ID does not match this signing client host')
+  }
+  const challenge = crypto.getRandomValues(new Uint8Array(32))
+  const got = (await navigator.credentials.get({
+    publicKey: passkeyGetOptions(
+      {
+        challenge,
+        rpId,
+        allowCredentials: [allowPasskey(hexToBytes(rec.credId), 'local')],
+        userVerification: 'required',
+        extensions: prfExtension(PRF_SALT, hexToBytes(rec.credId)),
+      },
+      'local',
+    ),
+  })) as PublicKeyCredential | null
+  if (!got) throw new Error('The operation was aborted.')
+  const prf = prfFrom(got)
+  if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
+  try {
+    const kek = await deriveKEK(prf)
+    const secret = new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
+    )
+    zeroBytes(secret)
+    return rec
+  } finally {
+    zeroBytes(prf)
+  }
+}
+
+export async function discoverVaultIdFromPasskey(): Promise<string> {
+  const publicStatus = await fetchPublicStatus()
+  const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
+  const challenge = crypto.getRandomValues(new Uint8Array(32))
+  const got = (await navigator.credentials.get({
+    publicKey: passkeyGetOptions(
+      {
+        challenge,
+        rpId,
+        userVerification: 'required',
+      },
+      isCoarsePhone() ? 'local' : 'any',
+    ),
+  })) as PublicKeyCredential | null
+  if (!got) throw new Error('The operation was aborted.')
+  const handle = (got.response as AuthenticatorAssertionResponse).userHandle
+  if (!handle) throw new Error('this passkey is not tied to a vault')
+  const vaultId = new TextDecoder().decode(new Uint8Array(handle)).trim()
+  if (!vaultId) throw new Error('this passkey is not tied to a vault')
+  return vaultId
 }
 
 export async function signInWithPasskey(
