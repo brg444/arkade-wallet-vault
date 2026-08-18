@@ -1,54 +1,13 @@
 # Arkade Vault
 
-A vault on this phone. Daily spend with Face ID. Savings that need
-hardware too. Testnet only. Don’t send real bitcoin.
+Mutinynet vault client. Daily spend on this phone. Savings need hardware
+too. Testnet only. Don’t send real bitcoin.
 
 Live demo: [https://arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
-How we talk about it: [docs/voice.md](docs/voice.md)  
-Where the spec lives: [docs/architecture.md](docs/architecture.md)  
-What’s live vs next: [docs/plan.md](docs/plan.md) · [docs/live.md](docs/live.md)
-
-This is not the Arkade VTXO wallet. The vault **service** is a separate
-signer. This repo is the phone app.
-
-## What people use today
-
-- **Spending** — this phone, up to a daily limit
-- **Savings** — this phone and hardware together
-- **Vault service** — helps daily spend, cannot take Savings
-- **Recovery** — optional. Skip and the vault is this device plus hardware.
-  Add a recovery key and it can start a waiting period you can cancel.
-
-Engineers: new enrolls are v5 only. Recovery is optional. Leftover v4
-UTXOs still load; recover those out of band. See [docs/live.md](docs/live.md).
-
-## Packaging
-
-Deployable signer packaging: [arkade-vault-server](https://github.com/brg444/arkade-vault-server)
-([contract-pack.json](src/lib/vault/contract-pack.json)). Go still builds
-from [arkade-2fa-vault-poc](https://github.com/brg444/arkade-2fa-vault-poc)
-(`cmd/authorizer`) until that tree is extracted.
-
-```text
-vault client (this repo, Vercel)
-    same-origin /v1
-        → vault server (authorizer-next, Railway)
-              VaultCosigner + SQLite
-              outbound HTTPS → pinned Arkade cosigner
-```
-
-Two deployables. One frozen contract pack (template, policy, domains).
-Production does not compile an authorizer URL into the bundle. Vercel adds
-`X-Vault-Gateway-Secret`. `/v1/register` is 404. Enrollment is invite-gated.
-
-| Server env                  | Role                       |
-| --------------------------- | -------------------------- |
-| `AUTHORIZER_ORIGIN`         | Railway authorizer-next    |
-| `AUTHORIZER_GATEWAY_SECRET` | Shared with the authorizer |
-
-Do not make trees or caps operator-configurable. New rules are a new
-**named** template, fail-closed against the old one.
+This repo is the PWA. The signer is
+[arkade-vault-server](https://github.com/brg444/arkade-vault-server).
+This is not the Arkade VTXO wallet.
 
 ## Run
 
@@ -71,14 +30,25 @@ bun run build:vault
 `bun run start` / `bun run build` still build the upstream VTXO wallet.
 Vercel deploys `build:vault` only.
 
-## Trust
+## Deploy
 
-- Browser-memory software key, not Secure Enclave
-- Railway + Vercel isolation, not VLS / anti-rollback
-- Same-origin XSS can steal an unlocked PhoneRoutine or PRF
-- The public Arkade cosigner is availability and privacy
-- Caps are signer policy, not Bitcoin consensus
+```text
+vault client (this repo, Vercel)
+    same-origin /v1
+        → vault server (Railway)
+```
+
+Production does not compile an authorizer URL into the bundle. Vercel
+adds `X-Vault-Gateway-Secret`. Enrollment is invite-gated.
+
+| Server env                  | Role                    |
+| --------------------------- | ----------------------- |
+| `AUTHORIZER_ORIGIN`         | Railway vault server    |
+| `AUTHORIZER_GATEWAY_SECRET` | Shared with the server  |
+
+See the server repo for Compose and Railway.
 
 ## Upstream
 
 Forked from [arkade-os/wallet](https://github.com/arkade-os/wallet).
+VTXO swap harness: [docs/swaps.regtest.md](docs/swaps.regtest.md).
