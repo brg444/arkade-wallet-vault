@@ -1,13 +1,22 @@
+# ARCHIVE — 2026-08-17 Custos pass against a mixed v3/v4 tree
+
+The live product is `phone-direct-p256-routine-3of3-admin-phone-hww-v4`
+(device CSV 144, hardware CSV 6, no RecoveryKey). The kiosk addresses below
+are retired and empty. Do not treat `ownerSecret` / `recoverySecret` as the
+current enroll path.
+
+---
+
 # Custos-style assessment — Arkade Vault (wallet-vault)
 
-| Field | Value |
-| --- | --- |
-| Target | this repo (`VITE_VAULT_MODE`), manifest `custos-target.json` |
-| Method | Custos harness run locally: operator intake + 5 bundles + lenses `value` `crypto` `protocol` `access` `psbt` `oracle` + `gates` + `verify`. No Venice key. Official CLI blocked on `VENICE_API_KEY`. |
-| Date | 2026-08-17 |
-| Scope | Client + deploy. Go authorizer is a separate tree; treated as a hostile API. |
-| Threat model | Mutinynet faucet coins. Not mainnet. Not HSM. Same-origin XSS and Railway host compromise of VaultCosigner (not Savings) are accepted residuals. |
-| Full write-up | `audit/report.md` |
+| Field         | Value                                                                                                                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Target        | this repo (`VITE_VAULT_MODE`), manifest `custos-target.json`                                                                                                                                         |
+| Method        | Custos harness run locally: operator intake + 5 bundles + lenses `value` `crypto` `protocol` `access` `psbt` `oracle` + `gates` + `verify`. No Venice key. Official CLI blocked on `VENICE_API_KEY`. |
+| Date          | 2026-08-17                                                                                                                                                                                           |
+| Scope         | Client + deploy. Go authorizer is a separate tree; treated as a hostile API.                                                                                                                         |
+| Threat model  | Mutinynet faucet coins. Not mainnet. Not HSM. Same-origin XSS and Railway host compromise of VaultCosigner (not Savings) are accepted residuals.                                                     |
+| Full write-up | `audit/report.md`                                                                                                                                                                                    |
 
 This follows [ArkLabsHQ/custos](https://github.com/ArkLabsHQ/custos). The verifier rule applies: refute anything that only holds if we invent an on-chain invariant, and refute missing hardening with no shown input→harm.
 
@@ -24,26 +33,26 @@ See `custos-target.json` `intake[]`. Short form:
 
 First-party Mutinynet web client for an L1 Taproot 2FA operational vault, not an Ark VTXO wallet. Same-origin `/v1` is rewritten to a public Railway authorizer that holds VaultCosigner and the ledger. Routine spend is 3-of-3 with mandatory recursive change. Phone approval is WebAuthn + PRF-derived DirectP256; PhoneRoutine is AES-GCM under the PRF.
 
-`inspectPSBT` binds prevout, change, packet, and sighash, and requires the input script to equal `status.operationalScript` / `status.operationalAddress`. It does **not** reconstruct Taproot `Q` from a locally hashed descriptor. Verify concluded that a surprise leaf cannot spend UTXOs already at the enrolled `Q`. The live hole is that the operational *address the user funds* is taken from the same hostile status.
+`inspectPSBT` binds prevout, change, packet, and sighash, and requires the input script to equal `status.operationalScript` / `status.operationalAddress`. It does **not** reconstruct Taproot `Q` from a locally hashed descriptor. Verify concluded that a surprise leaf cannot spend UTXOs already at the enrolled `Q`. The live hole is that the operational _address the user funds_ is taken from the same hostile status.
 
 ## Bundles
 
-| Bundle | Lenses | Status |
-| --- | --- | --- |
-| ceremony-psbt-and-spend | value, protocol, psbt, oracle | done (verify adjusted) |
-| enroll-prf-and-storage | crypto, access | done |
-| status-descriptor-identity | protocol, access | done — this is the surviving HIGH |
-| client-money-path | value, protocol | done |
-| deploy-and-boundary | access | done |
+| Bundle                     | Lenses                        | Status                            |
+| -------------------------- | ----------------------------- | --------------------------------- |
+| ceremony-psbt-and-spend    | value, protocol, psbt, oracle | done (verify adjusted)            |
+| enroll-prf-and-storage     | crypto, access                | done                              |
+| status-descriptor-identity | protocol, access              | done — this is the surviving HIGH |
+| client-money-path          | value, protocol               | done                              |
+| deploy-and-boundary        | access                        | done                              |
 
 ## Executive summary
 
-| # | Severity | Lens | Verdict | Finding |
-|---|----------|------|---------|---------|
-| 1 | **HIGH** | protocol / oracle | confirmed | Deposit / savings address taken from unbound status |
-| 2 | **HIGH** | access | confirmed | Public Railway authorizer holds VaultCosigner |
-| 3 | **MEDIUM** | access | confirmed | Unbounded status + Esplora GET bodies |
-| 4 | **LOW** | access | confirmed | Local authorizer launcher still G/2G + unsafe signer |
+| #   | Severity   | Lens              | Verdict   | Finding                                              |
+| --- | ---------- | ----------------- | --------- | ---------------------------------------------------- |
+| 1   | **HIGH**   | protocol / oracle | confirmed | Deposit / savings address taken from unbound status  |
+| 2   | **HIGH**   | access            | confirmed | Public Railway authorizer holds VaultCosigner        |
+| 3   | **MEDIUM** | access            | confirmed | Unbounded status + Esplora GET bodies                |
+| 4   | **LOW**    | access            | confirmed | Local authorizer launcher still G/2G + unsafe signer |
 
 Leaf/`Q` reconstruct, thin enrollment parse, dual P-256, Reset, and ACAO `*` were **refuted** by verify. UI enrollment is currently broken (`ownerSecret` / `recoverySecret` required, not collected) — availability, not theft.
 
