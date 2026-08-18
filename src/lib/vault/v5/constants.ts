@@ -24,6 +24,18 @@ export type VaultKind = (typeof VAULT_KINDS)[number]
 export const CLAIMANTS = ['phone', 'hardware', 'recovery'] as const
 export type Claimant = (typeof CLAIMANTS)[number]
 
+export const FAMILY_KEYS = [
+  'daily-phone',
+  'daily-hardware',
+  'daily-recovery',
+  'savings-phone',
+  'savings-hardware',
+  'savings-recovery',
+] as const
+export type FamilyKey = (typeof FAMILY_KEYS)[number]
+
+export const V5_RECOVERY_POP_TAG = 'arkade-vault/v5/recovery-pop'
+
 export { TAPROOT_NUMS_XONLY }
 
 export const TEMPLATE_REGISTRY = {
