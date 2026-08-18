@@ -4,8 +4,8 @@ Arkade Vault is a vault on this phone: daily spend with Face ID,
 Savings that need hardware, a vault service that cannot take Savings.
 How we say that: [voice.md](voice.md).
 
-The next **program** (v5) is not live on the signer yet. Recovery is
-optional in the app. Do not enroll it against today’s signer.
+The next **program** (v5) is optional recovery. Skip recovery and enroll
+stays v4. Supply a recovery key and the signer mints v5.
 
 The long mapping: Arkade as a validating cosigner (Safe-like _account_,
 VLS-like _isolation_, Bitcoin Script _exits_). This vault is the first
@@ -53,7 +53,7 @@ yet rebuild or enroll the v5 family — `TemplateVersion` is still v4.
 Do not:
 
 - put singlesig CSV back on Normal
-- skip recovery and fall back to v4
+- treat skip-recovery as an error; v4 is the default when recovery is omitted
 - require the authorizer on mature claim
 - extract `route/` as a second framework (the table already lives in `v5/route.ts`)
 - board VTXOs in the same PR

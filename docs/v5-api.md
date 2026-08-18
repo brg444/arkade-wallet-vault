@@ -34,19 +34,16 @@ Enrollment is invite-gated.
 
 `POST /v1/register` is not on the Mutinynet authorizer (404/405).
 
-### Enroll (v5 client)
+### Enroll
 
-`propose` must return a rebuilt **v5** public descriptor and its hash.
-`src/lib/vault/v5/enroll.ts` rejects any other schema.
+Recovery is optional.
 
-`finish` sends BIP340 `recoveryPoP` over:
+- No recovery key → propose returns a rebuilt **v4** descriptor.
+- Recovery x-only supplied → propose returns a rebuilt **v5** descriptor.
+  `finish` then sends BIP340 `recoveryPoP` over
+  `tagged_hash("arkade-vault/v5/recovery-pop", vaultId ‖ invite handle ‖ recovery x-only ‖ descriptor hash ‖ template)`.
 
-`tagged_hash("arkade-vault/v5/recovery-pop", vaultId ‖ invite handle ‖ recovery x-only ‖ descriptor hash ‖ template)`
-
-Empty/null recovery is invalid. There is no “skip recovery → v4.”
-
-Until the authorizer rebuilds v5 trees, propose of a v4 descriptor fails on
-this client. That is intentional.
+Skip recovery is a v4 vault. It is not an error.
 
 ### Daily pay
 

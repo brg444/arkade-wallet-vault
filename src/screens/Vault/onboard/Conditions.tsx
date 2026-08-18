@@ -5,7 +5,7 @@ import { prettyAmount } from '../../../lib/format'
 import { waitLabel } from '../../../lib/vault/policy'
 import { DAILY_LIMIT_CHOICES, DELAY_PROFILES, PAYMENT_CAP_CHOICES } from '../../../lib/vault/setupPlan'
 import { VaultContext } from '../../../providers/vault'
-import { PolicyTimeline } from '../ui'
+import { PolicyTimeline, Section } from '../ui'
 import { ChoiceCard, OnboardLayout } from './Layout'
 
 export default function VaultConditions() {
@@ -23,7 +23,7 @@ export default function VaultConditions() {
     const savCsv = status?.savingsCsvBlocks || setup.savingsCsvBlocks
     return (
       <OnboardLayout
-        title='How much can this device send?'
+        title='Daily limits'
         step={4}
         onBack={() => navigate('recovery')}
         actions={<Button onClick={confirmConditions} label='Continue' />}
@@ -46,56 +46,53 @@ export default function VaultConditions() {
 
   return (
     <OnboardLayout
-      title='How much can this device send?'
+      title='Daily limits'
       step={4}
       onBack={() => navigate('recovery')}
-      actions={<Button onClick={confirmConditions} label='Save these rules' />}
+      actions={<Button onClick={confirmConditions} label='Continue' />}
     >
       <Text wrap>How much this device can send today, without hardware.</Text>
-      <Text color='neutral-600' tiny>
-        Per send
-      </Text>
-      {PAYMENT_CAP_CHOICES.map((sats) => (
-        <ChoiceCard
-          key={sats}
-          title={prettyAmount(sats)}
-          detail='Per send'
-          selected={setup.txCapSats === sats}
-          onClick={() => setCondition({ txCapSats: sats })}
-          testId={`cap-${sats}`}
-        />
-      ))}
-      <Text color='neutral-600' tiny>
-        Per day
-      </Text>
-      {DAILY_LIMIT_CHOICES.map((sats) => (
-        <ChoiceCard
-          key={sats}
-          title={prettyAmount(sats)}
-          detail='Per day'
-          selected={setup.dailyLimitSats === sats}
-          onClick={() => setCondition({ dailyLimitSats: sats })}
-          testId={`daily-${sats}`}
-        />
-      ))}
-      <Text color='neutral-600' tiny>
-        If you lose a key
-      </Text>
-      {DELAY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
-        <ChoiceCard
-          key={item.id}
-          title={item.label}
-          detail={item.detail}
-          selected={profile.id === item.id}
-          onClick={() =>
-            setCondition({
-              operationalCsvBlocks: item.operationalCsvBlocks,
-              savingsCsvBlocks: item.savingsCsvBlocks,
-            })
-          }
-          testId={`csv-${item.id}`}
-        />
-      ))}
+      <Section label='Per send'>
+        {PAYMENT_CAP_CHOICES.map((sats) => (
+          <ChoiceCard
+            key={sats}
+            title={prettyAmount(sats)}
+            detail='This device, one payment'
+            selected={setup.txCapSats === sats}
+            onClick={() => setCondition({ txCapSats: sats })}
+            testId={`cap-${sats}`}
+          />
+        ))}
+      </Section>
+      <Section label='Per day'>
+        {DAILY_LIMIT_CHOICES.map((sats) => (
+          <ChoiceCard
+            key={sats}
+            title={prettyAmount(sats)}
+            detail='This device, today'
+            selected={setup.dailyLimitSats === sats}
+            onClick={() => setCondition({ dailyLimitSats: sats })}
+            testId={`daily-${sats}`}
+          />
+        ))}
+      </Section>
+      <Section label='If you lose a key'>
+        {DELAY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
+          <ChoiceCard
+            key={item.id}
+            title={item.label}
+            detail={item.detail}
+            selected={profile.id === item.id}
+            onClick={() =>
+              setCondition({
+                operationalCsvBlocks: item.operationalCsvBlocks,
+                savingsCsvBlocks: item.savingsCsvBlocks,
+              })
+            }
+            testId={`csv-${item.id}`}
+          />
+        ))}
+      </Section>
       <Text color='neutral-600' tiny wrap>
         Preview only. A live vault uses the service limits.
       </Text>

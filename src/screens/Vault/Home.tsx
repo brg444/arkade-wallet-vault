@@ -38,8 +38,7 @@ export default function VaultHome() {
     error,
     navigate,
     openSendScan,
-    enablePasskeyLogin,
-    hasLocalEnrollment,
+    openRecover,
     liveNetwork,
     initiateAlert,
     operationalAddress,
@@ -214,7 +213,7 @@ export default function VaultHome() {
                 type='button'
                 className='vault-panel'
                 data-testid='initiate-alert'
-                onClick={() => navigate('recover')}
+                onClick={() => openRecover('lost', 'home')}
               >
                 <Text small bold>
                   Recovery in process
@@ -240,13 +239,7 @@ export default function VaultHome() {
                 Receive isn’t ready yet. Try again after setup finishes.
               </Text>
             ) : null}
-            {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
-              <Button
-                onClick={() => void enablePasskeyLogin()}
-                disabled={busy}
-                label={busy ? 'Waiting for Face ID…' : 'Use on another phone'}
-              />
-            ) : null}
+
           </div>
         </Padded>
       </Content>

@@ -18,22 +18,8 @@ import { VaultContext } from '../../providers/vault'
 
 function Point({ icon, text }: { icon: JSX.Element; text: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 0' }}>
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: '50%',
-          background: 'var(--bullet-icon-bg)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          color: 'var(--logo-color)',
-        }}
-      >
-        {icon}
-      </div>
+    <div className='vault-welcome-point'>
+      <div className='vault-welcome-point-icon'>{icon}</div>
       <Text color='neutral-800' thin wrap>
         {text}
       </Text>
@@ -86,7 +72,7 @@ export default function VaultWelcome() {
                 {ready ? <SmallLogo /> : null}
               </div>
               <div className='vault-welcome-copy'>
-                <div style={{ padding: '0.9rem 0 0.7rem 4px' }}>
+                <div className='vault-welcome-title'>
                   <p className='vault-kicker'>Arkade Vault</p>
                   <Text heading big>
                     Your vault
@@ -95,10 +81,12 @@ export default function VaultWelcome() {
                 <Text color='neutral-600' small wrap>
                   Daily spend on this phone. Savings need hardware too.
                 </Text>
-                <Point icon={<BoltOutlineIcon />} text='Daily spend with Face ID' />
-                <Point icon={<ShieldCheckOutlineIcon />} text='Hardware to move everything' />
-                <Point icon={<SafeIcon />} text='Lose a key? Start recovery. Cancel if it wasn’t you.' />
-                <Text color='neutral-600' small wrap>
+                <div className='vault-welcome-points'>
+                  <Point icon={<BoltOutlineIcon />} text='Daily spend with Face ID' />
+                  <Point icon={<ShieldCheckOutlineIcon />} text='Hardware to move everything' />
+                  <Point icon={<SafeIcon />} text='Lose a key? Start recovery. Cancel if it wasn’t you.' />
+                </div>
+                <Text color='neutral-600' tiny wrap>
                   Testnet only. Don’t send real bitcoin.
                 </Text>
               </div>

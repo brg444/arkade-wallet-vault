@@ -16,7 +16,7 @@ signer. This repo is the phone app.
 - **Spending** — this phone, up to a daily limit
 - **Savings** — this phone and hardware together
 - **Vault service** — helps daily spend, cannot take Savings
-- **Recovery** — optional in the app; the live signer does not mint it yet
+- **Recovery** — optional on new vaults. Skip keeps this device plus hardware. The live signer still mints that simpler vault.
 
 Engineers: the live signer is still the v4 program (50k / 100k, CSV 6 /
 144 on Savings). Hardware can move first on a mature Savings coin. The

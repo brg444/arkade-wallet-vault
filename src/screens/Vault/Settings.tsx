@@ -118,22 +118,22 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
   const [ok, setOk] = useState(false)
   return (
     <>
-      <Header text='Reset' back={onBack} />
+      <Header text='Sign out' back={onBack} />
       <Content noRefresh>
         <Padded>
           <CenterScreen>
             <WalletAlternativeIcon />
             <Text>Sign out of this browser</Text>
             <TextSecondary>
-              Coins stay. Sign in again with Face ID. This does not close the vault or delete the passkey.
+              Coins stay on the vault. Sign in again with Face ID. This does not close the vault or delete the passkey.
             </TextSecondary>
           </CenterScreen>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <FlexCol gap='0.5rem'>
+        <FlexCol gap='0.75rem'>
           <Checkbox onChange={() => setOk((value) => !value)} text='I understand' />
-          <Button disabled={!ok} label='Reset' onClick={onReset} red />
+          <Button disabled={!ok} label='Sign out' onClick={onReset} red />
         </FlexCol>
       </ButtonsOnBottom>
     </>
@@ -141,18 +141,8 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const {
-    busy,
-    enablePasskeyLogin,
-    faucetUrl,
-    hasLocalEnrollment,
-    liveNetwork,
-    navigate,
-    operationalAddress,
-    refreshBalance,
-    reset,
-    status,
-  } = useContext(VaultContext)
+  const { busy, faucetUrl, liveNetwork, navigate, operationalAddress, refreshBalance, reset, status } =
+    useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<View>('menu')
   const [theme, setTheme] = useState(loadVaultTheme)
@@ -286,7 +276,7 @@ export default function VaultSettings() {
               />
               {liveNetwork ? (
                 <Row
-                  label='Faucet'
+                  label='Get test coins'
                   testId='settings-faucet'
                   onClick={() =>
                     window.open(operationalAddress ? `${faucetUrl}?address=${operationalAddress}` : faucetUrl, '_blank')
@@ -296,17 +286,8 @@ export default function VaultSettings() {
               <Row label='Logs' testId='settings-logs' onClick={() => setView('logs')} />
             </FlexCol>
             <FlexCol gap='0'>
-              <TextLabel>Security</TextLabel>
-              <Row label='Recover' testId='settings-recover' onClick={() => navigate('recover')} />
-              <Row label='Recovery Kit' testId='settings-kit' onClick={() => navigate('recover')} />
-              {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
-                <Row
-                  label={busy ? 'Enabling…' : 'Use on another phone'}
-                  testId='settings-devices'
-                  onClick={() => void enablePasskeyLogin()}
-                />
-              ) : null}
-              <Row label='Reset' testId='settings-reset' danger onClick={() => setView('reset')} />
+              <TextLabel>This browser</TextLabel>
+              <Row label='Sign out' testId='settings-signout' danger onClick={() => setView('reset')} />
             </FlexCol>
           </FlexCol>
         </Padded>

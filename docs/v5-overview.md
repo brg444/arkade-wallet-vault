@@ -4,11 +4,12 @@ The product is still Arkade Vault: this phone, hardware, vault service.
 This file is the _next signer program_. Live Mutinynet still mints the
 simpler vault. See [live.md](live.md). Voice: [voice.md](voice.md).
 
-Once the signer cuts over, new vaults can add **optional** recovery.
-Daily spend stays this phone, under the cap. If someone starts recovery,
-a **new** waiting period begins. Cancel it if it wasn’t you. After the
-wait, move the coins. There is no “wait out an old Savings coin”
-shortcut for a stolen hardware key.
+Once the signer cuts over, new vaults may add recovery. Skip and the
+signer still mints this device plus hardware. Daily spend stays this
+phone, under the cap. If someone starts recovery, a **new** waiting
+period begins. Cancel it if it wasn’t you. After the wait, move the
+coins. There is no “wait out an old Savings coin” shortcut for a stolen
+hardware key.
 
 Engineers: client trees in `src/lib/vault/v5/`. Not an Ark VTXO wallet.
 Mutinynet only.
@@ -37,7 +38,7 @@ Home shows two balances. Pending is a banner, not a third account.
 | PhoneRoutineBIP340 | Browser software key, PRF-wrapped. Signs routine and phone initiate.           |
 | PhoneDirectP256    | PRF-derived P-256. Signs the Arkade sighash. Not WebAuthn ES256.               |
 | Hardware           | External owner wallet. Admin and hardware initiate.                            |
-| Recovery           | Paper/break-glass. Required on v5. Starts a hold; does not spend Normal alone. |
+| Recovery           | Optional. Starts a waiting period; does not spend Normal alone.                |
 | VaultCosigner      | Authorizer. Policy + anti-replay on initiate/clawback.                         |
 | ArkadeCosigner     | Public emulator, tweaked with the auth script.                                 |
 
