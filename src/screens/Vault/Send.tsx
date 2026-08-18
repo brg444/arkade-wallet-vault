@@ -34,6 +34,7 @@ function payloadFromScan(raw: string): { address: string; amount?: number } {
 
 export default function VaultSend() {
   const {
+    account,
     amountSats,
     clearSendScan,
     dailyRemaining,
@@ -46,7 +47,9 @@ export default function VaultSend() {
     setup,
     status,
     preview,
+    savingsSats,
   } = useContext(VaultContext)
+  const fromSavings = account === 'savings'
   const destNetwork = status?.network || (preview ? 'regtest' : 'mutinynet')
   const [scan, setScan] = useState(false)
   const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
@@ -79,7 +82,7 @@ export default function VaultSend() {
 
   return (
     <>
-      <Header text='Send' back={() => navigate('home')} />
+      <Header text={fromSavings ? 'Send savings' : 'Send'} back={() => navigate('home')} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
@@ -101,12 +104,22 @@ export default function VaultSend() {
               validator={(value) => isVaultBitcoinAddress(value, destNetwork)}
             />
             <Text color='neutral-600' tiny wrap>
-              Fee {prettyAmount(spend.fee)} · max {prettyAmount(setup.txCapSats)} per send
+              {fromSavings
+                ? `From Savings · fee ${prettyAmount(spend.fee)}. This device signs here, hardware signs on another device.`
+                : `Fee ${prettyAmount(spend.fee)} · max ${prettyAmount(setup.txCapSats)} per send`}
             </Text>
-            <Text color='neutral-600' tiny>
-              {prettyNumber(availableSpend, 0)} / {prettyNumber(setup.dailyLimitSats, 0)} available today
-            </Text>
-            <Meter ratio={ratio} label='Available spend' />
+            {fromSavings ? (
+              <Text color='neutral-600' tiny>
+                {prettyNumber(savingsSats, 0)} sats in savings
+              </Text>
+            ) : (
+              <>
+                <Text color='neutral-600' tiny>
+                  {prettyNumber(availableSpend, 0)} / {prettyNumber(setup.dailyLimitSats, 0)} available today
+                </Text>
+                <Meter ratio={ratio} label='Available spend' />
+              </>
+            )}
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>

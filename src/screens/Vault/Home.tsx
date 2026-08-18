@@ -214,7 +214,7 @@ export default function VaultHome() {
                 main
                 icon={<SendIcon />}
                 label='Send'
-                disabled={!spending || !canSend}
+                disabled={spending ? !canSend : savingsSats <= 330}
                 onClick={() => navigate('send')}
               />
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />

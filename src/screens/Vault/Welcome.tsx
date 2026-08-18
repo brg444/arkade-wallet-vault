@@ -128,9 +128,13 @@ export default function VaultWelcome() {
                 back.
               </Text>
             )}
+            <Button onClick={() => navigate('hwsign')} label='Sign with hardware' secondary />
           </>
         ) : (
-          <Button onClick={() => navigate('design')} label='Set up' />
+          <>
+            <Button onClick={() => navigate('design')} label='Set up' />
+            <Button onClick={() => navigate('hwsign')} label='Sign with hardware' secondary />
+          </>
         )}
       </ButtonsOnBottom>
     </>

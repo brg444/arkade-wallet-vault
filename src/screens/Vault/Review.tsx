@@ -12,8 +12,9 @@ import { VaultContext } from '../../providers/vault'
 import { Detail, SignerRow } from './ui'
 
 export default function VaultReview() {
-  const { approvePreviewSend, busy, error, navigate, preview, spend } = useContext(VaultContext)
+  const { account, approvePreviewSend, busy, error, navigate, preview, spend } = useContext(VaultContext)
   const onPhone = isCoarsePhone()
+  const fromSavings = account === 'savings'
 
   return (
     <>
@@ -33,8 +34,14 @@ export default function VaultReview() {
               detail={preview ? 'No passkey in preview' : onPhone ? 'Face ID' : 'Your passkey'}
               state='you'
             />
-            <SignerRow title='Vault' detail='Approves if under today’s limit' state='auto' />
-            <SignerRow title='Hardware' detail='Not needed for this send' state='unused' />
+            {fromSavings ? (
+              <SignerRow title='Hardware' detail='Signs on another device via QR' state='you' />
+            ) : (
+              <>
+                <SignerRow title='Vault' detail='Approves if under today’s limit' state='auto' />
+                <SignerRow title='Hardware' detail='Not needed for this send' state='unused' />
+              </>
+            )}
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
@@ -44,7 +51,17 @@ export default function VaultReview() {
           onClick={approvePreviewSend}
           disabled={busy}
           loading={busy}
-          label={busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for passkey…') : preview ? 'Send' : 'Approve'}
+          label={
+            busy
+              ? onPhone
+                ? 'Waiting for Face ID…'
+                : 'Waiting for passkey…'
+              : fromSavings
+                ? 'Sign this device'
+                : preview
+                  ? 'Send'
+                  : 'Approve'
+          }
         />
       </ButtonsOnBottom>
     </>

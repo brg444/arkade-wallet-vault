@@ -49,3 +49,19 @@ export async function fetchAddressStats(address: string): Promise<{ funded: numb
 export function confirmedSpendable(utxos: EsploraUtxo[], need: number): EsploraUtxo | null {
   return utxos.filter((u) => u.status.confirmed && u.value >= need).sort((a, b) => a.value - b.value)[0] || null
 }
+
+export async function fetchTipHeight(): Promise<number> {
+  const res = await fetch(`${esploraBase()}/blocks/tip/height`)
+  const text = await readBounded(res)
+  if (!res.ok) throw new Error('Could not load the chain tip')
+  const height = Number(text.trim())
+  if (!Number.isInteger(height) || height < 0) throw new Error('Could not load the chain tip')
+  return height
+}
+
+export async function broadcastTx(txHex: string): Promise<string> {
+  const res = await fetch(`${esploraBase()}/tx`, { method: 'POST', body: txHex })
+  const text = await readBounded(res)
+  if (!res.ok) throw new Error(text.trim() || 'Could not broadcast')
+  return text.trim()
+}
