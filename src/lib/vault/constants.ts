@@ -1,7 +1,5 @@
-// Pinned v4 contract with the authorizer. New enrollments only.
-// Admin / Savings is PhoneRoutineBIP340 + hardware. No RecoveryKey.
-// CSV: 144 = device-only (lost hardware), 6 = hardware-only (lost device).
-// Same pair on Daily and Savings. Hardware must be able to move first.
+// Frozen v4 strings. Existing vaults still load. New enrolls are v5 only
+// (`src/lib/vault/v5/constants.ts`). Do not mint v4. Sweep is manual.
 export const VAULT_SCHEMA = 'arkade-vault/v4'
 export const VAULT_ID = 'operational-vault-v1'
 export const TEMPLATE_VERSION = 'phone-direct-p256-routine-3of3-admin-phone-hww-v4'

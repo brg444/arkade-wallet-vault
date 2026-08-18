@@ -44,6 +44,12 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('not enrolled') || msg.includes('enroll first')) {
     return 'Create a passkey first.'
   }
+  if (msg.includes('enrolls v5 only')) {
+    return 'This vault service still creates the old vault. New vaults need recovery.'
+  }
+  if (msg.includes('recovery secret')) {
+    return 'Paste the recovery secret to prove you hold that key.'
+  }
   if (msg.includes('template version') || msg.includes('policy version')) {
     return 'This app doesn’t match the vault. Update and try again.'
   }

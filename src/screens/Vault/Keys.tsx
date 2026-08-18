@@ -6,6 +6,7 @@ import Header from '../../components/Header'
 import Padded from '../../components/Padded'
 import Text from '../../components/Text'
 import FingerprintIcon from '../../icons/Fingerprint'
+import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import { waitLabel } from '../../lib/vault/policy'
@@ -58,24 +59,40 @@ export default function VaultKeys() {
               role={setup.hardwareIsDemo ? 'Demo key' : 'With this device, moves everything'}
               fingerprint={setup.hardwarePub || status?.externalOwnerWalletPub}
             />
-            <KeyCard icon={<ServerIcon />} title='Vault service' role='Daily only. Cannot spend Savings.' />
+            {setup.recoveryPub || status?.recoveryPub ? (
+              <KeyCard
+                icon={<SafeIcon />}
+                title='Recovery'
+                role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a hold you can cancel'}
+                fingerprint={setup.recoveryPub || status?.recoveryPub}
+              />
+            ) : (
+              <KeyCard
+                icon={<SafeIcon />}
+                title='Recovery'
+                role='This vault was set up before recovery was required. Sweep coins into a new vault yourself.'
+                status='Leftover'
+              />
+            )}
+            <KeyCard
+              icon={<ServerIcon />}
+              title='Vault service'
+              role='Daily only. Signs holds and cancels. Not claims.'
+            />
 
             <Text color='neutral-600' tiny>
               If you lose…
             </Text>
-            <KeyCard
-              title='This device'
-              role={`Other device + Face ID, or hardware after 6 blocks (${waitSavings}).`}
-            />
-            <KeyCard title='Hardware' role={`This device after 144 blocks (${waitPhone}).`} />
+            <KeyCard title='This device' role={`Other device + Face ID, or start a hardware hold (${waitSavings}).`} />
+            <KeyCard title='Hardware' role={`Start a device hold (${waitPhone}).`} />
             <KeyCard
               title='Savings'
-              role='Device + hardware now. Hardware after the short delay, this device after the long delay.'
+              role='Device + hardware now. Or start a hold, wait, then claim. Cancel sends coins to a vault that excludes the suspect.'
             />
             {network === 'mutinynet' ? (
               <Text color='neutral-600' tiny wrap>
-                On Mutinynet hardware can move after 6 blocks. A stolen device with the passkey has to wait 144 blocks
-                to sweep Savings. Those delays are a demo clock, not months.
+                Demo clocks: hardware 6, this device 144, recovery 288. The wait starts when the hold confirms, not when
+                the original coin aged.
               </Text>
             ) : null}
             {!addressCovered && status?.enrolled ? (

@@ -12,13 +12,23 @@ import {
 } from './setupPlan'
 
 describe('vault setup plan', () => {
-  it('accepts a compressed hardware key and does not require recovery', () => {
+  it('requires hardware and a distinct recovery key', () => {
     expect(parseCompressedPub(DEMO_HARDWARE_PUB)).toBe(DEMO_HARDWARE_PUB)
     expect(sameRole(UNSAFE_GENERATOR_2G, UNSAFE_GENERATOR_G)).toBe(false)
-    const plan = {
+    const noRecovery = {
       ...emptySetupPlan(),
       acceptedDesign: true,
       hardwarePub: DEMO_HARDWARE_PUB,
+    }
+    expect(planReady(noRecovery)).toBe(false)
+    const same = {
+      ...noRecovery,
+      recoveryPub: DEMO_HARDWARE_PUB,
+    }
+    expect(planReady(same)).toBe(false)
+    const plan = {
+      ...noRecovery,
+      recoveryPub: '022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4',
     }
     expect(planReady(plan)).toBe(true)
   })

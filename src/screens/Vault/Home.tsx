@@ -41,6 +41,7 @@ export default function VaultHome() {
     enablePasskeyLogin,
     hasLocalEnrollment,
     liveNetwork,
+    initiateAlert,
     operationalAddress,
     preview,
     refreshBalance,
@@ -204,10 +205,25 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                Device + hardware now. Hardware after the short delay, this device after the long delay.
+                Device + hardware now. Or start a hold, wait on a new output, cancel to quarantine.
               </Text>
             )}
 
+            {initiateAlert ? (
+              <button
+                type='button'
+                className='vault-panel'
+                data-testid='initiate-alert'
+                onClick={() => navigate('recover')}
+              >
+                <Text small bold>
+                  Hold in progress
+                </Text>
+                <Text color='neutral-600' tiny wrap>
+                  {initiateAlert}
+                </Text>
+              </button>
+            ) : null}
             <ErrorMessage error={Boolean(error)} text={error} />
             <FlexRow padding='0 0 0.5rem 0'>
               <Button

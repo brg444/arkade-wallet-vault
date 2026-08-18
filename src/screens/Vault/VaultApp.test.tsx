@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { DEMO_HARDWARE_PUB } from '../../lib/vault/setupPlan'
+import { DEMO_HARDWARE_PUB, DEMO_RECOVERY_PUB } from '../../lib/vault/setupPlan'
 import { VaultProvider } from '../../providers/vault'
 import VaultApp from '../../VaultApp'
 
@@ -34,6 +34,10 @@ describe('VaultApp onboarding', () => {
     fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: DEMO_HARDWARE_PUB } })
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
+    expect(await screen.findByText('Recovery key')).toBeTruthy()
+    fireEvent.change(screen.getByTestId('recovery-pub'), { target: { value: DEMO_RECOVERY_PUB } })
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
     expect(await screen.findByText('How much can this device send?')).toBeTruthy()
     await user.click(screen.getByTestId('cap-20000'))
     await user.click(screen.getByTestId('daily-50000'))
@@ -58,7 +62,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByTestId('account-savings'))
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Savings/)
     expect(screen.queryByText(/0 \/ 50,000 available/)).toBeNull()
-    expect(screen.getByText(/Hardware after the short delay/)).toBeTruthy()
+    expect(screen.getByText(/start a hold/i)).toBeTruthy()
 
     await user.click(screen.getByTestId('account-switcher'))
     await user.click(await screen.findByTestId('account-spend'))
@@ -71,11 +75,14 @@ describe('VaultApp onboarding', () => {
     expect(await screen.findByText('Keys')).toBeTruthy()
     expect(screen.getByText(/Vault service/)).toBeTruthy()
     expect(screen.getByText(/Daily spend/)).toBeTruthy()
+    expect(screen.getByText('Recovery')).toBeTruthy()
 
     await user.click(screen.getByTestId('tab-settings'))
     expect(await screen.findByText('Theme')).toBeTruthy()
     expect(screen.getByText('Haptics')).toBeTruthy()
     expect(screen.getByText('About')).toBeTruthy()
+    expect(screen.getByText('Recover')).toBeTruthy()
+    expect(screen.getByText('Recovery Kit')).toBeTruthy()
     expect(screen.getByText('Check for update')).toBeTruthy()
     expect(screen.getByText('Logs')).toBeTruthy()
     expect(screen.getByText('Reset')).toBeTruthy()

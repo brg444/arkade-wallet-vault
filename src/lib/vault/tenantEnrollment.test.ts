@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { enrollmentPoPDigest } from './tenantEnrollment'
 import { vaultStatusPath } from './status'
+import { requireV5ProposedDescriptor } from './v5/enroll'
+import { sampleDescriptor } from './sample'
 
 describe('tenant enrollment identity', () => {
   it('rejects an explicit empty vault id on the status path', () => {
@@ -38,5 +40,9 @@ describe('tenant enrollment identity', () => {
       descriptorHash: '77'.repeat(32),
     })
     expect(Buffer.from(digest).equals(Buffer.from(swappedTree))).toBe(false)
+  })
+
+  it('refuses a v4 propose on this client', () => {
+    expect(() => requireV5ProposedDescriptor(sampleDescriptor(), '00'.repeat(32))).toThrow(/enrolls v5 only/)
   })
 })

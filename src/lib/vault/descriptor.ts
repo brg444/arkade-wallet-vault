@@ -13,6 +13,8 @@ import {
 } from './constants'
 import { bytesToHex, encodeUtf8, hexToBytes, requireLowerHex } from './hex'
 import type { VaultPublicDescriptor, VaultStatus } from './types'
+import { V5_SCHEMA } from './v5/constants'
+import { hashV5Descriptor, validateV5Descriptor, type V5PublicDescriptor } from './v5/descriptor'
 
 const COMPRESSED = 33
 const XONLY = 32
@@ -127,6 +129,15 @@ export function encodeDescriptor(input: VaultPublicDescriptor): Uint8Array {
 
 export function hashDescriptor(d: VaultPublicDescriptor): string {
   return bytesToHex(sha256(encodeDescriptor(d)))
+}
+
+/** Hash v4 or v5 by schema. New enrolls still reject v4 after this check. */
+export function hashAnyDescriptor(raw: unknown): string {
+  const schema = raw && typeof raw === 'object' ? String((raw as { schema?: string }).schema || '') : ''
+  if (schema === V5_SCHEMA) {
+    return hashV5Descriptor(validateV5Descriptor(raw as V5PublicDescriptor))
+  }
+  return hashDescriptor(raw as VaultPublicDescriptor)
 }
 
 function descriptorFieldsFromStatus(status: VaultStatus, savingsScript: string): VaultPublicDescriptor {

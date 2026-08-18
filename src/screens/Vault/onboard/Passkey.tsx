@@ -15,7 +15,7 @@ export default function VaultPasskey() {
   return (
     <OnboardLayout
       title='Passkey'
-      step={5}
+      step={6}
       error={error}
       onBack={() => navigate('plan')}
       actions={

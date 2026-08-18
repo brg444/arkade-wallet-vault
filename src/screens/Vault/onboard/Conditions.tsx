@@ -24,8 +24,8 @@ export default function VaultConditions() {
     return (
       <OnboardLayout
         title='How much can this device send?'
-        step={3}
-        onBack={() => navigate('hardware')}
+        step={4}
+        onBack={() => navigate('recovery')}
         actions={<Button onClick={confirmConditions} label='Continue' />}
       >
         <Text wrap>These limits are already set. This device can’t raise them.</Text>
@@ -47,8 +47,8 @@ export default function VaultConditions() {
   return (
     <OnboardLayout
       title='How much can this device send?'
-      step={3}
-      onBack={() => navigate('hardware')}
+      step={4}
+      onBack={() => navigate('recovery')}
       actions={<Button onClick={confirmConditions} label='Save these rules' />}
     >
       <Text wrap>How much this device can send today.</Text>
