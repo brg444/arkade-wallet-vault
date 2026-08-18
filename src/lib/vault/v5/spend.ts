@@ -176,6 +176,8 @@ export function inspectTransitionPsbt(psbtHex: string) {
   const destSats = Number(dest.amount)
   const feeSats = value - destSats - P2A_VALUE_SATS
   if (feeSats < 0) throw new Error('negative fee')
+  const inputTxid = hex.encode(input.txid || new Uint8Array())
+  const inputVout = input.index ?? 0
   return {
     version: tx.version,
     sequence: input.sequence,
@@ -185,7 +187,19 @@ export function inspectTransitionPsbt(psbtHex: string) {
     p2aSats: Number(p2a.amount),
     packetScript: hex.encode(packet.script),
     inputScript: hex.encode(input.witnessUtxo.script),
+    inputTxid,
+    inputVout,
   }
+}
+
+export function bumpTransitionFee(psbtHex: string, feeSats: number): string {
+  const fee = requireFee(feeSats)
+  const tx = Transaction.fromPSBT(hex.decode(psbtHex), TX_OPTS)
+  const view = inspectTransitionPsbt(psbtHex)
+  if (fee <= view.feeSats) throw new Error('fee bump must increase the fee')
+  const destSats = transitionDestSats(view.destSats + view.feeSats + P2A_VALUE_SATS, fee)
+  tx.updateOutput(0, { amount: BigInt(destSats) })
+  return hex.encode(tx.toPSBT())
 }
 
 export function inspectClaimPsbt(psbtHex: string) {

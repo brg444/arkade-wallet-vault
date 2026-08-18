@@ -3,7 +3,14 @@ import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from './constan
 import { deriveSession } from './session'
 import { familyFromDescriptor } from './descriptor'
 import { inspectRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
-import { buildClaimPsbt, buildClawbackPsbt, buildInitiatePsbt, inspectClaimPsbt, inspectTransitionPsbt } from './spend'
+import {
+  buildClaimPsbt,
+  buildClawbackPsbt,
+  buildInitiatePsbt,
+  bumpTransitionFee,
+  inspectClaimPsbt,
+  inspectTransitionPsbt,
+} from './spend'
 
 export type KitCliCommand =
   | { name: 'inspect'; kit: RecoveryKit }
@@ -40,6 +47,7 @@ export type KitCliCommand =
       fee: number
     }
   | { name: 'verify'; psbtHex: string }
+  | { name: 'bump'; psbtHex: string; fee: number }
   | {
       name: 'status'
       kit: RecoveryKit
@@ -89,10 +97,14 @@ function requireInt(args: string[], name: string): number {
 
 export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryKit): KitCliCommand {
   const [name, file, ...rest] = argv
-  if (!name) throw new Error('usage: inspect|status|initiate|clawback|claim|verify')
+  if (!name) throw new Error('usage: inspect|status|initiate|clawback|claim|verify|bump')
   if (name === 'verify') {
     if (!file) throw new Error('verify requires a psbt hex string or file path')
     return { name: 'verify', psbtHex: file }
+  }
+  if (name === 'bump') {
+    if (!file) throw new Error('bump requires a psbt hex string or file path')
+    return { name: 'bump', psbtHex: file, fee: requireInt(rest, 'fee') }
   }
   if (!file) throw new Error(`${name} requires a Recovery Kit json path`)
   const kit = loadKit(file)
@@ -149,7 +161,7 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
       ...coin,
     }
   }
-  throw new Error('usage: inspect|status|initiate|clawback|claim|verify')
+  throw new Error('usage: inspect|status|initiate|clawback|claim|verify|bump')
 }
 
 export function runKitCli(cmd: KitCliCommand): string {
@@ -169,6 +181,11 @@ export function runKitCli(cmd: KitCliCommand): string {
   if (cmd.name === 'status') {
     if (cmd.esplora) throw new Error('status --esplora requires runKitCliAsync')
     return formatStatus(cmd)
+  }
+  if (cmd.name === 'bump') {
+    const next = bumpTransitionFee(cmd.psbtHex, cmd.fee)
+    const view = inspectTransitionPsbt(next)
+    return `${view.feeSats}\n${next}`
   }
   if (cmd.name === 'verify') {
     try {

@@ -61,7 +61,7 @@ Implemented as `taprootTweakPubkey(NUMS, context)` in `src/lib/vault/v5/context.
 
 **Cosigners:** required for initiate and clawback (Savings too). **Not** required after Pending matures. They are an **anti-replay oracle**, not a general PSBT signer.
 
-**Sign-once (schema 6):** key is `(vault_id, outpoint, purpose)` where purpose is only `initiate` or `clawback`. Never `claim`. Persist dest + last sighash + signature.
+**Sign-once (schema 6):** key is `(vault_id, outpoint, purpose)` where purpose is only `initiate` or `clawback`. Never `claim`. Persist dest + last sighash + signature. Wallet copy of the rule: `src/lib/vault/v5/replay.ts`.
 
 - Same dest + same single input + higher fee → **re-sign** (clawback wins the RBF race this way).
 - Same bytes → same signature.

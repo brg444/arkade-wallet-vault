@@ -8,7 +8,11 @@ function loadKit(path: string) {
 try {
   const hexOrPath = process.argv[3]
   const argv = [...process.argv.slice(2)]
-  if (argv[0] === 'verify' && hexOrPath && !/^[0-9a-fA-F]+$/.test(hexOrPath.replace(/\s+/g, ''))) {
+  if (
+    (argv[0] === 'verify' || argv[0] === 'bump') &&
+    hexOrPath &&
+    !/^[0-9a-fA-F]+$/.test(hexOrPath.replace(/\s+/g, ''))
+  ) {
     argv[1] = readFileSync(hexOrPath, 'utf8').trim()
   }
   process.stdout.write(`${await runKitCliAsync(parseKitCli(argv, loadKit))}\n`)

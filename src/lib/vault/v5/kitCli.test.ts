@@ -78,6 +78,35 @@ describe('v5 Recovery Kit CLI', () => {
     expect(() => runKitCli(cmd)).toThrow(/runKitCliAsync/)
   })
 
+  it('bumps a transition fee without changing dest', () => {
+    const kit = fixtureKit()
+    const built = runKitCli(
+      parseKitCli(
+        [
+          'initiate',
+          'kit.json',
+          '--kind',
+          'savings',
+          '--claimant',
+          'hardware',
+          '--txid',
+          '11'.repeat(32),
+          '--vout',
+          '0',
+          '--value',
+          '50000',
+          '--fee',
+          '500',
+        ],
+        () => kit,
+      ),
+    )
+    const psbt = built.split('\n')[1]
+    const bumped = runKitCli({ name: 'bump', psbtHex: psbt, fee: 800 })
+    expect(bumped.startsWith('800\n')).toBe(true)
+    expect(inspectTransitionPsbt(bumped.split('\n')[1]).destScript).toBe(inspectTransitionPsbt(psbt).destScript)
+  })
+
   it('refuses a suspect clawback from the CLI', () => {
     const kit = fixtureKit()
     const cmd = parseKitCli(
