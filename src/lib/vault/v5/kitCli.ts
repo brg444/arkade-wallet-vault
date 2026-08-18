@@ -1,4 +1,5 @@
 import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from './constants'
+import { deriveSession } from './session'
 import { familyFromDescriptor } from './descriptor'
 import { inspectRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
 import { buildClaimPsbt, buildClawbackPsbt, buildInitiatePsbt, inspectClaimPsbt, inspectTransitionPsbt } from './spend'
@@ -38,6 +39,18 @@ export type KitCliCommand =
       fee: number
     }
   | { name: 'verify'; psbtHex: string }
+  | {
+      name: 'status'
+      kit: RecoveryKit
+      kind: VaultKind
+      claimant: Claimant
+      tip: number
+      height?: number
+      mempool?: boolean
+      spent?: 'quarantine' | 'other'
+      prevHeight?: number
+      requested?: boolean
+    }
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`)
@@ -72,7 +85,7 @@ function requireInt(args: string[], name: string): number {
 
 export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryKit): KitCliCommand {
   const [name, file, ...rest] = argv
-  if (!name) throw new Error('usage: inspect|initiate|clawback|claim|verify')
+  if (!name) throw new Error('usage: inspect|status|initiate|clawback|claim|verify')
   if (name === 'verify') {
     if (!file) throw new Error('verify requires a psbt hex string or file path')
     return { name: 'verify', psbtHex: file }
@@ -80,6 +93,24 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
   if (!file) throw new Error(`${name} requires a Recovery Kit json path`)
   const kit = loadKit(file)
   if (name === 'inspect') return { name: 'inspect', kit }
+  if (name === 'status') {
+    const spentRaw = flag(rest, 'spent')
+    if (spentRaw && spentRaw !== 'quarantine' && spentRaw !== 'other') {
+      throw new Error('spent must be quarantine or other')
+    }
+    return {
+      name: 'status',
+      kit,
+      kind: requireKind(rest),
+      claimant: requireClaimant(rest),
+      tip: requireInt(rest, 'tip'),
+      height: flag(rest, 'height') ? requireInt(rest, 'height') : undefined,
+      mempool: rest.includes('--mempool'),
+      spent: spentRaw === 'quarantine' || spentRaw === 'other' ? spentRaw : undefined,
+      prevHeight: flag(rest, 'prev-height') ? requireInt(rest, 'prev-height') : undefined,
+      requested: rest.includes('--requested'),
+    }
+  }
   const coin = {
     txid: requireFlag(rest, 'txid'),
     vout: requireInt(rest, 'vout'),
@@ -109,7 +140,7 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
       ...coin,
     }
   }
-  throw new Error('usage: inspect|initiate|clawback|claim|verify')
+  throw new Error('usage: inspect|status|initiate|clawback|claim|verify')
 }
 
 export function runKitCli(cmd: KitCliCommand): string {
@@ -125,6 +156,28 @@ export function runKitCli(cmd: KitCliCommand): string {
       ...report.warnings.map((line) => `warning ${line}`),
     ]
     return lines.join('\n')
+  }
+  if (cmd.name === 'status') {
+    const key = `${cmd.kind}-${cmd.claimant}` as const
+    const pending = cmd.kit.descriptor.pending[key]
+    const snapshot = deriveSession(pending.delay, {
+      tipHeight: cmd.tip,
+      pending: cmd.height
+        ? { txid: '00', vout: 0, value: 0, confirmed: true, blockHeight: cmd.height }
+        : cmd.mempool
+          ? { txid: '00', vout: 0, value: 0, confirmed: false }
+          : undefined,
+      spends: cmd.spent ? [{ txid: 'ff', confirmed: true, dest: cmd.spent }] : undefined,
+      previouslyConfirmedHeight: cmd.prevHeight,
+      requested: cmd.requested,
+    })
+    return [
+      `${key} ${pending.address}`,
+      `state ${snapshot.state}`,
+      `confirmed ${snapshot.confirmedHeight ?? '-'}`,
+      `remaining ${snapshot.remaining ?? '-'}`,
+      `claimable ${snapshot.claimable ? 'yes' : 'no'}`,
+    ].join('\n')
   }
   if (cmd.name === 'verify') {
     try {

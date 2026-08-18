@@ -48,6 +48,26 @@ describe('v5 Recovery Kit CLI', () => {
     expect(inspectTransitionPsbt(psbt).p2aSats).toBe(240)
   })
 
+  it('reports remaining CSV from chain heights, not Normal UTXO age', () => {
+    const kit = fixtureKit()
+    const cmd = parseKitCli(
+      ['status', 'kit.json', '--kind', 'savings', '--claimant', 'hardware', '--tip', '105', '--height', '100'],
+      () => kit,
+    )
+    const out = runKitCli(cmd)
+    expect(out).toContain('state claimable')
+    expect(out).toContain('remaining 0')
+    const early = runKitCli(
+      parseKitCli(
+        ['status', 'kit.json', '--kind', 'savings', '--claimant', 'hardware', '--tip', '104', '--height', '100'],
+        () => kit,
+      ),
+    )
+    expect(early).toContain('state pending')
+    expect(early).toContain('remaining 1')
+    expect(early).toContain('claimable no')
+  })
+
   it('refuses a suspect clawback from the CLI', () => {
     const kit = fixtureKit()
     const cmd = parseKitCli(
