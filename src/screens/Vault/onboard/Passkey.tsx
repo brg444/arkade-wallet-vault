@@ -24,13 +24,7 @@ export default function VaultPasskey() {
             onClick={() => enroll(token.trim())}
             disabled={busy || (liveNetwork && token.trim().length < 32)}
             label={
-              busy
-                ? onPhone
-                  ? 'Waiting for Face ID…'
-                  : 'Waiting…'
-                : onPhone
-                  ? 'Use Face ID'
-                  : 'Create this device'
+              busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting…') : onPhone ? 'Use Face ID' : 'Create this device'
             }
           />
           {liveNetwork ? null : <Button onClick={enterWithoutPasskey} disabled={busy} label='Skip for now' secondary />}

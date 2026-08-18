@@ -110,7 +110,12 @@ export default function VaultHandoff() {
                 ) : null}
               </>
             ) : null}
-            <Input label='Signed transaction' value={pasted} onChange={setPasted} placeholder='Paste what hardware signed' />
+            <Input
+              label='Signed transaction'
+              value={pasted}
+              onChange={setPasted}
+              placeholder='Paste what hardware signed'
+            />
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
