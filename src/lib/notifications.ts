@@ -1,5 +1,5 @@
 export const notificationApiSupport =
-  'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
+  typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
 
 export const requestPermission = async (): Promise<boolean> => {
   const result = await Notification.requestPermission()

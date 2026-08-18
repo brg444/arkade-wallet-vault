@@ -16,9 +16,10 @@ export const lnurlServerUrl: string | undefined = import.meta.env.VITE_LNURL_SER
 
 export const defaultArkServer = () => {
   if (import.meta.env.VITE_ARK_SERVER) return import.meta.env.VITE_ARK_SERVER
+  const host = typeof window === 'undefined' ? '' : window.location.hostname
   for (const domain of testDomains) {
-    if (window.location.hostname.includes(domain)) {
-      return window.location.hostname.includes('localhost') ? devServer : testServer
+    if (host.includes(domain)) {
+      return host.includes('localhost') ? devServer : testServer
     }
   }
   return mainServer
