@@ -1,123 +1,78 @@
 # How we talk about Arkade Vault
 
-We built Bitkey. This is the next product: a **vault on this phone**.
-Recovery is one feature. It is not the product.
+This is a Mutinynet custody client. It is not a campaign. Words must
+match what the keys can actually do.
 
-The Bitkey lesson stays: short, outcome-first, name what the user holds.
-The vault lesson (Revault, Casa, Unchained) is the posture: **more than
-one key, different places, a window to stop a move that shouldn’t have
-started.** We do not sound like a script explainer. We do sound like
-custody.
+Split: this device, hardware, a service that cosigns daily spend only.
+Recovery is optional. If you add it, it starts a **new** waiting period.
+It does not unlock coins that have already aged.
 
-## The product in one breath
+## One paragraph
 
-Daily spend with Face ID. Savings that need hardware too. A vault
-service that helps with daily spend and cannot take Savings. Optional
-recovery if you lose a key — a waiting period you can cancel. Testnet
-only. Don’t send real bitcoin.
+Daily spend: this device + vault service, under a published cap.
+Savings: this device + hardware. The service cannot sign Savings.
+Recovery is optional. Skip and the vault is this device plus hardware.
+Add it and starting recovery creates a new output and a delay. You
+can cancel during the delay. After the delay, the party who started
+it can take the coins. It does not spend Savings alone while the
+original output is still there. Testnet only. Do not send real bitcoin.
 
-## Posture
+Live signer still mints the simpler program (no on-chain recovery).
+Do not describe live funds as if the next program is already signing.
 
-Say this once, then get out of the way:
+## Names
 
-- The **vault** is the record. The app is how you use it.
-- Daily spend is delegated. Savings is not.
-- No single key should be enough to take everything today.
-- If a recovery starts that wasn’t you, you can stop it in time.
-- If we disappear, hardware plus this device still move Savings.
-  Recovery cannot empty the vault if the service is gone.
+Use these in the app and in user-facing docs. Spec files may use the
+implementation names; do not put those in the UI.
 
-That is collaborative custody in user words. Do not say
-“collaborative custody,” “self-managed,” or “N-of-N” in the app.
+| Say            | Means                                                      | Do not say                     |
+| -------------- | ---------------------------------------------------------- | ------------------------------ |
+| This device    | The phone key used for daily spend and as one Savings key  | App Key, passkey, PhoneRoutine |
+| Hardware       | Independent key required to move Savings immediately       | HWW, external owner, WIF       |
+| Vault service  | Cosigner for daily spend only. Not a Savings signer        | Authorizer, server key         |
+| Recovery       | Optional. Starts a delay on a **new** output. Cancelable until then | Hold, claimant, paper key |
+| Recovery Kit   | Public map of addresses and trees. Contains no private keys | Seed, Emergency Exit Kit      |
+| Spending       | Balance this device can spend under the cap                | Operational, Daily, routine    |
+| Savings        | Balance that needs this device and hardware to move now    | Admin                          |
 
-## The three things the user sees
+## Rules
 
-| We say        | They think of                                                               | Not                            |
-| ------------- | --------------------------------------------------------------------------- | ------------------------------ |
-| This device   | This phone, Face ID, daily spend                                            | App Key, passkey, PhoneRoutine |
-| Hardware      | The key that moves everything                                               | External owner, HWW, WIF       |
-| Vault service | Helps daily spend. Cannot take Savings.                                     | Authorizer, cosigner, Arkade   |
-| Recovery      | Optional. Starts a waiting period.                                          | Hold, claimant, paper key      |
-| Recovery Kit  | How you get coins out if this app is gone. Map of the vault, not your keys. | Seed, Emergency Exit Kit       |
-| Spending      | What this phone can send today                                              | Operational, Daily, routine    |
-| Savings       | Needs this device and hardware                                              | Admin path                     |
+1. State who must sign, and what they still cannot do.
+2. State whether a delay applies to **this** output or to a new one.
+3. Caps, CSV lengths, and templates are published identifiers. Do not
+   paraphrase them into “secure” or “full control.”
+4. Recovery is optional. Skip keeps this device plus hardware. It is
+   not the first screen and not the definition of the product.
+5. Limits belong next to the claim: testnet; kit has no secrets;
+   service host can still lose or leak the daily cosigner.
 
-Two registers. **Product** uses the left column. **Spec and code** may
-use the right. Don’t mix them in one sentence.
+## Screens
 
-## Voice
+One job per screen. One primary button at the bottom. Security lives
+on Security, not Settings. Settings is theme, about, and sign out.
+Recovery is optional. Skip is the easy path when the field is empty.
+The Recovery Kit is last-resort and lives under Security.
 
-- Outcome first. “Daily spend with Face ID.”
-- “If this happens, you can…”
-- Short sentences. One idea each.
-- Name the thing the user holds, not the script.
-- Recovery is optional and secondary. Don’t open the app with it.
-- When recovery appears: **time to react**, not “break-glass drama.”
-- The service is a helper with a limit, not a bank and not a ghost.
-- Honest limits. Testnet. Not a seed. Kit has no secrets.
-
-Prefer:
-
-- “Needs hardware too.”
-- “Start recovery. Cancel if it wasn’t you.”
-- “The vault service cannot move Savings.”
-- “A waiting period starts on a new balance. Old coins don’t age into
-  a shortcut.”
-
-Avoid sounding like a threat model or a whitepaper. Also avoid
-startup softness: “secure,” “full control,” “bank-grade.”
-
-## Never in the product
+## Do not use in the product
 
 hold, clawback, claimant, Pending, Quarantine, suspect, CSV, 3-of-3,
-Taproot, descriptor, authorizer, PSBT (except the hardware-sign
-advanced screen), “device compromise,” “full control,” “secure
-savings,” unvault, forfeit, stakeholder, manager, collaborative
-custody.
+Taproot, descriptor, authorizer, unvault, forfeit, stakeholder,
+collaborative custody, “device compromise,” “full control,” “secure
+savings.” PSBT only on the hardware-sign advanced screen.
 
-## Bitkey → vault (and what we take from the others)
+The recovery clock is not the age of the Savings UTXO. Live v4 funds
+still allow hardware-after-6 on that UTXO. Say that when talking about
+live coins.
 
-| Bitkey             | Arkade Vault                                    | Extra flavor (don’t print the source)      |
-| ------------------ | ----------------------------------------------- | ------------------------------------------ |
-| App Key            | This device                                     | Daily spend lives here                     |
-| Hardware Key       | Hardware                                        | Moves Savings; required for “everything”   |
-| Server Key         | Vault service (daily only)                      | Unchained: we cannot move it alone         |
-| Delay + Notify     | Start recovery → wait → cancel if it wasn’t you | Revault: a window to stop a bad withdrawal |
-| Cloud Recovery     | Sign in on another phone with Face ID           | Same vault, new phone                      |
-| Emergency Exit Kit | Recovery Kit (map of the vault, no keys)        | Casa-like inheritance file, not a seed     |
-| Security hub       | Security tab                                    | Keys and recovery, not a dashboard of fear |
+## Claims you may make (only if true of that build)
 
-Revault’s product idea we keep: **delegate the small moves; keep a
-cancel path on the large ones.** We do not keep their words, watchtower
-panic, or “emergency deterrent.”
+| Claim                                                         | Live v4 | Next program |
+| ------------------------------------------------------------- | ------- | ------------ |
+| Service cannot sign Savings                                   | Yes     | Yes          |
+| Daily spend needs this device and the service                 | Yes     | Yes          |
+| Savings now needs this device and hardware                    | Yes     | Yes          |
+| Hardware alone can take mature Savings after 6 blocks         | Yes     | No           |
+| Recovery starts a new delay; cancel exists during that delay  | No      | Yes          |
+| Recovery can empty Normal if the service is offline           | —       | No           |
 
-## Sample lines
-
-Welcome:
-
-> Daily spend on this phone. Savings need hardware too.
-
-> The vault service helps with daily spend. It cannot take Savings.
-
-Recovery (when they open it, not before):
-
-> If you lose a key, start recovery. A waiting period begins. Cancel it
-> if it wasn’t you.
-
-> Recovery cannot skip the wait on coins that are already sitting in
-> Savings.
-
-Kit:
-
-> A map of your vault. It has no keys. Keep it if this phone is gone.
-
-Testnet, always nearby:
-
-> Testnet only. Don’t send real bitcoin.
-
-## Live vs next
-
-Live Mutinynet is still the simpler vault: this device + hardware, no
-recovery on chain. Hardware can already move mature Savings. The app
-already speaks the next product (optional recovery, waiting period you
-can cancel). Don’t pretend the live signer has cut over.
+If the row is No, do not imply Yes in copy.

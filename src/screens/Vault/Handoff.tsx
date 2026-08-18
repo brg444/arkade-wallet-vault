@@ -62,20 +62,19 @@ export default function VaultHandoff() {
 
   return (
     <>
-      <Header text='Hardware sign' back={() => navigate('review')} />
+      <Header text='Hardware next' back={() => navigate('review')} />
       <Content noRefresh>
         <Padded>
-          <FlexCol>
+          <FlexCol gap='1.15rem'>
             <Text wrap>
-              This phone signed. Share this with your hardware. Paste the signed transaction back. The hardware secret
-              never comes here.
+              This phone signed. Now hardware signs. Paste the signed transaction back. The hardware secret never comes
+              here.
             </Text>
             <Text color='neutral-600' tiny wrap>
-              {prettyAmount(spend.amount)} · BIP174 base64
+              {prettyAmount(spend.amount)}
             </Text>
-            <Input label='PSBT' value={payload} onChange={() => {}} placeholder='PSBT' />
             <Button
-              label={canShare ? 'Share' : 'Copy PSBT'}
+              label={canShare ? 'Share with hardware' : 'Copy for hardware'}
               onClick={() => {
                 void (async () => {
                   try {
@@ -84,46 +83,46 @@ export default function VaultHandoff() {
                       return
                     }
                     await copyToClipboard(payload)
-                    toast('PSBT copied')
+                    toast('Copied for hardware')
                   } catch (err) {
                     const msg = String(err)
                     if (/abort|cancel/i.test(msg)) return
                     await copyToClipboard(payload)
-                    toast('PSBT copied')
+                    toast('Copied for hardware')
                   }
                 })()
               }}
             />
-            <Button
-              label='Copy PSBT'
-              secondary
-              onClick={() => {
-                void copyToClipboard(payload)
-                toast('PSBT copied')
-              }}
-            />
-            <Button label={showQr ? 'Hide QR' : 'Show QR'} secondary onClick={() => setShowQr((open) => !open)} />
+            <button type='button' className='vault-inline-paste' onClick={() => setShowQr((open) => !open)}>
+              {showQr ? 'Hide QR' : 'Show QR instead'}
+            </button>
             {showQr ? (
               <>
                 <PsbtQr value={current} />
                 {frames.length > 1 ? (
-                  <Button label='Next QR' secondary onClick={() => setFrame((n) => (n + 1) % frames.length)} />
+                  <button
+                    type='button'
+                    className='vault-inline-paste'
+                    onClick={() => setFrame((n) => (n + 1) % frames.length)}
+                  >
+                    Next QR
+                  </button>
                 ) : null}
               </>
             ) : null}
-            <Input label='Signed PSBT' value={pasted} onChange={setPasted} placeholder='Paste signed PSBT' />
+            <Input label='Signed transaction' value={pasted} onChange={setPasted} placeholder='Paste what hardware signed' />
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={() => setScan(true)} label='Scan signed PSBT' secondary />
         <Button
           onClick={() => void completeSavingsHandoff(pasted)}
           disabled={busy || !pasted.trim()}
           loading={busy}
           label={busy ? 'Broadcasting…' : 'Broadcast'}
         />
+        <Button onClick={() => setScan(true)} label='Scan signed transaction' secondary />
       </ButtonsOnBottom>
     </>
   )

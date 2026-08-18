@@ -95,7 +95,11 @@ export default function VaultReceive() {
       <ButtonsOnBottom>
         <Button onClick={handleCopy} disabled={!address} label={copied ? 'Copied' : 'Copy address'} />
         {liveNetwork && address ? (
-          <Button onClick={() => window.open(`${faucetUrl}?address=${address}`, '_blank')} label='Faucet' secondary />
+          <Button
+            onClick={() => window.open(`${faucetUrl}?address=${address}`, '_blank')}
+            label='Get test coins'
+            secondary
+          />
         ) : null}
       </ButtonsOnBottom>
     </>

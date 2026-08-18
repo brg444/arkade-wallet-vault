@@ -131,6 +131,9 @@ interface VaultContextProps {
   liveNetwork: boolean
   allowDemoKeys: boolean
   navigate: (screen: VaultScreen) => void
+  openRecover: (view?: 'kit' | 'lost', exit?: VaultScreen) => void
+  recoverEntry: 'kit' | 'lost'
+  recoverExit: VaultScreen
   networkLabel: string
   operationalAddress: string
   preview: boolean
@@ -192,6 +195,9 @@ export const VaultContext = createContext<VaultContextProps>({
   liveNetwork: false,
   allowDemoKeys: false,
   navigate: () => {},
+  openRecover: () => {},
+  recoverEntry: 'kit',
+  recoverExit: 'keys',
   networkLabel: 'Test network',
   operationalAddress: '',
   preview: true,
@@ -215,6 +221,8 @@ export const VaultContext = createContext<VaultContextProps>({
 
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
+  const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
+  const [recoverExit, setRecoverExit] = useState<VaultScreen>('keys')
   const [setup, setSetup] = useState<VaultSetupPlan>(emptySetupPlan)
   const [preview, setPreview] = useState(false)
   const [status, setStatus] = useState<VaultStatus | null>(null)
@@ -514,6 +522,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('Finish setup first.')
         return
       }
+      const secret = recoverySecretRef.current
+      if (setup.recoveryPub && !secret) {
+        setError('Paste the recovery secret to prove you hold that key.')
+        return
+      }
       if (status?.externalOwnerWalletPub && setup.hardwarePub !== status.externalOwnerWalletPub) {
         setError('This vault expects a different hardware key.')
         return
@@ -525,11 +538,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       try {
-        const secret = recoverySecretRef.current
         const out = await enrollWithPasskey(token, {
           hardwarePub: setup.hardwarePub,
-          recoveryPub: setup.recoveryPub,
-          recoverySecret: secret ? bytesToHex(secret) : undefined,
+          ...(setup.recoveryPub && secret
+            ? { recoveryPub: setup.recoveryPub, recoverySecret: bytesToHex(secret) }
+            : {}),
         })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
@@ -909,6 +922,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
         setScreen(next)
       },
+      openRecover: (view = 'kit', exit = 'keys') => {
+        setError('')
+        setRecoverEntry(view)
+        setRecoverExit(exit)
+        setScreen('recover')
+      },
+      recoverEntry,
+      recoverExit,
       networkLabel,
       operationalAddress,
       preview: preview || !status?.enrolled,
@@ -967,10 +988,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       locked,
       allowDemoKeys,
       lastSend,
+      recoverEntry,
+      recoverExit,
       loaded,
       networkLabel,
       operationalAddress,
       preview,
+      recoverEntry,
+      recoverExit,
       refreshBalance,
       reset,
       reviewSpend,

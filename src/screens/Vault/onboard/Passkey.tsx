@@ -14,7 +14,7 @@ export default function VaultPasskey() {
   const onPhone = isCoarsePhone()
   return (
     <OnboardLayout
-      title='Passkey'
+      title='This device'
       step={6}
       error={error}
       onBack={() => navigate('plan')}
@@ -23,7 +23,15 @@ export default function VaultPasskey() {
           <Button
             onClick={() => enroll(token.trim())}
             disabled={busy || (liveNetwork && token.trim().length < 32)}
-            label={busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for passkey…') : 'Create passkey'}
+            label={
+              busy
+                ? onPhone
+                  ? 'Waiting for Face ID…'
+                  : 'Waiting…'
+                : onPhone
+                  ? 'Use Face ID'
+                  : 'Create this device'
+            }
           />
           {liveNetwork ? null : <Button onClick={enterWithoutPasskey} disabled={busy} label='Skip for now' secondary />}
         </>
@@ -40,15 +48,13 @@ export default function VaultPasskey() {
         role='Daily spend. Not hardware. Not the Recovery Kit.'
       />
       {liveNetwork ? (
-        <>
-          <Input
-            label='Invite'
-            value={token}
-            onChange={setToken}
-            placeholder='Paste your invite'
-            testId='enrollment-token'
-          />
-        </>
+        <Input
+          label='Invite'
+          value={token}
+          onChange={setToken}
+          placeholder='Paste your invite'
+          testId='enrollment-token'
+        />
       ) : (
         <Text color='neutral-600' tiny wrap>
           You can skip this and fund later.

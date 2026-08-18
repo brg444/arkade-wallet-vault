@@ -57,7 +57,7 @@ export default function VaultReview() {
                 ? 'Waiting for Face ID…'
                 : 'Waiting for passkey…'
               : fromSavings
-                ? 'Sign this device'
+                ? 'Sign on this device'
                 : preview
                   ? 'Send'
                   : 'Approve'

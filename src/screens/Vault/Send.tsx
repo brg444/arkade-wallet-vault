@@ -82,7 +82,7 @@ export default function VaultSend() {
 
   return (
     <>
-      <Header text={fromSavings ? 'Send savings' : 'Send'} back={() => navigate('home')} />
+      <Header text={fromSavings ? 'Send from Savings' : 'Send'} back={() => navigate('home')} />
       <Content noRefresh>
         <Padded>
           <FlexCol>

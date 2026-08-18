@@ -6,7 +6,7 @@ import { pasteFromClipboard } from '../../../lib/clipboard'
 import { DEMO_HARDWARE_PUB } from '../../../lib/vault/setupPlan'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import { VaultContext } from '../../../providers/vault'
-import { KeyCard, Reveal } from '../ui'
+import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultHardware() {
@@ -18,6 +18,8 @@ export default function VaultHardware() {
     if (required) setValue(required)
   }, [required])
 
+  const ready = Boolean(required || value.trim())
+
   return (
     <OnboardLayout
       title='Add hardware'
@@ -26,7 +28,7 @@ export default function VaultHardware() {
       onBack={() => navigate('design')}
       actions={
         <>
-          <Button onClick={() => applyHardware(value)} label='Continue' />
+          <Button onClick={() => applyHardware(required || value)} disabled={!ready} label='Continue' />
           {required || !allowDemoKeys ? null : (
             <Button onClick={() => applyHardware(DEMO_HARDWARE_PUB, true)} label='Use a demo key' secondary />
           )}
@@ -36,7 +38,7 @@ export default function VaultHardware() {
       <Text wrap>
         {required
           ? 'This vault already has hardware. Confirm this is that key.'
-          : 'Add the hardware key. With this device, it can move everything — including Savings — and cancel a recovery you didn’t start. Never paste a seed.'}
+          : 'This key moves Savings with this device. It can also cancel a recovery you didn’t start.'}
       </Text>
       {required ? (
         <KeyCard
@@ -45,14 +47,27 @@ export default function VaultHardware() {
           role='Already on this vault'
           fingerprint={required}
         />
-      ) : null}
-      <Reveal label='Public key' defaultOpen={!required}>
-        <Input label='Public key' placeholder='02… or 03…' value={value} onChange={setValue} testId='hardware-pub' />
-        <Button onClick={async () => setValue((await pasteFromClipboard()) || value)} label='Paste' clear />
-        <Text color='neutral-600' tiny wrap>
-          Starts with 02 or 03. Never paste a seed.
-        </Text>
-      </Reveal>
+      ) : (
+        <>
+          <Input
+            label='Hardware public key'
+            placeholder='02… or 03…'
+            value={value}
+            onChange={setValue}
+            testId='hardware-pub'
+          />
+          <button
+            type='button'
+            className='vault-inline-paste'
+            onClick={() => void pasteFromClipboard().then((next) => setValue(next || value))}
+          >
+            Paste
+          </button>
+          <Text color='neutral-600' tiny wrap>
+            Starts with 02 or 03. Never paste a seed.
+          </Text>
+        </>
+      )}
     </OnboardLayout>
   )
 }

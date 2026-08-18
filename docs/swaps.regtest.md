@@ -1,5 +1,8 @@
 # Swaps
 
+Upstream VTXO / Boltz harness. Not the L1 vault protocol. Current vault spec:
+[README.md](README.md).
+
 The purpose of this guide is to make you able to test Ark/LN submarine and reverse submarine swaps and walks you through setting a full stack on regtest that includes:
 
 - Ark stack

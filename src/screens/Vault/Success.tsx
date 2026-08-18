@@ -33,10 +33,10 @@ export default function VaultSuccess() {
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        {liveNetwork && explorer ? (
-          <Button onClick={() => window.open(explorer, '_blank')} label='View' secondary />
-        ) : null}
         <Button onClick={() => navigate('home')} label='Done' />
+        {liveNetwork && explorer ? (
+          <Button onClick={() => window.open(explorer, '_blank')} label='View on explorer' secondary />
+        ) : null}
       </ButtonsOnBottom>
     </>
   )

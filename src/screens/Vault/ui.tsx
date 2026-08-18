@@ -8,6 +8,15 @@ export function IconBubble({ children, small }: { children: ReactNode; small?: b
   return <div className={small ? 'vault-icon sm' : 'vault-icon'}>{children}</div>
 }
 
+export function Section({ label, children }: { label?: string; children: ReactNode }) {
+  return (
+    <div className='vault-section'>
+      {label ? <p className='vault-section-label'>{label}</p> : null}
+      {children}
+    </div>
+  )
+}
+
 export function Panel({
   children,
   selected,
@@ -75,6 +84,7 @@ export function KeyCard({
   fingerprint,
   amount,
   onClick,
+  testId,
 }: {
   icon: ReactNode
   title: string
@@ -83,9 +93,10 @@ export function KeyCard({
   fingerprint?: string
   amount?: string
   onClick?: () => void
+  testId?: string
 }) {
   return (
-    <Panel onClick={onClick}>
+    <Panel onClick={onClick} testId={testId}>
       <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
         {icon ? <IconBubble small>{icon}</IconBubble> : null}
         <div style={{ flex: 1, minWidth: 0 }}>

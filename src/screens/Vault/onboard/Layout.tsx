@@ -8,7 +8,7 @@ import Padded from '../../../components/Padded'
 import Text from '../../../components/Text'
 import { StepRail } from '../ui'
 
-const STEP_LABELS = ['How it works', 'Hardware', 'Recovery', 'Limits', 'Review', 'This device']
+const STEP_LABELS = ['How it works', 'Hardware', 'Recovery', 'Limits', 'Your setup', 'This device']
 
 export function OnboardLayout({
   title,
@@ -32,7 +32,7 @@ export function OnboardLayout({
       <Header text={title} back={onBack} />
       <Content noRefresh>
         <Padded>
-          <FlexCol>
+          <FlexCol gap='1.15rem'>
             <StepRail step={step} total={total} />
             <Text color='neutral-600' tiny>
               {STEP_LABELS[step - 1] || `Step ${step}`} · {step} of {total}

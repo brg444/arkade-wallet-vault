@@ -27,6 +27,10 @@ html.palette-dark [data-testid='vault-app'] {
   padding-bottom: calc(var(--pill-navbar-clearance, 88px) + 0.5rem);
 }
 
+[data-testid='vault-app'] .buttons-on-bottom > div {
+  gap: 0.65rem;
+}
+
 [data-testid='vault-app'] .pill-nav-icon,
 [data-testid='vault-app'] .pill-nav-icon svg {
   width: 24px;
@@ -88,13 +92,62 @@ footer.vault-welcome-actions.is-ready {
   height: 16px;
 }
 
+.vault-section {
+  display: grid;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.vault-section-label {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--neutral-600);
+}
+
+.vault-welcome-copy {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.vault-welcome-title {
+  padding: 0.35rem 0 0 4px;
+}
+
+.vault-welcome-points {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.15rem 0;
+}
+
+.vault-welcome-point {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.7rem 0;
+}
+
+.vault-welcome-point-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bullet-icon-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--logo-color);
+}
+
 .vault-panel {
   width: 100%;
   text-align: left;
   border: 1px solid var(--vault-line);
   background: var(--vault-paper);
   border-radius: 16px;
-  padding: 1rem;
+  padding: 1.05rem 1rem;
   box-shadow: none;
 }
 

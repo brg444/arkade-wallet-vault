@@ -34,20 +34,23 @@ describe('VaultApp onboarding', () => {
     fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: DEMO_HARDWARE_PUB } })
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText('Recovery key')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Skip for now' })).toBeTruthy()
     expect(screen.getByText(/waiting period/i)).toBeTruthy()
+    expect(screen.getByText(/Optional/i)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
-    expect(await screen.findByText('How much can this device send?')).toBeTruthy()
+    expect(await screen.findByText('Daily limits')).toBeTruthy()
+    expect(screen.getByText(/How much this device can send today/)).toBeTruthy()
     await user.click(screen.getByTestId('cap-20000'))
     await user.click(screen.getByTestId('daily-50000'))
-    await user.click(screen.getByRole('button', { name: 'Save these rules' }))
-
-    expect(await screen.findByText('Review')).toBeTruthy()
-    expect(screen.getByText('20,000 SATS per send')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText('Passkey')).toBeTruthy()
+    expect(await screen.findByText('Your setup')).toBeTruthy()
+    expect(screen.getByText('20,000 SATS per send')).toBeTruthy()
+    expect(screen.getByText('Skipped. This device plus hardware only.')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+
+    expect(await screen.findByText(/This is this computer/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
     expect(screen.getByTestId('vault-balance').textContent).toMatch(/^0/)
@@ -74,7 +77,8 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByTestId('tab-vault'))
     expect(await screen.findByRole('tab', { name: 'Security' })).toBeTruthy()
     expect(screen.getByText('Vault service')).toBeTruthy()
-
+    expect(screen.getByText('Recovery Kit')).toBeTruthy()
+    expect(screen.getByText('I lost a key')).toBeTruthy()
     expect(screen.getByText(/Daily spend/)).toBeTruthy()
     expect(screen.getByText('Recovery')).toBeTruthy()
 
@@ -82,11 +86,11 @@ describe('VaultApp onboarding', () => {
     expect(await screen.findByText('Theme')).toBeTruthy()
     expect(screen.getByText('Haptics')).toBeTruthy()
     expect(screen.getByText('About')).toBeTruthy()
-    expect(screen.getByText('Recover')).toBeTruthy()
-    expect(screen.getByText('Recovery Kit')).toBeTruthy()
+    expect(screen.queryByText('Recover')).toBeNull()
+    expect(screen.queryByText('Recovery Kit')).toBeNull()
     expect(screen.getByText('Check for update')).toBeTruthy()
     expect(screen.getByText('Logs')).toBeTruthy()
-    expect(screen.getByText('Reset')).toBeTruthy()
+    expect(screen.getByText('Sign out')).toBeTruthy()
     expect(screen.queryByText('Backup')).toBeNull()
     expect(screen.queryByText('Fiat')).toBeNull()
 
@@ -94,9 +98,9 @@ describe('VaultApp onboarding', () => {
     expect(await screen.findByText('Site')).toBeTruthy()
     await user.click(screen.getByLabelText('Go back'))
 
-    await user.click(await screen.findByTestId('settings-reset'))
+    await user.click(await screen.findByTestId('settings-signout'))
     expect(await screen.findByText('Sign out of this browser')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Reset' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveProperty('disabled', true)
     expect(screen.queryByText('Your vault')).toBeNull()
   })
 })
