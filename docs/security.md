@@ -1,27 +1,22 @@
 # Security
 
-This is a Mutinynet demo. It is not a custody boundary.
+This is a testnet demo. It is not something you should trust with real
+money.
 
-## Closed here
+**We do this**
 
-| Claim | Status |
-| --- | --- |
-| Network caller uses a generic Mutinynet signer to skip policy | Closed. Constrained handler + one pinned outbound Arkade call |
-| VaultCosigner use is bound to WebAuthn, tx, and budget | Yes, on Routine |
-| Browser reconciles the Arkade sighash | Yes, one-input Routine |
-| Empty `vaultId` spends the leftover singleton | Closed. Tenant processes require an explicit id |
-| Master scalar is the leftover first vault’s on-chain key | New enrolls are HKDF children. Leftover-direct-v0 signing is refused |
-| G / 2G as hardware | Rejected |
+- A random caller cannot point us at a generic signer and skip the rules
+- Daily spend needs Face ID, the real transaction, and the remaining limit
+- The phone checks the sighash it is about to approve
+- A request with no vault id cannot spend someone else’s leftover coins
+- New vaults do not put the service’s master key on chain
+- The curve generator is not accepted as hardware
 
-## Not closed
+**We do not do this**
 
-| Claim | Status |
-| --- | --- |
-| Host/root cannot take VaultCosigner | No. Process isolation, not an HSM |
-| Same-origin XSS is tolerated | No. Unlocked PhoneRoutine / PRF are stealable |
-| Always-on watcher for a 6-block hardware hold | Not shipped |
-| Mainnet | No |
+- Root on the server cannot steal the service key — we only isolate a process
+- A bug in this website cannot steal an unlocked phone key
+- Someone always watching the 6-block hardware wait
+- Mainnet
 
-## Report a hole
-
-See [SECURITY.md](../SECURITY.md).
+How to tell us about a problem: [SECURITY.md](../SECURITY.md).
