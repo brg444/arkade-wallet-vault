@@ -12,7 +12,24 @@ import {
   saveSelectedVaultId,
 } from '../lib/vault/enrollment'
 import { clearAddressPin, loadAddressPin, type AddressPin } from '../lib/vault/pin'
-import { confirmedSpendable, fetchAddressStats, fetchAddressUtxos, fetchTxHex } from '../lib/vault/esplora'
+import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
+import {
+  broadcastTx,
+  confirmedSpendable,
+  fetchAddressStats,
+  fetchAddressUtxos,
+  fetchTipHeight,
+  fetchTxHex,
+} from '../lib/vault/esplora'
+import {
+  buildSavingsPsbt,
+  chooseSavingsLeaf,
+  finalizeSavingsPsbt,
+  parseIncomingPsbt,
+  requireSameSavingsIntent,
+  signSavingsPsbt,
+  unlockPhoneRoutine,
+} from '../lib/vault/savingsSpend'
 import { sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultBitcoinAddress } from '../lib/vault/bitcoin'
@@ -49,6 +66,8 @@ export type VaultScreen =
   | 'keys'
   | 'settings'
   | 'signin'
+  | 'handoff'
+  | 'hwsign'
 
 export interface VaultSpend {
   address: string
@@ -65,6 +84,8 @@ interface VaultContextProps {
   approvePreviewSend: () => Promise<void>
   busy: boolean
   canSend: boolean
+  completeSavingsHandoff: (signedPsbt: string) => Promise<void>
+  handoffPsbt: string
   confirmConditions: () => void
   dailyLimit: number
   dailyRemaining: number
@@ -118,6 +139,8 @@ export const VaultContext = createContext<VaultContextProps>({
   approvePreviewSend: async () => {},
   busy: false,
   canSend: false,
+  completeSavingsHandoff: async () => {},
+  handoffPsbt: '',
   confirmConditions: () => {},
   dailyLimit: 0,
   dailyRemaining: 0,
@@ -177,6 +200,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false)
   const [account, setAccount] = useState<VaultAccount>('spend')
   const [scanOnSend, setScanOnSend] = useState(false)
+  const [handoffPsbt, setHandoffPsbt] = useState('')
   const [statusKnown, setStatusKnown] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
 
@@ -509,25 +533,127 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('At least 330 sats.')
       return
     }
-    if (spend.amount > setup.txCapSats) {
-      setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use this device + hardware.`)
+    const source = account === 'savings' ? savingsBalance : amountSats
+    if (account !== 'savings') {
+      if (spend.amount > setup.txCapSats) {
+        setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
+        return
+      }
+      if (spend.amount + spend.fee > dailyRemaining) {
+        setError('Over today’s limit. Wait, or send from Savings.')
+        return
+      }
+    }
+    if (spend.amount + spend.fee > source) {
+      setError(account === 'savings' ? 'Not enough confirmed savings.' : 'Leave 330 sats of change.')
       return
     }
-    if (spend.amount + spend.fee > dailyRemaining) {
-      setError('Over today’s limit. Wait, or use this device + hardware.')
-      return
-    }
-    if (spend.amount + spend.fee + DUST_SATS > amountSats) {
+    if (account !== 'savings' && spend.amount + spend.fee + DUST_SATS > amountSats) {
       setError('Leave 330 sats of change.')
       return
     }
+    if (account === 'savings' && spend.amount + spend.fee < source && source - (spend.amount + spend.fee) < DUST_SATS) {
+      setError('Leave 330 sats of change, or send the rest.')
+      return
+    }
     setScreen('review')
-  }, [amountSats, dailyRemaining, preview, setup.txCapSats, spend, status?.network])
+  }, [account, amountSats, dailyRemaining, preview, savingsBalance, setup.txCapSats, spend, status?.network])
+
+  const finishBroadcast = useCallback(
+    async (txid: string) => {
+      setLastTxid(txid)
+      setLastSend(spend)
+      setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
+      setHandoffPsbt('')
+      if (status?.vaultId) await refreshBalance(status.vaultId)
+      if (enrollment?.vaultId) {
+        const live = await fetchVaultStatus(undefined, enrollment.vaultId)
+        setStatus(live)
+        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
+      }
+      setScreen('success')
+    },
+    [enrollment, liveNetwork, refreshBalance, spend, status],
+  )
+
+  const approveSavingsSend = useCallback(async () => {
+    if (!status?.enrolled || !enrollment || !savingsAddress) {
+      throw new Error('Sign in with the passkey that created this vault.')
+    }
+    const need = spend.amount + spend.fee
+    const utxos = await fetchAddressUtxos(savingsAddress)
+    const coin = confirmedSpendable(utxos, need)
+    if (!coin) throw new Error('No confirmed savings coin is large enough.')
+    const tip = await fetchTipHeight()
+    const leaf = chooseSavingsLeaf(
+      { txid: coin.txid, vout: coin.vout, value: coin.value, confirmedHeight: coin.status.block_height },
+      tip,
+      status.operationalCsvBlocks,
+    )
+    const unsigned = buildSavingsPsbt({
+      status,
+      phonePub: enrollment.phoneRoutineBip340Pub,
+      destAddress: spend.address,
+      amountSats: spend.amount,
+      feeSats: spend.fee,
+      coin: { txid: coin.txid, vout: coin.vout, value: coin.value, confirmedHeight: coin.status.block_height },
+      leaf,
+    })
+    const secret = await unlockPhoneRoutine(enrollment, status)
+    try {
+      const signed = signSavingsPsbt(unsigned, secret)
+      if (leaf === 'phoneCsv') {
+        const final = finalizeSavingsPsbt(signed)
+        const txid = await broadcastTx(final.txHex)
+        await finishBroadcast(txid)
+        return
+      }
+      setHandoffPsbt(signed)
+      setScreen('handoff')
+    } finally {
+      zeroBytes(secret)
+    }
+  }, [enrollment, finishBroadcast, savingsAddress, spend, status])
+
+  const completeSavingsHandoff = useCallback(
+    async (signedPsbt: string) => {
+      setBusy(true)
+      setError('')
+      try {
+        if (!handoffPsbt) throw new Error('create the phone signature first')
+        const incoming = parseIncomingPsbt(signedPsbt)
+        requireSameSavingsIntent(handoffPsbt, incoming, spend.address, spend.amount, status?.network || 'mutinynet')
+        const final = finalizeSavingsPsbt(incoming)
+        const txid = await broadcastTx(final.txHex)
+        await finishBroadcast(txid)
+      } catch (err) {
+        setError(humanizeVaultError(err))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [finishBroadcast, handoffPsbt, spend, status?.network],
+  )
 
   const approvePreviewSend = useCallback(async () => {
     setBusy(true)
     setError('')
     try {
+      if (account === 'savings') {
+        if (status?.enrolled) {
+          await approveSavingsSend()
+          return
+        }
+        if (!preview) {
+          setError('Vault isn’t ready to send.')
+          return
+        }
+        setLastSend(spend)
+        setLastTxid('')
+        setSpend({ address: '', amount: 0, fee: DEFAULT_FEE })
+        setScreen('success')
+        return
+      }
       if (status?.enrolled) {
         if (!enrollment) {
           setError('Sign in with the passkey that created this vault.')
@@ -553,16 +679,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           prevTxHex,
           vout: coin.vout,
         })
-        setLastTxid(result.txid)
-        setLastSend(spend)
-        setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
-        await refreshBalance(status.vaultId)
-        const live = enrollment?.vaultId
-          ? await fetchVaultStatus(undefined, enrollment.vaultId)
-          : await fetchVaultStatus()
-        setStatus(live)
-        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
-        setScreen('success')
+        await finishBroadcast(result.txid)
         return
       }
       if (status?.enrolled || !preview) {
@@ -581,7 +698,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [enrollment, liveNetwork, operationalAddress, refreshBalance, spend, status])
+  }, [account, approveSavingsSend, enrollment, finishBroadcast, operationalAddress, preview, spend, status])
 
   const reset = useCallback(() => {
     const selected = loadSelectedVaultId()
@@ -610,6 +727,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setSavingsBalance(0)
     setAccount('spend')
     setScanOnSend(false)
+    setHandoffPsbt('')
     setScreen('welcome')
   }, [])
 
@@ -623,6 +741,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       approvePreviewSend,
       busy,
       canSend: amountSats > DUST_SATS + spend.fee,
+      completeSavingsHandoff,
+      handoffPsbt,
       confirmConditions,
       dailyLimit,
       dailyRemaining,
@@ -641,6 +761,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       allowDemoKeys,
       navigate: (next) => {
         setError('')
+        if (next === 'send' && account === 'savings' && !spend.address && operationalAddress) {
+          setSpend((prev) => ({ ...prev, address: operationalAddress }))
+        }
         setScreen(next)
       },
       networkLabel,
@@ -677,7 +800,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       applyHardware,
       approvePreviewSend,
       busy,
+      completeSavingsHandoff,
       confirmConditions,
+      handoffPsbt,
       dailyLimit,
       dailyRemaining,
       demoAvailable,

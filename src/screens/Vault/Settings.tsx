@@ -147,6 +147,7 @@ export default function VaultSettings() {
     faucetUrl,
     hasLocalEnrollment,
     liveNetwork,
+    navigate,
     operationalAddress,
     refreshBalance,
     reset,
@@ -260,6 +261,7 @@ export default function VaultSettings() {
             </FlexCol>
             <FlexCol gap='0'>
               <TextLabel>Advanced</TextLabel>
+              <Row label='Sign a savings PSBT' testId='settings-hwsign' onClick={() => navigate('hwsign')} />
               <Row
                 label={checkingUpdate ? 'Checking…' : 'Check for update'}
                 testId='settings-update'

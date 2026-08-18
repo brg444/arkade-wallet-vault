@@ -7,6 +7,8 @@ import VaultReview from './screens/Vault/Review'
 import VaultSavings from './screens/Vault/Savings'
 import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
+import VaultHandoff from './screens/Vault/Handoff'
+import VaultHwSign from './screens/Vault/HwSign'
 import VaultWelcome from './screens/Vault/Welcome'
 import VaultKeys from './screens/Vault/Keys'
 import VaultSettings from './screens/Vault/Settings'
@@ -20,7 +22,7 @@ import VaultPillNav, { tabForScreen } from './screens/Vault/PillNav'
 import { bootVaultPrefs } from './lib/vault/prefs'
 
 export default function VaultApp() {
-  const { screen } = useContext(VaultContext)
+  const { navigate, screen } = useContext(VaultContext)
   useEffect(() => {
     document.title = 'Spending vault'
     bootVaultPrefs()
@@ -29,6 +31,8 @@ export default function VaultApp() {
   const showNavbar = Boolean(tab)
   const pages = {
     welcome: <VaultWelcome />,
+    handoff: <VaultHandoff />,
+    hwsign: <VaultHwSign onBack={() => navigate(tab ? 'settings' : 'welcome')} />,
     design: <VaultDesign />,
     hardware: <VaultHardware />,
     conditions: <VaultConditions />,
