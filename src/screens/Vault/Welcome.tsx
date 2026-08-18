@@ -1,4 +1,4 @@
-import { useCallback, useContext, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from '../../components/Content'
@@ -45,6 +45,10 @@ export default function VaultWelcome() {
   const { busy, error, hasLocalEnrollment, locked, navigate, signIn } = useContext(VaultContext)
   const canSignIn = locked || !hasLocalEnrollment
   const onPhone = isCoarsePhone()
+
+  useEffect(() => {
+    if (hasLocalEnrollment && !locked) navigate('home')
+  }, [hasLocalEnrollment, locked, navigate])
   const prefersReduced = useReducedMotion()
   const [ready, setReady] = useState(prefersReduced)
   const [sunrise, setSunrise] = useState(prefersReduced)
