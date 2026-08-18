@@ -13,8 +13,10 @@ export const V5_CSV = {
 /** BIP-331 / Core P2A: OP_1 OP_PUSHBYTES_2 4e73 */
 export const P2A_SCRIPT_HEX = '51024e73'
 export const P2A_VALUE_SATS = 0
-/** Initiate/clawback: out0 dest, out1 P2A, out2 packet */
+/** Initiate/clawback: out0 dest p2tr, out1 P2A. No packet output on this path. */
 export const P2A_OUTPUT_INDEX = 1
+/** RBF-enabled, no CSV. 0xffffffff is forbidden on initiate/clawback. */
+export const TRANSITION_SEQUENCE = 0xfffffffd
 
 export const VAULT_KINDS = ['daily', 'savings'] as const
 export type VaultKind = (typeof VAULT_KINDS)[number]

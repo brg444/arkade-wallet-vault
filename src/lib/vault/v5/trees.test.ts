@@ -1,7 +1,8 @@
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
-import { P2A_OUTPUT_INDEX, P2A_SCRIPT_HEX, P2A_VALUE_SATS, V5_CSV } from './constants'
+import { P2A_OUTPUT_INDEX, P2A_SCRIPT_HEX, P2A_VALUE_SATS, TRANSITION_SEQUENCE, V5_CSV } from './constants'
 import { contextInternalKey, encodeTreeContext } from './context'
+import { assertTransitionScript } from './script'
 import { buildNormal, buildPending, buildQuarantine, buildV5Family, pendingDelay, quarantineGuardians } from './trees'
 
 const PHONE = '02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9'
@@ -152,5 +153,29 @@ describe('v5 P2A lock', () => {
     expect(P2A_SCRIPT_HEX).toBe('51024e73')
     expect(P2A_VALUE_SATS).toBe(0)
     expect(P2A_OUTPUT_INDEX).toBe(1)
+    expect(TRANSITION_SEQUENCE).toBe(0xfffffffd)
+  })
+})
+
+describe('v5 transition dest wiring', () => {
+  it('pins each initiate dest to that Pending and each clawback dest to that Quarantine', () => {
+    const family = buildV5Family({
+      ...base,
+      routineVault: VAULT_TWEAK,
+      routineArkade: ARKADE_TWEAK,
+      initiate,
+      pending: initiate,
+    })
+    for (const kind of ['daily', 'savings'] as const) {
+      for (const claimant of ['phone', 'hardware', 'recovery'] as const) {
+        const key = `${kind}-${claimant}` as const
+        assertTransitionScript(family.initiateAuth[key], hex.encode(family.pending[key].script), false)
+        assertTransitionScript(family.clawbackAuth[key], hex.encode(family.quarantine[key].script), false)
+      }
+    }
+    expect(hex.encode(family.initiateAuth['daily-phone'])).not.toBe(hex.encode(family.initiateAuth['savings-phone']))
+    expect(hex.encode(family.clawbackAuth['savings-hardware'])).not.toBe(
+      hex.encode(family.clawbackAuth['savings-phone']),
+    )
   })
 })

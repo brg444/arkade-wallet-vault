@@ -4,6 +4,7 @@ import { vaultAddressNetwork } from '../bitcoin'
 import { checksigScript, csvChecksigScript, xOnlyFromCompressed } from '../savingsTree'
 import { type Claimant, type VaultKind, V5_CSV } from './constants'
 import { contextInternalKey } from './context'
+import { buildTransitionScript } from './script'
 
 export type TreeRole = 'quarantine' | 'pending' | 'normal'
 
@@ -209,6 +210,8 @@ export function buildV5Family(input: {
   const claimants = ['phone', 'hardware', 'recovery'] as const
   const quarantine = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildQuarantine>>
   const pending = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildPending>>
+  const initiateAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
+  const clawbackAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
   for (const kind of kinds) {
     for (const claimant of claimants) {
       const key = `${kind}-${claimant}` as const
@@ -220,6 +223,8 @@ export function buildV5Family(input: {
         vaultTweak: input.pending[claimant].vault,
         arkadeTweak: input.pending[claimant].arkade,
       })
+      initiateAuth[key] = buildTransitionScript({ destScriptHex: hex.encode(pending[key].script) })
+      clawbackAuth[key] = buildTransitionScript({ destScriptHex: hex.encode(quarantine[key].script) })
     }
   }
   return {
@@ -227,5 +232,7 @@ export function buildV5Family(input: {
     savings: buildNormal({ ...input, kind: 'savings', routineVault: undefined, routineArkade: undefined }),
     quarantine,
     pending,
+    initiateAuth,
+    clawbackAuth,
   }
 }
