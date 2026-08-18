@@ -239,7 +239,6 @@ export default function VaultHome() {
                 Receive isn’t ready yet. Try again after setup finishes.
               </Text>
             ) : null}
-
           </div>
         </Padded>
       </Content>
