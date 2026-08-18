@@ -1,8 +1,8 @@
 import { VAULT_ID } from './constants'
 import type { AddressPinFields } from './pin'
 
-// Retired v3 singleton identity. Do not seed Receive from this. Those coins
-// stay on the old hardware+recovery scripts until swept outside this UI.
+// Retired empty v3 singleton identity. Kept so the client never auto-pins it.
+// The old Railway authorizer that served these addresses is gone.
 export const TRUSTED_KIOSK_PIN_FIELDS: AddressPinFields = {
   vaultId: VAULT_ID,
   operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',

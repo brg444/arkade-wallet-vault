@@ -10,7 +10,6 @@ import {
   loadStoredAddressPin,
   pinEnrolledStatus,
   pinFromEnrolledStatus,
-  requireStatusMatchesPin,
   trustedKioskPin,
 } from './pin'
 import type { VaultStatus } from './types'
@@ -42,8 +41,8 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     vaultId: VAULT_ID,
     templateVersion: TEMPLATE_VERSION,
     policyVersion: POLICY_VERSION,
-    operationalCsvBlocks: 288,
-    savingsCsvBlocks: 4032,
+    operationalCsvBlocks: 144,
+    savingsCsvBlocks: 6,
     operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
     operationalScript: '5120' + 'aa'.repeat(32),
     savingsAddress: 'tb1ptest',
