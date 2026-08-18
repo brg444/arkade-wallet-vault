@@ -35,10 +35,10 @@ export default function VaultReview() {
               state='you'
             />
             {fromSavings ? (
-              <SignerRow title='Hardware' detail='Signs on another device via QR' state='you' />
+              <SignerRow title='Hardware' detail='Signs next, on the other device' state='you' />
             ) : (
               <>
-                <SignerRow title='Vault' detail='Approves if under today’s limit' state='auto' />
+                <SignerRow title='Vault service' detail='Approves if under today’s limit' state='auto' />
                 <SignerRow title='Hardware' detail='Not needed for this send' state='unused' />
               </>
             )}

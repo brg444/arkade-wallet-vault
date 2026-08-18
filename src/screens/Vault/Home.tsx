@@ -118,7 +118,7 @@ export default function VaultHome() {
                   </button>
                 ) : (
                   <p className='vault-account-addr is-empty'>
-                    {liveNetwork ? 'Mutinynet' : preview ? 'Mutinynet · not on a chain' : 'No address yet'}
+                    {liveNetwork ? 'Testnet' : preview ? 'Preview · not funded yet' : 'No address yet'}
                   </p>
                 )}
               </div>
@@ -165,7 +165,7 @@ export default function VaultHome() {
                   >
                     <span>
                       <span className='vault-account-option-name'>Spending</span>
-                      <span className='vault-account-option-meta'>This device can spend</span>
+                      <span className='vault-account-option-meta'>This phone, up to today’s limit</span>
                     </span>
                     <span className='vault-account-option-amt'>
                       {prettyNumber(amountSats)} {amountSats === 1 ? 'SAT' : 'SATS'}
@@ -181,7 +181,7 @@ export default function VaultHome() {
                   >
                     <span>
                       <span className='vault-account-option-name'>Savings</span>
-                      <span className='vault-account-option-meta'>Device + hardware now</span>
+                      <span className='vault-account-option-meta'>This phone and hardware</span>
                     </span>
                     <span className='vault-account-option-amt'>
                       {prettyNumber(savingsSats)} {savingsSats === 1 ? 'SAT' : 'SATS'}
@@ -205,7 +205,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This device + hardware can send now. Recovery starts a waiting period you can cancel.
+                This phone can’t send this alone. Hardware signs too.
               </Text>
             )}
 
@@ -237,14 +237,14 @@ export default function VaultHome() {
             </FlexRow>
             {status?.enrolled && !operationalAddress ? (
               <Text color='neutral-600' tiny wrap>
-                Receive is off until this vault’s addresses are pinned.
+                Receive isn’t ready yet. Try again after setup finishes.
               </Text>
             ) : null}
             {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
               <Button
                 onClick={() => void enablePasskeyLogin()}
                 disabled={busy}
-                label={busy ? 'Waiting for Face ID…' : 'Allow other devices'}
+                label={busy ? 'Waiting for Face ID…' : 'Use on another phone'}
               />
             ) : null}
           </div>

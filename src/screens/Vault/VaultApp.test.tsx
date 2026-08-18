@@ -54,7 +54,7 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByTestId('account-scan')).toBeTruthy()
     expect(screen.getByTestId('account-receive')).toBeTruthy()
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Spending/)
-    expect(screen.getByText(/not on a chain/i)).toBeTruthy()
+    expect(screen.getByText(/not funded yet/i)).toBeTruthy()
     expect(screen.getByText(/0 \/ 50,000 available/)).toBeTruthy()
 
     await user.click(screen.getByTestId('account-switcher'))
@@ -62,7 +62,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByTestId('account-savings'))
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Savings/)
     expect(screen.queryByText(/0 \/ 50,000 available/)).toBeNull()
-    expect(screen.getByText(/waiting period you can cancel/i)).toBeTruthy()
+    expect(screen.getByText(/Hardware signs too/)).toBeTruthy()
 
     await user.click(screen.getByTestId('account-switcher'))
     await user.click(await screen.findByTestId('account-spend'))
@@ -72,8 +72,9 @@ describe('VaultApp onboarding', () => {
     expect(screen.queryByText(/Daily path ready/)).toBeNull()
 
     await user.click(screen.getByTestId('tab-vault'))
-    expect(await screen.findByText('Keys')).toBeTruthy()
-    expect(screen.getByText(/Vault service/)).toBeTruthy()
+    expect(await screen.findByRole('tab', { name: 'Security' })).toBeTruthy()
+    expect(screen.getByText('Vault service')).toBeTruthy()
+
     expect(screen.getByText(/Daily spend/)).toBeTruthy()
     expect(screen.getByText('Recovery')).toBeTruthy()
 

@@ -105,8 +105,8 @@ export default function VaultSend() {
             />
             <Text color='neutral-600' tiny wrap>
               {fromSavings
-                ? `From Savings · fee ${prettyAmount(spend.fee)}. This device signs here, hardware signs on another device.`
-                : `Fee ${prettyAmount(spend.fee)} · max ${prettyAmount(setup.txCapSats)} per send`}
+                ? `From Savings · fee ${prettyAmount(spend.fee)}. This phone signs first. Hardware signs next.`
+                : `Fee ${prettyAmount(spend.fee)} · up to ${prettyAmount(setup.txCapSats)} per send`}
             </Text>
             {fromSavings ? (
               <Text color='neutral-600' tiny>

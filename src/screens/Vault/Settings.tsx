@@ -261,7 +261,7 @@ export default function VaultSettings() {
             </FlexCol>
             <FlexCol gap='0'>
               <TextLabel>Advanced</TextLabel>
-              <Row label='Sign a savings PSBT' testId='settings-hwsign' onClick={() => navigate('hwsign')} />
+              <Row label='Sign with hardware' testId='settings-hwsign' onClick={() => navigate('hwsign')} />
               <Row
                 label={checkingUpdate ? 'Checking…' : 'Check for update'}
                 testId='settings-update'
@@ -301,7 +301,7 @@ export default function VaultSettings() {
               <Row label='Recovery Kit' testId='settings-kit' onClick={() => navigate('recover')} />
               {hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable ? (
                 <Row
-                  label={busy ? 'Enabling…' : 'Allow other devices'}
+                  label={busy ? 'Enabling…' : 'Use on another phone'}
                   testId='settings-devices'
                   onClick={() => void enablePasskeyLogin()}
                 />
