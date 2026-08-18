@@ -8,7 +8,10 @@ to finish a hold without the PWA.
 The file is JSON: `{ name: "arkade-recovery-kit", version: 1, descriptor, descriptorHash }`.
 No PhoneRoutine secret. No hardware WIF. No PRF.
 
-Download it at enroll and after any key rotation. Settings → Recover.
+Download it from Security → Recovery Kit. The public map can also be
+backed up with the vault. Face ID on this phone or another phone rebuilds
+it. No secrets are stored. Download it after enroll and after any key
+rotation.
 
 ## What it can do
 
