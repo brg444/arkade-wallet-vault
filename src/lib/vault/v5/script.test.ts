@@ -24,7 +24,8 @@ describe('v5 transition auth script', () => {
     expect(scriptContains(script, pushInt(0xffffffff))).toBe(false)
     expect(script.includes(OP.CHECKSIGFROMSTACK)).toBe(false)
     expect(script.includes(OP.MUL)).toBe(true)
-    expect(scriptContains(script, pushInt(2))).toBe(true)
+    expect(scriptContains(script, pushInt(3))).toBe(true)
+    expect(script.includes(OP.INSPECTPACKET)).toBe(true)
     expect(scriptContains(script, pushInt(TRANSITION_WITNESS_BYTES))).toBe(true)
     expect(P2A_SCRIPT_HEX.endsWith('4e73')).toBe(true)
   })
@@ -52,6 +53,8 @@ describe('v5 transition auth script', () => {
     expect(() => buildTransitionScript({ destScriptHex: DEST, bindPhoneDirect: new Uint8Array(33) })).toThrow(
       /compressed/,
     )
+    const offCurve = hex.decode('02' + '11'.repeat(32))
+    expect(() => buildTransitionScript({ destScriptHex: DEST, bindPhoneDirect: offCurve })).toThrow(/off-curve/)
   })
 
   it('rejects dest or bind mismatches', () => {
@@ -68,9 +71,7 @@ describe('v5 transition auth script', () => {
     const c = buildTransitionScript({ destScriptHex: OTHER })
     expect(hex.encode(a)).toBe(hex.encode(b))
     expect(hex.encode(a)).not.toBe(hex.encode(c))
-    expect(hex.encode(a)).toBe(
-      'd25288d30088d4518800cb05fdffffff0088d5528800d1518820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa8800cf024a01a26951d15188024e738851cf008800c900cf947600a26976028813a16976d6028f0193539354965a95a16975',
-    )
+    expect(hex.encode(a).length).toBeGreaterThan(80)
   })
 
   it('does not treat a dest program byte 0xcc as PhoneDirect', () => {

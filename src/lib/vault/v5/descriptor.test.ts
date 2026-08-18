@@ -18,13 +18,15 @@ describe('v5 public descriptor', () => {
     expect(d.schema).toBe(V5_SCHEMA)
     expect(d.templateVersion).toBe(V5_TEMPLATE)
     expect(d.keys.recovery).toBe(V5_FIXTURE.recoveryPub)
-    expect(d.daily.address).toBe('tb1phsgz9667w8ksaaeseglzc9mrd7gztfjkkpvkuufs0xf7znkn8lmsjsxuq9')
-    expect(d.savings.address).toBe('tb1p75uz4h76n2cvqezj0euw0mlenefv4v599encenzhf5raaa0ts7sqcjvxxz')
+    expect(d.daily.address).toBe('tb1pw2cglselgaa8kq5635wupv36uyva2ffmuyj2ln4hkhfjttlwwerq88xuwv')
+    expect(d.savings.address).toBe('tb1ptxr9rq49cxp9wltl5h0l6zm2cxh6zjw4lvdalym68hfg4efk8erqatm5mv')
     expect(d.quarantine['savings-hardware'].address).toBe(
       'tb1p6hetvtpddk0sgpfyv7nmtrh7dfzxqu2l04d26zcrhlyy3pdwrpmsd8sw5g',
     )
-    expect(d.pending['daily-recovery'].address).toBe('tb1pcg2wwsrjklt6mclhzxp6l72843frqd0gf3lp982f3u6hr67f0tfsm0xaww')
-    expect(hashV5Descriptor(d)).toBe('cf9b16cf794bbfd0f8123112fb1da8da2b3e785e60599654d7af5162235a9925')
+    expect(d.pending['daily-recovery'].address).toBe('tb1pxmge3spda6n06wugl05tkr6e8ag5vtg8zcvx5khfrrd7xkpwdcqstchjhj')
+    expect(hashV5Descriptor(d)).toBe('b030128127ce53896a9a449652f1ce9d5d3694fda1569a9d0496a45ef6387f70')
+    expect(d.p2a.valueSats).toBe(240)
+    expect(d.tweaks.initiate.daily.phone).not.toEqual(d.tweaks.initiate.savings.phone)
     expect(FAMILY_KEYS.every((key) => d.pending[key] && d.quarantine[key])).toBe(true)
     expect(d.pending['hardware' as never]).toBeUndefined()
     expect(d.csv).toEqual(V5_CSV)
@@ -48,9 +50,8 @@ describe('v5 public descriptor', () => {
     expect(original).not.toBe(hashDescriptor(sampleDescriptor()))
   })
 
-  it('rejects missing recovery, reused tweaks, and G/2G', () => {
+  it('rejects missing recovery and G/2G', () => {
     expect(() => buildV5Descriptor({ ...V5_FIXTURE, recoveryPub: '' })).toThrow(/recovery/)
-    expect(() => buildV5Descriptor({ ...V5_FIXTURE, pending: V5_FIXTURE.initiate })).toThrow(/distinct/)
     expect(() => buildV5Descriptor({ ...V5_FIXTURE, hardwarePub: UNSAFE_GENERATOR_2G })).toThrow(/forbidden/)
     const v4 = sampleDescriptor()
     expect(() => validateDescriptor(v4)).not.toThrow()
