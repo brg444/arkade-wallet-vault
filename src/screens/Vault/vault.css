@@ -107,6 +107,56 @@ footer.vault-welcome-actions.is-ready {
   color: var(--neutral-600);
 }
 
+.vault-hub {
+  width: 100%;
+  border: 1px solid var(--vault-line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--vault-paper);
+}
+
+.vault-hub-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.95rem 1rem;
+  border: 0;
+  border-top: 1px solid var(--vault-line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  min-height: 56px;
+}
+
+.vault-hub-row:first-child {
+  border-top: 0;
+}
+
+button.vault-hub-row {
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button.vault-hub-row:hover {
+    background: var(--vault-lavender);
+  }
+}
+
+.vault-hub-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.vault-hub-chevron {
+  flex-shrink: 0;
+  color: var(--neutral-500);
+  font-size: 1.15rem;
+  line-height: 1;
+  padding-left: 0.15rem;
+}
+
 .vault-welcome-copy {
   display: grid;
   gap: 0.95rem;

@@ -17,6 +17,65 @@ export function Section({ label, children }: { label?: string; children: ReactNo
   )
 }
 
+export function HubGroup({ label, children }: { label?: string; children: ReactNode }) {
+  return (
+    <div className='vault-section'>
+      {label ? <p className='vault-section-label'>{label}</p> : null}
+      <div className='vault-hub'>{children}</div>
+    </div>
+  )
+}
+
+export function HubRow({
+  icon,
+  title,
+  detail,
+  status,
+  onClick,
+  testId,
+}: {
+  icon?: ReactNode
+  title: string
+  detail?: string
+  status?: string
+  onClick?: () => void
+  testId?: string
+}) {
+  const body = (
+    <>
+      {icon ? <IconBubble small>{icon}</IconBubble> : null}
+      <div className='vault-hub-copy'>
+        <Text small bold>
+          {title}
+        </Text>
+        {detail ? (
+          <Text color='neutral-600' tiny>
+            {detail}
+          </Text>
+        ) : null}
+      </div>
+      {status ? (
+        <Text color='neutral-600' tiny>
+          {status}
+        </Text>
+      ) : null}
+      {onClick ? <span className='vault-hub-chevron'>›</span> : null}
+    </>
+  )
+  if (onClick) {
+    return (
+      <button type='button' className='vault-hub-row' onClick={onClick} data-testid={testId}>
+        {body}
+      </button>
+    )
+  }
+  return (
+    <div className='vault-hub-row' data-testid={testId}>
+      {body}
+    </div>
+  )
+}
+
 export function Panel({
   children,
   selected,

@@ -64,6 +64,8 @@ describe('vault UI lock', () => {
     expect(keys).toMatch(/title='Recovery'/)
     expect(keys).toMatch(/This device/)
     expect(keys).toMatch(/Recovery Kit/)
+    expect(keys).not.toMatch(/PolicyTimeline/)
+    expect(keys).not.toMatch(/If you lose one/)
     expect(keys).toMatch(/I lost a key/)
   })
 
