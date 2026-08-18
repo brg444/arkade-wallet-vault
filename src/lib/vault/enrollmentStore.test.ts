@@ -15,7 +15,7 @@ import {
   saveSelectedVaultId,
   saveStagedEnrollment,
   setSessionLocked,
-} from './enrollment'
+} from './enrollmentStore'
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
   return {

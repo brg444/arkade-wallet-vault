@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { accessMode } from './passkeysession'
+import { accessMode } from './passkeyBinding'
 
 describe('vault access mode', () => {
   it('sends an enrolled visitor without local secrets to sign-in', () => {

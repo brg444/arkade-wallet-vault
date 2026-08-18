@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import Text from '../../components/Text'
 import { prettyAmount } from '../../lib/format'
 import { waitLabel } from '../../lib/vault/policy'
-import { shortKey } from '../../lib/vault/setup'
+import { shortKey } from '../../lib/vault/setupPlan'
 
 export function IconBubble({ children, small }: { children: ReactNode; small?: boolean }) {
   return <div className={small ? 'vault-icon sm' : 'vault-icon'}>{children}</div>

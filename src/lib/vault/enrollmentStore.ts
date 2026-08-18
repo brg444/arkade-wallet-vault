@@ -1,4 +1,4 @@
-import type { EnrollmentSecrets } from './enroll'
+import type { EnrollmentSecrets } from './tenantEnrollment'
 import { VAULT_ID } from './constants'
 
 export const ENROLL_STORE = 'arkade-vault-enroll-secrets-v3'

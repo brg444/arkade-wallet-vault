@@ -164,7 +164,7 @@ export default function VaultHome() {
                   >
                     <span>
                       <span className='vault-account-option-name'>Spending</span>
-                      <span className='vault-account-option-meta'>Phone can spend</span>
+                      <span className='vault-account-option-meta'>This device can spend</span>
                     </span>
                     <span className='vault-account-option-amt'>
                       {prettyNumber(amountSats)} {amountSats === 1 ? 'SAT' : 'SATS'}
@@ -180,7 +180,7 @@ export default function VaultHome() {
                   >
                     <span>
                       <span className='vault-account-option-name'>Savings</span>
-                      <span className='vault-account-option-meta'>Hardware only</span>
+                      <span className='vault-account-option-meta'>Device + hardware now</span>
                     </span>
                     <span className='vault-account-option-amt'>
                       {prettyNumber(savingsSats)} {savingsSats === 1 ? 'SAT' : 'SATS'}

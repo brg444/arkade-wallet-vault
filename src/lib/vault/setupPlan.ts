@@ -9,18 +9,25 @@ import { fingerprint, hexToBytes } from './hex'
 
 export const SETUP_STORE_KEY = 'arkade-vault-setup-v4'
 
-export const DEMO_HARDWARE_PUB = '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'
-export const DEMO_RECOVERY_PUB = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
+// Generator G (scalar 1) and 2G (scalar 2). Both private keys are public.
+// Mutinynet enrollment must reject either x-only identity as hardware.
+export const UNSAFE_GENERATOR_G = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
+export const UNSAFE_GENERATOR_2G = '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'
+export const KNOWN_UNSAFE_FIXTURE_PUBS = [UNSAFE_GENERATOR_G, UNSAFE_GENERATOR_2G] as const
+
+// Local/regtest demo fill only. Live Mutinynet rejects this via isFixturePub.
+export const DEMO_HARDWARE_PUB = UNSAFE_GENERATOR_2G
 
 export function isFixturePub(pub: string): boolean {
   const hex = pub.trim().toLowerCase().replace(/^0x/, '')
-  return hex === DEMO_HARDWARE_PUB || hex === DEMO_RECOVERY_PUB
+  const xonly = hex.length === 66 ? hex.slice(2) : hex
+  return KNOWN_UNSAFE_FIXTURE_PUBS.some((item) => item === hex || item.slice(2) === xonly)
 }
 
 export const PAYMENT_CAP_CHOICES = [20_000, 50_000] as const
 export const DAILY_LIMIT_CHOICES = [50_000, 100_000] as const
 
-export interface RecoveryProfile {
+export interface DelayProfile {
   id: 'demo'
   label: string
   detail: string
@@ -28,7 +35,7 @@ export interface RecoveryProfile {
   savingsCsvBlocks: number
 }
 
-export const RECOVERY_PROFILES: RecoveryProfile[] = [
+export const DELAY_PROFILES: DelayProfile[] = [
   {
     id: 'demo',
     label: 'Demo delays',

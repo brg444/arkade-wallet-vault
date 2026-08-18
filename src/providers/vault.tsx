@@ -1,13 +1,13 @@
 import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
-import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/enroll'
+import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import {
   discoverVaultIdFromPasskey,
   enablePasskeyLogin,
   signInWithPasskey,
   unlockLocalEnrollment,
-} from '../lib/vault/session'
+} from '../lib/vault/signIn'
 import {
   findStoredEnrollment,
   loadEnrollment,
@@ -16,7 +16,7 @@ import {
   saveEnrollment,
   saveSelectedVaultId,
   setSessionLocked,
-} from '../lib/vault/enrollment'
+} from '../lib/vault/enrollmentStore'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
 import {
@@ -51,7 +51,7 @@ import {
   planReady,
   saveSetupPlan,
   type VaultSetupPlan,
-} from '../lib/vault/setup'
+} from '../lib/vault/setupPlan'
 import type { VaultPublicDescriptor, VaultStatus } from '../lib/vault/types'
 
 export type VaultAccount = 'spend' | 'savings'
@@ -68,7 +68,6 @@ export type VaultScreen =
   | 'send'
   | 'review'
   | 'success'
-  | 'savings'
   | 'keys'
   | 'settings'
   | 'signin'

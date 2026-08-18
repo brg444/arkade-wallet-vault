@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEMO_HARDWARE_PUB,
-  DEMO_RECOVERY_PUB,
+  KNOWN_UNSAFE_FIXTURE_PUBS,
+  UNSAFE_GENERATOR_2G,
+  UNSAFE_GENERATOR_G,
   emptySetupPlan,
   isFixturePub,
   parseCompressedPub,
   planReady,
   sameRole,
-} from './setup'
+} from './setupPlan'
 
 describe('vault setup plan', () => {
   it('accepts a compressed hardware key and does not require recovery', () => {
     expect(parseCompressedPub(DEMO_HARDWARE_PUB)).toBe(DEMO_HARDWARE_PUB)
-    expect(sameRole(DEMO_HARDWARE_PUB, DEMO_RECOVERY_PUB)).toBe(false)
+    expect(sameRole(UNSAFE_GENERATOR_2G, UNSAFE_GENERATOR_G)).toBe(false)
     const plan = {
       ...emptySetupPlan(),
       acceptedDesign: true,
@@ -33,9 +35,12 @@ describe('vault setup plan', () => {
     expect(() => parseCompressedPub('02c6047f')).toThrow(/33-byte/)
   })
 
-  it('names the BIP340 test-vector pubs as fixtures', () => {
-    expect(isFixturePub(DEMO_HARDWARE_PUB)).toBe(true)
-    expect(isFixturePub(DEMO_RECOVERY_PUB)).toBe(true)
+  it('keeps both G and 2G on the known-unsafe denylist', () => {
+    expect(KNOWN_UNSAFE_FIXTURE_PUBS).toEqual([UNSAFE_GENERATOR_G, UNSAFE_GENERATOR_2G])
+    expect(isFixturePub(UNSAFE_GENERATOR_G)).toBe(true)
+    expect(isFixturePub(UNSAFE_GENERATOR_2G)).toBe(true)
+    expect(isFixturePub('03' + UNSAFE_GENERATOR_G.slice(2))).toBe(true)
+    expect(isFixturePub('03' + UNSAFE_GENERATOR_2G.slice(2))).toBe(true)
     expect(isFixturePub('03aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')).toBe(false)
   })
 })

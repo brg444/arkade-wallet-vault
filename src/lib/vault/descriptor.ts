@@ -76,6 +76,9 @@ export function validateDescriptor(d: VaultPublicDescriptor): VaultPublicDescrip
   if (!d.savings.excludesRoutineCosigners) throw new Error('savings must exclude routine cosigners')
   if (!d.operational.address || !d.savings.address) throw new Error('vault addresses required')
   if (d.csv.operationalBlocks < 1 || d.csv.savingsBlocks < 1) throw new Error('csv delays required')
+  if ('recoveryKey' in d.keys || 'recoveryKeyXOnly' in (d.keys as object)) {
+    throw new Error('v4 descriptor must not include a recovery key')
+  }
   requireLowerHex(d.keys.phoneRoutineBip340, 'phoneRoutineBip340', COMPRESSED)
   requireLowerHex(d.keys.phoneDirectP256, 'phoneDirectP256', COMPRESSED)
   requireLowerHex(d.keys.externalOwnerWallet, 'externalOwnerWallet', COMPRESSED)

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { DEMO_HARDWARE_PUB } from '../../lib/vault/setup'
+import { DEMO_HARDWARE_PUB } from '../../lib/vault/setupPlan'
 import { VaultProvider } from '../../providers/vault'
 import VaultApp from '../../VaultApp'
 

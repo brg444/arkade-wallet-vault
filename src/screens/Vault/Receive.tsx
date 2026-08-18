@@ -51,7 +51,7 @@ export default function VaultReceive() {
                   Daily spend
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  Phone can spend
+                  This device can spend
                 </Text>
               </Panel>
               <Panel
@@ -66,7 +66,7 @@ export default function VaultReceive() {
                   Savings
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  Hardware only
+                  Device + hardware now
                 </Text>
               </Panel>
             </div>
