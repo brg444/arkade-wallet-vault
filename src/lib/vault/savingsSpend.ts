@@ -4,7 +4,7 @@ import { TEST_NETWORK, Transaction, WIF } from '@scure/btc-signer'
 import { scriptHexFromAddress } from './bitcoin'
 import { zeroBytes } from './ceremony/directauth.js'
 import { DUST_SATS } from './constants'
-import type { EnrollmentSecrets } from './enroll'
+import type { EnrollmentSecrets } from './tenantEnrollment'
 import { bytesToHex, hexToBytes } from './hex'
 import { loadAddressPin, requireStatusMatchesPin } from './pin'
 import { requireSavingsTreeMatchesAddress, type SavingsTreeInput } from './savingsTree'
@@ -134,6 +134,11 @@ export function psbtHexToBase64(psbtHex: string): string {
   let s = ''
   for (const b of bytes) s += String.fromCharCode(b)
   return btoa(s)
+}
+
+export function psbtFile(psbtHex: string, name = 'arkade-savings.psbt'): File {
+  const bytes = hex.decode(parseIncomingPsbt(psbtHex))
+  return new File([bytes], name, { type: 'application/octet-stream' })
 }
 
 export function parseIncomingPsbt(raw: string): string {
