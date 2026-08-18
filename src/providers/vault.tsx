@@ -59,7 +59,6 @@ import { scalarSecret } from '../lib/vault/v5/fixtures'
 import { buildRecoveryKit } from '../lib/vault/v5/kit'
 import { findLocalKit, loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
 import { previewV5Descriptor } from '../lib/vault/v5/preview'
-import { assertSweepAllowed } from '../lib/vault/v5/sweep'
 import {
   alertCopy,
   loadSeenOutpoints,
@@ -106,7 +105,6 @@ interface VaultContextProps {
   applyRecovery: (raw: string, secret?: string, demo?: boolean) => void
   skipRecovery: () => void
   downloadRecoveryKit: () => string
-  sweepLeftoverV4: () => Promise<void>
   initiateAlert: string
   initiateAlerts: InitiateAlert[]
   approvePreviewSend: () => Promise<void>
@@ -168,7 +166,6 @@ export const VaultContext = createContext<VaultContextProps>({
   applyRecovery: () => {},
   skipRecovery: () => {},
   downloadRecoveryKit: () => '',
-  sweepLeftoverV4: async () => {},
   initiateAlert: '',
   initiateAlerts: [],
   approvePreviewSend: async () => {},
@@ -696,35 +693,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [enrollment, liveNetwork, refreshBalance, spend, status],
   )
 
-  const sweepLeftoverV4 = useCallback(async () => {
-    if (!enrollment || !status?.enrolled) throw new Error('Sign in first.')
-    if (!operationalAddress) throw new Error('No leftover spending address.')
-    const id = status.vaultId || enrollment.vaultId || ''
-    const kit = (id && loadLocalKit(id)) || findLocalKit()
-    if (!kit) throw new Error('Finish v5 setup first.')
-    const dest = assertSweepAllowed({
-      fromTemplate: status.templateVersion,
-      fromAddress: operationalAddress,
-      dest: kit.descriptor,
-      kind: 'daily',
-    })
-    const fee = liveNetwork ? LIVE_FEE : DEFAULT_FEE
-    const utxos = await fetchAddressUtxos(operationalAddress)
-    const coin = confirmedSpendable(utxos, DUST_SATS + fee)
-    if (!coin) throw new Error('No confirmed leftover coin is large enough.')
-    const prevTxHex = await fetchTxHex(coin.txid)
-    const result = await sendRoutineSpend({
-      enrollment,
-      status,
-      destAddress: dest,
-      amountSats: coin.value - fee,
-      feeSats: fee,
-      prevTxHex,
-      vout: coin.vout,
-    })
-    await finishBroadcast(result.txid)
-  }, [enrollment, finishBroadcast, liveNetwork, operationalAddress, status])
-
   const approveSavingsSend = useCallback(async () => {
     if (!status?.enrolled || !enrollment || !savingsAddress) {
       throw new Error('Sign in with the passkey that created this vault.')
@@ -910,7 +878,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       applyRecovery,
       skipRecovery,
       downloadRecoveryKit,
-      sweepLeftoverV4,
       initiateAlert,
       initiateAlerts,
       approvePreviewSend,
@@ -977,7 +944,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       applyRecovery,
       skipRecovery,
       downloadRecoveryKit,
-      sweepLeftoverV4,
       initiateAlert,
       initiateAlerts,
       approvePreviewSend,
