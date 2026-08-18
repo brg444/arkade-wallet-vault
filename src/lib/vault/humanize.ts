@@ -44,8 +44,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('not enrolled') || msg.includes('enroll first')) {
     return 'Create a passkey first.'
   }
-  if (msg.includes('enrolls v5 only')) {
-    return 'This vault service still creates the old vault. New vaults need recovery.'
+  if (msg.includes('recovery needs a v5 vault') || msg.includes('enrolls v5 only')) {
+    return 'This vault service cannot add recovery yet. Skip recovery, or update the service.'
+  }
+  if (msg.includes('this setup skipped recovery')) {
+    return 'This vault came back with recovery, but setup skipped it. Start over and add a recovery key.'
   }
   if (msg.includes('recovery secret')) {
     return 'Paste the recovery secret to prove you hold that key.'

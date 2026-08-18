@@ -18,19 +18,27 @@ export default function VaultPlan() {
       onBack={() => navigate('conditions')}
       actions={<Button onClick={finishPlan} label='Continue' />}
     >
-      <Text wrap>Start recovery, wait on a new output, cancel to quarantine.</Text>
+      <Text wrap>
+        {setup.recoveryPub
+          ? 'Start recovery, wait on a new output, cancel to quarantine.'
+          : 'This device plus hardware. You can add recovery later on a new vault.'}
+      </Text>
       <KeyCard
         icon={<ShieldCheckOutlineIcon />}
         title='Hardware'
         role={setup.hardwareIsDemo ? 'Demo key' : 'With this device, moves everything'}
         fingerprint={setup.hardwarePub}
       />
-      <KeyCard
-        icon={<SafeIcon />}
-        title='Recovery'
-        role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a hold you can cancel'}
-        fingerprint={setup.recoveryPub}
-      />
+      {setup.recoveryPub ? (
+        <KeyCard
+          icon={<SafeIcon />}
+          title='Recovery'
+          role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a hold you can cancel'}
+          fingerprint={setup.recoveryPub}
+        />
+      ) : (
+        <KeyCard icon={<SafeIcon />} title='Recovery' role='Skipped. Device + hardware only.' />
+      )}
       <KeyCard icon={<FingerprintIcon />} title='This device' role={`${prettyAmount(setup.txCapSats)} per send`} />
       <PolicyTimeline
         txCap={setup.txCapSats}

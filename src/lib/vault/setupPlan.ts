@@ -102,8 +102,7 @@ export function sameRole(a: string, b: string): boolean {
 export function planReady(plan: VaultSetupPlan): boolean {
   if (!plan.acceptedDesign) return false
   if (!plan.hardwarePub) return false
-  if (!plan.recoveryPub) return false
-  if (sameRole(plan.hardwarePub, plan.recoveryPub)) return false
+  if (plan.recoveryPub && sameRole(plan.hardwarePub, plan.recoveryPub)) return false
   if (!PAYMENT_CAP_CHOICES.includes(plan.txCapSats as (typeof PAYMENT_CAP_CHOICES)[number])) return false
   if (!DAILY_LIMIT_CHOICES.includes(plan.dailyLimitSats as (typeof DAILY_LIMIT_CHOICES)[number])) return false
   if (plan.txCapSats > plan.dailyLimitSats) return false

@@ -70,7 +70,7 @@ export default function VaultKeys() {
               <KeyCard
                 icon={<SafeIcon />}
                 title='Recovery'
-                role='This vault was set up before recovery was required. Sweep coins into a new vault yourself.'
+                role='Not added. This vault is this device plus hardware.'
                 status='Leftover'
               />
             )}

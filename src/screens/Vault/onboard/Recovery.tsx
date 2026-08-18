@@ -10,7 +10,7 @@ import { KeyCard, Reveal } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultRecovery() {
-  const { allowDemoKeys, applyRecovery, error, navigate, setup } = useContext(VaultContext)
+  const { allowDemoKeys, applyRecovery, error, navigate, setup, skipRecovery } = useContext(VaultContext)
   const [value, setValue] = useState(setup.recoveryPub)
   const [secret, setSecret] = useState('')
 
@@ -24,6 +24,7 @@ export default function VaultRecovery() {
       actions={
         <>
           <Button onClick={() => applyRecovery(value, secret)} label='Continue' />
+          <Button onClick={skipRecovery} label='Skip for now' secondary />
           {allowDemoKeys ? (
             <Button
               onClick={() => applyRecovery(DEMO_RECOVERY_PUB, '', true)}
@@ -35,8 +36,8 @@ export default function VaultRecovery() {
       }
     >
       <Text wrap>
-        Required paper key. It starts a hold on a new output. Guardians can send that hold to a vault that excludes this
-        key. It cannot take mature Savings until the hold confirms and the wait finishes.
+        Optional paper key. It starts a hold on a new output. Guardians can send that hold to a vault that excludes this
+        key. Skip and this vault stays this device plus hardware.
       </Text>
       <KeyCard icon={<SafeIcon />} title='Recovery' role='Break-glass. Not a daily cosigner.' />
       <Reveal label='Public key' defaultOpen>

@@ -1,6 +1,8 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js'
+import { hashDescriptor, validateDescriptor } from '../descriptor'
 import { bytesToHex, hexToBytes } from '../hex'
 import { xOnly } from '../setupPlan'
+import type { VaultPublicDescriptor } from '../types'
 import { V5_SCHEMA } from './constants'
 import { hashV5Descriptor, recoveryXOnly, validateV5Descriptor, type V5PublicDescriptor } from './descriptor'
 import { recoveryPoPDigest, signRecoveryPoP } from './pop'
@@ -22,11 +24,22 @@ export function recoverySecretMatches(secret: Uint8Array, recoveryPub: string): 
   return xOnly(pub) === xOnly(recoveryPub)
 }
 
+export function proposedSchema(raw: unknown): string {
+  return raw && typeof raw === 'object' ? String((raw as { schema?: string }).schema || '') : ''
+}
+
 export function requireV5ProposedDescriptor(raw: unknown, proposedHash: string): V5PublicDescriptor {
-  const schema = raw && typeof raw === 'object' ? String((raw as { schema?: string }).schema || '') : ''
-  if (schema !== V5_SCHEMA) throw new Error('this client enrolls v5 only')
+  if (proposedSchema(raw) !== V5_SCHEMA) throw new Error('recovery needs a v5 vault')
   const descriptor = validateV5Descriptor(raw as V5PublicDescriptor)
   const hash = hashV5Descriptor(descriptor)
+  if (hash !== proposedHash) throw new Error('proposed descriptor hash does not match this client')
+  return descriptor
+}
+
+export function requireV4ProposedDescriptor(raw: unknown, proposedHash: string): VaultPublicDescriptor {
+  if (proposedSchema(raw) === V5_SCHEMA) throw new Error('this setup skipped recovery')
+  const descriptor = validateDescriptor(raw as VaultPublicDescriptor)
+  const hash = hashDescriptor(descriptor)
   if (hash !== proposedHash) throw new Error('proposed descriptor hash does not match this client')
   return descriptor
 }

@@ -11,7 +11,12 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollmentStore'
-import { parseRecoverySecret, requireV5ProposedDescriptor, signEnrollmentRecoveryPoP } from './v5/enroll'
+import {
+  parseRecoverySecret,
+  requireV4ProposedDescriptor,
+  requireV5ProposedDescriptor,
+  signEnrollmentRecoveryPoP,
+} from './v5/enroll'
 import { saveLocalKit } from './v5/kitStore'
 import { buildRecoveryKit } from './v5/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
@@ -104,7 +109,7 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
 
 export interface EnrollmentRoles {
   hardwarePub: string
-  recoveryPub: string
+  recoveryPub?: string
   recoverySecret?: string
 }
 
@@ -119,19 +124,19 @@ export async function enrollWithPasskey(
 export async function beginTenantEnrollment(
   enrollmentToken: string,
   roles: EnrollmentRoles,
-): Promise<{ enrollment: EnrollmentSecrets; descriptor: V5PublicDescriptor }> {
+): Promise<{ enrollment: EnrollmentSecrets; descriptor?: V5PublicDescriptor }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
-  if (!roles.recoveryPub) throw new Error('recovery public key required')
-  if (!roles.recoverySecret) throw new Error('recovery secret required to prove the key')
+  const wantRecovery = Boolean(roles.recoveryPub)
+  if (wantRecovery && !roles.recoverySecret) throw new Error('recovery secret required to prove the key')
   const publicStatus = await fetchPublicStatus()
   const hardwareXOnly = xOnly(roles.hardwarePub)
-  const recoveryXOnly = xOnly(roles.recoveryPub)
-  if (hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
-  const recoverySecret = parseRecoverySecret(roles.recoverySecret)
+  const recoveryXOnly = wantRecovery ? xOnly(roles.recoveryPub || '') : ''
+  if (wantRecovery && hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
+  const recoverySecret = wantRecovery && roles.recoverySecret ? parseRecoverySecret(roles.recoverySecret) : null
   try {
     const rpId = requireRPID(publicStatus)
     const start = await vaultPost<{
@@ -224,22 +229,45 @@ export async function beginTenantEnrollment(
         phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
         vaultId: start.vaultId,
         externalOwnerWalletXOnly: hardwareXOnly,
-        recoveryXOnly,
+        ...(recoveryXOnly ? { recoveryXOnly } : {}),
       },
       { 'X-Vault-Enrollment-Token': token },
     )
-    const descriptor = requireV5ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
-    if (xOnly(descriptor.keys.recovery) !== recoveryXOnly) {
-      throw new Error('proposed recovery key does not match this client')
+    if (wantRecovery) {
+      if (!recoverySecret) throw new Error('recovery secret required to prove the key')
+      const descriptor = requireV5ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
+      if (xOnly(descriptor.keys.recovery) !== recoveryXOnly) {
+        throw new Error('proposed recovery key does not match this client')
+      }
+      if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
+        throw new Error('proposed hardware key does not match this client')
+      }
+      const proof = signEnrollmentRecoveryPoP({
+        descriptor,
+        inviteHandle: start.handle,
+        recoverySecret,
+      })
+      const staged: StagedEnrollment = {
+        ...enrollment,
+        handle: start.handle,
+        userHandle: start.userId,
+        clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+        authenticatorData: bytesToHex(authData),
+        attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+        hardwareXOnly,
+        recoveryXOnly: proof.recoveryXOnly,
+        recoveryPoP: proof.recoveryPoP,
+        inviteToken: token,
+        descriptorHash: proof.descriptorHash,
+        operationalAddress: descriptor.daily.address,
+        operationalScript: descriptor.daily.script,
+        savingsAddress: descriptor.savings.address,
+      }
+      saveStagedEnrollment(staged)
+      saveLocalKit(buildRecoveryKit(descriptor))
+      return { enrollment, descriptor }
     }
-    if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
-      throw new Error('proposed hardware key does not match this client')
-    }
-    const proof = signEnrollmentRecoveryPoP({
-      descriptor,
-      inviteHandle: start.handle,
-      recoverySecret,
-    })
+    const descriptor = requireV4ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
     const staged: StagedEnrollment = {
       ...enrollment,
       handle: start.handle,
@@ -248,19 +276,16 @@ export async function beginTenantEnrollment(
       authenticatorData: bytesToHex(authData),
       attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
       hardwareXOnly,
-      recoveryXOnly: proof.recoveryXOnly,
-      recoveryPoP: proof.recoveryPoP,
       inviteToken: token,
-      descriptorHash: proof.descriptorHash,
-      operationalAddress: descriptor.daily.address,
-      operationalScript: descriptor.daily.script,
+      descriptorHash: proposed.descriptorHash,
+      operationalAddress: descriptor.operational.address,
+      operationalScript: descriptor.operational.script,
       savingsAddress: descriptor.savings.address,
     }
     saveStagedEnrollment(staged)
-    saveLocalKit(buildRecoveryKit(descriptor))
-    return { enrollment, descriptor }
+    return { enrollment }
   } finally {
-    recoverySecret.fill(0)
+    recoverySecret?.fill(0)
   }
 }
 
@@ -271,9 +296,8 @@ export async function finishTenantEnrollment(
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
   const staged = loadStagedEnrollment(storage)
-  if (!staged?.vaultId || !staged.descriptorHash || !staged.recoveryXOnly || !staged.recoveryPoP) {
-    throw new Error('finish setup first')
-  }
+  if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
+  if (staged.recoveryXOnly && !staged.recoveryPoP) throw new Error('finish setup first')
   await vaultPost(
     '/v1/enroll/finish',
     {
@@ -288,8 +312,9 @@ export async function finishTenantEnrollment(
       phoneRoutineBip340Pub: staged.phoneRoutineBip340Pub,
       vaultId: staged.vaultId,
       externalOwnerWalletXOnly: staged.hardwareXOnly,
-      recoveryXOnly: staged.recoveryXOnly,
-      recoveryPoP: staged.recoveryPoP,
+      ...(staged.recoveryXOnly && staged.recoveryPoP
+        ? { recoveryXOnly: staged.recoveryXOnly, recoveryPoP: staged.recoveryPoP }
+        : {}),
       descriptorHash: staged.descriptorHash,
     },
     { 'X-Vault-Enrollment-Token': token },
