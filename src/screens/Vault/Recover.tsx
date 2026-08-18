@@ -81,14 +81,26 @@ export default function VaultRecover() {
 
   return (
     <>
-      <Header text='Recover' back={() => navigate('settings')} />
+      <Header text='Recovery Kit' back={() => navigate('settings')} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
             <Text wrap>
-              If you lose a key, start recovery with one you still have. That begins a waiting period. If you did not
-              start it, cancel it. After the wait, you can move the coins.
+              The Recovery Kit is how you get coins out if this app is gone. Save it now, somewhere you can find later.
+              It is not a seed. It does not hold your keys.
             </Text>
+            <KeyCard
+              title='Why you save it'
+              role='If Arkade or this phone app disappears, this file is the map of your vault. With a key you still hold, you can start recovery, cancel it, or move coins after the wait — including from the offline tool.'
+            />
+            <KeyCard
+              title='When you use it'
+              role='This app is gone, or you can’t open it. Everyday send and sign-in on a new phone do not use the kit.'
+            />
+            <KeyCard
+              title='When you don’t'
+              role='It cannot move coins from the original address if both vault services are gone. This phone plus hardware still can.'
+            />
 
             {initiateAlert ? (
               <KeyCard title='Recovery in process' role={initiateAlert} status='Alert' />
@@ -108,23 +120,6 @@ export default function VaultRecover() {
                 />
               )
             })}
-
-            <Text bold small>
-              What is the Recovery Kit?
-            </Text>
-            <Text wrap>
-              A last-resort file. Save it somewhere you can find if this app is gone. It is not a seed phrase and it
-              does not hold your keys.
-            </Text>
-            <KeyCard title='What it is' role='A map of this vault. Addresses, waits, and who can cancel.' />
-            <KeyCard
-              title='What it is for'
-              role='Start recovery, cancel it, or move coins after the wait — even from the offline tool.'
-            />
-            <KeyCard
-              title='What it cannot do'
-              role='It cannot move coins from the original address if both vault services are gone. This device plus hardware still can.'
-            />
             {report && 'trees' in report ? (
               <Text color='neutral-600' tiny wrap>
                 This kit is for vault {report.vaultId.slice(0, 8)}… · {report.trees.length} addresses
