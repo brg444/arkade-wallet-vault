@@ -115,6 +115,7 @@ export function buildQuarantine(input: {
     address: payment.address,
     script: payment.script,
     tapInternalKey: payment.tapInternalKey,
+    tapLeafScript: payment.tapLeafScript,
     admin: script,
     guardians: [a, b] as const,
   }
@@ -154,6 +155,7 @@ export function buildPending(input: {
     address: payment.address,
     script: payment.script,
     tapInternalKey: payment.tapInternalKey,
+    tapLeafScript: payment.tapLeafScript,
     leaves: payment.leaves,
     claim,
     clawbacks,
@@ -218,6 +220,7 @@ export function buildNormal(input: {
     address: payment.address,
     script: payment.script,
     tapInternalKey: payment.tapInternalKey,
+    tapLeafScript: payment.tapLeafScript,
     leaves: payment.leaves,
     admin,
     initiate,
@@ -348,3 +351,5 @@ export function buildV5Family(input: {
     pendingTweaks,
   }
 }
+
+export type V5Family = ReturnType<typeof buildV5Family>

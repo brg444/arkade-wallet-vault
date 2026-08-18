@@ -30,3 +30,16 @@ export function tweakPair(
     arkade: tweakByArkScript(arkadeBase, script),
   }
 }
+
+/** even-Y(base scalar) + ArkScriptHash, 32-byte secret. */
+export function tweakPrivateKey(secret: Uint8Array, script: Uint8Array): Uint8Array {
+  if (secret.length !== 32) throw new Error('secret must be 32 bytes')
+  const pub = secp256k1.getPublicKey(secret, true)
+  const n = secp256k1.Point.CURVE().n
+  let d = BigInt(`0x${hex.encode(secret)}`)
+  if (pub[0] === 0x03) d = n - d
+  const t = BigInt(`0x${hex.encode(arkadeScriptHash(script))}`)
+  const sum = (d + t) % n
+  if (sum === 0n) throw new Error('Arkade tweak is degenerate')
+  return hex.decode(sum.toString(16).padStart(64, '0'))
+}
