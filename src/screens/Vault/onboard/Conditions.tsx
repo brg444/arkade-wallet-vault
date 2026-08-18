@@ -28,7 +28,7 @@ export default function VaultConditions() {
         onBack={() => navigate('recovery')}
         actions={<Button onClick={confirmConditions} label='Continue' />}
       >
-        <Text wrap>These limits are already set. This device can’t raise them.</Text>
+        <Text wrap>These limits are already set. This device can’t raise them. Hardware is for everything else.</Text>
         <PolicyTimeline
           txCap={txCap}
           dailyLimit={daily}
@@ -37,8 +37,8 @@ export default function VaultConditions() {
           network={status?.network}
         />
         <Text color='neutral-600' tiny wrap>
-          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day · lose this device, hardware after{' '}
-          {waitLabel(savCsv, status?.network)} · lose hardware, this device after {waitLabel(opCsv, status?.network)}
+          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day. Lose a key, start recovery, then wait{' '}
+          {waitLabel(savCsv, status?.network)} or {waitLabel(opCsv, status?.network)}. Cancel if it wasn’t you.
         </Text>
       </OnboardLayout>
     )
@@ -51,7 +51,7 @@ export default function VaultConditions() {
       onBack={() => navigate('recovery')}
       actions={<Button onClick={confirmConditions} label='Save these rules' />}
     >
-      <Text wrap>How much this device can send today.</Text>
+      <Text wrap>How much this device can send today, without hardware.</Text>
       <Text color='neutral-600' tiny>
         Per send
       </Text>
@@ -79,7 +79,7 @@ export default function VaultConditions() {
         />
       ))}
       <Text color='neutral-600' tiny>
-        If you lose this device
+        If you lose a key
       </Text>
       {DELAY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
         <ChoiceCard

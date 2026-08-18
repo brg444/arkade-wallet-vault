@@ -31,10 +31,14 @@ export default function VaultPasskey() {
     >
       <Text wrap>
         {onPhone
-          ? 'Create a passkey with Face ID. If you see a QR, cancel — that’s another device’s key.'
-          : 'Create a passkey on this computer. That’s your daily spend key.'}
+          ? 'This is this phone’s key. Face ID unlocks daily spend. If you see a QR, cancel — that’s another device.'
+          : 'This is this computer’s daily spend key. Prefer Face ID on the phone that will spend.'}
       </Text>
-      <KeyCard icon={<FingerprintIcon />} title={onPhone ? 'This device' : 'This computer'} role='Daily spend' />
+      <KeyCard
+        icon={<FingerprintIcon />}
+        title={onPhone ? 'This device' : 'This computer'}
+        role='Daily spend. Not hardware. Not the Recovery Kit.'
+      />
       {liveNetwork ? (
         <>
           <Input

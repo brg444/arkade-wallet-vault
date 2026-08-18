@@ -36,10 +36,14 @@ export default function VaultRecovery() {
       }
     >
       <Text wrap>
-        Optional. If you lose this device or hardware, this key can start recovery. The other keys can cancel it during
-        the wait. Skip and this vault stays this device plus hardware.
+        Optional. If you lose this device or hardware, this key can start recovery. The others can cancel it during the
+        wait. Skip and this vault is this device plus hardware.
       </Text>
-      <KeyCard icon={<SafeIcon />} title='Recovery' role='Starts a waiting period. Not a daily spender.' />
+      <KeyCard icon={<SafeIcon />} title='Recovery' role='Starts a waiting period. Not for daily spend.' />
+      <Text color='neutral-600' tiny wrap>
+        This is not the Recovery Kit. The kit is a file you’ll save later. It is not a seed and it does not hold this
+        key.
+      </Text>
       <Reveal label='Public key' defaultOpen>
         <Input label='Public key' placeholder='02… or 03…' value={value} onChange={setValue} testId='recovery-pub' />
         <Button onClick={async () => setValue((await pasteFromClipboard()) || value)} label='Paste' clear />

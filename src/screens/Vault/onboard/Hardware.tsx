@@ -20,7 +20,7 @@ export default function VaultHardware() {
 
   return (
     <OnboardLayout
-      title='Which hardware?'
+      title='Add hardware'
       step={2}
       error={error}
       onBack={() => navigate('design')}
@@ -35,8 +35,8 @@ export default function VaultHardware() {
     >
       <Text wrap>
         {required
-          ? 'This vault already has hardware. Confirm you hold that key.'
-          : 'Which hardware owns this vault? With this device, it can move everything. Never paste a seed.'}
+          ? 'This vault already has hardware. Confirm this is that key.'
+          : 'Add the hardware key. With this device, it can move everything — including Savings — and cancel a recovery you didn’t start. Never paste a seed.'}
       </Text>
       {required ? (
         <KeyCard

@@ -30,7 +30,7 @@ describe('VaultApp onboarding', () => {
     expect(await screen.findByText('How it works')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText('Which hardware?')).toBeTruthy()
+    expect(await screen.findByText('Add hardware')).toBeTruthy()
     fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: DEMO_HARDWARE_PUB } })
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
