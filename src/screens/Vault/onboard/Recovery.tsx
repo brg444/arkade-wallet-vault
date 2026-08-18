@@ -12,9 +12,7 @@ import { OnboardLayout } from './Layout'
 export default function VaultRecovery() {
   const { allowDemoKeys, applyRecovery, error, navigate, setup, skipRecovery } = useContext(VaultContext)
   const [value, setValue] = useState(setup.recoveryPub)
-  const [secret, setSecret] = useState('')
   const hasKey = value.trim().length > 0
-  const canAdd = hasKey && secret.trim().length > 0
 
   return (
     <OnboardLayout
@@ -24,16 +22,16 @@ export default function VaultRecovery() {
       error={error}
       onBack={() => navigate('hardware')}
       actions={
-        canAdd ? (
+        hasKey ? (
           <>
-            <Button onClick={() => applyRecovery(value, secret)} label='Add recovery' />
+            <Button onClick={() => applyRecovery(value)} label='Add recovery' />
             <Button onClick={skipRecovery} label='Skip for now' secondary />
           </>
         ) : (
           <>
             <Button onClick={skipRecovery} label='Skip for now' />
             {allowDemoKeys ? (
-              <Button onClick={() => applyRecovery(DEMO_RECOVERY_PUB, '', true)} label='Use a demo key' secondary />
+              <Button onClick={() => applyRecovery(DEMO_RECOVERY_PUB, true)} label='Use a demo key' secondary />
             ) : null}
           </>
         )
@@ -62,20 +60,6 @@ export default function VaultRecovery() {
       >
         Paste
       </button>
-      {hasKey ? (
-        <>
-          <Input
-            label='Prove you hold this key'
-            placeholder='64-char hex or WIF'
-            value={secret}
-            onChange={setSecret}
-            testId='recovery-secret'
-          />
-          <Text color='neutral-600' tiny wrap>
-            Used once to prove this key is yours. Not stored on this phone. Without it, skip recovery.
-          </Text>
-        </>
-      ) : null}
     </OnboardLayout>
   )
 }

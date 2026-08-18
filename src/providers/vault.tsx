@@ -43,7 +43,6 @@ import { isVaultBitcoinAddress } from '../lib/vault/bitcoin'
 import { fetchVaultStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
-  DEMO_RECOVERY_PUB,
   emptySetupPlan,
   loadSetupPlan,
   isFixturePub,
@@ -53,10 +52,9 @@ import {
   sameRole,
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
-import { bytesToHex } from '../lib/vault/hex'
+
 import { V5_TEMPLATE } from '../lib/vault/v5/constants'
-import { parseRecoverySecret, recoverySecretMatches } from '../lib/vault/v5/enroll'
-import { scalarSecret } from '../lib/vault/v5/fixtures'
+
 import { buildRecoveryKit } from '../lib/vault/v5/kit'
 import {
   kitFromFacts,
@@ -112,7 +110,7 @@ interface VaultContextProps {
   addTestCoins: () => Promise<void>
   amountSats: number
   applyHardware: (raw: string, demo?: boolean) => void
-  applyRecovery: (raw: string, secret?: string, demo?: boolean) => void
+  applyRecovery: (raw: string, demo?: boolean) => void
   skipRecovery: () => void
   downloadRecoveryKit: () => string
   backupRecoveryKit: () => Promise<boolean>
@@ -247,7 +245,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [enrollment, setEnrollment] = useState<EnrollmentSecrets | null>(null)
   const [initiateAlert, setInitiateAlert] = useState('')
   const [initiateAlerts, setInitiateAlerts] = useState<InitiateAlert[]>([])
-  const recoverySecretRef = useRef<Uint8Array | null>(null)
+
   const [demoAvailable, setDemoAvailable] = useState(false)
   const [demoCredit, setDemoCredit] = useState(0)
   const [previewSpent, setPreviewSpent] = useState(0)
@@ -388,25 +386,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [liveNetwork, persist, setup, status?.externalOwnerWalletPub, status?.network],
   )
 
-  const rememberRecoverySecret = useCallback((recoveryPub: string, secret: string, demo: boolean) => {
-    recoverySecretRef.current?.fill(0)
-    recoverySecretRef.current = null
-    if (secret.trim()) {
-      const bytes = parseRecoverySecret(secret)
-      if (!recoverySecretMatches(bytes, recoveryPub)) {
-        bytes.fill(0)
-        throw new Error('Recovery secret does not match the public key')
-      }
-      recoverySecretRef.current = bytes
-      return
-    }
-    if (demo && recoveryPub === DEMO_RECOVERY_PUB) {
-      recoverySecretRef.current = scalarSecret(5)
-    }
-  }, [])
-
   const applyRecovery = useCallback(
-    (raw: string, secret = '', demo = false) => {
+    (raw: string, demo = false) => {
       setError('')
       try {
         const recoveryPub = parseCompressedPub(raw, 'recovery key')
@@ -415,23 +396,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(recoveryPub)) {
           throw new Error('Demo keys cannot be used on this vault')
         }
-        rememberRecoverySecret(recoveryPub, secret, demo)
-        if (!demo && !recoverySecretRef.current) {
-          throw new Error('Paste the recovery secret to prove you hold that key.')
-        }
         persist({ ...setup, recoveryPub, recoveryIsDemo: demo })
         setScreen('conditions')
       } catch (err) {
         setError(humanizeVaultError(err))
       }
     },
-    [liveNetwork, persist, rememberRecoverySecret, setup, status?.network],
+    [liveNetwork, persist, setup, status?.network],
   )
 
   const skipRecovery = useCallback(() => {
     setError('')
-    recoverySecretRef.current?.fill(0)
-    recoverySecretRef.current = null
     persist({ ...setup, recoveryPub: '', recoveryIsDemo: false })
     setScreen('conditions')
   }, [persist, setup])
@@ -597,11 +572,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('Finish setup first.')
         return
       }
-      const secret = recoverySecretRef.current
-      if (setup.recoveryPub && !secret) {
-        setError('Paste the recovery secret to prove you hold that key.')
-        return
-      }
       if (status?.externalOwnerWalletPub && setup.hardwarePub !== status.externalOwnerWalletPub) {
         setError('This vault expects a different hardware key.')
         return
@@ -615,9 +585,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       try {
         const out = await enrollWithPasskey(token, {
           hardwarePub: setup.hardwarePub,
-          ...(setup.recoveryPub && secret
-            ? { recoveryPub: setup.recoveryPub, recoverySecret: bytesToHex(secret) }
-            : {}),
+          ...(setup.recoveryPub ? { recoveryPub: setup.recoveryPub } : {}),
         })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
@@ -649,8 +617,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         setError(humanizeVaultError(err))
       } finally {
-        recoverySecretRef.current?.fill(0)
-        recoverySecretRef.current = null
         setBusy(false)
       }
     },
