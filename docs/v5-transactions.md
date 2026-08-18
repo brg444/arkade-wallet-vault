@@ -1,8 +1,29 @@
 # Arkade Vault v5 transactions
 
-Canonical wallet builders: `src/lib/vault/v5/`. Reconstruct every tree from the public descriptor. Do not trust client scripts or addresses.
+**Next product spec.** Live funded outputs may still be v4 ([live.md](live.md)).
+
+Canonical wallet builders: `src/lib/vault/v5/`. Reconstruct every tree from the public descriptor. Do not trust client scripts or addresses. The authorizer must rebuild the same family; until Go and TS share goldens, this is a promise.
 
 This is the L1 staged vault. It is not an Ark VTXO. Do not register these scripts with `ContractManager`.
+
+Overview: [v5-overview.md](v5-overview.md). HTTP and CLI: [v5-api.md](v5-api.md).
+
+## Trees
+
+Build Quarantine first, then Pending, then Normal. Internal key is NUMS
+TapTweaked with
+
+`tagged_hash("arkade-vault/v5/internal", length-prefixed vaultId ‖ kind ‖ claimant-or-`-` ‖ template)`
+
+Daily and Savings quarantines with the same two keys must not collide.
+
+Daily Normal leaves: routine 3-of-3, admin phone+hardware, initiate×3.
+Savings Normal: admin + initiate×3. No routine. No CSV on Normal.
+
+Each Pending: claim `CSV+claimant`, two clawback 3-of-3s (guardian + two
+cancel tweaks), unspendable padding.
+
+Each Quarantine: one 2-of-2 excluding the claimant.
 
 ## Graph
 
