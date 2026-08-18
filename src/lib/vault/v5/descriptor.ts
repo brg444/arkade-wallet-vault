@@ -411,4 +411,20 @@ export function recoveryXOnly(d: V5PublicDescriptor): string {
   return hex.encode(xOnlyFromCompressed(d.keys.recovery))
 }
 
+export function familyFromDescriptor(d: V5PublicDescriptor) {
+  const valid = validateV5Descriptor(d)
+  return buildV5Family({
+    vaultId: valid.vaultId,
+    phonePub: valid.keys.phoneRoutineBip340,
+    hardwarePub: valid.keys.hardware,
+    recoveryPub: valid.keys.recovery,
+    phoneDirectP256: valid.keys.phoneDirectP256,
+    vaultCosignerBase: valid.keys.vaultCosignerBase,
+    arkadeCosignerBase: valid.keys.arkadeCosignerBase,
+    routineVault: valid.tweaks.routine.vault,
+    routineArkade: valid.tweaks.routine.arkade,
+    network: valid.network,
+  })
+}
+
 export type { Claimant, FamilyKey }
