@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { V5_FIXTURE, V5_FIXTURE_FAMILY } from './fixtures'
 import { ReplayRefuse, applyReplay, decideReplay, memoryReplayStore, sessionKey } from './replay'
+import { applyLocalReplay } from './replayStore'
 import { buildInitiatePsbt, bumpTransitionFee, inspectTransitionPsbt } from './spend'
 import { buildV5Family } from './trees'
 
@@ -63,4 +64,61 @@ describe('v5 sign-once replay oracle', () => {
     expect(b.inputVout).toBe(a.inputVout)
     expect(() => bumpTransitionFee(first.psbtHex, 500)).toThrow(/increase/)
   })
+
+  it('lets a fee race re-sign while dest stays pinned', () => {
+    const family = buildV5Family(V5_FIXTURE_FAMILY)
+    const first = buildInitiatePsbt({ family, kind: 'savings', claimant: 'hardware', coin, feeSats: 500 })
+    const mid = bumpTransitionFee(first.psbtHex, 900)
+    const win = bumpTransitionFee(mid, 1400)
+    const store = memoryReplayStore()
+    const base = inspectTransitionPsbt(first.psbtHex)
+    const req = {
+      vaultId,
+      purpose: 'initiate' as const,
+      inputTxid: base.inputTxid,
+      inputVout: base.inputVout,
+      destScriptHex: base.destScript,
+    }
+    expect(applyReplay(store, { ...req, sighash: '11'.repeat(32) }).action).toBe('sign')
+    expect(applyReplay(store, { ...req, sighash: '22'.repeat(32) }).action).toBe('resign')
+    const raced = inspectTransitionPsbt(win)
+    expect(raced.feeSats).toBe(1400)
+    expect(raced.destScript).toBe(base.destScript)
+    expect(raced.inputTxid).toBe(base.inputTxid)
+    expect(() => applyReplay(store, { ...req, destScriptHex: '5120' + 'ee'.repeat(32) })).toThrow(ReplayRefuse)
+    expect(() => bumpTransitionFee(win, 900)).toThrow(/increase/)
+  })
+
+  it('persists sign-once rows in local storage', () => {
+    const storage = memoryDomStorage()
+    const req = {
+      vaultId,
+      purpose: 'clawback' as const,
+      inputTxid: '33'.repeat(32),
+      inputVout: 1,
+      destScriptHex: '5120aa',
+      sighash: '44'.repeat(32),
+    }
+    expect(applyLocalReplay(vaultId, req, storage).action).toBe('sign')
+    expect(applyLocalReplay(vaultId, { ...req, sighash: '55'.repeat(32) }, storage).action).toBe('resign')
+    expect(() => applyLocalReplay(vaultId, { ...req, destScriptHex: '5120bb' }, storage)).toThrow(ReplayRefuse)
+  })
 })
+
+function memoryDomStorage(): Storage {
+  const data = new Map<string, string>()
+  return {
+    get length() {
+      return data.size
+    },
+    clear: () => data.clear(),
+    getItem: (key: string) => data.get(key) ?? null,
+    key: (index: number) => Array.from(data.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      data.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      data.set(key, value)
+    },
+  }
+}

@@ -107,6 +107,8 @@ export type StagedEnrollment = EnrollmentSecrets & {
   authenticatorData: string
   attestationObject: string
   hardwareXOnly: string
+  recoveryXOnly?: string
+  recoveryPoP?: string
   inviteToken?: string
   descriptorHash?: string
   popDigest?: string

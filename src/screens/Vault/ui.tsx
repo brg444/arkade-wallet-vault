@@ -38,13 +38,11 @@ export function Panel({
   )
 }
 
-const RAIL = ['design', 'hardware', 'rules', 'review', 'device']
-
-export function StepRail({ step, total = 5 }: { step: number; total?: number }) {
+export function StepRail({ step, total = 6 }: { step: number; total?: number }) {
   return (
     <div className='vault-rail' aria-hidden>
-      {RAIL.slice(0, total).map((id, i) => (
-        <span key={id} className={i < step ? 'vault-rail-dot on' : 'vault-rail-dot'} />
+      {Array.from({ length: total }, (_, i) => (
+        <span key={i} className={i < step ? 'vault-rail-dot on' : 'vault-rail-dot'} />
       ))}
     </div>
   )

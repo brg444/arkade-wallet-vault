@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
+import { V5_TEMPLATE } from './v5/constants'
 import { parseStatusJson, requireStatusIdentity, vaultStatusPath } from './status'
 import type { VaultStatus } from './types'
 
@@ -54,12 +55,16 @@ describe('status identity binding', () => {
     expect(requireStatusIdentity(swapped).operationalAddress).toBe('tb1pattacker')
   })
 
-  it('rejects a leftover recovery key or a v3 template', () => {
+  it('rejects a leftover v4 recovery key or a v3 template, and accepts v5', () => {
     expect(() => requireStatusIdentity(sampleStatus({ recoveryKeyPub: '02' + '11'.repeat(32) } as never))).toThrow(
       /template version/,
     )
     expect(() =>
       requireStatusIdentity(sampleStatus({ templateVersion: 'phone-direct-p256-routine-3of3-admin-2of2-v3' })),
     ).toThrow(/template version/)
+    expect(
+      requireStatusIdentity(sampleStatus({ templateVersion: V5_TEMPLATE, recoveryPub: '02' + '11'.repeat(32) }))
+        .templateVersion,
+    ).toBe(V5_TEMPLATE)
   })
 })

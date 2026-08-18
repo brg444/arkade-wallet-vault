@@ -7,7 +7,7 @@ import {
 } from './constants'
 import { fingerprint, hexToBytes } from './hex'
 
-export const SETUP_STORE_KEY = 'arkade-vault-setup-v4'
+export const SETUP_STORE_KEY = 'arkade-vault-setup-v5'
 
 // Generator G (scalar 1) and 2G (scalar 2). Both private keys are public.
 // Mutinynet enrollment must reject either x-only identity as hardware.
@@ -17,6 +17,8 @@ export const KNOWN_UNSAFE_FIXTURE_PUBS = [UNSAFE_GENERATOR_G, UNSAFE_GENERATOR_2
 
 // Local/regtest demo fill only. Live Mutinynet rejects this via isFixturePub.
 export const DEMO_HARDWARE_PUB = UNSAFE_GENERATOR_2G
+/** Demo-only recovery (5G). Live Mutinynet still rejects G/2G; this is not G or 2G. */
+export const DEMO_RECOVERY_PUB = '022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4'
 
 export function isFixturePub(pub: string): boolean {
   const hex = pub.trim().toLowerCase().replace(/^0x/, '')
@@ -39,7 +41,7 @@ export const DELAY_PROFILES: DelayProfile[] = [
   {
     id: 'demo',
     label: 'Demo delays',
-    detail: 'This device after 144 blocks. Hardware after 6.',
+    detail: 'Start recovery, wait on a new output, cancel to quarantine.',
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
     savingsCsvBlocks: DEFAULT_SAVINGS_CSV_BLOCKS,
   },
@@ -48,6 +50,8 @@ export const DELAY_PROFILES: DelayProfile[] = [
 export interface VaultSetupPlan {
   hardwarePub: string
   hardwareIsDemo: boolean
+  recoveryPub: string
+  recoveryIsDemo: boolean
   txCapSats: number
   dailyLimitSats: number
   operationalCsvBlocks: number
@@ -60,6 +64,8 @@ export function emptySetupPlan(): VaultSetupPlan {
   return {
     hardwarePub: '',
     hardwareIsDemo: false,
+    recoveryPub: '',
+    recoveryIsDemo: false,
     txCapSats: TX_RECIPIENT_CAP_SATS,
     dailyLimitSats: PERIOD_ALLOWANCE_SATS,
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
@@ -96,6 +102,8 @@ export function sameRole(a: string, b: string): boolean {
 export function planReady(plan: VaultSetupPlan): boolean {
   if (!plan.acceptedDesign) return false
   if (!plan.hardwarePub) return false
+  if (!plan.recoveryPub) return false
+  if (sameRole(plan.hardwarePub, plan.recoveryPub)) return false
   if (!PAYMENT_CAP_CHOICES.includes(plan.txCapSats as (typeof PAYMENT_CAP_CHOICES)[number])) return false
   if (!DAILY_LIMIT_CHOICES.includes(plan.dailyLimitSats as (typeof DAILY_LIMIT_CHOICES)[number])) return false
   if (plan.txCapSats > plan.dailyLimitSats) return false

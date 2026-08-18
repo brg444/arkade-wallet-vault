@@ -3,6 +3,7 @@ import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from './constan
 import { deriveSession } from './session'
 import { familyFromDescriptor } from './descriptor'
 import { inspectRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
+import { selectRoute } from './route'
 import {
   buildClaimPsbt,
   buildClawbackPsbt,
@@ -199,10 +200,15 @@ export function runKitCli(cmd: KitCliCommand): string {
   const family = familyFromDescriptor(cmd.kit.descriptor)
   const coin = { txid: cmd.txid, vout: cmd.vout, value: cmd.value }
   if (cmd.name === 'initiate') {
+    selectRoute({ role: 'normal', kind: cmd.kind }, { type: 'initiate', claimant: cmd.claimant })
     const built = buildInitiatePsbt({ family, kind: cmd.kind, claimant: cmd.claimant, coin, feeSats: cmd.fee })
     return `${built.destAddress}\n${built.psbtHex}`
   }
   if (cmd.name === 'clawback') {
+    selectRoute(
+      { role: 'pending', kind: cmd.kind, claimant: cmd.claimant },
+      { type: 'clawback', guardian: cmd.guardian },
+    )
     const built = buildClawbackPsbt({
       family,
       kind: cmd.kind,
@@ -213,6 +219,7 @@ export function runKitCli(cmd: KitCliCommand): string {
     })
     return `${built.destAddress}\n${built.psbtHex}`
   }
+  selectRoute({ role: 'pending', kind: cmd.kind, claimant: cmd.claimant }, { type: 'claim' })
   const built = buildClaimPsbt({
     family,
     kind: cmd.kind,

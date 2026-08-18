@@ -1,5 +1,6 @@
 import { readBounded } from './bounded'
-import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
+import { POLICY_VERSION, VAULT_ID } from './constants'
+import { isKnownTemplate, V5_TEMPLATE } from './v5/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus } from './types'
 
@@ -59,7 +60,7 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   }
   const body = parseJsonObject<PublicAuthorizerStatus>(text, 'status')
   if ('vaultId' in body && body.vaultId) throw new Error('public status must not name a vault')
-  if (body.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
+  if (!isKnownTemplate(body.templateVersion)) throw new Error('template version is not this release')
   if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   return body
 }
@@ -91,9 +92,11 @@ export function requireStatusIdentity(status: VaultStatus, expectedVaultId?: str
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
   if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
   if (status.vaultId !== expected) throw new Error('status vault id does not match')
-  if (status.templateVersion !== TEMPLATE_VERSION) throw new Error('template version is not this release')
+  if (!isKnownTemplate(status.templateVersion)) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
-  if ('recoveryKeyPub' in status && (status as { recoveryKeyPub?: string }).recoveryKeyPub) {
+  const leftover =
+    'recoveryKeyPub' in status ? String((status as { recoveryKeyPub?: string }).recoveryKeyPub || '') : ''
+  if (status.templateVersion !== V5_TEMPLATE && leftover) {
     throw new Error('template version is not this release')
   }
   return status

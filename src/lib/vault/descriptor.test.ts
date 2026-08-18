@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { encodeDescriptor, hashDescriptor, validateDescriptor } from './descriptor'
+import { encodeDescriptor, hashAnyDescriptor, hashDescriptor, validateDescriptor } from './descriptor'
+import { buildV5Descriptor, hashV5Descriptor } from './v5/descriptor'
+import { V5_FIXTURE } from './v5/fixtures'
 import { sampleDescriptor } from './sample'
 import { bytesToHex } from './hex'
 
@@ -57,5 +59,15 @@ describe('v4 public descriptor', () => {
     const json = JSON.stringify(d)
     expect(hashed).not.toBe(json)
     expect(hashed).toHaveLength(64)
+  })
+})
+
+describe('hashAnyDescriptor', () => {
+  it('dispatches v4 and v5 by schema', () => {
+    const v4 = sampleDescriptor()
+    const v5 = buildV5Descriptor(V5_FIXTURE)
+    expect(hashAnyDescriptor(v4)).toBe(hashDescriptor(v4))
+    expect(hashAnyDescriptor(v5)).toBe(hashV5Descriptor(v5))
+    expect(hashAnyDescriptor(v4)).not.toBe(hashAnyDescriptor(v5))
   })
 })

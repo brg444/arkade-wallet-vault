@@ -11,10 +11,13 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollmentStore'
-import { hashDescriptor } from './descriptor'
+import { parseRecoverySecret, requireV5ProposedDescriptor, signEnrollmentRecoveryPoP } from './v5/enroll'
+import { saveLocalKit } from './v5/kitStore'
+import { buildRecoveryKit } from './v5/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
-import type { VaultPublicDescriptor, VaultStatus } from './types'
+import type { VaultStatus } from './types'
+import type { V5PublicDescriptor } from './v5/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
@@ -99,9 +102,15 @@ async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
   throw new Error('authenticator did not return PRF')
 }
 
+export interface EnrollmentRoles {
+  hardwarePub: string
+  recoveryPub: string
+  recoverySecret?: string
+}
+
 export async function enrollWithPasskey(
   enrollmentToken: string,
-  roles: { hardwarePub: string },
+  roles: EnrollmentRoles,
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   await beginTenantEnrollment(enrollmentToken, roles)
   return finishTenantEnrollment(enrollmentToken)
@@ -109,129 +118,150 @@ export async function enrollWithPasskey(
 
 export async function beginTenantEnrollment(
   enrollmentToken: string,
-  roles: { hardwarePub: string },
-): Promise<{ enrollment: EnrollmentSecrets; descriptor: VaultPublicDescriptor }> {
+  roles: EnrollmentRoles,
+): Promise<{ enrollment: EnrollmentSecrets; descriptor: V5PublicDescriptor }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
+  if (!roles.recoveryPub) throw new Error('recovery public key required')
+  if (!roles.recoverySecret) throw new Error('recovery secret required to prove the key')
   const publicStatus = await fetchPublicStatus()
   const hardwareXOnly = xOnly(roles.hardwarePub)
-  const rpId = requireRPID(publicStatus)
-  const start = await vaultPost<{
-    handle: string
-    vaultId: string
-    challenge: string
-    rpId: string
-    userId: string
-    userName: string
-  }>('/v1/enroll/start', {}, { 'X-Vault-Enrollment-Token': token })
-  if (!start.vaultId || !start.challenge || !start.handle || !start.userId) {
-    throw new Error('authorizer did not assign a vault')
-  }
-  const cred = (await navigator.credentials.create({
-    publicKey: passkeyCreateOptions({
-      rp: { name: 'Spending vault', id: start.rpId || rpId },
-      user: {
-        id: hexToBytes(start.userId) as BufferSource,
-        name: start.userName || 'vault',
-        displayName: 'Spending vault',
-      },
-      challenge: hexToBytes(start.challenge) as BufferSource,
-      pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
-      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
-      extensions: prfExtension(PRF_SALT),
-    }),
-  })) as PublicKeyCredential | null
-  if (!cred) throw new Error('The operation was aborted.')
-  let prf = prfFrom(cred)
-  if (!prf) {
-    const get = (await navigator.credentials.get({
-      publicKey: passkeyGetOptions(
-        {
-          challenge: hexToBytes(start.challenge) as BufferSource,
-          rpId: start.rpId || rpId,
-          allowCredentials: [allowPasskey(cred.rawId, true)],
-          userVerification: 'required',
-          extensions: prfExtension(PRF_SALT, new Uint8Array(cred.rawId)),
+  const recoveryXOnly = xOnly(roles.recoveryPub)
+  if (hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
+  const recoverySecret = parseRecoverySecret(roles.recoverySecret)
+  try {
+    const rpId = requireRPID(publicStatus)
+    const start = await vaultPost<{
+      handle: string
+      vaultId: string
+      challenge: string
+      rpId: string
+      userId: string
+      userName: string
+    }>('/v1/enroll/start', {}, { 'X-Vault-Enrollment-Token': token })
+    if (!start.vaultId || !start.challenge || !start.handle || !start.userId) {
+      throw new Error('authorizer did not assign a vault')
+    }
+    const cred = (await navigator.credentials.create({
+      publicKey: passkeyCreateOptions({
+        rp: { name: 'Spending vault', id: start.rpId || rpId },
+        user: {
+          id: hexToBytes(start.userId) as BufferSource,
+          name: start.userName || 'vault',
+          displayName: 'Spending vault',
         },
-        true,
-      ),
+        challenge: hexToBytes(start.challenge) as BufferSource,
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+        authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+        extensions: prfExtension(PRF_SALT),
+      }),
     })) as PublicKeyCredential | null
-    prf = get ? prfFrom(get) : null
-  }
-  if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
+    if (!cred) throw new Error('The operation was aborted.')
+    let prf = prfFrom(cred)
+    if (!prf) {
+      const get = (await navigator.credentials.get({
+        publicKey: passkeyGetOptions(
+          {
+            challenge: hexToBytes(start.challenge) as BufferSource,
+            rpId: start.rpId || rpId,
+            allowCredentials: [allowPasskey(cred.rawId, true)],
+            userVerification: 'required',
+            extensions: prfExtension(PRF_SALT, new Uint8Array(cred.rawId)),
+          },
+          true,
+        ),
+      })) as PublicKeyCredential | null
+      prf = get ? prfFrom(get) : null
+    }
+    if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
 
-  const att = cred.response as AuthenticatorAttestationResponse
-  const webauthnP256 = await compressedES256(att)
-  const direct = await deriveDirectP256(prf)
-  const phoneRoutineSecret = crypto.getRandomValues(new Uint8Array(32))
-  const phoneRoutineBip340Pub = secp256k1.getPublicKey(phoneRoutineSecret, true)
-  const kek = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
-    await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt'],
-  )
-  const nonce = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneRoutineSecret),
-  )
-  const enrollment: EnrollmentSecrets = {
-    vaultId: start.vaultId,
-    credId: bytesToHex(new Uint8Array(cred.rawId)),
-    webauthnP256: bytesToHex(webauthnP256),
-    phoneDirectP256: bytesToHex(direct.pub),
-    phoneRoutineBip340Pub: bytesToHex(phoneRoutineBip340Pub),
-    nonce: bytesToHex(nonce),
-    ciphertext: bytesToHex(ciphertext),
-  }
-  prf.fill(0)
-  phoneRoutineSecret.fill(0)
-  const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
-  const proposed = await vaultPost<{
-    vaultId: string
-    descriptorHash: string
-    descriptor: VaultPublicDescriptor
-  }>(
-    '/v1/enroll/propose',
-    {
+    const att = cred.response as AuthenticatorAttestationResponse
+    const webauthnP256 = await compressedES256(att)
+    const direct = await deriveDirectP256(prf)
+    const phoneRoutineSecret = crypto.getRandomValues(new Uint8Array(32))
+    const phoneRoutineBip340Pub = secp256k1.getPublicKey(phoneRoutineSecret, true)
+    const kek = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
+      await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt'],
+    )
+    const nonce = crypto.getRandomValues(new Uint8Array(12))
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneRoutineSecret),
+    )
+    const enrollment: EnrollmentSecrets = {
+      vaultId: start.vaultId,
+      credId: bytesToHex(new Uint8Array(cred.rawId)),
+      webauthnP256: bytesToHex(webauthnP256),
+      phoneDirectP256: bytesToHex(direct.pub),
+      phoneRoutineBip340Pub: bytesToHex(phoneRoutineBip340Pub),
+      nonce: bytesToHex(nonce),
+      ciphertext: bytesToHex(ciphertext),
+    }
+    prf.fill(0)
+    phoneRoutineSecret.fill(0)
+    const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
+    const proposed = await vaultPost<{
+      vaultId: string
+      descriptorHash: string
+      descriptor: unknown
+    }>(
+      '/v1/enroll/propose',
+      {
+        handle: start.handle,
+        userHandle: start.userId,
+        clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+        authenticatorData: bytesToHex(authData),
+        attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+        credentialId: enrollment.credId,
+        webauthnP256: enrollment.webauthnP256,
+        phoneDirectP256: enrollment.phoneDirectP256,
+        phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
+        vaultId: start.vaultId,
+        externalOwnerWalletXOnly: hardwareXOnly,
+        recoveryXOnly,
+      },
+      { 'X-Vault-Enrollment-Token': token },
+    )
+    const descriptor = requireV5ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
+    if (xOnly(descriptor.keys.recovery) !== recoveryXOnly) {
+      throw new Error('proposed recovery key does not match this client')
+    }
+    if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
+      throw new Error('proposed hardware key does not match this client')
+    }
+    const proof = signEnrollmentRecoveryPoP({
+      descriptor,
+      inviteHandle: start.handle,
+      recoverySecret,
+    })
+    const staged: StagedEnrollment = {
+      ...enrollment,
       handle: start.handle,
       userHandle: start.userId,
       clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
       authenticatorData: bytesToHex(authData),
       attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
-      credentialId: enrollment.credId,
-      webauthnP256: enrollment.webauthnP256,
-      phoneDirectP256: enrollment.phoneDirectP256,
-      phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
-      vaultId: start.vaultId,
-      externalOwnerWalletXOnly: hardwareXOnly,
-    },
-    { 'X-Vault-Enrollment-Token': token },
-  )
-  const localHash = hashDescriptor(proposed.descriptor)
-  if (localHash !== proposed.descriptorHash) {
-    throw new Error('proposed descriptor hash does not match this client')
+      hardwareXOnly,
+      recoveryXOnly: proof.recoveryXOnly,
+      recoveryPoP: proof.recoveryPoP,
+      inviteToken: token,
+      descriptorHash: proof.descriptorHash,
+      operationalAddress: descriptor.daily.address,
+      operationalScript: descriptor.daily.script,
+      savingsAddress: descriptor.savings.address,
+    }
+    saveStagedEnrollment(staged)
+    saveLocalKit(buildRecoveryKit(descriptor))
+    return { enrollment, descriptor }
+  } finally {
+    recoverySecret.fill(0)
   }
-  const staged: StagedEnrollment = {
-    ...enrollment,
-    handle: start.handle,
-    userHandle: start.userId,
-    clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
-    authenticatorData: bytesToHex(authData),
-    attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
-    hardwareXOnly,
-    inviteToken: token,
-    descriptorHash: proposed.descriptorHash,
-    operationalAddress: proposed.descriptor.operational.address,
-    operationalScript: proposed.descriptor.operational.script,
-    savingsAddress: proposed.descriptor.savings.address,
-  }
-  saveStagedEnrollment(staged)
-  return { enrollment, descriptor: proposed.descriptor }
 }
 
 export async function finishTenantEnrollment(
@@ -241,7 +271,9 @@ export async function finishTenantEnrollment(
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
   const staged = loadStagedEnrollment(storage)
-  if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
+  if (!staged?.vaultId || !staged.descriptorHash || !staged.recoveryXOnly || !staged.recoveryPoP) {
+    throw new Error('finish setup first')
+  }
   await vaultPost(
     '/v1/enroll/finish',
     {
@@ -256,6 +288,8 @@ export async function finishTenantEnrollment(
       phoneRoutineBip340Pub: staged.phoneRoutineBip340Pub,
       vaultId: staged.vaultId,
       externalOwnerWalletXOnly: staged.hardwareXOnly,
+      recoveryXOnly: staged.recoveryXOnly,
+      recoveryPoP: staged.recoveryPoP,
       descriptorHash: staged.descriptorHash,
     },
     { 'X-Vault-Enrollment-Token': token },

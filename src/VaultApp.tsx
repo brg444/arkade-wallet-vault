@@ -16,6 +16,8 @@ import VaultDesign from './screens/Vault/onboard/Design'
 import VaultHardware from './screens/Vault/onboard/Hardware'
 import VaultPasskey from './screens/Vault/onboard/Passkey'
 import VaultPlan from './screens/Vault/onboard/Plan'
+import VaultRecovery from './screens/Vault/onboard/Recovery'
+import VaultRecover from './screens/Vault/Recover'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
 import VaultPillNav, { tabForScreen } from './screens/Vault/PillNav'
 import { bootVaultPrefs } from './lib/vault/prefs'
@@ -34,6 +36,8 @@ export default function VaultApp() {
     hwsign: <VaultHwSign onBack={() => navigate('settings')} />,
     design: <VaultDesign />,
     hardware: <VaultHardware />,
+    recovery: <VaultRecovery />,
+    recover: <VaultRecover />,
     conditions: <VaultConditions />,
     plan: <VaultPlan />,
     passkey: <VaultPasskey />,

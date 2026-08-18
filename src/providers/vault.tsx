@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
 import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
@@ -39,20 +39,34 @@ import {
 import { sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultBitcoinAddress } from '../lib/vault/bitcoin'
-import { sampleDescriptor } from '../lib/vault/sample'
 import { fetchVaultStatus } from '../lib/vault/status'
-import { saveWatchRecord } from '../lib/vault/store'
 import {
   clearSetupPlan,
+  DEMO_RECOVERY_PUB,
   emptySetupPlan,
   loadSetupPlan,
   isFixturePub,
   parseCompressedPub,
   planReady,
   saveSetupPlan,
+  sameRole,
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
-import type { VaultPublicDescriptor, VaultStatus } from '../lib/vault/types'
+import { bytesToHex } from '../lib/vault/hex'
+import { V5_TEMPLATE } from '../lib/vault/v5/constants'
+import { parseRecoverySecret, recoverySecretMatches } from '../lib/vault/v5/enroll'
+import { scalarSecret } from '../lib/vault/v5/fixtures'
+import { buildRecoveryKit } from '../lib/vault/v5/kit'
+import { findLocalKit, loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
+import { previewV5Descriptor } from '../lib/vault/v5/preview'
+import {
+  alertCopy,
+  loadSeenOutpoints,
+  pollPendingInitiates,
+  saveSeenOutpoints,
+  type InitiateAlert,
+} from '../lib/vault/v5/watch'
+import type { VaultStatus } from '../lib/vault/types'
 
 export type VaultAccount = 'spend' | 'savings'
 
@@ -73,6 +87,8 @@ export type VaultScreen =
   | 'signin'
   | 'handoff'
   | 'hwsign'
+  | 'recovery'
+  | 'recover'
 
 export interface VaultSpend {
   address: string
@@ -86,6 +102,10 @@ interface VaultContextProps {
   addTestCoins: () => Promise<void>
   amountSats: number
   applyHardware: (raw: string, demo?: boolean) => void
+  applyRecovery: (raw: string, secret?: string, demo?: boolean) => void
+  downloadRecoveryKit: () => string
+  initiateAlert: string
+  initiateAlerts: InitiateAlert[]
   approvePreviewSend: () => Promise<void>
   busy: boolean
   canSend: boolean
@@ -142,6 +162,10 @@ export const VaultContext = createContext<VaultContextProps>({
   addTestCoins: async () => {},
   amountSats: 0,
   applyHardware: () => {},
+  applyRecovery: () => {},
+  downloadRecoveryKit: () => '',
+  initiateAlert: '',
+  initiateAlerts: [],
   approvePreviewSend: async () => {},
   busy: false,
   canSend: false,
@@ -192,8 +216,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [setup, setSetup] = useState<VaultSetupPlan>(emptySetupPlan)
   const [preview, setPreview] = useState(false)
   const [status, setStatus] = useState<VaultStatus | null>(null)
-  const [descriptor, setDescriptor] = useState<VaultPublicDescriptor | null>(null)
   const [enrollment, setEnrollment] = useState<EnrollmentSecrets | null>(null)
+  const [initiateAlert, setInitiateAlert] = useState('')
+  const [initiateAlerts, setInitiateAlerts] = useState<InitiateAlert[]>([])
+  const recoverySecretRef = useRef<Uint8Array | null>(null)
   const [demoAvailable, setDemoAvailable] = useState(false)
   const [demoCredit, setDemoCredit] = useState(0)
   const [previewSpent, setPreviewSpent] = useState(0)
@@ -296,19 +322,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return next
   }, [])
 
-  const sample = useMemo(() => sampleDescriptor(), [])
-  const plannedDescriptor = useMemo(() => {
-    const base = descriptor || sample
-    if (!setup.hardwarePub) return base
-    return {
-      ...base,
-      keys: {
-        ...base.keys,
-        externalOwnerWallet: setup.hardwarePub,
-      },
-    }
-  }, [descriptor, sample, setup])
-
   const operationalAddress = addressPin?.operationalAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
@@ -339,12 +352,49 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           throw new Error('This Mutinynet vault requires the hardware key already configured on the service')
         }
         persist({ ...setup, hardwarePub, hardwareIsDemo: demo })
-        setScreen('conditions')
+        setScreen('recovery')
       } catch (err) {
         setError(humanizeVaultError(err))
       }
     },
     [liveNetwork, persist, setup, status?.externalOwnerWalletPub, status?.network],
+  )
+
+  const rememberRecoverySecret = useCallback((recoveryPub: string, secret: string, demo: boolean) => {
+    recoverySecretRef.current?.fill(0)
+    recoverySecretRef.current = null
+    if (secret.trim()) {
+      const bytes = parseRecoverySecret(secret)
+      if (!recoverySecretMatches(bytes, recoveryPub)) {
+        bytes.fill(0)
+        throw new Error('Recovery secret does not match the public key')
+      }
+      recoverySecretRef.current = bytes
+      return
+    }
+    if (demo && recoveryPub === DEMO_RECOVERY_PUB) {
+      recoverySecretRef.current = scalarSecret(5)
+    }
+  }, [])
+
+  const applyRecovery = useCallback(
+    (raw: string, secret = '', demo = false) => {
+      setError('')
+      try {
+        const recoveryPub = parseCompressedPub(raw, 'recovery key')
+        if (!setup.hardwarePub) throw new Error('Set hardware first')
+        if (sameRole(recoveryPub, setup.hardwarePub)) throw new Error('Recovery must be a different key')
+        if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(recoveryPub)) {
+          throw new Error('Demo keys cannot be used on this vault')
+        }
+        rememberRecoverySecret(recoveryPub, secret, demo)
+        persist({ ...setup, recoveryPub, recoveryIsDemo: demo })
+        setScreen('conditions')
+      } catch (err) {
+        setError(humanizeVaultError(err))
+      }
+    },
+    [liveNetwork, persist, rememberRecoverySecret, setup, status?.network],
   )
 
   const setCondition = useCallback(
@@ -376,13 +426,38 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScreen('passkey')
   }, [setup])
 
+  const localV5Descriptor = useCallback(() => {
+    if (!setup.hardwarePub || !setup.recoveryPub) return null
+    try {
+      return previewV5Descriptor({
+        vaultId: status?.vaultId || enrollment?.vaultId,
+        network: status?.network === 'regtest' ? 'regtest' : 'mutinynet',
+        hardwarePub: setup.hardwarePub,
+        recoveryPub: setup.recoveryPub,
+        phonePub: enrollment?.phoneRoutineBip340Pub,
+        phoneDirectP256: enrollment?.phoneDirectP256,
+      })
+    } catch {
+      return null
+    }
+  }, [enrollment, setup.hardwarePub, setup.recoveryPub, status?.network, status?.vaultId])
+
   const sealPlan = useCallback(() => {
     const next = persist({ ...setup, complete: true })
-    const rec = saveWatchRecord(plannedDescriptor, status?.clientOrigin || 'preview')
-    setDescriptor(rec.descriptor)
+    const descriptor = localV5Descriptor()
+    if (descriptor) saveLocalKit(buildRecoveryKit(descriptor))
     setPreview(!status?.enrolled)
     return next
-  }, [persist, plannedDescriptor, setup, status?.clientOrigin, status?.enrolled])
+  }, [localV5Descriptor, persist, setup, status?.enrolled])
+
+  const downloadRecoveryKit = useCallback(() => {
+    const id = status?.vaultId || enrollment?.vaultId || ''
+    const stored = (id && loadLocalKit(id)) || findLocalKit()
+    const descriptor = stored?.descriptor || localV5Descriptor()
+    if (!descriptor) throw new Error('Finish setup first.')
+    const kit = stored || buildRecoveryKit(descriptor)
+    return JSON.stringify(kit, null, 2)
+  }, [enrollment?.vaultId, localV5Descriptor, status?.vaultId])
 
   const enterWithoutPasskey = useCallback(() => {
     setError('')
@@ -440,8 +515,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       try {
+        const secret = recoverySecretRef.current
         const out = await enrollWithPasskey(token, {
           hardwarePub: setup.hardwarePub,
+          recoveryPub: setup.recoveryPub,
+          recoverySecret: secret ? bytesToHex(secret) : undefined,
         })
         setEnrollment(out.enrollment)
         saveEnrollment(out.enrollment)
@@ -460,6 +538,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         setError(humanizeVaultError(err))
       } finally {
+        recoverySecretRef.current?.fill(0)
+        recoverySecretRef.current = null
         setBusy(false)
       }
     },
@@ -743,6 +823,41 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScreen('welcome')
   }, [liveNetwork])
 
+  useEffect(() => {
+    const liveV5 = status?.templateVersion === V5_TEMPLATE
+    const id = status?.vaultId || enrollment?.vaultId || ''
+    const kit = (id && loadLocalKit(id)) || findLocalKit()
+    if (!liveV5 || !kit) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const seen = loadSeenOutpoints(kit.descriptor.vaultId)
+        const next = await pollPendingInitiates({
+          descriptor: kit.descriptor,
+          fetchUtxos: fetchAddressUtxos,
+          seen,
+        })
+        if (cancelled) return
+        saveSeenOutpoints(kit.descriptor.vaultId, next.seen)
+        if (next.alerts.length) {
+          setInitiateAlerts((prev) => [...next.alerts, ...prev].slice(0, 12))
+          setInitiateAlert(alertCopy(next.alerts[0]))
+        }
+      } catch {
+        // Watcher is best-effort. Missing coins is not a send failure.
+      }
+    }
+    void tick()
+    const timer = window.setInterval(() => void tick(), 20_000)
+    const onFocus = () => void tick()
+    window.addEventListener('focus', onFocus)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [enrollment?.vaultId, status?.templateVersion, status?.vaultId])
+
   const value = useMemo<VaultContextProps>(
     () => ({
       acceptDesign,
@@ -750,6 +865,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       addTestCoins,
       amountSats,
       applyHardware,
+      applyRecovery,
+      downloadRecoveryKit,
+      initiateAlert,
+      initiateAlerts,
       approvePreviewSend,
       busy,
       canSend: amountSats > DUST_SATS + spend.fee,
@@ -811,6 +930,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       addTestCoins,
       amountSats,
       applyHardware,
+      applyRecovery,
+      downloadRecoveryKit,
+      initiateAlert,
+      initiateAlerts,
       approvePreviewSend,
       busy,
       completeSavingsHandoff,

@@ -48,6 +48,32 @@ describe('v5 Recovery Kit CLI', () => {
     expect(inspectTransitionPsbt(psbt).p2aSats).toBe(240)
   })
 
+  it('refuses a clawback whose guardian is the suspected claimant', () => {
+    const kit = fixtureKit()
+    const cmd = parseKitCli(
+      [
+        'clawback',
+        'kit.json',
+        '--kind',
+        'savings',
+        '--claimant',
+        'hardware',
+        '--guardian',
+        'hardware',
+        '--txid',
+        '11'.repeat(32),
+        '--vout',
+        '0',
+        '--value',
+        '50000',
+        '--fee',
+        '500',
+      ],
+      () => kit,
+    )
+    expect(() => runKitCli(cmd)).toThrow(/guardian/)
+  })
+
   it('reports remaining CSV from chain heights, not Normal UTXO age', () => {
     const kit = fixtureKit()
     const cmd = parseKitCli(

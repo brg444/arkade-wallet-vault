@@ -75,6 +75,7 @@ export interface VaultStatus {
   enrollmentMode?: string
   passkeyLoginAvailable?: boolean
   savingsScript?: string
+  recoveryPub?: string
 }
 
 export interface WatchRecord {

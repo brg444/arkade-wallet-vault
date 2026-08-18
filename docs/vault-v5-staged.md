@@ -61,6 +61,8 @@ Implemented as `taprootTweakPubkey(NUMS, context)` in `src/lib/vault/v5/context.
 
 **Cosigners:** required for initiate and clawback (Savings too). **Not** required after Pending matures. They are an **anti-replay oracle**, not a general PSBT signer.
 
+**Route layer:** `selectRoute` / `classifyScript` in `src/lib/vault/v5/route.ts`. Transaction list: `docs/v5-transactions.md`. Do not put L1 trees in ContractManager.
+
 **Sign-once (schema 6):** key is `(vault_id, outpoint, purpose)` where purpose is only `initiate` or `clawback`. Never `claim`. Persist dest + last sighash + signature. Wallet copy of the rule: `src/lib/vault/v5/replay.ts`.
 
 - Same dest + same single input + higher fee → **re-sign** (clawback wins the RBF race this way).
@@ -81,12 +83,15 @@ On-chain encrypted descriptor: **later, own review.**
 
 ## Next implementation slices
 
-1. Context NUMS, trees, dest+P2A+packet auth scripts, derived tweaks.
-2. Wallet initiate / clawback / claim PSBTs (Bitcoin path signed; emulator/Mutinynet relay still open).
-3. Recovery Kit inspect + offline CLI (`bun scripts/vault-recovery-kit.ts`), including Esplora-backed session status.
-4. Schema 6 + watcher.
-5. Enroll + PoP.
-6. Keep v4 spend; v4→v5 sweep.
+1. Context NUMS, trees, dest+P2A+packet auth scripts, derived tweaks. Done.
+2. Wallet initiate / clawback / claim PSBTs. Done.
+3. Recovery Kit inspect + offline CLI. Done.
+4. Route layer. Done.
+5. Wallet schema-6 replay store + browser watcher/alerts. Done on the client. Authorizer SQLite schema 6 is the other session.
+6. Enroll + required recovery PoP. Done in the wallet. Authorizer must return a v5 descriptor; this client refuses v4 proposes.
+7. v4→v5 sweep is **manual**. Do not mint v4. Do not add sweep tooling. Existing v4 UTXOs stay until you send them.
+
+Wallet UI: onboard recovery, Recover + kit in Settings, leftover-v4 warning on Keys if recovery is missing.
 
 ## Prompt for the other session
 
@@ -110,7 +115,7 @@ Staged protocol: constrained initiation → Pending whose CSV starts **now** →
 
 **Recovery Kit** (not “Emergency Exit”) ships in the same release: downloadable public descriptor + offline CLI. Encrypted on-chain backup is a **later, separately reviewed** protocol. It must not gate v5.
 
-Existing v4 UTXOs stay. Sweep them into v5. **Stop minting v4.**
+Existing v4 UTXOs stay until you send them. Sweep is manual. **Stop minting v4.**
 
 ## What Bitcoin CSV actually does
 
