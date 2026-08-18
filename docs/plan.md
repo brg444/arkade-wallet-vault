@@ -18,25 +18,25 @@ Live Mutinynet is v4. Do not pretend otherwise.
 | Item         | Do                                                                                              |
 | ------------ | ----------------------------------------------------------------------------------------------- |
 | Contract     | Keep `phone-direct-p256-routine-3of3-admin-phone-hww-v4` + `…onchain-v3` + CSV 144/6 frozen     |
-| Client       | This PWA. Leftover v4 UTXOs still spend. Do not mint new v4 once v5 enroll is on the authorizer |
+| Client       | This PWA. Skip recovery mints v4. A tenant who chose v5 keeps leftover v4 UTXOs spendable |
 | Server       | Railway `authorizer-next`. Invite `/v1/enroll/*`. No `/v1/register`                             |
 | Leftover v3  | Exact-template quarantine only. Anything else fails closed                                      |
 | Packaging    | Two processes, two hosts. Document the split. **Do not extract repos yet**                      |
 | Policy knobs | None. Caps and trees are the named program                                                      |
 | VTXO         | Out. Do not merge Ark balances into Home                                                        |
 
-Client code under `src/lib/vault/v5/` is the next-product prototype. The
-live authorizer still rebuilds v4 descriptors. A v5-only client will fail
-enroll against today’s server until Next lands.
+Client code under `src/lib/vault/v5/` is the optional-recovery program.
+The live authorizer rebuilds v4 when recovery is skipped and v5 when a
+recovery key is supplied. Do not treat skip-recovery as an error.
 
 ## Next — v5 is the product
 
 Named program: `phone-hww-recovery-staged-v5` / schema `arkade-vault/v5`.
 
-The authorizer is already implementing this (same `poc/2fa-vault` tree):
+The authorizer already rebuilds this family when recovery is supplied:
 schema 6 `recovery_session`, `DecideReplay` (refuse a second dest), and
-Go execution tests against client initiate/clawback goldens. It does **not**
-yet rebuild or enroll the v5 family — `TemplateVersion` is still v4.
+Go/TS goldens for the 14-tree addresses. Skip recovery and `TemplateVersion`
+stays v4.
 
 | Item          | Do                                                                                                                             |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -96,25 +96,21 @@ one owner per layer. Docs now match that _shape_:
 
 | Read this                                   | Owner                     |
 | ------------------------------------------- | ------------------------- |
-| [README.md](README.md) → [live.md](live.md) | What is funded today (v4) |
-| [v5-overview.md](v5-overview.md)            | Next product              |
-| [v5-transactions.md](v5-transactions.md)    | Trees and txs             |
-| [v5-api.md](v5-api.md)                      | HTTP / kit CLI            |
-| `src/lib/vault/v5/`                         | Client tx brain           |
-| Authorizer `cmd/authorizer`                 | Signer (still v4 mint)    |
+| [architecture.md](architecture.md)          | One map, one owner per layer |
+| [README.md](README.md) → [live.md](live.md) | What is funded today         |
+| [v5-overview.md](v5-overview.md)            | Optional recovery program    |
+| [v5-transactions.md](v5-transactions.md)    | Trees and txs                |
+| [v5-api.md](v5-api.md)                      | HTTP / kit CLI               |
+| `src/lib/vault/v5/`                         | Client tx brain              |
+| Authorizer `cmd/authorizer`                 | Signer (v4 default, v5 if recovery) |
 
 That is not operational maturity. There is no one-command unvault/cancel
-race, no always-on watcher, no shared Go/TS goldens, no extracted daemon.
-The next quality jump is **not more prose**. It is the authorizer
-implementing the spec the docs already claim: rebuild v5 trees, persist
-schema 6 sessions, refuse a second dest.
+race, no always-on watcher, no extracted daemon. The next quality jump is
+the extract and leftover v4 spend until swept.
 
 ## Order of work
 
-1. Authorizer rebuilds v5 descriptors and refuses v4 propose for new invites
-2. Schema 6 + `recovery_session` + rehearsal from a schema-5 snapshot
-3. Initiate / clawback / claim on the authorizer (claim unsigned)
-4. Shared Go/TS golden vectors for the v5 family
-5. Recovery Kit + persistent watcher (alert only)
-6. Cut over live enroll; leftover v4 UTXOs spend until swept
-7. Extract vault-server image from the emulator monorepo
+1. Leftover v4 UTXOs spend until swept. Do not mint new v4 after a tenant chooses v5.
+2. Recovery Kit + persistent watcher (alert only)
+3. Extract vault-server image from the emulator monorepo
+4. Thin PWA over `src/lib/vault`

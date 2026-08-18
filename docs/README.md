@@ -5,16 +5,16 @@ hardware. Optional recovery. How we say that: [voice.md](voice.md).
 
 | Read                                     | What it is                                                    |
 | ---------------------------------------- | ------------------------------------------------------------- |
-| [voice.md](voice.md)                     | Product language. Start here.                                 |
+| [architecture.md](architecture.md)       | Where each layer lives. Start here if you are mapping the stack |
+| [voice.md](voice.md)                     | Product language                                              |
 | [plan.md](plan.md)                       | Now / next / later                                            |
 | [live.md](live.md)                       | **Funded today** on Mutinynet                                 |
-| [v5-overview.md](v5-overview.md)         | Next program (waiting period, not a theft clock on old coins) |
+| [v5-overview.md](v5-overview.md)         | Optional recovery program                                     |
 | [v5-transactions.md](v5-transactions.md) | Trees and each transaction                                    |
 | [v5-api.md](v5-api.md)                   | HTTP, route table, kit CLI                                    |
 | [v5-recovery-kit.md](v5-recovery-kit.md) | Last-resort file, offline                                     |
 
-The live signer still mints the simpler vault. The app already speaks
-the next one. Don’t mix those up.
+Default enroll is v4. v5 only if the tenant adds recovery. Don’t mix those up.
 
 ## Not the spec
 
