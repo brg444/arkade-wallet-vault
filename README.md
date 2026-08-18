@@ -1,83 +1,70 @@
-# Spending vault
+# Vault client
 
-This branch is a **Mutinynet L1 Taproot vault client**, not the Arkade VTXO
-wallet. It enrolls a passkey, pins a hardware key, and spends ordinary
-`tb1p…` UTXOs against a public authorizer.
+This branch is the **Mutinynet L1 Taproot vault client**. It is not the
+Arkade VTXO wallet.
+
+The **signer** is a separate process (`cmd/authorizer`). This repo is the
+hostile proposer: a PWA that enrolls a passkey, holds a PRF-wrapped software
+key, and asks the authorizer to cosign.
 
 Live demo: [https://arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
 
-It is a demonstration. Mutinynet coins only. Not production custody, not an
-HSM, not an Ark VTXO wallet. Do not send real bitcoin.
+Mutinynet coins only. Not production custody. Not an HSM. Do not send real
+bitcoin.
 
-## What you get
+**Now / next:** [docs/plan.md](docs/plan.md)  
+**Live v4 contract:** [docs/live.md](docs/live.md)  
+**Next product (v5):** [docs/v5-overview.md](docs/v5-overview.md)
 
-Two accounts on the same enrolled vault:
+## What is live today
 
-| Account | How you spend now | If you lose something |
-| --- | --- | --- |
-| Daily | This device, under a 50k sat send cap and 100k sat daily allowance | Device-only CSV after **144** blocks (~72 min on Mutinynet) |
-| Savings | This device + hardware | Hardware-only CSV after **6** blocks (~3 min); device-only after 144 |
+The public authorizer still enrolls and spends **v4**:
 
-Hardware can always move first. A stolen phone with the passkey cannot beat
-hardware to Savings.
+- Daily: routine 3-of-3 under a 50k / 100k sat cap
+- Savings: this device + hardware
+- CSV 144 = this device (lost hardware); CSV 6 = hardware (lost device)
+- No RecoveryKey
 
-There is no RecoveryKey. Admin is device + hardware. The retired v3
-`RecoveryKey` leaf is not in this product.
+Hardware can move first on mature Savings. That is why v5 is the next
+product: staging so a theft clock starts *now*, not at the coin’s age.
 
-## On-chain tree
+## Packaging
 
-Template `phone-direct-p256-routine-3of3-admin-phone-hww-v4`. Policy
-`mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3`.
-
-Daily (Operational) has four paths:
-
-1. Routine 3-of-3: `PhoneRoutineBIP340` + tweaked VaultCosigner + tweaked
-   ArkadeCosigner
-2. Admin 2-of-2: this device + hardware
-3. CSV + this device (144)
-4. CSV + hardware (6)
-
-Savings has admin plus the same two CSV leaves. No routine path. No
-cosigner can spend Savings.
-
-The passkey does not sign Bitcoin. WebAuthn proves origin / RP / UV off
-chain. A separate PRF-derived P-256 key signs the Arkade sighash. The
-browser keeps a random secp256k1 software key (`PhoneRoutineBIP340`)
-encrypted under the PRF.
-
-## How the pieces talk
+Deployable signer surface: `/Users/alexb./code/arkade-vault-server`
+([contract-pack.json](src/lib/vault/contract-pack.json)). Go still builds
+from the emulator checkout until v5 mint is extracted.
 
 ```text
-browser  →  Vercel (same-origin /v1)  →  Railway authorizer-next
-                                              ├─ file-backed VaultCosigner
-                                              ├─ SQLite ledger
-                                              └─ outbound HTTPS to pinned Arkade cosigner
+vault client (this repo, Vercel)
+    same-origin /v1
+        → vault server (authorizer-next, Railway)
+              VaultCosigner + SQLite
+              outbound HTTPS → pinned Arkade cosigner
 ```
 
-Production never compiles an authorizer URL into the bundle. The page calls
-`/v1` on its own origin. Vercel adds `X-Vault-Gateway-Secret` and proxies
-only allowlisted paths. `/v1/register` is not one of them (404). Enrollment
-is invite-gated `/v1/enroll/start` → `/propose` → `/finish`.
+Two deployables. One frozen contract pack (template, policy, domains).
+Production does not compile an authorizer URL into the bundle. Vercel adds
+`X-Vault-Gateway-Secret`. `/v1/register` is 404. Enrollment is invite-gated.
 
-Server env on Vercel:
-
-| Name | Role |
+| Server env | Role |
 | --- | --- |
-| `AUTHORIZER_ORIGIN` | Railway authorizer-next origin |
+| `AUTHORIZER_ORIGIN` | Railway authorizer-next |
 | `AUTHORIZER_GATEWAY_SECRET` | Shared with the authorizer |
 
-## Run it
+Do not make trees or caps operator-configurable. New rules are a new
+**named** template, fail-closed against the old one.
 
-This workspace uses [Bun](https://bun.sh).
+## Run
+
+Bun.
 
 ```bash
 bun install
 bun run start:vault
 ```
 
-Open [http://localhost:3003](http://localhost:3003). Point the page at a
-local or Mutinynet authorizer with `VITE_VAULT_API` (dev only). Production
-ignores that variable.
+[http://localhost:3003](http://localhost:3003). Dev-only: `VITE_VAULT_API`.
+Production ignores it.
 
 ```bash
 bun run test
@@ -86,33 +73,16 @@ bun run build:vault
 ```
 
 `bun run start` / `bun run build` still build the upstream VTXO wallet.
-That path is not what Vercel deploys.
+Vercel deploys `build:vault` only.
 
-## What this client will refuse
+## Trust
 
-- Generator G or 2G as the hardware key on Mutinynet
-- A status or descriptor that still carries `recoveryKeyPub`
-- A leftover v3 template
-- First-seen TOFU of a deposit address (pin after enroll finish only)
-- Cross-origin `connect` in production (CSP is same-origin)
-
-The compiled kiosk addresses in `src/lib/vault/kiosk.ts` are the retired
-empty v3 singleton. They are not seeded into Receive.
-
-## Honest limits
-
-- Browser-memory software key, not Secure Enclave or attestation
-- Railway + Vercel isolation, not an enclave
-- SQLite has no anti-rollback store
-- The public Arkade cosigner is an availability and privacy dependency
-- Preflight/bind traffic is not private
-- Caps are authorizer policy, not a Bitcoin consensus rule
-
-The authorizer lives in a separate tree (`poc/2fa-vault`). Schema 6, if it
-ever drops the leftover `recovery_key_compressed` column, is a separate RFC.
+- Browser-memory software key, not Secure Enclave
+- Railway + Vercel isolation, not VLS / anti-rollback
+- Same-origin XSS can steal an unlocked PhoneRoutine or PRF
+- The public Arkade cosigner is availability and privacy
+- Caps are signer policy, not Bitcoin consensus
 
 ## Upstream
 
-Forked from [arkade-os/wallet](https://github.com/arkade-os/wallet). The
-VTXO app, Boltz, Nostr backup, and `ghcr.io/arkade-os/wallet` image are
-that project. This branch is the vault-mode client only.
+Forked from [arkade-os/wallet](https://github.com/arkade-os/wallet).
