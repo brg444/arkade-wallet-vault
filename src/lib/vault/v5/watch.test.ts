@@ -14,7 +14,7 @@ describe('v5 pending watcher', () => {
     })
     expect(first.alerts).toHaveLength(1)
     expect(first.alerts[0].familyKey).toBe('savings-hardware')
-    expect(alertCopy(first.alerts[0])).toMatch(/hold started on savings as hardware/i)
+    expect(alertCopy(first.alerts[0])).toMatch(/started recovery on Savings with hardware/i)
     const second = await pollPendingInitiates({
       descriptor,
       seen: first.seen,

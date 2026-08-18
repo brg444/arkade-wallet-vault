@@ -11,13 +11,14 @@ import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { canBrowserShareData, shareData } from '../../lib/share'
+import { fetchAddressUtxos } from '../../lib/vault/esplora'
+import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
 import { familyFromDescriptor } from '../../lib/vault/v5/descriptor'
 import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/v5/kit'
 import { planClaim, planClawback, planInitiate } from '../../lib/vault/v5/recoverFlow'
-import { fetchAddressUtxos } from '../../lib/vault/esplora'
-import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
 import { VaultContext } from '../../providers/vault'
-import { KeyCard } from './ui'
+import { KeyCard, Reveal } from './ui'
+import { ChoiceCard } from './onboard/Layout'
 
 function downloadJson(name: string, body: string) {
   const hidden = document.createElement('a')
@@ -26,6 +27,17 @@ function downloadJson(name: string, body: string) {
   document.body.appendChild(hidden)
   hidden.click()
   hidden.remove()
+}
+
+const ACCOUNT_LABEL: Record<VaultKind, string> = {
+  daily: 'Spending',
+  savings: 'Savings',
+}
+
+const KEY_LABEL: Record<Claimant, string> = {
+  phone: 'This device',
+  hardware: 'Hardware',
+  recovery: 'Recovery',
 }
 
 export default function VaultRecover() {
@@ -53,9 +65,19 @@ export default function VaultRecover() {
     try {
       return inspectRecoveryKit(parseRecoveryKit(JSON.parse(raw)))
     } catch (err) {
-      return { error: err instanceof Error ? err.message : 'Not a Recovery Kit' }
+      return { error: err instanceof Error ? err.message : 'That file is not a Recovery Kit' }
     }
   }, [kitJson, pasted])
+
+  const saveKit = () => {
+    setLocalError('')
+    try {
+      downloadJson('arkade-recovery-kit.json', downloadRecoveryKit())
+      toast('Recovery Kit saved')
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')
+    }
+  }
 
   return (
     <>
@@ -64,179 +86,111 @@ export default function VaultRecover() {
         <Padded>
           <FlexCol>
             <Text wrap>
-              Every hold is an alert. Guardians can send it to a vault that excludes the suspect. After the wait, only
-              the claimant can take the coins. This app does not cancel for you.
+              If you lose a key, start recovery with one you still have. That begins a waiting period. If you did not
+              start it, cancel it. After the wait, you can move the coins.
             </Text>
+
             {initiateAlert ? (
-              <KeyCard title='Hold in progress' role={initiateAlert} status='Alert' />
+              <KeyCard title='Recovery in process' role={initiateAlert} status='Alert' />
             ) : (
-              <KeyCard title='No hold seen' role='This device watches Pending addresses when it is open.' />
-            )}
-            {initiateAlerts.map((item) => (
               <KeyCard
-                key={`${item.txid}:${item.vout}`}
-                title={item.familyKey}
-                role={`${item.txid.slice(0, 8)}… · ${item.value} sats`}
+                title='No recovery in process'
+                role='If someone starts one, this phone can warn you while the app is open.'
               />
-            ))}
-            <Text wrap>Start a hold, claw it back, or claim after the wait. This app does not cancel for you.</Text>
-            <select value={kind} onChange={(e) => setKind(e.target.value as VaultKind)} data-testid='recover-kind'>
-              {VAULT_KINDS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select
-              value={claimant}
-              onChange={(e) => setClaimant(e.target.value as Claimant)}
-              data-testid='recover-claimant'
-            >
-              {CLAIMANTS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <Input
-              label='Claim destination'
-              placeholder='tb1p…'
-              value={claimDest}
-              onChange={setClaimDest}
-              testId='recover-claim-dest'
+            )}
+            {initiateAlerts.map((item) => {
+              const [account, key] = item.familyKey.split('-') as [VaultKind, Claimant]
+              return (
+                <KeyCard
+                  key={`${item.txid}:${item.vout}`}
+                  title={`${ACCOUNT_LABEL[account]} · ${KEY_LABEL[key]}`}
+                  role={`${item.value.toLocaleString()} sats waiting`}
+                />
+              )
+            })}
+
+            <Text bold small>
+              What is the Recovery Kit?
+            </Text>
+            <Text wrap>
+              A last-resort file. Save it somewhere you can find if this app is gone. It is not a seed phrase and it
+              does not hold your keys.
+            </Text>
+            <KeyCard title='What it is' role='A map of this vault. Addresses, waits, and who can cancel.' />
+            <KeyCard
+              title='What it is for'
+              role='Start recovery, cancel it, or move coins after the wait — even from the offline tool.'
             />
-            {psbtOut ? (
+            <KeyCard
+              title='What it cannot do'
+              role='It cannot move coins from the original address if both vault services are gone. This device plus hardware still can.'
+            />
+            {report && 'trees' in report ? (
               <Text color='neutral-600' tiny wrap>
-                PSBT ready ({psbtOut.slice(0, 20)}…)
+                This kit is for vault {report.vaultId.slice(0, 8)}… · {report.trees.length} addresses
               </Text>
             ) : null}
-            {report && 'trees' in report ? (
-              <>
-                <Text color='neutral-600' tiny wrap>
-                  Vault {report.vaultId} · {report.hash.slice(0, 12)}…
-                </Text>
-                {report.trees.slice(0, 4).map((tree) => (
-                  <KeyCard key={tree.role} title={tree.role} role={tree.address} />
-                ))}
-                <Text color='neutral-600' tiny wrap>
-                  {report.warnings[0]}
-                </Text>
-              </>
-            ) : null}
             {report && 'error' in report && pasted.trim() ? <ErrorMessage error text={report.error} /> : null}
-            <Input
-              label='Recovery Kit JSON'
-              placeholder='Paste a kit to inspect'
-              value={pasted}
-              onChange={setPasted}
-              testId='recovery-kit-json'
-            />
+            <Reveal label='I already have a kit file'>
+              <Input
+                label='Recovery Kit'
+                placeholder='Paste the file to check it'
+                value={pasted}
+                onChange={setPasted}
+                testId='recovery-kit-json'
+              />
+            </Reveal>
+
+            <Reveal label='I lost a key'>
+              <Text color='neutral-600' tiny wrap>
+                Which account, and which key is gone?
+              </Text>
+              {VAULT_KINDS.map((item) => (
+                <ChoiceCard
+                  key={item}
+                  title={ACCOUNT_LABEL[item]}
+                  detail={item === 'daily' ? 'This device can spend today' : 'Needs hardware too'}
+                  selected={kind === item}
+                  onClick={() => setKind(item)}
+                  testId={`recover-kind-${item}`}
+                />
+              ))}
+              {CLAIMANTS.map((item) => (
+                <ChoiceCard
+                  key={item}
+                  title={KEY_LABEL[item]}
+                  detail={
+                    item === 'phone'
+                      ? 'This phone or its passkey'
+                      : item === 'hardware'
+                        ? 'The hardware key'
+                        : 'The optional recovery key'
+                  }
+                  selected={claimant === item}
+                  onClick={() => setClaimant(item)}
+                  testId={`recover-key-${item}`}
+                />
+              ))}
+              <Input
+                label='After the wait, send coins here'
+                placeholder='tb1p…'
+                value={claimDest}
+                onChange={setClaimDest}
+                testId='recover-claim-dest'
+              />
+              {psbtOut ? (
+                <Text color='neutral-600' tiny wrap>
+                  Transaction copied. Sign it with the key you still have.
+                </Text>
+              ) : null}
+            </Reveal>
+
             <ErrorMessage error={Boolean(error || localError)} text={error || localError} />
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button
-          label='Start hold'
-          testId='recover-initiate'
-          onClick={() => {
-            setLocalError('')
-            void (async () => {
-              try {
-                const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-                const family = familyFromDescriptor(kit.descriptor)
-                const source = kind === 'daily' ? operationalAddress : savingsAddress
-                if (!source) throw new Error('No source address')
-                const coin = (await fetchAddressUtxos(source)).find(
-                  (item) => item.status.confirmed && item.value > 1000,
-                )
-                if (!coin) throw new Error('No confirmed coin on that account')
-                const built = planInitiate({
-                  family,
-                  kind,
-                  claimant,
-                  coin: { txid: coin.txid, vout: coin.vout, value: coin.value },
-                  feeSats: 500,
-                  vaultId: kit.descriptor.vaultId,
-                })
-                setPsbtOut(built.psbtHex)
-                await copyToClipboard(built.psbtHex)
-                toast(`Hold dest ${built.destAddress.slice(0, 12)}…`)
-              } catch (err) {
-                setLocalError(err instanceof Error ? err.message : 'Could not start hold')
-              }
-            })()
-          }}
-        />
-        <Button
-          secondary
-          label='Claw back latest'
-          testId='recover-clawback'
-          onClick={() => {
-            setLocalError('')
-            try {
-              const latest = initiateAlerts[0]
-              if (!latest) throw new Error('No hold seen')
-              const [k, c] = latest.familyKey.split('-') as [VaultKind, Claimant]
-              const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-              const built = planClawback({
-                family: familyFromDescriptor(kit.descriptor),
-                kind: k,
-                claimant: c,
-                coin: { txid: latest.txid, vout: latest.vout, value: latest.value },
-                feeSats: 500,
-                vaultId: kit.descriptor.vaultId,
-              })
-              setPsbtOut(built.psbtHex)
-              void copyToClipboard(built.psbtHex)
-              toast(`Quarantine ${built.destAddress.slice(0, 12)}…`)
-            } catch (err) {
-              setLocalError(err instanceof Error ? err.message : 'Could not claw back')
-            }
-          }}
-        />
-        <Button
-          secondary
-          label='Build claim'
-          testId='recover-claim'
-          onClick={() => {
-            setLocalError('')
-            try {
-              const latest = initiateAlerts[0]
-              if (!latest || !claimDest.trim()) throw new Error('Need a seen hold and a destination')
-              const [k, c] = latest.familyKey.split('-') as [VaultKind, Claimant]
-              const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-              const built = planClaim({
-                family: familyFromDescriptor(kit.descriptor),
-                kind: k,
-                claimant: c,
-                coin: { txid: latest.txid, vout: latest.vout, value: latest.value },
-                destAddress: claimDest.trim(),
-                feeSats: 500,
-                network: kit.descriptor.network,
-              })
-              setPsbtOut(built.psbtHex)
-              void copyToClipboard(built.psbtHex)
-              toast('Claim PSBT copied. Dest is not pinned.')
-            } catch (err) {
-              setLocalError(err instanceof Error ? err.message : 'Could not claim')
-            }
-          }}
-        />
-        <Button
-          label='Download Recovery Kit'
-          testId='download-recovery-kit'
-          onClick={() => {
-            setLocalError('')
-            try {
-              const body = downloadRecoveryKit()
-              downloadJson('arkade-recovery-kit.json', body)
-              toast('Recovery Kit saved')
-            } catch (err) {
-              setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')
-            }
-          }}
-        />
+        <Button label='Save Recovery Kit' testId='download-recovery-kit' onClick={saveKit} />
         <Button
           secondary
           label='Share Recovery Kit'
@@ -254,6 +208,94 @@ export default function VaultRecover() {
               })()
             } catch (err) {
               setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')
+            }
+          }}
+        />
+        <Button
+          secondary
+          label='Start recovery'
+          testId='recover-initiate'
+          onClick={() => {
+            setLocalError('')
+            void (async () => {
+              try {
+                const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                const family = familyFromDescriptor(kit.descriptor)
+                const source = kind === 'daily' ? operationalAddress : savingsAddress
+                if (!source) throw new Error('No coins on that account yet')
+                const coin = (await fetchAddressUtxos(source)).find(
+                  (item) => item.status.confirmed && item.value > 1000,
+                )
+                if (!coin) throw new Error('No confirmed coin on that account')
+                const built = planInitiate({
+                  family,
+                  kind,
+                  claimant,
+                  coin: { txid: coin.txid, vout: coin.vout, value: coin.value },
+                  feeSats: 500,
+                  vaultId: kit.descriptor.vaultId,
+                })
+                setPsbtOut(built.psbtHex)
+                await copyToClipboard(built.psbtHex)
+                toast('Recovery started. A waiting period begins once this confirms.')
+              } catch (err) {
+                setLocalError(err instanceof Error ? err.message : 'Could not start recovery')
+              }
+            })()
+          }}
+        />
+        <Button
+          secondary
+          label='Cancel recovery'
+          testId='recover-clawback'
+          onClick={() => {
+            setLocalError('')
+            try {
+              const latest = initiateAlerts[0]
+              if (!latest) throw new Error('No recovery in process')
+              const [k, c] = latest.familyKey.split('-') as [VaultKind, Claimant]
+              const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+              const built = planClawback({
+                family: familyFromDescriptor(kit.descriptor),
+                kind: k,
+                claimant: c,
+                coin: { txid: latest.txid, vout: latest.vout, value: latest.value },
+                feeSats: 500,
+                vaultId: kit.descriptor.vaultId,
+              })
+              setPsbtOut(built.psbtHex)
+              void copyToClipboard(built.psbtHex)
+              toast('Cancel copied. This leaves out the key that started recovery.')
+            } catch (err) {
+              setLocalError(err instanceof Error ? err.message : 'Could not cancel recovery')
+            }
+          }}
+        />
+        <Button
+          secondary
+          label='Move coins'
+          testId='recover-claim'
+          onClick={() => {
+            setLocalError('')
+            try {
+              const latest = initiateAlerts[0]
+              if (!latest || !claimDest.trim()) throw new Error('Need a recovery in process and a destination')
+              const [k, c] = latest.familyKey.split('-') as [VaultKind, Claimant]
+              const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+              const built = planClaim({
+                family: familyFromDescriptor(kit.descriptor),
+                kind: k,
+                claimant: c,
+                coin: { txid: latest.txid, vout: latest.vout, value: latest.value },
+                destAddress: claimDest.trim(),
+                feeSats: 500,
+                network: kit.descriptor.network,
+              })
+              setPsbtOut(built.psbtHex)
+              void copyToClipboard(built.psbtHex)
+              toast('Move copied. Only after the wait.')
+            } catch (err) {
+              setLocalError(err instanceof Error ? err.message : 'Could not move coins')
             }
           }}
         />

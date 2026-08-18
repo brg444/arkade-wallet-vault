@@ -66,5 +66,7 @@ export async function pollPendingInitiates(input: {
 
 export function alertCopy(alert: InitiateAlert): string {
   const [kind, claimant] = alert.familyKey.split('-')
-  return `A hold started on ${kind} as ${claimant}. Open Recover. Do not ignore it.`
+  const account = kind === 'savings' ? 'Savings' : 'Spending'
+  const key = claimant === 'phone' ? 'this device' : claimant === 'hardware' ? 'hardware' : 'recovery'
+  return `Someone started recovery on ${account} with ${key}. If this wasn’t you, cancel it.`
 }

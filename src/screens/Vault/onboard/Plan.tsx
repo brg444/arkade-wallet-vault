@@ -20,7 +20,7 @@ export default function VaultPlan() {
     >
       <Text wrap>
         {setup.recoveryPub
-          ? 'Start recovery, wait on a new output, cancel to quarantine.'
+          ? 'Lose a key, start recovery, wait. Cancel if it was not you.'
           : 'This device plus hardware. You can add recovery later on a new vault.'}
       </Text>
       <KeyCard
@@ -33,7 +33,7 @@ export default function VaultPlan() {
         <KeyCard
           icon={<SafeIcon />}
           title='Recovery'
-          role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a hold you can cancel'}
+          role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a waiting period you can cancel'}
           fingerprint={setup.recoveryPub}
         />
       ) : (

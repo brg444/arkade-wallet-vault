@@ -63,7 +63,7 @@ export default function VaultKeys() {
               <KeyCard
                 icon={<SafeIcon />}
                 title='Recovery'
-                role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a hold you can cancel'}
+                role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a waiting period you can cancel'}
                 fingerprint={setup.recoveryPub || status?.recoveryPub}
               />
             ) : (
@@ -77,22 +77,24 @@ export default function VaultKeys() {
             <KeyCard
               icon={<ServerIcon />}
               title='Vault service'
-              role='Daily only. Signs holds and cancels. Not claims.'
+              role='Helps with daily spend. Signs start and cancel. Not the final move.'
             />
 
             <Text color='neutral-600' tiny>
               If you lose…
             </Text>
-            <KeyCard title='This device' role={`Other device + Face ID, or start a hardware hold (${waitSavings}).`} />
-            <KeyCard title='Hardware' role={`Start a device hold (${waitPhone}).`} />
+            <KeyCard
+              title='This device'
+              role={`Sign in on another phone, or start recovery with hardware (${waitSavings}).`}
+            />
+            <KeyCard title='Hardware' role={`Start recovery from this device (${waitPhone}).`} />
             <KeyCard
               title='Savings'
-              role='Device + hardware now. Or start a hold, wait, then claim. Cancel sends coins to a vault that excludes the suspect.'
+              role='This device + hardware now. Or start recovery, wait, then move. Cancel leaves out the key that started it.'
             />
             {network === 'mutinynet' ? (
               <Text color='neutral-600' tiny wrap>
-                Demo clocks: hardware 6, this device 144, recovery 288. The wait starts when the hold confirms, not when
-                the original coin aged.
+                Demo waits: hardware 6 blocks, this device 144, recovery 288. The wait starts when recovery confirms.
               </Text>
             ) : null}
             {!addressCovered && status?.enrolled ? (

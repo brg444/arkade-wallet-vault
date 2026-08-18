@@ -41,7 +41,7 @@ export const DELAY_PROFILES: DelayProfile[] = [
   {
     id: 'demo',
     label: 'Demo delays',
-    detail: 'Start recovery, wait on a new output, cancel to quarantine.',
+    detail: 'Lose a key, start recovery, wait. Cancel if it was not you.',
     operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
     savingsCsvBlocks: DEFAULT_SAVINGS_CSV_BLOCKS,
   },

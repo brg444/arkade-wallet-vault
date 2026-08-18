@@ -205,7 +205,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                Device + hardware now. Or start a hold, wait on a new output, cancel to quarantine.
+                This device + hardware can send now. Recovery starts a waiting period you can cancel.
               </Text>
             )}
 
@@ -217,7 +217,7 @@ export default function VaultHome() {
                 onClick={() => navigate('recover')}
               >
                 <Text small bold>
-                  Hold in progress
+                  Recovery in process
                 </Text>
                 <Text color='neutral-600' tiny wrap>
                   {initiateAlert}
