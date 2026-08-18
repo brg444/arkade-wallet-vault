@@ -9,7 +9,7 @@ test('skips optional recovery and reaches the vault home', async ({ page }) => {
   await expect(page.getByText('How it works', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
 
-  await expect(page.getByText('Which hardware?', { exact: true })).toBeVisible()
+  await expect(page.getByText('Add hardware', { exact: true })).toBeVisible()
   await page.getByTestId('hardware-pub').fill(DEMO_HARDWARE_PUB)
   await page.getByRole('button', { name: 'Continue' }).click()
 
@@ -23,7 +23,7 @@ test('skips optional recovery and reaches the vault home', async ({ page }) => {
   await page.getByRole('button', { name: 'Save these rules' }).click()
 
   await expect(page.getByText('Review', { exact: true })).toBeVisible()
-  await expect(page.getByText('Skipped. Device + hardware only.')).toBeVisible()
+  await expect(page.getByText('Skipped. This device plus hardware only.')).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await expect(page.getByText('Passkey', { exact: true })).toBeVisible()

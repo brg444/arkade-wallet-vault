@@ -196,15 +196,15 @@ export function PolicyTimeline({
     },
     {
       title: 'If you lose this device',
-      detail: `Other device + Face ID, or hardware after ${waitLabel(savingsBlocks, network)}.`,
+      detail: `Sign in on another phone, or start recovery with hardware (${waitLabel(savingsBlocks, network)}).`,
     },
     {
       title: 'If you lose hardware',
-      detail: `This device after ${waitLabel(operationalBlocks, network)}.`,
+      detail: `Start recovery from this device (${waitLabel(operationalBlocks, network)}). Cancel if it wasn’t you.`,
     },
     {
       title: 'Savings',
-      detail: `Device + hardware now. Hardware after the short delay, this device after the long delay.`,
+      detail: 'This device + hardware now. Or start recovery, wait, then move.',
     },
   ]
   return (

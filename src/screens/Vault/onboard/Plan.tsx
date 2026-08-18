@@ -20,8 +20,8 @@ export default function VaultPlan() {
     >
       <Text wrap>
         {setup.recoveryPub
-          ? 'Lose a key, start recovery, wait. Cancel if it was not you.'
-          : 'This device plus hardware. You can add recovery later on a new vault.'}
+          ? 'If you lose a key, start recovery and wait. Cancel if it wasn’t you. Save the Recovery Kit after setup.'
+          : 'This device plus hardware. You can add recovery later on a new vault. Save the Recovery Kit after setup.'}
       </Text>
       <KeyCard
         icon={<ShieldCheckOutlineIcon />}
@@ -37,7 +37,7 @@ export default function VaultPlan() {
           fingerprint={setup.recoveryPub}
         />
       ) : (
-        <KeyCard icon={<SafeIcon />} title='Recovery' role='Skipped. Device + hardware only.' />
+        <KeyCard icon={<SafeIcon />} title='Recovery' role='Skipped. This device plus hardware only.' />
       )}
       <KeyCard icon={<FingerprintIcon />} title='This device' role={`${prettyAmount(setup.txCapSats)} per send`} />
       <PolicyTimeline
