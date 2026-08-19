@@ -149,6 +149,22 @@ button.vault-hub-row {
   min-width: 0;
 }
 
+.vault-hub-signal {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  flex-shrink: 0;
+  background: var(--neutral-400);
+}
+
+.vault-hub-signal.ok {
+  background: var(--green-500);
+}
+
+.vault-hub-signal.bad {
+  background: var(--red-500);
+}
+
 .vault-hub-chevron {
   flex-shrink: 0;
   color: var(--neutral-500);

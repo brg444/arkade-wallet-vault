@@ -57,7 +57,6 @@ export default function VaultKeys() {
               <HubRow
                 icon={<ShieldCheckOutlineIcon />}
                 title='Hardware'
-                detail='Moves Savings with this device'
                 status={
                   setup.hardwareIsDemo || (hardwarePub && isFixturePub(hardwarePub)) ? 'Demo' : shortKey(hardwarePub)
                 }
@@ -65,15 +64,16 @@ export default function VaultKeys() {
               <HubRow
                 icon={<ServerIcon />}
                 title='Vault service'
-                detail='Approves under today’s limit'
-                status={service === 'checking' ? 'Checking…' : service === 'online' ? 'Online' : 'Can’t reach'}
+                signal={service === 'checking' ? 'wait' : service === 'online' ? 'ok' : 'bad'}
               />
-              <HubRow
-                icon={<SafeIcon />}
-                title='Recovery'
-                detail={hasRecovery ? 'Starts a wait you can cancel' : 'Can’t add it after setup'}
-                status={hasRecovery ? (setup.recoveryIsDemo ? 'Demo' : shortKey(recoveryPub)) : 'Not on this vault'}
-              />
+              {hasRecovery ? (
+                <HubRow
+                  icon={<SafeIcon />}
+                  title='Recovery'
+                  detail='Starts a wait you can cancel'
+                  status={setup.recoveryIsDemo ? 'Demo' : shortKey(recoveryPub)}
+                />
+              ) : null}
             </HubGroup>
 
             <HubGroup>
