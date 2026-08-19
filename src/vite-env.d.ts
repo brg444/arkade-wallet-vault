@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_DELEGATOR_URL?: string
   readonly VITE_VAULT_MODE?: string
   readonly VITE_VAULT_API?: string
+  readonly VITE_GIT_COMMIT?: string
   // Add other env variables as needed
 }
 

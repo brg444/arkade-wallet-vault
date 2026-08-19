@@ -1,4 +1,5 @@
 import path from 'path'
+import { execSync } from 'child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import eslint from 'vite-plugin-eslint'
@@ -6,6 +7,15 @@ import basicSsl from '@vitejs/plugin-basic-ssl'
 import tailwindcss from '@tailwindcss/vite'
 import basicAuth from './plugins/vite-plugin-basic-auth'
 import type { ProxyOptions } from 'vite'
+
+function gitCommitShort(): string {
+  if (process.env.VITE_GIT_COMMIT) return process.env.VITE_GIT_COMMIT
+  try {
+    return execSync('git rev-parse --short=8 HEAD', { encoding: 'utf8' }).trim()
+  } catch {
+    return 'unknown'
+  }
+}
 
 function vaultAuthorizerProxy(): ProxyOptions {
   return {
@@ -77,6 +87,9 @@ export default defineConfig({
             },
           }
         : undefined,
+  },
+  define: {
+    'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(gitCommitShort()),
   },
   build: {
     emptyOutDir: true,

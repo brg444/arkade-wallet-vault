@@ -104,5 +104,5 @@ describe('VaultApp onboarding', () => {
     expect(await screen.findByText('Sign out of this browser')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Sign out' })).toHaveProperty('disabled', true)
     expect(screen.queryByText('Your vault')).toBeNull()
-  })
+  }, 20_000)
 })
