@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildV5Descriptor } from './descriptor'
-import { V5_FIXTURE } from './fixtures'
+import { V5_FIXTURE, V6_FIXTURE } from './fixtures'
 import { alertCopy, outpointId, pollPendingInitiates } from './watch'
 
 describe('v5 pending watcher', () => {
@@ -22,5 +22,24 @@ describe('v5 pending watcher', () => {
     })
     expect(second.alerts).toHaveLength(0)
     expect(outpointId(coin.txid, coin.vout)).toBe(`${coin.txid}:0`)
+  })
+
+  it('announces a pending v6 output once and does not repeat', async () => {
+    const descriptor = buildV5Descriptor(V6_FIXTURE)
+    const coin = { txid: 'bb'.repeat(32), vout: 1, value: 18_000, status: { confirmed: true, block_height: 12 } }
+    const first = await pollPendingInitiates({
+      descriptor,
+      seen: new Set(),
+      fetchUtxos: async (address) => (address === descriptor.pending['daily-phone'].address ? [coin] : []),
+    })
+    expect(first.alerts).toHaveLength(1)
+    expect(first.alerts[0].familyKey).toBe('daily-phone')
+    expect(alertCopy(first.alerts[0])).toMatch(/started recovery on Spending with this device/i)
+    const second = await pollPendingInitiates({
+      descriptor,
+      seen: first.seen,
+      fetchUtxos: async (address) => (address === descriptor.pending['daily-phone'].address ? [coin] : []),
+    })
+    expect(second.alerts).toHaveLength(0)
   })
 })

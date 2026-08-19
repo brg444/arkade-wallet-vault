@@ -55,8 +55,6 @@ import {
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
 
-import { isStagedTemplate } from '../lib/vault/v5/constants'
-
 import { buildRecoveryKit } from '../lib/vault/v5/kit'
 import {
   kitFromFacts,
@@ -67,7 +65,8 @@ import {
   type HardwareMapWrap,
 } from '../lib/vault/v5/kitBackup'
 
-import { findLocalKit, loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
+import { loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
+import { isPreviewDescriptor, kitMatchesLiveVault, selectLiveKit } from '../lib/vault/v5/liveKit'
 import { previewV5Descriptor } from '../lib/vault/v5/preview'
 import {
   alertCopy,
@@ -477,8 +476,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const resolveKit = useCallback(() => {
     const id = status?.vaultId || enrollment?.vaultId || ''
-    const stored = (id && loadLocalKit(id)) || findLocalKit()
-    if (stored) return stored
+    const template = String(status?.templateVersion || '')
+    const stored = id ? loadLocalKit(id) : null
+    if (status?.enrolled) {
+      if (stored && kitMatchesLiveVault(stored, id, template)) return stored
+      return kitFromFacts({
+        enrollment,
+        status,
+        hardwarePub: setup.hardwarePub,
+        recoveryPub: setup.recoveryPub || status?.recoveryPub,
+      })
+    }
+    if (stored && stored.descriptor.vaultId === id) return stored
     const fromFacts = kitFromFacts({
       enrollment,
       status,
@@ -501,6 +510,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (enrollment && status?.enrolled) await unlockLocalEnrollment(enrollment)
     const kit = resolveKit()
     if (!kit) throw new Error('This vault has no recovery map. Add recovery on a new vault.')
+    if (isPreviewDescriptor(kit.descriptor)) {
+      throw new Error('preview map cannot be uploaded as a live Recovery Kit')
+    }
     saveLocalKit(kit)
     const id = kit.descriptor.vaultId
     const hardwarePub = setup.hardwarePub || status?.externalOwnerWalletPub || ''
@@ -522,6 +534,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         recoveryPub: setup.recoveryPub || status?.recoveryPub,
       })
     if (!kit) throw new Error('Could not rebuild the map. Save it while this app is open.')
+    if (status?.enrolled && isPreviewDescriptor(kit.descriptor)) {
+      throw new Error('preview map cannot replace a live Recovery Kit')
+    }
+    if (id && kit.descriptor.vaultId !== id) throw new Error('Recovery Kit does not match this vault')
+    if (status?.enrolled && status.templateVersion && kit.descriptor.templateVersion !== status.templateVersion) {
+      throw new Error('Recovery Kit does not match this vault')
+    }
     saveLocalKit(kit)
   }, [enrollment, setup.hardwarePub, setup.recoveryPub, status])
 
@@ -946,10 +965,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [liveNetwork])
 
   useEffect(() => {
-    const liveV5 = isStagedTemplate(String(status?.templateVersion || ''))
     const id = status?.vaultId || enrollment?.vaultId || ''
-    const kit = (id && loadLocalKit(id)) || findLocalKit()
-    if (!liveV5 || !kit) return
+    const template = String(status?.templateVersion || '')
+    setInitiateAlerts([])
+    setInitiateAlert('')
+    const kit = selectLiveKit({
+      vaultId: id,
+      templateVersion: template,
+      stored: id ? loadLocalKit(id) : null,
+    })
+    if (!kit) return
     let cancelled = false
     const tick = async () => {
       try {
@@ -966,7 +991,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setInitiateAlert(alertCopy(next.alerts[0]))
         }
       } catch {
-        // Watcher is best-effort. Missing coins is not a send failure.
+        // Best-effort local poll. This is not a watchtower.
       }
     }
     void tick()

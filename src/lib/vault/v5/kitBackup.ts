@@ -9,6 +9,8 @@ import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
 import { buildV5Descriptor } from './descriptor'
 import { buildRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
+import { isPreviewDescriptor } from './liveKit'
+import { isStagedTemplate } from './constants'
 import { previewV5Descriptor } from './preview'
 
 const WRAP_INFO = new TextEncoder().encode('arkade-vault/map-wrap/v1')
@@ -142,7 +144,8 @@ export function kitFromFacts(input: {
 
   const vaultId = input.status?.vaultId || input.enrollment?.vaultId || ''
   const liveBases = Boolean(input.status?.vaultCosignerBasePub && input.status?.arkadeCosignerBasePub)
-  if (liveBases && phonePub && phoneDirectP256 && vaultId) {
+  const liveTemplate = String(input.status?.templateVersion || '')
+  if (liveBases && phonePub && phoneDirectP256 && vaultId && isStagedTemplate(liveTemplate)) {
     try {
       const descriptor = buildV5Descriptor({
         vaultId,
@@ -154,15 +157,16 @@ export function kitFromFacts(input: {
         vaultCosignerBase: input.status!.vaultCosignerBasePub!,
         arkadeCosignerBase: input.status!.arkadeCosignerBasePub!,
         routineVault: evenYCompressed(
-          xOnly(input.status!.tweakedVaultCosignerXOnly || input.status!.vaultCosignerBasePub!),
+          input.status!.tweakedVaultCosignerXOnly || xOnly(input.status!.vaultCosignerBasePub!),
         ),
         routineArkade: evenYCompressed(
-          xOnly(input.status!.tweakedArkadeCosignerXOnly || input.status!.arkadeCosignerBasePub!),
+          input.status!.tweakedArkadeCosignerXOnly || xOnly(input.status!.arkadeCosignerBasePub!),
         ),
         arkadeCosigner: {
           origin: input.status!.arkadeCosignerOrigin || (typeof location !== 'undefined' ? location.origin : 'preview'),
           version: input.status!.arkadeCosignerVersion || 'v5',
         },
+        templateVersion: liveTemplate,
       })
       if (input.status?.operationalAddress && descriptor.daily.address !== input.status.operationalAddress) {
         throw new Error('rebuilt map does not match this vault')
@@ -172,6 +176,8 @@ export function kitFromFacts(input: {
       return null
     }
   }
+
+  if (input.status?.enrolled) return null
 
   try {
     return buildRecoveryKit(
@@ -192,6 +198,10 @@ export function kitFromFacts(input: {
 export async function pushMapBackup(vaultId: string, kit: RecoveryKit, wrap?: HardwareMapWrap): Promise<boolean> {
   const id = vaultId.trim()
   if (!id) throw new Error('vault id required')
+  if (isPreviewDescriptor(kit.descriptor)) {
+    throw new Error('preview map cannot be uploaded as a live Recovery Kit')
+  }
+  if (kit.descriptor.vaultId !== id) throw new Error('Recovery Kit does not match this vault')
   const backup = buildMapBackup(kit, undefined, wrap)
   try {
     const status = await fetchVaultStatus(undefined, id)
