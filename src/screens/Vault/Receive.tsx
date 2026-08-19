@@ -51,7 +51,7 @@ export default function VaultReceive() {
                   Spending
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  This phone, up to today’s limit
+                  This device, up to today’s limit
                 </Text>
               </Panel>
               <Panel
@@ -66,7 +66,7 @@ export default function VaultReceive() {
                   Savings
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  This phone and hardware
+                  This device and hardware
                 </Text>
               </Panel>
             </div>
@@ -82,11 +82,11 @@ export default function VaultReceive() {
             </p>
             {dest === 'savings' ? (
               <Text color='neutral-600' tiny wrap>
-                This phone can’t spend this alone. Hardware signs too.
+                This device can’t spend this alone. Hardware signs too.
               </Text>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This phone can spend this, up to today’s limit.
+                This device can spend this, up to today’s limit.
               </Text>
             )}
           </FlexCol>

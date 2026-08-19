@@ -46,6 +46,7 @@ export default function VaultRecover() {
     downloadRecoveryKit,
     error,
     hasRecoveryKit,
+    initiateAlert,
     initiateAlerts,
     navigate,
     operationalAddress,
@@ -129,7 +130,7 @@ export default function VaultRecover() {
                 <ChoiceCard
                   key={item}
                   title={ACCOUNT_LABEL[item]}
-                  detail={item === 'daily' ? 'This phone, up to today’s limit' : 'This phone and hardware'}
+                  detail={item === 'daily' ? 'This device, up to today’s limit' : 'This device and hardware'}
                   selected={kind === item}
                   onClick={() => setKind(item)}
                   testId={`recover-kind-${item}`}
@@ -143,7 +144,7 @@ export default function VaultRecover() {
                   key={item}
                   title={KEY_LABEL[item]}
                   detail={
-                    item === 'phone' ? 'This phone' : item === 'hardware' ? 'The hardware key' : 'The recovery key'
+                    item === 'phone' ? 'This device' : item === 'hardware' ? 'The hardware key' : 'The recovery key'
                   }
                   selected={claimant === item}
                   onClick={() => setClaimant(item)}
@@ -270,23 +271,23 @@ export default function VaultRecover() {
           <FlexCol>
             <Text wrap>
               The Recovery Kit is a map of this vault. It is not a seed. It does not hold your keys. Back up the map
-              with this vault, then Face ID can rebuild it on this phone or another phone.
+              with this vault, then Face ID can rebuild it on this device or another device.
             </Text>
             <KeyCard
-              title='On this phone'
+              title='On this device'
               role={
                 hasRecoveryKit
                   ? 'The map is here. Save a file if you want a spare, or back it up with the vault.'
-                  : 'No map on this phone yet. Get it with Face ID, or paste a file you saved.'
+                  : 'No map on this device yet. Get it with Face ID, or paste a file you saved.'
               }
             />
             <KeyCard
               title='When you need the file'
-              role='You can’t open this app, and you need the offline tool. Everyday send and sign-in on a new phone do not use the file.'
+              role='You can’t open this app, and you need the offline tool. Everyday send and sign-in on a new device do not use the file.'
             />
             <KeyCard
               title='When the file cannot help'
-              role='If the vault services are offline, this map cannot start recovery or move coins still on the original address. This phone plus hardware still can.'
+              role='If the vault services are offline, this map cannot start recovery or move coins still on the original address. This device plus hardware still can.'
             />
             {report && 'trees' in report ? (
               <Text color='neutral-600' tiny wrap>
@@ -363,7 +364,7 @@ export default function VaultRecover() {
                 void (async () => {
                   try {
                     const pushed = await backupRecoveryKit()
-                    toast(pushed ? 'Map backed up with this vault' : 'Map saved on this phone')
+                    toast(pushed ? 'Map backed up with this vault' : 'Map saved on this device')
                   } catch (err) {
                     setLocalError(err instanceof Error ? err.message : 'Could not back up the map')
                   }
@@ -381,7 +382,7 @@ export default function VaultRecover() {
               void (async () => {
                 try {
                   await restoreRecoveryKit()
-                  toast('Map is on this phone')
+                  toast('Map is on this device')
                 } catch (err) {
                   setLocalError(err instanceof Error ? err.message : 'Could not get the map')
                 }

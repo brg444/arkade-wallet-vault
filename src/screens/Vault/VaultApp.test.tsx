@@ -50,7 +50,7 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByText('Skipped. This device plus hardware only.')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByText(/This is this computer/)).toBeTruthy()
+    expect(await screen.findByText(/This is this device/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
     expect(screen.getByTestId('vault-balance').textContent).toMatch(/^0/)

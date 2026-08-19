@@ -32,7 +32,7 @@ export default function VaultHwSign({ onBack }: { onBack: () => void }) {
     return (
       <Scanner
         close={() => setScan(false)}
-        label='Phone PSBT'
+        label='Device PSBT'
         onData={(data) => {
           try {
             const frameIn = parsePsbtFrame(data)
@@ -62,16 +62,16 @@ export default function VaultHwSign({ onBack }: { onBack: () => void }) {
         <Padded>
           <FlexCol>
             <Text wrap>
-              This is the hardware device. Scan the phone QR, sign with the hardware key, then show the QR back. Don’t
-              save the key on this phone.
+              This is the hardware device. Scan the QR from the other device, sign with the hardware key, then show the
+              QR back. Don’t save the key on this device.
             </Text>
-            <Input label='Phone PSBT' value={incoming} onChange={setIncoming} placeholder='Paste or scan' />
+            <Input label='Device PSBT' value={incoming} onChange={setIncoming} placeholder='Paste or scan' />
             <Input label='Hardware key' value={secret} onChange={setSecret} placeholder='WIF or 64-char hex' />
             <ErrorMessage error={Boolean(error)} text={error} />
             {signed ? (
               <>
                 <Text color='neutral-600' tiny>
-                  Signed. Scan this on the phone.
+                  Signed. Scan this on the other device.
                 </Text>
                 <PsbtQr value={frames[Math.min(frame, frames.length - 1)] || ''} />
                 {frames.length > 1 ? (
@@ -83,7 +83,7 @@ export default function VaultHwSign({ onBack }: { onBack: () => void }) {
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={() => setScan(true)} label='Scan phone QR' secondary />
+        <Button onClick={() => setScan(true)} label='Scan device QR' secondary />
         {signed ? (
           <Button
             label='Copy signed PSBT'

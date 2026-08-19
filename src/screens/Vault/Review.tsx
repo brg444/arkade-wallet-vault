@@ -23,7 +23,7 @@ export default function VaultReview() {
         <Padded>
           <FlexCol>
             <div className='vault-hero'>
-              <p className='vault-kicker'>You're sending</p>
+              <p className='vault-kicker'>You’re sending</p>
               <p className='vault-money'>{prettyAmount(spend.amount)}</p>
             </div>
             <Detail label='To' value={spend.address} mono />
@@ -33,9 +33,10 @@ export default function VaultReview() {
               title='You'
               detail={preview ? 'No passkey in preview' : onPhone ? 'Face ID' : 'Your passkey'}
               state='you'
+              mark='1'
             />
             {fromSavings ? (
-              <SignerRow title='Hardware' detail='Signs next, on the other device' state='you' />
+              <SignerRow title='Hardware' detail='Signs next, on the other device' state='you' mark='2' />
             ) : (
               <>
                 <SignerRow title='Vault service' detail='Approves if under today’s limit' state='auto' />

@@ -67,7 +67,7 @@ export default function VaultHandoff() {
         <Padded>
           <FlexCol gap='1.15rem'>
             <Text wrap>
-              This phone signed. Now hardware signs. Paste the signed transaction back. The hardware secret never comes
+              This device signed. Now hardware signs. Paste the signed transaction back. The hardware secret never comes
               here.
             </Text>
             <Text color='neutral-600' tiny wrap>

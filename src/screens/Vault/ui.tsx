@@ -145,7 +145,7 @@ export function KeyCard({
   onClick,
   testId,
 }: {
-  icon: ReactNode
+  icon?: ReactNode
   title: string
   role?: string
   status?: string
@@ -225,15 +225,17 @@ export function SignerRow({
   title,
   detail,
   state,
+  mark,
 }: {
   title: string
   detail: string
   state: 'you' | 'auto' | 'unused'
+  mark?: string
 }) {
-  const mark = state === 'you' ? '1' : state === 'auto' ? '✓' : '–'
+  const glyph = mark ?? (state === 'you' ? '1' : state === 'auto' ? '✓' : '–')
   return (
     <div style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
-      <div className={state === 'unused' ? 'vault-check wait' : 'vault-check on'}>{mark}</div>
+      <div className={state === 'unused' ? 'vault-check wait' : 'vault-check on'}>{glyph}</div>
       <div>
         <Text small bold>
           {title}
@@ -266,7 +268,7 @@ export function PolicyTimeline({
     },
     {
       title: 'If you lose this device',
-      detail: `Sign in on another phone, or start recovery with hardware (${waitLabel(savingsBlocks, network)}).`,
+      detail: `Sign in on another device, or start recovery with hardware (${waitLabel(savingsBlocks, network)}).`,
     },
     {
       title: 'If you lose hardware',
