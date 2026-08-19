@@ -49,3 +49,13 @@ export const V5_FIXTURE_FAMILY = {
   network: V5_FIXTURE.network,
   templateVersion: V5_FIXTURE.templateVersion,
 }
+
+export const V6_FIXTURE = {
+  ...V5_FIXTURE,
+  templateVersion: 'phone-hww-recovery-staged-v6' as const,
+}
+
+export const V6_FIXTURE_FAMILY = {
+  ...V5_FIXTURE_FAMILY,
+  templateVersion: V6_FIXTURE.templateVersion,
+}

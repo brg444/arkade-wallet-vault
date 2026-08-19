@@ -305,30 +305,6 @@ export function buildV5Family(input: {
         vaultTweak: pendingTweaks[key].vault,
         arkadeTweak: pendingTweaks[key].arkade,
       })
-      for (const clawback of pending[key].clawbacks) {
-        const got = collaborativeWitnessBytes(clawback, controlOf(pending[key], clawback))
-        if (got !== expectedClawbackWitness) {
-          expectedClawbackWitness = got
-          clawbackAuth[key] = buildTransitionScript({
-            destScriptHex: hex.encode(quarantine[key].script),
-            witnessBytes: expectedClawbackWitness,
-          })
-          pendingTweaks[key] = tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, clawbackAuth[key])
-          pending[key] = buildPending({
-            ...input,
-            kind,
-            templateVersion,
-            serverFreeClawback,
-            claimant,
-            vaultTweak: pendingTweaks[key].vault,
-            arkadeTweak: pendingTweaks[key].arkade,
-          })
-          const again = collaborativeWitnessBytes(clawback, controlOf(pending[key], pending[key].clawbacks[0]))
-          if (again !== expectedClawbackWitness) {
-            throw new Error(`pending ${key} clawback witness ${again} != ${expectedClawbackWitness}`)
-          }
-        }
-      }
       const expectedInitiate = initiateWitnessBytes(kind, claimant, hasRecovery)
       initiateAuth[key] = buildTransitionScript({
         destScriptHex: hex.encode(pending[key].script),
