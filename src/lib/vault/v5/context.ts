@@ -3,7 +3,7 @@ import { hex } from '@scure/base'
 import { utils as btcUtils } from '@scure/btc-signer'
 import { encodeUtf8 } from '../hex'
 import { TAPROOT_NUMS_XONLY } from '../savingsTree'
-import { CLAIMANTS, type Claimant, type VaultKind, V5_INTERNAL_TAG, V5_TEMPLATE } from './constants'
+import { CLAIMANTS, type Claimant, type VaultKind, V5_INTERNAL_TAG, STAGED_TEMPLATE } from './constants'
 
 export function taggedHash(tag: string, ...messages: Uint8Array[]): Uint8Array {
   const tagH = sha256(encodeUtf8(tag))
@@ -43,7 +43,7 @@ export function encodeTreeContext(input: {
   appendText(parts, input.vaultId, 'vaultId')
   appendText(parts, input.kind, 'kind')
   appendText(parts, claimant === '' ? '-' : claimant, 'claimant')
-  appendText(parts, input.templateVersion || V5_TEMPLATE, 'templateVersion')
+  appendText(parts, input.templateVersion || STAGED_TEMPLATE, 'templateVersion')
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
   let offset = 0
   for (const part of parts) {

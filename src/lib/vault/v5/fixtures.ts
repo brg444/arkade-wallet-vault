@@ -47,4 +47,5 @@ export const V5_FIXTURE_FAMILY = {
   routineVault: V5_FIXTURE.routineVault,
   routineArkade: V5_FIXTURE.routineArkade,
   network: V5_FIXTURE.network,
+  templateVersion: V5_FIXTURE.templateVersion,
 }

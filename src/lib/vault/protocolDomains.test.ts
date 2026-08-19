@@ -1,39 +1,29 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_SCHEMA } from './constants'
+import { POLICY_VERSION } from './constants'
 import { enrollmentPoPDigest } from './tenantEnrollment'
-import { V5_RECOVERY_POP_TAG, V5_SCHEMA, V5_TEMPLATE, V6_TEMPLATE } from './v5/constants'
+import { V5_RECOVERY_POP_TAG, V5_SCHEMA, STAGED_TEMPLATE } from './v5/constants'
 import pack from './contract-pack.json'
 
 describe('frozen wallet protocol domains', () => {
   it('matches the published contract pack', () => {
-    expect(VAULT_SCHEMA).toBe(pack.programs.v4.schema)
-    expect(TEMPLATE_VERSION).toBe(pack.programs.v4.template)
-    expect(POLICY_VERSION).toBe(pack.programs.v4.policy)
-    expect(V5_SCHEMA).toBe(pack.programs.v5.schema)
-    expect(V5_TEMPLATE).toBe(pack.programs.v5.template)
-    expect(V6_TEMPLATE).toBe(pack.programs.v6.template)
-    expect(V5_RECOVERY_POP_TAG).toBe(pack.programs.v5.recoveryPopTag)
-    expect(pack.programs.v4.status).toBe('leftover')
-    expect(pack.programs.v4.enrollable).toBe(false)
-    expect(pack.programs.v5.status).toBe('leftover')
-    expect(pack.programs.v5.enrollable).toBe(false)
-    expect(pack.programs.v6.status).toBe('live')
-    expect(pack.programs.v6.enrollable).toBe(true)
-    expect(pack.programs.v6.recovery).toBe('optional')
+    expect(POLICY_VERSION).toBe(pack.programs.staged.policy)
+    expect(V5_SCHEMA).toBe(pack.programs.staged.schema)
+    expect(STAGED_TEMPLATE).toBe(pack.programs.staged.template)
+    expect(V5_RECOVERY_POP_TAG).toBe(pack.programs.staged.recoveryPopTag)
+    expect(pack.programs.staged.status).toBe('live')
+    expect(pack.programs.staged.enrollable).toBe(true)
+    expect(pack.programs.staged.recovery).toBe('optional')
   })
 
-  it('pins leftover v4 strings and the live v5 enroll program', () => {
-    expect(VAULT_SCHEMA).toBe('arkade-vault/v4')
-    expect(TEMPLATE_VERSION).toBe('phone-direct-p256-routine-3of3-admin-phone-hww-v4')
+  it('pins the live staged program', () => {
     expect(POLICY_VERSION).toBe('mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3')
-    expect(V5_TEMPLATE).toBe('phone-hww-recovery-staged-v5')
+    expect(STAGED_TEMPLATE).toBe('phone-hww-recovery-staged-v6')
   })
 
-  it('pins the v5 schema, template, and recovery PoP tag', () => {
+  it('pins the staged schema and recovery PoP tag', () => {
     expect(V5_SCHEMA).toBe('arkade-vault/v5')
-    expect(V5_TEMPLATE).toBe('phone-hww-recovery-staged-v5')
     expect(V5_RECOVERY_POP_TAG).toBe('arkade-vault/v5/recovery-pop')
   })
 

@@ -1,4 +1,4 @@
-import { V5_TEMPLATE } from './constants'
+import { isStagedTemplate } from './constants'
 import type { V5PublicDescriptor } from './descriptor'
 
 export type SweepKind = 'daily' | 'savings'
@@ -9,7 +9,7 @@ export function leftoverV4Template(templateVersion?: string): boolean {
 }
 
 export function sweepDest(descriptor: V5PublicDescriptor, kind: SweepKind): string {
-  if (descriptor.templateVersion !== V5_TEMPLATE && descriptor.templateVersion !== 'phone-hww-recovery-staged-v6') {
+  if (!isStagedTemplate(descriptor.templateVersion)) {
     throw new Error('sweep dest must be a staged descriptor')
   }
   return kind === 'daily' ? descriptor.daily.address : descriptor.savings.address

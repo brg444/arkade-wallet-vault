@@ -1,12 +1,12 @@
 import { TAPROOT_NUMS_XONLY } from '../savingsTree'
 
 export const V5_SCHEMA = 'arkade-vault/v5'
+export const STAGED_TEMPLATE = 'phone-hww-recovery-staged-v6'
+export const V6_TEMPLATE = STAGED_TEMPLATE
 export const V5_TEMPLATE = 'phone-hww-recovery-staged-v5'
-export const V6_TEMPLATE = 'phone-hww-recovery-staged-v6'
-export const STAGED_TEMPLATE = V6_TEMPLATE
 
 export function isStagedTemplate(value: string): boolean {
-  return value === V5_TEMPLATE || value === V6_TEMPLATE
+  return value === STAGED_TEMPLATE || value === V5_TEMPLATE
 }
 export const V5_INTERNAL_TAG = 'arkade-vault/v5/internal'
 
@@ -58,9 +58,9 @@ export const V5_RECOVERY_POP_TAG = 'arkade-vault/v5/recovery-pop'
 export { TAPROOT_NUMS_XONLY }
 
 export const TEMPLATE_REGISTRY = {
+  [STAGED_TEMPLATE]: { schema: V5_SCHEMA, recovery: true, serverFreeClawback: true },
+  'phone-hww-recovery-staged-v5': { schema: V5_SCHEMA, recovery: true },
   'phone-direct-p256-routine-3of3-admin-phone-hww-v4': { schema: 'arkade-vault/v4', recovery: false },
-  [V5_TEMPLATE]: { schema: V5_SCHEMA, recovery: true },
-  [V6_TEMPLATE]: { schema: V5_SCHEMA, recovery: true, serverFreeClawback: true },
 } as const
 
 export function isKnownTemplate(value: string): value is keyof typeof TEMPLATE_REGISTRY {
