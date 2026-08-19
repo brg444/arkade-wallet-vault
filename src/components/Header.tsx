@@ -58,7 +58,9 @@ export default function Header({ auxAriaLabel, auxFunc, auxText, back, text, aux
             '\u00A0'
           )}
         </div>
-        <p className='title'>{text}</p>
+        <p className='title' data-testid='screen-title'>
+          {text}
+        </p>
         <div style={style} onClick={auxFunc} aria-label={auxAriaLabel} data-testid='header-aux-btn'>
           {auxText || auxIcon ? (
             <Focusable onEnter={auxFunc} fit round>
