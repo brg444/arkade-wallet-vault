@@ -21,6 +21,23 @@ async function esploraJson<T>(res: Response, fail: string): Promise<T> {
   }
 }
 
+export interface EsploraTxio {
+  scriptpubkey_address?: string
+  value?: number
+}
+
+export interface EsploraTx {
+  txid: string
+  vin: { prevout?: EsploraTxio }[]
+  vout: EsploraTxio[]
+  status: { confirmed: boolean; block_height?: number; block_time?: number }
+}
+
+export async function fetchAddressTxs(address: string): Promise<EsploraTx[]> {
+  const res = await fetch(`${esploraBase()}/address/${address}/txs`)
+  return esploraJson<EsploraTx[]>(res, 'Could not load activity')
+}
+
 export async function fetchAddressUtxos(address: string): Promise<EsploraUtxo[]> {
   const res = await fetch(`${esploraBase()}/address/${address}/utxo`)
   return esploraJson<EsploraUtxo[]>(res, 'Could not load coins from Mutinynet')

@@ -19,6 +19,7 @@ import VaultPlan from './screens/Vault/onboard/Plan'
 import VaultRecovery from './screens/Vault/onboard/Recovery'
 import VaultRecover from './screens/Vault/Recover'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
+import VaultTx from './screens/Vault/Tx'
 import VaultPillNav, { tabForScreen } from './screens/Vault/PillNav'
 import { bootVaultPrefs } from './lib/vault/prefs'
 
@@ -49,6 +50,7 @@ export default function VaultApp() {
     keys: <VaultKeys />,
     settings: <VaultSettings />,
     signin: <VaultSignIn />,
+    tx: <VaultTx />,
   }
   const page = pages[screen] || <VaultWelcome />
   return (

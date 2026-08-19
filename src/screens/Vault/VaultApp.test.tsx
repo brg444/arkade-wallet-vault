@@ -54,6 +54,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
     expect(screen.getByTestId('vault-balance').textContent).toMatch(/^0/)
+    expect(screen.getByTestId('vault-history').textContent).toMatch(/No transactions yet/)
     expect(screen.getByTestId('account-scan')).toBeTruthy()
     expect(screen.getByTestId('account-receive')).toBeTruthy()
     expect(screen.getByTestId('account-switcher').textContent).toMatch(/Spending/)

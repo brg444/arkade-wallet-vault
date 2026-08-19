@@ -10,6 +10,8 @@ function read(rel: string) {
 
 describe('vault UI lock', () => {
   it('keeps the restyle screens that Vercel deploys from git', () => {
+    expect(existsSync(resolve(root, 'src/screens/Vault/History.tsx'))).toBe(true)
+    expect(existsSync(resolve(root, 'src/screens/Vault/Tx.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/PillNav.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Settings.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Refresher.tsx'))).toBe(true)

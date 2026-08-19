@@ -19,6 +19,7 @@ import { hapticSubtle } from '../../lib/haptics'
 import { truncateAddress } from '../../lib/vault/policy'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext, type VaultAccount } from '../../providers/vault'
+import VaultHistory from './History'
 import { Meter } from './ui'
 
 function fundableAddress(value: string): string {
@@ -234,6 +235,7 @@ export default function VaultHome() {
               />
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
             </FlexRow>
+            <VaultHistory />
             {status?.enrolled && !operationalAddress ? (
               <Text color='neutral-600' tiny wrap>
                 Receive isn’t ready yet. Try again after setup finishes.
