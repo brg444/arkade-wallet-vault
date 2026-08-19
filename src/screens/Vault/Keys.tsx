@@ -1,4 +1,4 @@
-import { useContext } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import Content from '../../components/Content'
 import FlexCol from '../../components/FlexCol'
 import Header from '../../components/Header'
@@ -8,6 +8,8 @@ import FingerprintIcon from '../../icons/Fingerprint'
 import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import { isFixturePub, shortKey } from '../../lib/vault/setupPlan'
+import { pingVaultService } from '../../lib/vault/status'
 import { VaultContext } from '../../providers/vault'
 import { HubGroup, HubRow } from './ui'
 
@@ -17,8 +19,21 @@ export default function VaultKeys() {
   const phoneCovered = Boolean(status?.enrolled)
   const devicesCovered = Boolean(status?.passkeyLoginAvailable)
   const canEnableOther = hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable
-  const hasRecovery = Boolean(setup.recoveryPub || status?.recoveryPub)
+  const hardwarePub = status?.externalOwnerWalletPub || setup.hardwarePub
+  const recoveryPub = status?.recoveryPub || setup.recoveryPub
+  const hasRecovery = Boolean(recoveryPub)
   const addressCovered = Boolean(operationalAddress)
+  const [service, setService] = useState<'checking' | 'online' | 'down'>(status ? 'online' : 'checking')
+
+  useEffect(() => {
+    let live = true
+    void pingVaultService().then((ok) => {
+      if (live) setService(ok ? 'online' : 'down')
+    })
+    return () => {
+      live = false
+    }
+  }, [])
 
   return (
     <>
@@ -42,13 +57,22 @@ export default function VaultKeys() {
               <HubRow
                 icon={<ShieldCheckOutlineIcon />}
                 title='Hardware'
-                status={setup.hardwareIsDemo ? 'Demo' : 'Ready'}
+                detail='Moves Savings with this device'
+                status={
+                  setup.hardwareIsDemo || (hardwarePub && isFixturePub(hardwarePub)) ? 'Demo' : shortKey(hardwarePub)
+                }
               />
-              <HubRow icon={<ServerIcon />} title='Vault service' status='Daily only' />
+              <HubRow
+                icon={<ServerIcon />}
+                title='Vault service'
+                detail='Approves under today’s limit'
+                status={service === 'checking' ? 'Checking…' : service === 'online' ? 'Online' : 'Can’t reach'}
+              />
               <HubRow
                 icon={<SafeIcon />}
                 title='Recovery'
-                status={hasRecovery ? (setup.recoveryIsDemo ? 'Demo' : 'Ready') : 'Not added'}
+                detail={hasRecovery ? 'Starts a wait you can cancel' : 'Can’t add it after setup'}
+                status={hasRecovery ? (setup.recoveryIsDemo ? 'Demo' : shortKey(recoveryPub)) : 'Not on this vault'}
               />
             </HubGroup>
 

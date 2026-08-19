@@ -65,6 +65,15 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   return body
 }
 
+export async function pingVaultService(signal?: AbortSignal): Promise<boolean> {
+  try {
+    await fetchPublicStatus(signal)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId?: string): Promise<VaultStatus> {
   const base = authorizerBase()
   const id = requestedVaultId(expectedVaultId, arguments.length > 1)
