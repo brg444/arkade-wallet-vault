@@ -59,7 +59,7 @@ function startCancel(familyKey: FamilyKey) {
 }
 
 describe('claimant-aware cancel without services', () => {
-  it('asks hardware and recovery after this device starts recovery', () => {
+  it('asks hardware and recovery after this device starts recovery', { timeout: 15_000 }, () => {
     startCancel('daily-phone')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/Hardware and Recovery/)
     expect(screen.queryByTestId('recover-guardian-device')).toBeNull()

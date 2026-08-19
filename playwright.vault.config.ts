@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'pnpm start:vault',
     port: 3003,
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120000,
   },
   projects: [
