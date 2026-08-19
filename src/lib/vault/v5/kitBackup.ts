@@ -2,6 +2,8 @@ import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { vaultGet, vaultPost } from '../api'
 import { bytesToHex, hexToBytes, requireLowerHex } from '../hex'
+import { beginPasskeySession } from '../signIn'
+import { fetchVaultStatus } from '../status'
 import { xOnly } from '../setupPlan'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
@@ -192,8 +194,6 @@ export async function pushMapBackup(vaultId: string, kit: RecoveryKit, wrap?: Ha
   if (!id) throw new Error('vault id required')
   const backup = buildMapBackup(kit, undefined, wrap)
   try {
-    const { beginPasskeySession } = await import('../../signIn')
-    const { fetchVaultStatus } = await import('../status')
     const status = await fetchVaultStatus(undefined, id)
     const session = await beginPasskeySession('map-write', status)
     await vaultPost('/v1/map', {
