@@ -149,6 +149,13 @@ button.vault-hub-row {
   min-width: 0;
 }
 
+.vault-hub-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
 .vault-hub-signal {
   width: 8px;
   height: 8px;

@@ -58,11 +58,22 @@ export function HubRow({
           </Text>
         ) : null}
       </div>
-      {signal ? <span className={`vault-hub-signal ${signal}`} aria-label={signalLabel} title={signalLabel} /> : null}
-      {status ? (
-        <Text color='neutral-600' tiny>
-          {status}
-        </Text>
+      {signal || status ? (
+        <span className='vault-hub-end'>
+          {signal ? (
+            <span
+              className={`vault-hub-signal ${signal}`}
+              aria-hidden={Boolean(status)}
+              aria-label={status ? undefined : signalLabel}
+              title={signalLabel}
+            />
+          ) : null}
+          {status ? (
+            <Text color='neutral-600' tiny>
+              {status}
+            </Text>
+          ) : null}
+        </span>
       ) : null}
       {onClick ? <span className='vault-hub-chevron'>›</span> : null}
     </>
