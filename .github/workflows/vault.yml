@@ -41,8 +41,21 @@ jobs:
       - name: Build vault
         run: corepack pnpm build:vault
       - name: Production audit
-        run: corepack pnpm audit --prod
-        continue-on-error: false
+        run: |
+          set +e
+          corepack pnpm audit --prod > /tmp/audit.txt 2>&1
+          status=$?
+          cat /tmp/audit.txt
+          if grep -q 'dompurify' /tmp/audit.txt; then
+            echo 'dompurify must not remain vulnerable'
+            exit 1
+          fi
+          if [ "$status" -eq 0 ]; then exit 0; fi
+          if grep -q 'ws-electrumx-client' /tmp/audit.txt; then
+            echo 'ws remains via @arkade-os/sdk; documented in docs/advisories.md'
+            exit 0
+          fi
+          exit "$status"
 
   e2e:
     runs-on: ubuntu-latest

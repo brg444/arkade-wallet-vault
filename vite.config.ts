@@ -45,6 +45,15 @@ export default defineConfig({
   plugins: [
     basicAuth(),
     process.env.VITE_VAULT_MODE === '1' && {
+      name: 'vault-dev-index',
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url === '/' || req.url === '/index.html') req.url = '/vault.html'
+          next()
+        })
+      },
+    },
+    process.env.VITE_VAULT_MODE === '1' && {
       name: 'vault-html-identity',
       transformIndexHtml(html: string) {
         return html
@@ -96,6 +105,7 @@ export default defineConfig({
     sourcemap: process.env.VITE_VAULT_MODE !== '1',
     rollupOptions: {
       external: ['fs'],
+      input: process.env.VITE_VAULT_MODE === '1' ? path.resolve(__dirname, 'vault.html') : undefined,
     },
   },
   worker: {
