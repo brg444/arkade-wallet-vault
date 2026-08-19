@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [vault-mode]
 
+concurrency:
+  group: vault-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -69,7 +73,16 @@ jobs:
           cache: pnpm
       - name: Frozen install
         run: corepack pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Playwright
-        run: corepack pnpm exec playwright install chromium --with-deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: corepack pnpm exec playwright install chromium
       - name: Vault Playwright
         run: corepack pnpm test:e2e:vault
+        env:
+          CI: true
