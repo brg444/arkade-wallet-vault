@@ -10,9 +10,17 @@ import Padded from '../../components/Padded'
 import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
-import { fetchAddressUtxos } from '../../lib/vault/esplora'
+import { broadcastTx, fetchAddressUtxos } from '../../lib/vault/esplora'
+import { parseHardwareSecret } from '../../lib/vault/savingsSpend'
 import { CLAIMANTS, V6_TEMPLATE, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
 import { familyFromDescriptor } from '../../lib/vault/v5/descriptor'
+import {
+  assertGuardianExitSigners,
+  describeGuardianExitSigners,
+  finalizeGuardianExit,
+  requiredGuardianExitSigners,
+  signGuardianExitPsbt,
+} from '../../lib/vault/v5/guardianExit'
 import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/v5/kit'
 import { planClaim, planClawback, planInitiate } from '../../lib/vault/v5/recoverFlow'
 import { buildGuardianExitPsbt } from '../../lib/vault/v5/spend'
@@ -55,6 +63,7 @@ export default function VaultRecover() {
     recoverExit,
     restoreRecoveryKit,
     savingsAddress,
+    signGuardianExitWithDevice,
     unlockMapWithHardware,
   } = useContext(VaultContext)
   const { toast } = useToast()
@@ -73,6 +82,11 @@ export default function VaultRecover() {
   const [psbtOut, setPsbtOut] = useState('')
   const [wrapJson, setWrapJson] = useState('')
   const [hardwareSecret, setHardwareSecret] = useState('')
+  const [cancelPsbt, setCancelPsbt] = useState('')
+  const [cancelSigners, setCancelSigners] = useState<Claimant[]>([])
+  const [cancelHave, setCancelHave] = useState<Claimant[]>([])
+  const [cancelHardware, setCancelHardware] = useState('')
+  const [cancelRecovery, setCancelRecovery] = useState('')
 
   const kitJson = useMemo(() => {
     try {
@@ -123,9 +137,9 @@ export default function VaultRecover() {
             <FlexCol>
               <Text wrap>
                 Start recovery with a key you still have. That begins a waiting period of a fixed number of blocks. If
-                you didn’t start it, cancel it — cancel still needs both vault services unless this vault has a
-                hardware-only cancel path. After the wait, the starter can move the coins even if those services are
-                gone. Mutinynet blocks are much faster than a 10-minute chain.
+                you didn’t start it, cancel it. New vaults can cancel with the remaining keys and no vault service.
+                After the wait, the starter can move the coins even if those services are gone. Mutinynet blocks are
+                much faster than a 10-minute chain.
               </Text>
               {inProcess ? (
                 <KeyCard
@@ -171,10 +185,137 @@ export default function VaultRecover() {
                   testId='recover-claim-dest'
                 />
               ) : null}
-              {psbtOut ? (
+              {psbtOut && !cancelSigners.length ? (
                 <Text color='neutral-600' tiny wrap>
                   Transaction copied. Sign it with the key you still have.
                 </Text>
+              ) : null}
+              {cancelSigners.length ? (
+                <>
+                  <Text wrap testId='recover-guardian-signers'>
+                    Cancel without services needs {describeGuardianExitSigners(cancelSigners)}. The key that started
+                    recovery cannot sign.
+                  </Text>
+                  {cancelSigners.map((role) => (
+                    <Text key={role} color='neutral-600' tiny>
+                      {KEY_LABEL[role]}
+                      {cancelHave.includes(role) ? ' — signed' : ' — still needed'}
+                    </Text>
+                  ))}
+                  {cancelSigners.includes('phone') && !cancelHave.includes('phone') ? (
+                    <Button
+                      label='Sign with this device'
+                      testId='recover-guardian-device'
+                      onClick={() => {
+                        setLocalError('')
+                        void (async () => {
+                          try {
+                            const next = await signGuardianExitWithDevice(cancelPsbt)
+                            setCancelPsbt(next)
+                            setCancelHave((have) => [...have, 'phone'])
+                            toast('This device signed')
+                          } catch (err) {
+                            setLocalError(err instanceof Error ? err.message : 'Could not sign with this device')
+                          }
+                        })()
+                      }}
+                    />
+                  ) : null}
+                  {cancelSigners.includes('hardware') && !cancelHave.includes('hardware') ? (
+                    <>
+                      <Input
+                        label='Hardware key'
+                        placeholder='WIF or 64-char hex'
+                        value={cancelHardware}
+                        onChange={setCancelHardware}
+                        testId='recover-guardian-hardware-secret'
+                      />
+                      <Button
+                        secondary
+                        label='Copy cancel for hardware'
+                        testId='recover-guardian-hardware-copy'
+                        onClick={() => {
+                          void copyToClipboard(cancelPsbt)
+                          toast('Cancel copied for hardware')
+                        }}
+                      />
+                      <Button
+                        label='Sign with hardware'
+                        testId='recover-guardian-hardware'
+                        disabled={!cancelHardware.trim()}
+                        onClick={() => {
+                          setLocalError('')
+                          let priv: Uint8Array | undefined
+                          try {
+                            priv = parseHardwareSecret(cancelHardware)
+                            const next = signGuardianExitPsbt(cancelPsbt, priv)
+                            setCancelPsbt(next)
+                            setCancelHave((have) => [...have, 'hardware'])
+                            setCancelHardware('')
+                            toast('Hardware signed')
+                          } catch (err) {
+                            setLocalError(err instanceof Error ? err.message : 'Could not sign with hardware')
+                          } finally {
+                            priv?.fill(0)
+                          }
+                        }}
+                      />
+                    </>
+                  ) : null}
+                  {cancelSigners.includes('recovery') && !cancelHave.includes('recovery') ? (
+                    <>
+                      <Input
+                        label='Recovery key'
+                        placeholder='WIF or 64-char hex'
+                        value={cancelRecovery}
+                        onChange={setCancelRecovery}
+                        testId='recover-guardian-recovery-secret'
+                      />
+                      <Button
+                        label='Sign with recovery'
+                        testId='recover-guardian-recovery'
+                        disabled={!cancelRecovery.trim()}
+                        onClick={() => {
+                          setLocalError('')
+                          let priv: Uint8Array | undefined
+                          try {
+                            priv = parseHardwareSecret(cancelRecovery)
+                            const next = signGuardianExitPsbt(cancelPsbt, priv)
+                            setCancelPsbt(next)
+                            setCancelHave((have) => [...have, 'recovery'])
+                            setCancelRecovery('')
+                            toast('Recovery signed')
+                          } catch (err) {
+                            setLocalError(err instanceof Error ? err.message : 'Could not sign with recovery')
+                          } finally {
+                            priv?.fill(0)
+                          }
+                        }}
+                      />
+                    </>
+                  ) : null}
+                  {cancelHave.length === cancelSigners.length ? (
+                    <Button
+                      label='Broadcast cancel'
+                      testId='recover-guardian-broadcast'
+                      onClick={() => {
+                        setLocalError('')
+                        void (async () => {
+                          try {
+                            const done = finalizeGuardianExit(cancelPsbt, cancelSigners.length)
+                            const txid = await broadcastTx(done.txHex)
+                            toast(`Cancel broadcast ${txid.slice(0, 8)}…`)
+                            setCancelPsbt('')
+                            setCancelSigners([])
+                            setCancelHave([])
+                          } catch (err) {
+                            setLocalError(err instanceof Error ? err.message : 'Could not broadcast the cancel')
+                          }
+                        })()
+                      }}
+                    />
+                  ) : null}
+                </>
               ) : null}
               <ErrorMessage error={Boolean(error || localError)} text={error || localError} />
             </FlexCol>
@@ -218,6 +359,12 @@ export default function VaultRecover() {
                     try {
                       const [k, c] = inProcess.familyKey.split('-') as [VaultKind, Claimant]
                       const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                      if (kit.descriptor.templateVersion !== V6_TEMPLATE) {
+                        throw new Error('this vault cannot cancel pending recovery without the services')
+                      }
+                      const hasRecovery = Boolean(kit.descriptor.keys.recovery)
+                      const signers = requiredGuardianExitSigners(c, hasRecovery)
+                      assertGuardianExitSigners(c, signers)
                       const built = buildGuardianExitPsbt({
                         family: familyFromDescriptor(kit.descriptor),
                         kind: k,
@@ -227,9 +374,11 @@ export default function VaultRecover() {
                         feeSats: 500,
                         network: kit.descriptor.network,
                       })
+                      setCancelPsbt(built.psbtHex)
+                      setCancelSigners(signers)
+                      setCancelHave([])
                       setPsbtOut(built.psbtHex)
-                      void copyToClipboard(built.psbtHex)
-                      toast('Cancel copied. Sign with hardware (and recovery if you added it). No vault service.')
+                      toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
                     } catch (err) {
                       setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
                     }
