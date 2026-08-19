@@ -17,7 +17,7 @@ export default defineConfig({
     contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: {
-    command: 'bun run start:vault',
+    command: 'pnpm start:vault',
     port: 3003,
     reuseExistingServer: true,
     timeout: 120000,

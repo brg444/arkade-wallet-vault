@@ -1,0 +1,62 @@
+name: Vault
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [vault-mode]
+  pull_request:
+    branches: [vault-mode]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Frozen install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Format
+        run: corepack pnpm format:check
+      - name: Lint
+        run: corepack pnpm exec eslint "src/**/*.{ts,tsx,js,jsx}" --max-warnings=0
+      - name: Contract pack
+        run: |
+          node -e "
+            const pack = require('./src/lib/vault/contract-pack.json')
+            const staged = pack.programs && pack.programs.staged
+            if (!staged || staged.template !== 'phone-hww-recovery-staged-v6' || staged.enrollable !== true) {
+              throw new Error('contract pack must publish only the live staged program')
+            }
+            if (pack.programs.v4 || pack.programs.v5 || pack.leftover) {
+              throw new Error('leftover programs must not appear in the published pack')
+            }
+          "
+      - name: Unit tests
+        run: corepack pnpm test
+      - name: Build vault
+        run: corepack pnpm build:vault
+      - name: Production audit
+        run: corepack pnpm audit --prod
+        continue-on-error: false
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Frozen install
+        run: corepack pnpm install --frozen-lockfile
+      - name: Install Playwright
+        run: corepack pnpm exec playwright install chromium --with-deps
+      - name: Vault Playwright
+        run: corepack pnpm test:e2e:vault

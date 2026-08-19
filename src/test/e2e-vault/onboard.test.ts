@@ -34,4 +34,13 @@ test('skips optional recovery and reaches the vault home', async ({ page }) => {
   await page.getByTestId('tab-vault').click()
   await expect(page.getByTestId('security-kit')).toBeVisible()
   await expect(page.getByTestId('security-lost')).toBeVisible()
+
+  await page.getByTestId('security-kit').click()
+  await expect(page.getByText('Recovery Kit', { exact: true })).toBeVisible()
+  await expect(page.getByText(/map of this vault/i)).toBeVisible()
+  await page.getByText('I lost a key').click()
+  await expect(page.getByText('Lost a key')).toBeVisible()
+  await expect(page.getByText(/remaining keys/i)).toBeVisible()
+  await expect(page.getByTestId('recover-initiate')).toBeVisible()
+  await expect(page.getByTestId('recover-guardian-exit')).toHaveCount(0)
 })

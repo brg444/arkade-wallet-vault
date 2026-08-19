@@ -1,6 +1,6 @@
 {
-  "buildCommand": "bun run build:vault",
-  "installCommand": "bun install",
+  "buildCommand": "pnpm build:vault",
+  "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "dist",
   "framework": null,
   "headers": [

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
 import { DUST_SATS } from '../lib/vault/constants'
 import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
