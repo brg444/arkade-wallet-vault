@@ -65,6 +65,7 @@ export default function VaultKeys() {
                 icon={<ServerIcon />}
                 title='Vault service'
                 signal={service === 'checking' ? 'wait' : service === 'online' ? 'ok' : 'bad'}
+                status={service === 'checking' ? 'Checking…' : service === 'online' ? 'Online' : 'Can’t reach'}
               />
               {hasRecovery ? (
                 <HubRow
