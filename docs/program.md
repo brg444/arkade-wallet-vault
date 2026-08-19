@@ -6,6 +6,18 @@ schema integer and not a release. Schema, program, and HMAC/HKDF
 domains are independent — see
 [arkade-vault-server/docs/versions.md](https://github.com/brg444/arkade-vault-server/blob/main/docs/versions.md).
 
+v4 (`phone-direct-p256-routine-3of3-admin-phone-hww-v4`) is leftover and
+not enrollable. v5 (`phone-hww-recovery-staged-v5`) is the prior staged
+program, leftover and not enrollable. v5 and v6 share the v5 descriptor
+schema and have different template identities. v6 can cancel a pending
+recovery with the remaining user keys. The in-app pending watcher is
+best-effort local polling, not a watchtower.
+
+Per-transaction, fee, and recursive-change rules are enforced by script
+and by the server. Only the rolling 24-hour allowance is server-only.
+
+This demo is Mutinynet-only, unaudited, and unsuitable for real funds.
+
 Recovery is optional. Skip it: this device and hardware. Add a recovery
 key: a third person who can start a wait, not spend everyday coins
 alone.
