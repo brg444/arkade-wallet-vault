@@ -621,7 +621,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
               await pushMapBackup(kit.descriptor.vaultId, kit, wrap)
             }
           } catch {
-            // Map stays on this phone if the service cannot store it yet.
+            // Map stays on this device if the service cannot store it yet.
           }
         }
         try {
@@ -849,7 +849,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       try {
-        if (!handoffPsbt) throw new Error('create the phone signature first')
+        if (!handoffPsbt) throw new Error('create the device signature first')
         const incoming = parseIncomingPsbt(signedPsbt)
         requireSameSavingsIntent(handoffPsbt, incoming, spend.address, spend.amount, status?.network || 'mutinynet')
         const final = finalizeSavingsPsbt(incoming)

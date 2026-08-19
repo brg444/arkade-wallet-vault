@@ -26,7 +26,7 @@ import { bootVaultPrefs } from './lib/vault/prefs'
 export default function VaultApp() {
   const { navigate, screen } = useContext(VaultContext)
   useEffect(() => {
-    document.title = 'Spending vault'
+    document.title = 'Arkade Vault'
     bootVaultPrefs()
   }, [])
   const tab = tabForScreen(screen)

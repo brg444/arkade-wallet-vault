@@ -24,7 +24,7 @@ export default function VaultSignIn() {
             <Text wrap>
               {onPhone
                 ? 'Use Face ID if you set this vault up here. Do not create a new passkey.'
-                : 'This computer will show a QR. Scan it with the iPhone that created the vault, then Face ID there. Do not create a new passkey.'}
+                : 'This device will show a QR. Scan it with the device that created the vault, then Face ID there. Do not create a new passkey.'}
             </Text>
             <KeyCard
               icon={<FingerprintIcon />}
@@ -41,13 +41,7 @@ export default function VaultSignIn() {
           disabled={busy}
           loading={busy}
           label={
-            busy
-              ? onPhone
-                ? 'Waiting for Face ID…'
-                : 'Waiting for phone QR…'
-              : onPhone
-                ? 'Sign in'
-                : 'Sign in with phone QR'
+            busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for QR…') : onPhone ? 'Sign in' : 'Sign in with QR'
           }
         />
       </ButtonsOnBottom>

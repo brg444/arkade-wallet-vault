@@ -165,7 +165,7 @@ export default function VaultHome() {
                   >
                     <span>
                       <span className='vault-account-option-name'>Spending</span>
-                      <span className='vault-account-option-meta'>This phone, up to today’s limit</span>
+                      <span className='vault-account-option-meta'>This device, up to today’s limit</span>
                     </span>
                     <span className='vault-account-option-amt'>
                       {prettyNumber(amountSats)} {amountSats === 1 ? 'SAT' : 'SATS'}
@@ -181,7 +181,7 @@ export default function VaultHome() {
                   >
                     <span>
                       <span className='vault-account-option-name'>Savings</span>
-                      <span className='vault-account-option-meta'>This phone and hardware</span>
+                      <span className='vault-account-option-meta'>This device and hardware</span>
                     </span>
                     <span className='vault-account-option-amt'>
                       {prettyNumber(savingsSats)} {savingsSats === 1 ? 'SAT' : 'SATS'}
@@ -201,11 +201,11 @@ export default function VaultHome() {
                 <Text color='neutral-600' tiny>
                   {prettyNumber(availableSpend, 0)} / {prettyNumber(dailyLimit, 0)} available today
                 </Text>
-                <Meter ratio={ratio} label='Available spend' />
+                <Meter ratio={ratio} label='Daily limit used' />
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This phone can’t send this alone. Hardware signs too.
+                This device can’t send this alone. Hardware signs too.
               </Text>
             )}
 

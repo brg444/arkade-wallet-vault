@@ -30,7 +30,7 @@ export default function VaultKeys() {
               <HubRow
                 icon={<FingerprintIcon />}
                 title='This device'
-                status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This phone'}
+                status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
                 onClick={
                   canEnableOther
                     ? () => {
@@ -57,7 +57,7 @@ export default function VaultKeys() {
               <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
               {canEnableOther ? (
                 <HubRow
-                  title={busy ? 'Waiting for Face ID…' : 'Use on another phone'}
+                  title={busy ? 'Waiting for Face ID…' : 'Use on another device'}
                   onClick={() => {
                     if (!busy) void enablePasskeyLogin()
                   }}

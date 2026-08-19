@@ -79,7 +79,7 @@ export default function VaultWelcome() {
                   </Text>
                 </div>
                 <Text color='neutral-600' small wrap>
-                  Daily spend on this phone. Savings need hardware too.
+                  Daily spend on this device. Savings need hardware too.
                 </Text>
                 <div className='vault-welcome-points'>
                   <Point icon={<BoltOutlineIcon />} text='Daily spend with Face ID' />
@@ -102,13 +102,7 @@ export default function VaultWelcome() {
             disabled={busy}
             loading={busy}
             label={
-              busy
-                ? onPhone
-                  ? 'Waiting for Face ID…'
-                  : 'Waiting for phone QR…'
-                : onPhone
-                  ? 'Sign in'
-                  : 'Sign in with phone QR'
+              busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for QR…') : onPhone ? 'Sign in' : 'Sign in with QR'
             }
           />
         ) : null}

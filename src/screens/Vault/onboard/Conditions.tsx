@@ -37,8 +37,9 @@ export default function VaultConditions() {
           network={status?.network}
         />
         <Text color='neutral-600' tiny wrap>
-          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day. Lose a key, start recovery, then wait{' '}
-          {waitLabel(savCsv, status?.network)} or {waitLabel(opCsv, status?.network)}. Cancel if it wasn’t you.
+          {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day. Lose this device and start recovery with
+          hardware: wait {waitLabel(savCsv, status?.network)}. Lose hardware and start it from this device: wait{' '}
+          {waitLabel(opCsv, status?.network)}. Cancel either one if it wasn’t you.
         </Text>
       </OnboardLayout>
     )
@@ -77,7 +78,7 @@ export default function VaultConditions() {
         ))}
       </Section>
       <Section label='If you lose a key'>
-        {DELAY_PROFILES.filter((item) => item.id !== 'mutinynet').map((item) => (
+        {DELAY_PROFILES.map((item) => (
           <ChoiceCard
             key={item.id}
             title={item.label}

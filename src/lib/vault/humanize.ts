@@ -33,7 +33,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'Wrong passkey. Use the device that created this vault. On a new device, scan the QR with that original device.'
   }
   if (msg.includes('prf')) {
-    return 'Chrome on this computer verified the passkey but did not get the unlock secret. That is common over a QR. Open the vault on the iPhone that created it. Safari on a Mac with the same iCloud account may work; Chrome usually will not.'
+    return 'This browser verified the passkey but didn’t get the unlock secret. That’s common over a QR. Open the vault on the device that created it — Safari on a Mac with the same iCloud account may also work.'
   }
   if (msg.includes('not allowed') || msg.includes('abort') || msg.includes('timed out')) {
     return 'Passkey cancelled.'
@@ -54,10 +54,10 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('this setup skipped recovery')) {
     return 'This vault came back with recovery, but setup skipped it. Start over and add a recovery key.'
   }
-  if (msg.includes('no recovery map') || msg.includes('No Recovery Kit yet')) {
+  if (msg.includes('no recovery map') || msg.includes('no recovery kit yet')) {
     return 'This vault has no recovery map. Add recovery on a new vault, or get the map with Face ID.'
   }
-  if (msg.includes('Could not rebuild the map')) {
+  if (msg.includes('could not rebuild the map')) {
     return 'Could not rebuild the map. Save it while this app is open.'
   }
   if (msg.includes('recoverypop') || msg.includes('recovery proof') || msg.includes('recovery secret')) {
@@ -67,7 +67,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'This app doesn’t match the vault. Update and try again.'
   }
   if (msg.includes('does not match the local pin') || msg.includes('not pinned locally')) {
-    return 'This vault’s receive address no longer matches the one saved on this phone. Don’t send coins until that’s fixed.'
+    return 'This vault’s receive address no longer matches the one saved on this device. Don’t send coins until that’s fixed.'
   }
   if (msg.includes('api response too large')) {
     return 'The vault sent too much data. Try again.'

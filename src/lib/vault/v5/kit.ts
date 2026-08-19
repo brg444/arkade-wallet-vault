@@ -63,7 +63,7 @@ export function inspectRecoveryKit(kit: RecoveryKit): RecoveryKitReport {
     warnings: [
       'Recovery cannot exit a Normal UTXO if both cosigners are gone.',
       'A mature Pending recovery claim can pay any destination.',
-      `Demo clocks: hardware ${V5_CSV.hardware}, phone ${V5_CSV.phone}, recovery ${V5_CSV.recovery} blocks.`,
+      `Demo clocks: hardware ${V5_CSV.hardware}, device ${V5_CSV.phone}, recovery ${V5_CSV.recovery} blocks.`,
     ],
   }
 }

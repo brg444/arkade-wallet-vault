@@ -15,7 +15,9 @@ describe('frozen wallet protocol domains', () => {
     expect(V5_TEMPLATE).toBe(pack.programs.v5.template)
     expect(V5_RECOVERY_POP_TAG).toBe(pack.programs.v5.recoveryPopTag)
     expect(pack.programs.v4.status).toBe('leftover')
+    expect(pack.programs.v4.enrollable).toBe(false)
     expect(pack.programs.v5.status).toBe('live')
+    expect(pack.programs.v5.enrollable).toBe(true)
     expect(pack.programs.v5.recovery).toBe('optional')
   })
 

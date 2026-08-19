@@ -44,7 +44,7 @@ describe('humanizeVaultError', () => {
 
   it('explains a rejected Chrome passkey as a different credential store', () => {
     expect(humanizeVaultError(new Error('this passkey did not return its 32-byte PRF secret on this device'))).toMatch(
-      /unlock secret|iPhone/i,
+      /unlock secret|device that created/i,
     )
     expect(humanizeVaultError(new Error('passkey authentication failed'))).toMatch(/scan the QR|original/i)
     expect(humanizeVaultError(new Error('this passkey does not belong to this vault'))).toMatch(/scan the QR|original/i)

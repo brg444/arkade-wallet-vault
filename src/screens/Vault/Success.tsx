@@ -22,7 +22,7 @@ export default function VaultSuccess() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <Success headline={amount} text={lastTxid ? 'On testnet' : 'Done'} />
+            <Success headline={amount} text={lastTxid ? 'Broadcast on testnet' : 'Done'} />
             {lastSend ? (
               <>
                 <Detail label='To' value={truncateAddress(lastSend.address, 8)} mono />

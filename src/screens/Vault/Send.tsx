@@ -105,7 +105,7 @@ export default function VaultSend() {
             />
             <Text color='neutral-600' tiny wrap>
               {fromSavings
-                ? `From Savings · fee ${prettyAmount(spend.fee)}. This phone signs first. Hardware signs next.`
+                ? `From Savings · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
                 : `Fee ${prettyAmount(spend.fee)} · up to ${prettyAmount(setup.txCapSats)} per send`}
             </Text>
             {fromSavings ? (
@@ -117,7 +117,7 @@ export default function VaultSend() {
                 <Text color='neutral-600' tiny>
                   {prettyNumber(availableSpend, 0)} / {prettyNumber(setup.dailyLimitSats, 0)} available today
                 </Text>
-                <Meter ratio={ratio} label='Available spend' />
+                <Meter ratio={ratio} label='Daily limit used' />
               </>
             )}
             <ErrorMessage error={Boolean(error)} text={error} />

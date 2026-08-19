@@ -260,7 +260,7 @@ export default function VaultSettings() {
                   setCheckingUpdate(true)
                   void reloadIfNewerWallet()
                     .then((reloaded) => {
-                      if (!reloaded) toast("You're up to date")
+                      if (!reloaded) toast('You’re up to date')
                     })
                     .finally(() => setCheckingUpdate(false))
                 }}
