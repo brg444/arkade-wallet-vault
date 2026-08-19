@@ -1,4 +1,5 @@
 import type { VaultNetwork } from '../constants'
+import { V5_TEMPLATE } from './constants'
 import { buildV5Descriptor, type V5DescriptorInput, type V5PublicDescriptor } from './descriptor'
 import { V5_FIXTURE } from './fixtures'
 
@@ -26,7 +27,7 @@ export function previewV5Input(input: {
       origin: 'preview',
       version: 'v5-preview',
     },
-    templateVersion: 'phone-hww-recovery-staged-v5',
+    templateVersion: V5_TEMPLATE,
   }
 }
 

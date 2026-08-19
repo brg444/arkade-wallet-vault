@@ -2,7 +2,7 @@ import { schnorr } from '@noble/curves/secp256k1.js'
 import { hex } from '@scure/base'
 import { encodeUtf8, hexToBytes, requireLowerHex } from '../hex'
 import { xOnlyFromCompressed } from '../savingsTree'
-import { V5_RECOVERY_POP_TAG, V5_TEMPLATE } from './constants'
+import { V5_RECOVERY_POP_TAG, STAGED_TEMPLATE, isStagedTemplate } from './constants'
 import { taggedHash } from './context'
 
 function appendBytes(parts: Uint8Array[], bytes: Uint8Array) {
@@ -30,10 +30,10 @@ export function encodeRecoveryPoP(input: {
 }): Uint8Array {
   const vaultId = input.vaultId.trim().toLowerCase()
   const invite = input.inviteHandle.trim()
-  const template = input.templateVersion || V5_TEMPLATE
+  const template = input.templateVersion || STAGED_TEMPLATE
   if (!vaultId) throw new Error('vault id required')
   if (!invite) throw new Error('invite handle required')
-  if (template !== V5_TEMPLATE && template !== 'phone-hww-recovery-staged-v6') {
+  if (!isStagedTemplate(template)) {
     throw new Error('template version is not this release')
   }
   const recovery = requireLowerHex(input.recoveryXOnly, 'recoveryXOnly', 32)

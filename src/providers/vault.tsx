@@ -55,7 +55,7 @@ import {
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
 
-import { V5_TEMPLATE } from '../lib/vault/v5/constants'
+import { isStagedTemplate } from '../lib/vault/v5/constants'
 
 import { buildRecoveryKit } from '../lib/vault/v5/kit'
 import {
@@ -946,7 +946,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [liveNetwork])
 
   useEffect(() => {
-    const liveV5 = status?.templateVersion === V5_TEMPLATE
+    const liveV5 = isStagedTemplate(String(status?.templateVersion || ''))
     const id = status?.vaultId || enrollment?.vaultId || ''
     const kit = (id && loadLocalKit(id)) || findLocalKit()
     if (!liveV5 || !kit) return

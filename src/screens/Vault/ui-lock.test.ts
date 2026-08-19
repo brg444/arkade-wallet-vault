@@ -64,7 +64,7 @@ describe('vault UI lock', () => {
     expect(enroll).toMatch(/this setup skipped recovery/)
     const constants = read('src/lib/vault/v5/constants.ts')
     expect(constants).toContain('arkade-vault/v5')
-    expect(constants).toContain('phone-hww-recovery-staged-v5')
+    expect(constants).toContain('phone-hww-recovery-staged-v6')
     const settings = read('src/screens/Vault/Settings.tsx')
     expect(settings).not.toMatch(/settings-recover/)
     expect(settings).not.toMatch(/settings-kit/)
