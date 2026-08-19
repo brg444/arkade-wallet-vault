@@ -61,7 +61,8 @@ export function initiateWitnessBytes(kind: VaultKind, claimant: Claimant, hasRec
   return WITNESS_BYTES_399
 }
 
-export function clawbackWitnessBytes(): number {
+export function clawbackWitnessBytes(serverFree = false, hasRecovery = true): number {
+  if (serverFree && hasRecovery) return WITNESS_BYTES_431
   return WITNESS_BYTES_399
 }
 

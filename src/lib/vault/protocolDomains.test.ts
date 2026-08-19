@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_SCHEMA } from './constants'
 import { enrollmentPoPDigest } from './tenantEnrollment'
-import { V5_RECOVERY_POP_TAG, V5_SCHEMA, V5_TEMPLATE } from './v5/constants'
+import { V5_RECOVERY_POP_TAG, V5_SCHEMA, V5_TEMPLATE, V6_TEMPLATE } from './v5/constants'
 import pack from './contract-pack.json'
 
 describe('frozen wallet protocol domains', () => {
@@ -13,12 +13,15 @@ describe('frozen wallet protocol domains', () => {
     expect(POLICY_VERSION).toBe(pack.programs.v4.policy)
     expect(V5_SCHEMA).toBe(pack.programs.v5.schema)
     expect(V5_TEMPLATE).toBe(pack.programs.v5.template)
+    expect(V6_TEMPLATE).toBe(pack.programs.v6.template)
     expect(V5_RECOVERY_POP_TAG).toBe(pack.programs.v5.recoveryPopTag)
     expect(pack.programs.v4.status).toBe('leftover')
     expect(pack.programs.v4.enrollable).toBe(false)
-    expect(pack.programs.v5.status).toBe('live')
-    expect(pack.programs.v5.enrollable).toBe(true)
-    expect(pack.programs.v5.recovery).toBe('optional')
+    expect(pack.programs.v5.status).toBe('leftover')
+    expect(pack.programs.v5.enrollable).toBe(false)
+    expect(pack.programs.v6.status).toBe('live')
+    expect(pack.programs.v6.enrollable).toBe(true)
+    expect(pack.programs.v6.recovery).toBe('optional')
   })
 
   it('pins leftover v4 strings and the live v5 enroll program', () => {

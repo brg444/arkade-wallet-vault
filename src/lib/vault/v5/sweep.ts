@@ -9,7 +9,9 @@ export function leftoverV4Template(templateVersion?: string): boolean {
 }
 
 export function sweepDest(descriptor: V5PublicDescriptor, kind: SweepKind): string {
-  if (descriptor.templateVersion !== V5_TEMPLATE) throw new Error('sweep dest must be a v5 descriptor')
+  if (descriptor.templateVersion !== V5_TEMPLATE && descriptor.templateVersion !== 'phone-hww-recovery-staged-v6') {
+    throw new Error('sweep dest must be a staged descriptor')
+  }
   return kind === 'daily' ? descriptor.daily.address : descriptor.savings.address
 }
 

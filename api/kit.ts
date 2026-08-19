@@ -97,12 +97,7 @@ export default async function handler(
   }
 
   if (req.method === 'POST' || req.method === 'PUT') {
-    if (!isPublicMap(req.body)) {
-      res.status(400).json({ error: 'not a vault map backup' })
-      return
-    }
-    await writeMap(vaultId, req.body)
-    res.status(200).json({ ok: true, vaultId })
+    res.status(405).json({ error: 'map writes go through /v1/map after a passkey ceremony' })
     return
   }
 

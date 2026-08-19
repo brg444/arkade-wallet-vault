@@ -127,6 +127,37 @@ export function buildClawbackPsbt(input: {
   return { psbtHex: hex.encode(tx.toPSBT()), destAddress: destTree.address, authScript, destSats }
 }
 
+export function buildGuardianExitPsbt(input: {
+  family: V5Family
+  kind: VaultKind
+  claimant: Claimant
+  coin: V5Coin
+  destAddress: string
+  feeSats: number
+  network: string
+}): { psbtHex: string; destSats: number } {
+  const coin = requireCoin(input.coin)
+  const feeSats = requireFee(input.feeSats)
+  const destSats = coin.value - feeSats
+  if (destSats < DUST_SATS) throw new Error('cancel dest is below dust')
+  const key = familyKey(input.kind, input.claimant)
+  const source = input.family.pending[key]
+  if (!source.guardianExit) throw new Error('this vault cannot cancel pending recovery without the services')
+  const dest = hex.decode(scriptHexFromAddress(input.destAddress, input.network))
+  const leaf = tapLeafForScript(source.tapLeafScript, source.guardianExit)
+  const tx = new Transaction(TX_OPTS)
+  tx.addInput({
+    txid: hex.decode(coin.txid),
+    index: coin.vout,
+    witnessUtxo: { script: source.script, amount: BigInt(coin.value) },
+    tapInternalKey: source.tapInternalKey,
+    tapLeafScript: [leaf],
+    sequence: 0xfffffffd,
+  })
+  tx.addOutput({ script: dest, amount: BigInt(destSats) })
+  return { psbtHex: hex.encode(tx.toPSBT()), destSats }
+}
+
 export function buildClaimPsbt(input: {
   family: V5Family
   kind: VaultKind

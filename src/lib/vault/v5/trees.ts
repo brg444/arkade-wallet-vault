@@ -93,6 +93,7 @@ export function buildQuarantine(input: {
   hardwarePub: string
   recoveryPub?: string
   network: string
+  templateVersion?: string
 }) {
   const pubs: Record<string, Uint8Array> = {
     phone: xOnlyFromCompressed(input.phonePub),
@@ -106,6 +107,7 @@ export function buildQuarantine(input: {
     vaultId: input.vaultId,
     kind: input.kind,
     claimant: input.claimant,
+    templateVersion: input.templateVersion,
   })
   const payment = p2tr(internal, { script }, vaultAddressNetwork(input.network), true)
   if (!payment.address) throw new Error('quarantine address required')
@@ -130,6 +132,8 @@ export function buildPending(input: {
   vaultTweak: string
   arkadeTweak: string
   network: string
+  templateVersion?: string
+  serverFreeClawback?: boolean
 }) {
   const pubs: Record<string, Uint8Array> = {
     phone: xOnlyFromCompressed(input.phonePub),
@@ -143,11 +147,17 @@ export function buildPending(input: {
   const clawbacks = pendingGuardians(input.claimant, Boolean(input.recoveryPub)).map((guardian) =>
     checksigScript([pubs[guardian], vault, arkade]),
   )
-  const scripts = [claim, ...clawbacks, UNSPENDABLE_PADDING]
+  const scripts = [claim, ...clawbacks]
+  if (input.serverFreeClawback) {
+    const guardians = pendingGuardians(input.claimant, Boolean(input.recoveryPub)).map((name) => pubs[name])
+    scripts.push(checksigScript(guardians))
+  }
+  scripts.push(UNSPENDABLE_PADDING)
   const internal = contextInternalKey({
     vaultId: input.vaultId,
     kind: input.kind,
     claimant: input.claimant,
+    templateVersion: input.templateVersion,
   })
   const payment = p2tr(internal, tapTreeFromScripts(scripts), vaultAddressNetwork(input.network), true)
   if (!payment.address) throw new Error('pending address required')
@@ -160,6 +170,9 @@ export function buildPending(input: {
     leaves: payment.leaves,
     claim,
     clawbacks,
+    guardianExit: input.serverFreeClawback
+      ? checksigScript(pendingGuardians(input.claimant, Boolean(input.recoveryPub)).map((name) => pubs[name]))
+      : undefined,
     delay: pendingDelay(input.claimant),
   }
 }
@@ -180,6 +193,7 @@ export function buildNormal(input: {
   routineArkade?: string
   initiate: InitiateTweaks
   network: string
+  templateVersion?: string
 }) {
   const phone = xOnlyFromCompressed(input.phonePub)
   const hardware = xOnlyFromCompressed(input.hardwarePub)
@@ -216,7 +230,12 @@ export function buildNormal(input: {
         ]
       : [admin, ...initiate]
 
-  const internal = contextInternalKey({ vaultId: input.vaultId, kind: input.kind, claimant: '' })
+  const internal = contextInternalKey({
+    vaultId: input.vaultId,
+    kind: input.kind,
+    claimant: '',
+    templateVersion: input.templateVersion,
+  })
   const payment = p2tr(internal, tapTreeFromScripts(scripts), vaultAddressNetwork(input.network), true)
   if (!payment.address) throw new Error('normal address required')
   return {
@@ -244,6 +263,7 @@ export function buildV5Family(input: {
   routineVault: string
   routineArkade: string
   network: string
+  templateVersion?: string
 }) {
   const phoneDirect = hexToBytes(input.phoneDirectP256)
   const bases = [
@@ -264,11 +284,13 @@ export function buildV5Family(input: {
   const initiateAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
   const clawbackAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
   const pendingTweaks = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof tweakPair>>
-  const expectedClawbackWitness = clawbackWitnessBytes()
+  const templateVersion = input.templateVersion
+  const serverFreeClawback = templateVersion === 'phone-hww-recovery-staged-v6'
+  let expectedClawbackWitness = clawbackWitnessBytes(serverFreeClawback, hasRecovery)
   for (const kind of kinds) {
     for (const claimant of claimants) {
       const key = `${kind}-${claimant}` as const
-      quarantine[key] = buildQuarantine({ ...input, kind, claimant })
+      quarantine[key] = buildQuarantine({ ...input, kind, claimant, templateVersion })
       clawbackAuth[key] = buildTransitionScript({
         destScriptHex: hex.encode(quarantine[key].script),
         witnessBytes: expectedClawbackWitness,
@@ -277,6 +299,8 @@ export function buildV5Family(input: {
       pending[key] = buildPending({
         ...input,
         kind,
+        templateVersion,
+        serverFreeClawback,
         claimant,
         vaultTweak: pendingTweaks[key].vault,
         arkadeTweak: pendingTweaks[key].arkade,
@@ -284,7 +308,25 @@ export function buildV5Family(input: {
       for (const clawback of pending[key].clawbacks) {
         const got = collaborativeWitnessBytes(clawback, controlOf(pending[key], clawback))
         if (got !== expectedClawbackWitness) {
-          throw new Error(`pending ${key} clawback witness ${got} != ${expectedClawbackWitness}`)
+          expectedClawbackWitness = got
+          clawbackAuth[key] = buildTransitionScript({
+            destScriptHex: hex.encode(quarantine[key].script),
+            witnessBytes: expectedClawbackWitness,
+          })
+          pendingTweaks[key] = tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, clawbackAuth[key])
+          pending[key] = buildPending({
+            ...input,
+            kind,
+            templateVersion,
+            serverFreeClawback,
+            claimant,
+            vaultTweak: pendingTweaks[key].vault,
+            arkadeTweak: pendingTweaks[key].arkade,
+          })
+          const again = collaborativeWitnessBytes(clawback, controlOf(pending[key], pending[key].clawbacks[0]))
+          if (again !== expectedClawbackWitness) {
+            throw new Error(`pending ${key} clawback witness ${again} != ${expectedClawbackWitness}`)
+          }
         }
       }
       const expectedInitiate = initiateWitnessBytes(kind, claimant, hasRecovery)

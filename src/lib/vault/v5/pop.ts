@@ -33,7 +33,9 @@ export function encodeRecoveryPoP(input: {
   const template = input.templateVersion || V5_TEMPLATE
   if (!vaultId) throw new Error('vault id required')
   if (!invite) throw new Error('invite handle required')
-  if (template !== V5_TEMPLATE) throw new Error('template version is not this release')
+  if (template !== V5_TEMPLATE && template !== 'phone-hww-recovery-staged-v6') {
+    throw new Error('template version is not this release')
+  }
   const recovery = requireLowerHex(input.recoveryXOnly, 'recoveryXOnly', 32)
   const descriptorHash = requireLowerHex(input.descriptorHash, 'descriptorHash', 32)
   const parts: Uint8Array[] = []

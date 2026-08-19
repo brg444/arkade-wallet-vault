@@ -23,7 +23,8 @@ import {
   TRANSITION_SEQUENCE,
   V5_CSV,
   V5_SCHEMA,
-  V5_TEMPLATE,
+  isStagedTemplate,
+  STAGED_TEMPLATE,
   type Claimant,
   type FamilyKey,
 } from './constants'
@@ -98,6 +99,7 @@ export interface V5DescriptorInput {
     origin: string
     version: string
   }
+  templateVersion?: string
 }
 
 function appendU32(parts: Uint8Array[], value: number, name: string) {
@@ -203,6 +205,7 @@ export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor 
     routineVault: input.routineVault,
     routineArkade: input.routineArkade,
     network: input.network,
+    templateVersion: input.templateVersion || STAGED_TEMPLATE,
   })
   const tweaks = {
     routine: requirePair({ vault: input.routineVault, arkade: input.routineArkade }, 'routine'),
@@ -225,7 +228,7 @@ export function buildV5Descriptor(input: V5DescriptorInput): V5PublicDescriptor 
     schema: V5_SCHEMA,
     network: input.network,
     vaultId: input.vaultId,
-    templateVersion: V5_TEMPLATE,
+    templateVersion: input.templateVersion || STAGED_TEMPLATE,
     policyVersion: POLICY_VERSION,
     keys,
     tweaks,
@@ -258,7 +261,7 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
   if (d.schema !== V5_SCHEMA) throw new Error('unsupported vault schema')
   if (!SUPPORTED_NETWORKS.includes(d.network)) throw new Error(`unsupported network ${d.network}`)
   if (!d.vaultId || String(d.vaultId).trim() === '') throw new Error('vault id required')
-  if (d.templateVersion !== V5_TEMPLATE) throw new Error('template version is not this release')
+  if (!isStagedTemplate(d.templateVersion)) throw new Error('template version is not this release')
   if (d.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   if (d.csv.hardware !== V5_CSV.hardware || d.csv.phone !== V5_CSV.phone || d.csv.recovery !== V5_CSV.recovery) {
     throw new Error('csv delays do not match this release')
@@ -301,6 +304,7 @@ export function validateV5Descriptor(d: V5PublicDescriptor): V5PublicDescriptor 
     routineVault: d.tweaks.routine.vault,
     routineArkade: d.tweaks.routine.arkade,
     network: d.network,
+    templateVersion: d.templateVersion,
   })
   for (const claimant of claimants) {
     if (
@@ -434,6 +438,7 @@ export function familyFromDescriptor(d: V5PublicDescriptor) {
     routineVault: valid.tweaks.routine.vault,
     routineArkade: valid.tweaks.routine.arkade,
     network: valid.network,
+    templateVersion: valid.templateVersion,
   })
 }
 

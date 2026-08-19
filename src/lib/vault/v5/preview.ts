@@ -26,6 +26,7 @@ export function previewV5Input(input: {
       origin: 'preview',
       version: 'v5-preview',
     },
+    templateVersion: 'phone-hww-recovery-staged-v5',
   }
 }
 
