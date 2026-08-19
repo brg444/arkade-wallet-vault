@@ -76,6 +76,7 @@ export interface VaultStatus {
   passkeyLoginAvailable?: boolean
   savingsScript?: string
   recoveryPub?: string
+  warnings?: string[]
 }
 
 export interface WatchRecord {

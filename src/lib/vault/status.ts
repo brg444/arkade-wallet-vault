@@ -1,6 +1,6 @@
 import { readBounded } from './bounded'
 import { POLICY_VERSION, VAULT_ID } from './constants'
-import { isKnownTemplate, V5_TEMPLATE } from './v5/constants'
+import { isKnownTemplate, isStagedTemplate } from './v5/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus } from './types'
 
@@ -105,7 +105,7 @@ export function requireStatusIdentity(status: VaultStatus, expectedVaultId?: str
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   const leftover =
     'recoveryKeyPub' in status ? String((status as { recoveryKeyPub?: string }).recoveryKeyPub || '') : ''
-  if (status.templateVersion !== V5_TEMPLATE && leftover) {
+  if (!isStagedTemplate(status.templateVersion) && leftover) {
     throw new Error('template version is not this release')
   }
   return status

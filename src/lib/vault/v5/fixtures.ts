@@ -21,6 +21,7 @@ export const FIXTURE_PHONE_DIRECT_P256 = '02c9afa9d845ba75166b5c215767b1d6934e50
 export const V5_FIXTURE = {
   vaultId: 'aabbccddeeff00112233445566778899',
   network: 'mutinynet' as const,
+  templateVersion: 'phone-hww-recovery-staged-v5' as const,
   phonePub: compressedFromScalar(3),
   hardwarePub: compressedFromScalar(4),
   recoveryPub: compressedFromScalar(5),

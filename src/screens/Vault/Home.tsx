@@ -220,7 +220,8 @@ export default function VaultHome() {
                   Recovery in process
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  {initiateAlert}
+                  {initiateAlert} Waiting is in blocks, not a calendar day. Cancel needs the vault services unless this
+                  vault can cancel with hardware alone.
                 </Text>
               </button>
             ) : null}

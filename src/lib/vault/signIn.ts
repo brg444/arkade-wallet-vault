@@ -40,8 +40,8 @@ async function deriveKEK(prf: Uint8Array): Promise<CryptoKey> {
   )
 }
 
-async function beginPasskeySession(
-  purpose: 'recover' | 'install-envelope',
+export async function beginPasskeySession(
+  purpose: 'recover' | 'install-envelope' | 'transition' | 'map-write',
   status: VaultStatus,
   allowCredentialId?: string,
 ) {

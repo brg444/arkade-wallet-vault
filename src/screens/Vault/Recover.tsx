@@ -11,10 +11,11 @@ import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { fetchAddressUtxos } from '../../lib/vault/esplora'
-import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
+import { CLAIMANTS, V6_TEMPLATE, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
 import { familyFromDescriptor } from '../../lib/vault/v5/descriptor'
 import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/v5/kit'
 import { planClaim, planClawback, planInitiate } from '../../lib/vault/v5/recoverFlow'
+import { buildGuardianExitPsbt } from '../../lib/vault/v5/spend'
 import { VaultContext } from '../../providers/vault'
 import { KeyCard, Reveal } from './ui'
 import { ChoiceCard } from './onboard/Layout'
@@ -81,6 +82,14 @@ export default function VaultRecover() {
     }
   }, [downloadRecoveryKit])
 
+  const canCancelWithoutServices = useMemo(() => {
+    try {
+      return parseRecoveryKit(JSON.parse(downloadRecoveryKit())).descriptor.templateVersion === V6_TEMPLATE
+    } catch {
+      return false
+    }
+  }, [downloadRecoveryKit])
+
   const report = useMemo(() => {
     const raw = pasted.trim() || kitJson
     if (!raw) return null
@@ -113,8 +122,10 @@ export default function VaultRecover() {
           <Padded>
             <FlexCol>
               <Text wrap>
-                Start recovery with a key you still have. That begins a waiting period. If you didn’t start it, cancel
-                it. After the wait, move the coins.
+                Start recovery with a key you still have. That begins a waiting period of a fixed number of blocks. If
+                you didn’t start it, cancel it — cancel still needs both vault services unless this vault has a
+                hardware-only cancel path. After the wait, the starter can move the coins even if those services are
+                gone. Mutinynet blocks are much faster than a 10-minute chain.
               </Text>
               {inProcess ? (
                 <KeyCard
@@ -196,6 +207,35 @@ export default function VaultRecover() {
                   }
                 }}
               />
+              {canCancelWithoutServices ? (
+                <Button
+                  secondary
+                  label='Cancel without services'
+                  testId='recover-guardian-exit'
+                  disabled={!claimDest.trim()}
+                  onClick={() => {
+                    setLocalError('')
+                    try {
+                      const [k, c] = inProcess.familyKey.split('-') as [VaultKind, Claimant]
+                      const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                      const built = buildGuardianExitPsbt({
+                        family: familyFromDescriptor(kit.descriptor),
+                        kind: k,
+                        claimant: c,
+                        coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
+                        destAddress: claimDest.trim(),
+                        feeSats: 500,
+                        network: kit.descriptor.network,
+                      })
+                      setPsbtOut(built.psbtHex)
+                      void copyToClipboard(built.psbtHex)
+                      toast('Cancel copied. Sign with hardware (and recovery if you added it). No vault service.')
+                    } catch (err) {
+                      setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
+                    }
+                  }}
+                />
+              ) : null}
               <Button
                 secondary
                 label='Move coins'

@@ -192,11 +192,19 @@ export async function pushMapBackup(vaultId: string, kit: RecoveryKit, wrap?: Ha
   if (!id) throw new Error('vault id required')
   const backup = buildMapBackup(kit, undefined, wrap)
   try {
-    await vaultPost('/v1/kit', { vaultId: id, ...backup })
+    const { beginPasskeySession } = await import('../../signIn')
+    const { fetchVaultStatus } = await import('../status')
+    const status = await fetchVaultStatus(undefined, id)
+    const session = await beginPasskeySession('map-write', status)
+    await vaultPost('/v1/map', {
+      vaultId: id,
+      ...session.assertion,
+      payload: backup,
+    })
     return true
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
-    if (/404|not found|cannot store|not running|unknown/i.test(msg)) return false
+    if (/404|not found|cannot store|not running|unknown|passkey/i.test(msg)) return false
     throw err
   }
 }
@@ -205,12 +213,20 @@ export async function pullMapBackup(vaultId: string): Promise<{ kit: RecoveryKit
   const id = vaultId.trim()
   if (!id) throw new Error('vault id required')
   try {
-    const raw = await vaultGet<unknown>(`/v1/kit?vault=${encodeURIComponent(id)}`)
+    const raw = await vaultGet<unknown>(`/v1/map?vault=${encodeURIComponent(id)}`)
     const backup = parseMapBackup(raw)
     return { kit: backup.kit, wrap: backup.wrap }
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
-    if (/404|not found|cannot store|not running|unknown/i.test(msg)) return null
+    if (/404|not found|cannot store|not running|unknown/i.test(msg)) {
+      try {
+        const legacy = await vaultGet<unknown>(`/v1/kit?vault=${encodeURIComponent(id)}`)
+        const backup = parseMapBackup(legacy)
+        return { kit: backup.kit, wrap: backup.wrap }
+      } catch {
+        return null
+      }
+    }
     throw err
   }
 }

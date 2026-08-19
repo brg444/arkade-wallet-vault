@@ -1,4 +1,4 @@
-import { FAMILY_KEYS, V5_CSV, V5_SCHEMA, V5_TEMPLATE } from './constants'
+import { FAMILY_KEYS, V5_CSV, V5_SCHEMA, isStagedTemplate } from './constants'
 import { hashV5Descriptor, validateV5Descriptor, type V5PublicDescriptor } from './descriptor'
 
 export const RECOVERY_KIT_NAME = 'arkade-recovery-kit'
@@ -62,14 +62,15 @@ export function inspectRecoveryKit(kit: RecoveryKit): RecoveryKitReport {
     trees,
     warnings: [
       'Recovery cannot exit a Normal UTXO if both cosigners are gone.',
+      'A pending recovery cannot be cancelled if both cosigners are gone, unless this vault has a hardware-only cancel path.',
       'A mature Pending recovery claim can pay any destination.',
-      `Demo clocks: hardware ${V5_CSV.hardware}, device ${V5_CSV.phone}, recovery ${V5_CSV.recovery} blocks.`,
+      `Delays are ${V5_CSV.hardware}, ${V5_CSV.phone}, and ${V5_CSV.recovery} blocks. Mutinynet is much faster than a 10-minute chain.`,
     ],
   }
 }
 
 export function assertKitTemplate(d: V5PublicDescriptor) {
-  if (d.schema !== V5_SCHEMA || d.templateVersion !== V5_TEMPLATE) {
+  if (d.schema !== V5_SCHEMA || !isStagedTemplate(d.templateVersion)) {
     throw new Error('Recovery Kit is v5 only')
   }
 }
