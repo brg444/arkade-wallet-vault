@@ -31,7 +31,7 @@ function allowed(coin: CoinClass, intent: Intent): boolean {
   }
 }
 
-describe('v5 route table', () => {
+describe('staged route table', () => {
   it('classifies every family script and nothing else', () => {
     const built = family()
     expect(classifyScript(built, built.daily.script)).toEqual({ role: 'normal', kind: 'daily' })

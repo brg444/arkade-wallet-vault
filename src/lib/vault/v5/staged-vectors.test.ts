@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { hex } from '@scure/base'
 import { hashV5Descriptor, buildV5Descriptor } from './descriptor'
 import { V5_FIXTURE, V6_FIXTURE } from './fixtures'
 import { requiredGuardianExitSigners } from './guardianExit'
 import { clawbackWitnessBytes, initiateWitnessBytes } from './script'
+import { buildV5Family } from './trees'
 
 const file = JSON.parse(readFileSync(resolve(import.meta.dirname, 'staged-vectors.json'), 'utf8')) as {
   requiredGuardians: Record<string, { withRecovery: string[]; withoutRecovery?: string[] }>
@@ -22,6 +24,9 @@ const file = JSON.parse(readFileSync(resolve(import.meta.dirname, 'staged-vector
     descriptorHash: string
     pending: Record<string, string>
     quarantine: Record<string, string>
+    initiateAuth: Record<string, string>
+    clawbackAuth: Record<string, string>
+    guardianExit: Record<string, string>
   }[]
 }
 
@@ -53,6 +58,20 @@ describe('frozen staged vectors', () => {
     }
     for (const [key, want] of Object.entries(vec.quarantine)) {
       expect(descriptor.quarantine[key as keyof typeof descriptor.quarantine].address).toBe(want)
+    }
+    const family = buildV5Family({
+      ...base,
+      templateVersion: vec.template,
+      recoveryPub: vec.recovery ? base.recoveryPub : undefined,
+    })
+    for (const [key, want] of Object.entries(vec.initiateAuth)) {
+      expect(hex.encode(family.initiateAuth[key as keyof typeof family.initiateAuth])).toBe(want)
+    }
+    for (const [key, want] of Object.entries(vec.clawbackAuth)) {
+      expect(hex.encode(family.clawbackAuth[key as keyof typeof family.clawbackAuth])).toBe(want)
+    }
+    for (const [key, want] of Object.entries(vec.guardianExit || {})) {
+      expect(hex.encode(family.pending[key as keyof typeof family.pending].guardianExit!)).toBe(want)
     }
   })
 })

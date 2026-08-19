@@ -28,7 +28,7 @@ function signPsbt(psbtHex: string, ...secrets: Uint8Array[]) {
   return { txHex: hex.encode(raw), txid: tx.id, raw }
 }
 
-describe('v5 initiate / clawback / claim PSBTs', () => {
+describe('staged initiate / clawback / claim PSBTs', () => {
   it('initiates to the matching Pending with dest, funded P2A, and packet', () => {
     const built = family()
     const psbt = buildInitiatePsbt({

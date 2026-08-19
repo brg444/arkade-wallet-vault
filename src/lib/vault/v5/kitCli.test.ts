@@ -9,7 +9,7 @@ function fixtureKit() {
   return buildRecoveryKit(buildV5Descriptor(V5_FIXTURE))
 }
 
-describe('v5 Recovery Kit CLI', () => {
+describe('Recovery Kit CLI', () => {
   it('inspects every tree and rebuilds the family from the kit', () => {
     const kit = fixtureKit()
     const out = runKitCli({ name: 'inspect', kit })

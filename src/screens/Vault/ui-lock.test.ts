@@ -31,7 +31,7 @@ describe('vault UI lock', () => {
     expect(nav).toMatch(/hwsign/)
   })
 
-  it('keeps optional recovery chrome and the v5 kit path', () => {
+  it('keeps optional recovery chrome and the kit path', () => {
     expect(existsSync(resolve(root, 'src/screens/Vault/onboard/Recovery.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Recover.tsx'))).toBe(true)
     const recovery = read('src/screens/Vault/onboard/Recovery.tsx')

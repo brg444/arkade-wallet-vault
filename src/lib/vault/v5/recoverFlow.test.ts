@@ -20,7 +20,7 @@ function memoryStorage(): Storage {
   }
 }
 
-describe('v5 recover flow', () => {
+describe('staged recover flow', () => {
   it('starts a hold to the matching Pending and records sign-once dest', () => {
     const family = buildV5Family(V5_FIXTURE_FAMILY)
     const storage = memoryStorage()

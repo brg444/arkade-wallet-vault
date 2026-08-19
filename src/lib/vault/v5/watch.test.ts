@@ -3,7 +3,7 @@ import { buildV5Descriptor } from './descriptor'
 import { V5_FIXTURE, V6_FIXTURE } from './fixtures'
 import { alertCopy, outpointId, pollPendingInitiates } from './watch'
 
-describe('v5 pending watcher', () => {
+describe('staged pending watcher', () => {
   it('alerts the first time a pending coin appears and does not repeat', async () => {
     const descriptor = buildV5Descriptor(V5_FIXTURE)
     const coin = { txid: 'aa'.repeat(32), vout: 0, value: 20_000, status: { confirmed: true, block_height: 10 } }

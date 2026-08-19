@@ -8,7 +8,7 @@ import { parseRecoverySecret, requireV5ProposedDescriptor, signEnrollmentRecover
 import { V5_FIXTURE, scalarSecret } from './fixtures'
 import { recoveryPoPDigest, verifyRecoveryPoP } from './pop'
 
-describe('v5 enrollment proof', () => {
+describe('staged enrollment proof', () => {
   it('rejects a leftover propose and signs recovery PoP on v5', () => {
     const leftover = sampleDescriptor()
     expect(() => requireV5ProposedDescriptor(leftover, 'aa'.repeat(32))).toThrow(/v5 vault/)

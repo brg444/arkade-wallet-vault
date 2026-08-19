@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { DEMO_HARDWARE_PUB } from '../../lib/vault/setupPlan'
 
-test('skips optional recovery and reaches the vault home', async ({ page }) => {
+async function setupToThisDevice(page: Page) {
   await page.goto('/')
   await expect(page.getByText('Your vault')).toBeVisible()
   await page.getByRole('button', { name: 'Set up' }).click()
@@ -25,6 +25,10 @@ test('skips optional recovery and reaches the vault home', async ({ page }) => {
   await expect(page.getByText('Your setup', { exact: true })).toBeVisible()
   await expect(page.getByText('Skipped. This device plus hardware only.')).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
+}
+
+test('skips optional recovery and reaches the vault home', async ({ page }) => {
+  await setupToThisDevice(page)
 
   await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible()
   await page.getByRole('button', { name: 'Skip for now' }).click()
@@ -43,4 +47,23 @@ test('skips optional recovery and reaches the vault home', async ({ page }) => {
   await expect(page.getByText(/remaining keys/i)).toBeVisible()
   await expect(page.getByTestId('recover-initiate')).toBeVisible()
   await expect(page.getByTestId('recover-guardian-exit')).toHaveCount(0)
+})
+
+test('this-device screen has a virtual authenticator before skip', async ({ page, context }) => {
+  const cdp = await context.newCDPSession(page)
+  await cdp.send('WebAuthn.enable')
+  const authenticator = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  })
+  expect(authenticator.authenticatorId).toBeTruthy()
+  await setupToThisDevice(page)
+  await expect(page.getByRole('button', { name: /Create this device|Use Face ID/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible()
 })

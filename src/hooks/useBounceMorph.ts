@@ -55,24 +55,28 @@ export function useBounceMorph({ reducedMotion, onBounce }: UseBounceMorphOption
     cancelled.current = false
 
     async function bounceAndMorph(nextShape: number) {
+      if (cancelled.current) return
       setBounceCount((c) => c + 1)
       onBounceRef.current?.()
       setActiveShape(nextShape)
 
-      await controlsRef.current.start({
-        y: 20,
-        scaleY: 0.75,
-        scaleX: 1.15,
-        transition: { duration: 0.06, ease: EASE_IN },
-      })
-      if (cancelled.current) return
-
-      await controlsRef.current.start({
-        y: 0,
-        scaleY: 1,
-        scaleX: 1,
-        transition: { type: 'spring', stiffness: 600, damping: 18, mass: 0.6 },
-      })
+      try {
+        await controlsRef.current.start({
+          y: 20,
+          scaleY: 0.75,
+          scaleX: 1.15,
+          transition: { duration: 0.06, ease: EASE_IN },
+        })
+        if (cancelled.current) return
+        await controlsRef.current.start({
+          y: 0,
+          scaleY: 1,
+          scaleX: 1,
+          transition: { type: 'spring', stiffness: 600, damping: 18, mass: 0.6 },
+        })
+      } catch {
+        return
+      }
     }
 
     async function runLoop() {
