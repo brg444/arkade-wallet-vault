@@ -95,7 +95,6 @@ export function deserializeParams(params: Record<string, string>): VaultPolicyV1
   })
 }
 
-/** Local copy of the unexported SDK helper. Match field names on PathContext. */
 function isCsvSpendable(context: PathContext, sequence: number | undefined): boolean {
   if (sequence === undefined) return true
   if (!context.vtxo) return false
