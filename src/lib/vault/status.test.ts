@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
 import { V5_TEMPLATE } from './v5/constants'
-import { parseStatusJson, requireStatusIdentity, vaultStatusPath } from './status'
+import { parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
 import type { VaultStatus } from './types'
 
 function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
@@ -66,5 +66,44 @@ describe('status identity binding', () => {
       requireStatusIdentity(sampleStatus({ templateVersion: V5_TEMPLATE, recoveryPub: '02' + '11'.repeat(32) }))
         .templateVersion,
     ).toBe(V5_TEMPLATE)
+  })
+})
+
+describe('pingVaultService', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('is online when public status answers this release', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              network: 'mutinynet',
+              clientOrigin: 'https://arkade-vault-demo.vercel.app',
+              rpId: 'arkade-vault-demo.vercel.app',
+              templateVersion: V5_TEMPLATE,
+              policyVersion: POLICY_VERSION,
+              operationalCsvBlocks: 144,
+              savingsCsvBlocks: 6,
+              enrollmentMode: 'invite',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    )
+    await expect(pingVaultService()).resolves.toBe(true)
+  })
+
+  it('is down when the service does not answer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('Failed to fetch')
+      }),
+    )
+    await expect(pingVaultService()).resolves.toBe(false)
   })
 })
