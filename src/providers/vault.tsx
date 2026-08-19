@@ -65,6 +65,7 @@ import {
   type HardwareMapWrap,
 } from '../lib/vault/v5/kitBackup'
 
+import { signGuardianExitPsbt } from '../lib/vault/v5/guardianExit'
 import { loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
 import { isPreviewDescriptor, kitMatchesLiveVault, selectLiveKit } from '../lib/vault/v5/liveKit'
 import { previewV5Descriptor } from '../lib/vault/v5/preview'
@@ -118,6 +119,7 @@ interface VaultContextProps {
   backupRecoveryKit: () => Promise<boolean>
   restoreRecoveryKit: () => Promise<void>
   unlockMapWithHardware: (wrapRaw: string, hardwareSecret: string) => Promise<void>
+  signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
   hasRecoveryKit: boolean
   initiateAlert: string
   initiateAlerts: InitiateAlert[]
@@ -189,6 +191,7 @@ export const VaultContext = createContext<VaultContextProps>({
   backupRecoveryKit: async () => false,
   restoreRecoveryKit: async () => {},
   unlockMapWithHardware: async () => {},
+  signGuardianExitWithDevice: async () => '',
   hasRecoveryKit: false,
   initiateAlert: '',
   initiateAlerts: [],
@@ -556,6 +559,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       priv?.fill(0)
     }
   }, [])
+
+  const signGuardianExitWithDevice = useCallback(
+    async (psbtHex: string) => {
+      if (!enrollment || !status?.enrolled) throw new Error('Unlock this device on this vault first')
+      const priv = await unlockPhoneRoutine(enrollment, status)
+      try {
+        return signGuardianExitPsbt(psbtHex, priv)
+      } finally {
+        zeroBytes(priv)
+      }
+    },
+    [enrollment, status],
+  )
 
   const enterWithoutPasskey = useCallback(() => {
     setError('')
@@ -1018,6 +1034,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       backupRecoveryKit,
       restoreRecoveryKit,
       unlockMapWithHardware,
+      signGuardianExitWithDevice,
       hasRecoveryKit: Boolean(resolveKit()),
       initiateAlert,
       initiateAlerts,
@@ -1103,6 +1120,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       backupRecoveryKit,
       restoreRecoveryKit,
       unlockMapWithHardware,
+      signGuardianExitWithDevice,
       resolveKit,
       initiateAlert,
       initiateAlerts,
