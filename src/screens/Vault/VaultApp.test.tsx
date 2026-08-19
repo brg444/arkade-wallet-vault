@@ -80,7 +80,7 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByText('Vault service')).toBeTruthy()
     expect(screen.getByText('Recovery Kit')).toBeTruthy()
     expect(screen.getByText('I lost a key')).toBeTruthy()
-    expect(screen.getByText('Recovery')).toBeTruthy()
+    expect(screen.queryByText('Recovery')).toBeNull()
     expect(screen.queryByText(/Daily spend/)).toBeNull()
     expect(screen.queryByText(/If you lose one/i)).toBeNull()
 

@@ -31,6 +31,7 @@ export function HubRow({
   title,
   detail,
   status,
+  signal,
   onClick,
   testId,
 }: {
@@ -38,9 +39,12 @@ export function HubRow({
   title: string
   detail?: string
   status?: string
+  signal?: 'ok' | 'bad' | 'wait'
   onClick?: () => void
   testId?: string
 }) {
+  const signalLabel =
+    signal === 'ok' ? 'Online' : signal === 'bad' ? 'Can’t reach' : signal === 'wait' ? 'Checking' : ''
   const body = (
     <>
       {icon ? <IconBubble small>{icon}</IconBubble> : null}
@@ -54,6 +58,7 @@ export function HubRow({
           </Text>
         ) : null}
       </div>
+      {signal ? <span className={`vault-hub-signal ${signal}`} aria-label={signalLabel} title={signalLabel} /> : null}
       {status ? (
         <Text color='neutral-600' tiny>
           {status}
