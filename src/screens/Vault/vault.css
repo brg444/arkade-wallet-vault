@@ -407,6 +407,55 @@ button.vault-panel:disabled {
   gap: 1.5rem;
 }
 
+.vault-history {
+  display: grid;
+  gap: 0;
+  width: 100%;
+  padding-top: 0.25rem;
+}
+
+.vault-history-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border: 0;
+  border-top: 1px solid var(--vault-line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vault-history-row:first-of-type {
+  border-top: 0;
+}
+
+.vault-history-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--neutral-600);
+}
+
+.vault-history-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.vault-history-amt {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.vault-history-amt.is-in {
+  color: var(--vault-accent);
+}
+
 .vault-account-bar {
   display: flex;
   align-items: flex-start;

@@ -23,10 +23,12 @@ import {
   broadcastTx,
   confirmedSpendable,
   fetchAddressStats,
+  fetchAddressTxs,
   fetchAddressUtxos,
   fetchTipHeight,
   fetchTxHex,
 } from '../lib/vault/esplora'
+import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import {
   buildSavingsPsbt,
   chooseSavingsLeaf,
@@ -97,6 +99,7 @@ export type VaultScreen =
   | 'hwsign'
   | 'recovery'
   | 'recover'
+  | 'tx'
 
 export interface VaultSpend {
   address: string
@@ -140,6 +143,9 @@ interface VaultContextProps {
   hasLocalEnrollment: boolean
   locked: boolean
   lastTxid: string
+  history: VaultHistoryItem[]
+  selectedTx: VaultHistoryItem | null
+  openTx: (tx: VaultHistoryItem) => void
   liveNetwork: boolean
   allowDemoKeys: boolean
   navigate: (screen: VaultScreen) => void
@@ -208,6 +214,9 @@ export const VaultContext = createContext<VaultContextProps>({
   hasLocalEnrollment: false,
   locked: false,
   lastTxid: '',
+  history: [],
+  selectedTx: null,
+  openTx: () => {},
   liveNetwork: false,
   allowDemoKeys: false,
   navigate: () => {},
@@ -254,6 +263,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: DEFAULT_FEE })
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
+  const [history, setHistory] = useState<VaultHistoryItem[]>([])
+  const [selectedTx, setSelectedTx] = useState<VaultHistoryItem | null>(null)
   const [chainBalance, setChainBalance] = useState(0)
   const [savingsBalance, setSavingsBalance] = useState(0)
   const [loaded, setLoaded] = useState(false)
@@ -546,6 +557,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (!address && !savings) {
         setChainBalance(0)
         setSavingsBalance(0)
+        setHistory([])
         return
       }
       try {
@@ -559,6 +571,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         } else {
           setSavingsBalance(0)
         }
+        const [spendTxs, savTxs] = await Promise.all([
+          address ? fetchAddressTxs(address).catch(() => []) : Promise.resolve([]),
+          savings ? fetchAddressTxs(savings).catch(() => []) : Promise.resolve([]),
+        ])
+        setHistory([...historyFromTxs(spendTxs, address, 'spend'), ...historyFromTxs(savTxs, savings, 'savings')])
       } catch (err) {
         setError(humanizeVaultError(err))
       }
@@ -999,6 +1016,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       hasLocalEnrollment: Boolean(enrollment),
       locked,
       lastTxid,
+      history: history.filter((item) => item.account === account),
+      selectedTx,
+      openTx: (tx) => {
+        setSelectedTx(tx)
+        setError('')
+        setScreen('tx')
+      },
       liveNetwork,
       allowDemoKeys,
       navigate: (next) => {
@@ -1074,6 +1098,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       error,
       finishPlan,
       lastTxid,
+      history,
+      selectedTx,
       liveNetwork,
       locked,
       allowDemoKeys,
