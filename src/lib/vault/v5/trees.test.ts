@@ -27,7 +27,7 @@ const base = {
   network: V5_FIXTURE.network,
 }
 
-describe('v5 quarantine', () => {
+describe('staged quarantine', () => {
   it('excludes the suspected claimant', () => {
     expect(quarantineGuardians('phone')).toEqual(['hardware', 'recovery'])
     expect(quarantineGuardians('hardware')).toEqual(['phone', 'recovery'])
@@ -51,7 +51,7 @@ describe('v5 quarantine', () => {
   })
 })
 
-describe('v5 pending', () => {
+describe('staged pending', () => {
   it('starts CSV only on the pending output', () => {
     expect(pendingDelay('hardware')).toBe(V5_CSV.hardware)
     expect(pendingDelay('phone')).toBe(V5_CSV.phone)
@@ -68,7 +68,7 @@ describe('v5 pending', () => {
   })
 })
 
-describe('v5 context NUMS', () => {
+describe('staged context NUMS', () => {
   it('encodes a stable context payload', () => {
     expect(hex.encode(encodeTreeContext({ vaultId: 'ab', kind: 'daily', claimant: 'phone' }))).toBe(
       hex.encode(encodeTreeContext({ vaultId: 'ab', kind: 'daily', claimant: 'phone' })),
@@ -79,7 +79,7 @@ describe('v5 context NUMS', () => {
   })
 })
 
-describe('v5 normal', () => {
+describe('staged normal', () => {
   const args = {
     ...base,
     initiate,
@@ -167,7 +167,7 @@ describe('v5 normal', () => {
   })
 })
 
-describe('v5 P2A lock', () => {
+describe('staged P2A lock', () => {
   it('pins a funded Core P2A at output 1', () => {
     expect(P2A_SCRIPT_HEX).toBe('51024e73')
     expect(P2A_VALUE_SATS).toBe(240)
@@ -176,7 +176,7 @@ describe('v5 P2A lock', () => {
   })
 })
 
-describe('v5 transition dest wiring', () => {
+describe('staged transition dest wiring', () => {
   it('pins dest, packet, and PhoneDirect only on phone initiation', () => {
     const family = buildV5Family(V5_FIXTURE_FAMILY)
     for (const kind of ['daily', 'savings'] as const) {

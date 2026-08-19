@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { encodeEmulatorPacket, encodeExtensionScript } from '../ceremony/psbtcheck.js'
 import { EMULATOR_PACKET_TYPE, exactPacketOutputPrefix, packetWitnessShape } from './packet'
 
-describe('v5 packet envelope', () => {
+describe('staged packet envelope', () => {
   it('prefix plus content reconstructs the extension script', () => {
     const scriptLen = 180
     const prefix = exactPacketOutputPrefix(scriptLen, packetWitnessShape(false))

@@ -15,7 +15,7 @@ const DEST = '5120aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const OTHER = '5120bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
 const PHONE_DIRECT = hex.decode('036b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296')
 
-describe('v5 transition auth script', () => {
+describe('staged transition auth script', () => {
   it('pins dest, P2A, and the RBF sequence without PhoneDirect', () => {
     const script = buildTransitionScript({ destScriptHex: DEST })
     assertTransitionScript(script, DEST, false)

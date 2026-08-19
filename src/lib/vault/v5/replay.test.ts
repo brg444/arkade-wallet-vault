@@ -8,7 +8,7 @@ import { buildV5Family } from './trees'
 const vaultId = V5_FIXTURE.vaultId
 const coin = { txid: '11'.repeat(32), vout: 0, value: 50_000 }
 
-describe('v5 sign-once replay oracle', () => {
+describe('sign-once replay oracle', () => {
   it('signs the first dest, re-signs a fee bump, refuses a second dest', () => {
     const family = buildV5Family(V5_FIXTURE_FAMILY)
     const first = buildInitiatePsbt({ family, kind: 'savings', claimant: 'hardware', coin, feeSats: 500 })

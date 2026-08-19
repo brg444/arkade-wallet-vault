@@ -12,7 +12,7 @@ function fixtureDescriptor() {
   return buildV5Descriptor(V5_FIXTURE)
 }
 
-describe('v5 public descriptor', () => {
+describe('staged public descriptor', () => {
   it('rebuilds all 14 trees and hashes stably', () => {
     const d = fixtureDescriptor()
     expect(d.schema).toBe(V5_SCHEMA)

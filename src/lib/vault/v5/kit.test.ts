@@ -3,7 +3,7 @@ import { buildV5Descriptor } from './descriptor'
 import { V5_FIXTURE } from './fixtures'
 import { buildRecoveryKit, inspectRecoveryKit, parseRecoveryKit } from './kit'
 
-describe('v5 Recovery Kit', () => {
+describe('Recovery Kit', () => {
   it('rebuilds the descriptor and lists all 14 trees', () => {
     const kit = buildRecoveryKit(buildV5Descriptor(V5_FIXTURE))
     const report = inspectRecoveryKit(kit)
