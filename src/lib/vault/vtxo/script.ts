@@ -3,11 +3,11 @@ import { hex } from '@scure/base'
 
 export const VAULT_POLICY_V1_TYPE = 'vault-policy-v1'
 
-/** Spike 0 UnilateralExitDelay, frozen. Seconds because 2048 >= 512. */
+/** Unilateral exit delay, frozen at 2048 seconds. */
 export const VAULT_POLICY_V1_EXIT_DELAY = 2048n
 export const VAULT_POLICY_V1_EXIT_DELAY_UNIT = 'seconds' as const
 
-/** Unmerged emulator PR #140. Pin cannot execute it; still freeze this encoding. */
+/** OP_TUNNEL = 0xf7 */
 export const OP_TUNNEL = 0xf7
 
 /** `<0> OP_TUNNEL` — Arkade packet script / tweak preimage, not a tapleaf. */
