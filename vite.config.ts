@@ -94,6 +94,11 @@ export default defineConfig({
               changeOrigin: true,
               rewrite: (path) => path.replace(/^\/esplora/, '/api'),
             },
+            '/arkade': {
+              target: 'https://mutinynet.arkade.sh',
+              changeOrigin: true,
+              rewrite: (path) => path.replace(/^\/arkade/, ''),
+            },
           }
         : undefined,
   },

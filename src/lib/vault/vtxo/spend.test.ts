@@ -7,6 +7,7 @@ import {
   buildReservedVtxoSpend,
   requireOperatorSignedCheckpoint,
   type VtxoReserveResponse,
+  vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
 } from './spend'
 import { VaultPolicyV1Script } from './script'
@@ -88,6 +89,11 @@ function destination(): string {
 }
 
 describe('regular VTXO spend coordinator', () => {
+  it('uses the same-origin Arkade gateway in production', () => {
+    expect(vaultArkServer(true)).toBe('/arkade')
+    expect(vaultArkServer(false)).toBe('https://mutinynet.arkade.sh')
+  })
+
   it('reconstructs the pinned policy tree from status', () => {
     const current = status()
     expect(hex.encode(vaultPolicyV1ScriptFromStatus(current).pkScript)).toBe(current.spendingArkScript)
