@@ -19,7 +19,6 @@ import {
 const REQUIRED_PUBS = [
   'userPub',
   'vtxoVaultCosignerPub',
-  'tweakedEmulatorPub',
   'arkdServerPub',
   'delegatePub',
   'exitDevicePub',
@@ -34,6 +33,9 @@ function refuseForeignContractParams(params: Record<string, string>) {
     if (params[key] !== undefined) {
       throw new Error('vault-policy-v1 refuses DefaultVtxo / DelegateVtxo params')
     }
+  }
+  if (params.tweakedEmulatorPub !== undefined) {
+    throw new Error('vault-policy-v1 does not include an emulator pub')
   }
 }
 
@@ -59,7 +61,6 @@ export function serializeParams(params: VaultPolicyV1Params): Record<string, str
   const out: Record<string, string> = {
     userPub: hex.encode(typed.userPub),
     vtxoVaultCosignerPub: hex.encode(typed.vtxoVaultCosignerPub),
-    tweakedEmulatorPub: hex.encode(typed.tweakedEmulatorPub),
     arkdServerPub: hex.encode(typed.arkdServerPub),
     delegatePub: hex.encode(typed.delegatePub),
     exitDelay: typed.exitDelay.toString(),
@@ -84,7 +85,6 @@ export function deserializeParams(params: Record<string, string>): VaultPolicyV1
   return assertVaultPolicyV1Params({
     userPub: decodeXOnlyHex(params.userPub, 'userPub'),
     vtxoVaultCosignerPub: decodeXOnlyHex(params.vtxoVaultCosignerPub, 'vtxoVaultCosignerPub'),
-    tweakedEmulatorPub: decodeXOnlyHex(params.tweakedEmulatorPub, 'tweakedEmulatorPub'),
     arkdServerPub: decodeXOnlyHex(params.arkdServerPub, 'arkdServerPub'),
     delegatePub: decodeXOnlyHex(params.delegatePub, 'delegatePub'),
     exitDelay,
@@ -125,20 +125,20 @@ export const VaultPolicyV1Handler: ContractHandler<VaultPolicyV1Params, VaultPol
   serializeParams,
   deserializeParams,
   selectPath(script, _contract, context) {
-    if (context.collaborative) return { leaf: script.spend() }
+    if (context.collaborative) return { leaf: script.forfeit() }
     const sequence = vaultPolicyV1ExitSequence()
     if (isCsvSpendable(context, sequence)) return { leaf: script.exit(), sequence }
     return null
   },
   getAllSpendingPaths(script, _contract, context) {
     const paths: PathSelection[] = []
-    if (context.collaborative) paths.push({ leaf: script.spend() })
+    if (context.collaborative) paths.push({ leaf: script.forfeit() })
     paths.push({ leaf: script.exit(), sequence: vaultPolicyV1ExitSequence() })
     return paths
   },
   getSpendablePaths(script, _contract, context) {
     const paths: PathSelection[] = []
-    if (context.collaborative) paths.push({ leaf: script.spend() })
+    if (context.collaborative) paths.push({ leaf: script.forfeit() })
     const sequence = vaultPolicyV1ExitSequence()
     if (isCsvSpendable(context, sequence)) paths.push({ leaf: script.exit(), sequence })
     return paths

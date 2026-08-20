@@ -17,7 +17,6 @@ export const VAULT_POLICY_V1_DELEGATE_CAPABILITY = 'multi-presigned-signature'
 export interface VaultPolicyV1Params {
   userPub: Uint8Array
   vtxoVaultCosignerPub: Uint8Array
-  tweakedEmulatorPub: Uint8Array
   arkdServerPub: Uint8Array
   delegatePub: Uint8Array
   exitDelay: bigint
@@ -41,7 +40,6 @@ export function pinnedDelegateXOnly(): Uint8Array {
 export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPolicyV1Params {
   const userPub = requireXOnly(params.userPub, 'userPub')
   const vtxoVaultCosignerPub = requireXOnly(params.vtxoVaultCosignerPub, 'vtxoVaultCosignerPub')
-  const tweakedEmulatorPub = requireXOnly(params.tweakedEmulatorPub, 'tweakedEmulatorPub')
   const arkdServerPub = requireXOnly(params.arkdServerPub, 'arkdServerPub')
   const delegatePub = requireXOnly(params.delegatePub, 'delegatePub')
   const exitDevicePub = requireXOnly(params.exitDevicePub, 'exitDevicePub')
@@ -68,7 +66,6 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
   return {
     userPub,
     vtxoVaultCosignerPub,
-    tweakedEmulatorPub,
     arkdServerPub,
     delegatePub,
     exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
@@ -80,19 +77,22 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
 }
 
 /**
- * vault-policy-v1 tap tree: 4-pub spend, exactly one guardian CSV exit,
- * 4-pub delegate [user, vtxoVault, pinned public delegate, arkd].
+ * vault-policy-v1 tap tree: 3-key collaborative spend/intent
+ * [user, VTXO VaultCosigner, Arkade Operator], exactly one guardian CSV
+ * exit, 4-key delegate-forfeit [user, VTXO VaultCosigner, pinned public
+ * delegate, Arkade Operator]. The required VaultCosigner independently
+ * enforces the Vault Program. The emulator is not a tree signer.
  */
 export class VaultPolicyV1Script extends VtxoScript {
   readonly params: VaultPolicyV1Params
-  readonly spendScript: string
+  readonly forfeitScript: string
   readonly exitScript: string
   readonly delegateScript: string
 
   constructor(params: VaultPolicyV1Params) {
     const typed = assertVaultPolicyV1Params(params)
-    const spend = MultisigTapscript.encode({
-      pubkeys: [typed.userPub, typed.vtxoVaultCosignerPub, typed.tweakedEmulatorPub, typed.arkdServerPub],
+    const forfeit = MultisigTapscript.encode({
+      pubkeys: [typed.userPub, typed.vtxoVaultCosignerPub, typed.arkdServerPub],
     })
     const exit = CSVMultisigTapscript.encode({
       timelock: { type: typed.exitDelayUnit, value: typed.exitDelay },
@@ -103,15 +103,16 @@ export class VaultPolicyV1Script extends VtxoScript {
     const delegate = MultisigTapscript.encode({
       pubkeys: [typed.userPub, typed.vtxoVaultCosignerPub, typed.delegatePub, typed.arkdServerPub],
     })
-    super([spend.script, exit.script, delegate.script])
+    super([forfeit.script, exit.script, delegate.script])
     this.params = typed
-    this.spendScript = hex.encode(spend.script)
+    this.forfeitScript = hex.encode(forfeit.script)
     this.exitScript = hex.encode(exit.script)
     this.delegateScript = hex.encode(delegate.script)
   }
 
-  spend(): TapLeafScript {
-    return this.findLeaf(this.spendScript)
+  /** Collaborative spend/intent leaf. SDK-native name matches DefaultVtxo.forfeit(). */
+  forfeit(): TapLeafScript {
+    return this.findLeaf(this.forfeitScript)
   }
 
   exit(): TapLeafScript {

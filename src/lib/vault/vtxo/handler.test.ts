@@ -24,7 +24,6 @@ function twoGuardianParams(): VaultPolicyV1Params {
   return {
     userPub: xonly(golden.fixtures.userPub),
     vtxoVaultCosignerPub: xonly(golden.fixtures.vtxoVaultCosignerPub),
-    tweakedEmulatorPub: xonly(golden.fixtures.tweakedEmulatorPub),
     arkdServerPub: xonly(golden.fixtures.arkdServerPub),
     delegatePub: xonly(golden.fixtures.delegatePub),
     exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
@@ -65,10 +64,18 @@ describe('VaultPolicyV1Handler', () => {
     expect(VaultPolicyV1Handler.type).toBe('vault-policy-v1')
   })
 
-  it('pins the 4-pub spend leaf from the shared golden', () => {
+  it('does not take an emulator pub in the shared golden', () => {
+    expect('tweakedEmulatorPub' in golden.fixtures).toBe(false)
+  })
+
+  it('pins the 3-key collaborative forfeit leaf from the shared golden', () => {
     const script = new VaultPolicyV1Script(twoGuardianParams())
-    expect(script.spendScript).toBe(golden.leaves.spend)
-    expect(leafHex(script.spend())).toBe(golden.leaves.spend)
+    expect(script.forfeitScript).toBe(golden.leaves.spend)
+    expect(leafHex(script.forfeit())).toBe(golden.leaves.spend)
+    expect(script.forfeitScript).not.toBe(script.delegateScript)
+    expect(script.forfeitScript.includes('f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9')).toBe(
+      false,
+    )
   })
 
   it('pins the two-guardian exit leaf at 4608 seconds CSV', () => {
@@ -84,16 +91,34 @@ describe('VaultPolicyV1Handler', () => {
     expect(script.exitScript).not.toBe(golden.leaves.exitTwoGuardian)
   })
 
-  it('pins the 4-pub delegate leaf and the shared tapkeys', () => {
+  it('pins the 4-key delegate-forfeit leaf and the shared tapkeys', () => {
     const two = new VaultPolicyV1Script(twoGuardianParams())
     expect(two.delegateScript).toBe(golden.leaves.delegate)
     expect(leafHex(two.delegate())).toBe(golden.leaves.delegate)
+    expect(two.delegateScript).not.toBe(two.forfeitScript)
     expect(hex.encode(two.tweakedPublicKey)).toBe(golden.twoGuardian.tapKey)
     expect(hex.encode(two.pkScript)).toBe(golden.twoGuardian.pkScript)
 
     const three = new VaultPolicyV1Script(threeGuardianParams())
     expect(hex.encode(three.tweakedPublicKey)).toBe(golden.threeGuardian.tapKey)
     expect(hex.encode(three.pkScript)).toBe(golden.threeGuardian.pkScript)
+  })
+
+  it('has exactly one guardian CSV exit leaf', () => {
+    const csvPrefix = '03090040b275'
+    const two = new VaultPolicyV1Script(twoGuardianParams())
+    const csvLeaves = [two.forfeitScript, two.exitScript, two.delegateScript].filter((leaf) =>
+      leaf.startsWith(csvPrefix),
+    )
+    expect(csvLeaves).toEqual([two.exitScript])
+    expect(two.exitScript).toBe(golden.leaves.exitTwoGuardian)
+
+    const three = new VaultPolicyV1Script(threeGuardianParams())
+    const threeCsv = [three.forfeitScript, three.exitScript, three.delegateScript].filter((leaf) =>
+      leaf.startsWith(csvPrefix),
+    )
+    expect(threeCsv).toEqual([three.exitScript])
+    expect(three.exitScript).toBe(golden.leaves.exitThreeGuardian)
   })
 
   it('uses the pinned public delegate x-only and refuses 2048s', () => {
@@ -108,11 +133,12 @@ describe('VaultPolicyV1Handler', () => {
     ).toThrow(/pinned public delegate/)
   })
 
-  it('collaborative selectPath returns the 4-pub spend leaf, never exit/delegate/DefaultVtxo', () => {
+  it('collaborative selectPath returns script.forfeit(), the 3-key spend leaf', () => {
     const script = new VaultPolicyV1Script(twoGuardianParams())
     const selected = VaultPolicyV1Handler.selectPath(script, contractOf(script), collaborativeContext())
     expect(selected).not.toBeNull()
     expect(leafHex(selected!.leaf)).toBe(golden.leaves.spend)
+    expect(leafHex(selected!.leaf)).toBe(leafHex(script.forfeit()))
     expect(leafHex(selected!.leaf)).not.toBe(script.exitScript)
     expect(leafHex(selected!.leaf)).not.toBe(script.delegateScript)
 
@@ -149,16 +175,29 @@ describe('VaultPolicyV1Handler', () => {
     const missingUser = { ...serialized }
     delete missingUser.userPub
     expect(() => VaultPolicyV1Handler.createScript(missingUser)).toThrow(/missing pubs|userPub/)
+
+    expect(() =>
+      VaultPolicyV1Handler.createScript({
+        ...serialized,
+        tweakedEmulatorPub: 'f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9',
+      }),
+    ).toThrow(/emulator pub/)
   })
 
-  it('pins pack exit.delay 4608, delegate capability, and no tunnel', () => {
+  it('pins pack 3-key spend, exit.delay 4608, delegate capability, and no tunnel', () => {
     const listed = pack.programs['vault-policy-v1']
+    expect(listed.template).toBe('vault-policy-v1-collaborative-3key')
+    expect(listed.spend.leaf).toBe('user-and-vtxo-vault-cosigner-and-arkd')
+    expect(listed.spend.note).toMatch(/VaultCosigner independently enforces the Vault Program/)
     expect(listed.exit.delay).toBe('4608')
     expect(listed.exit.delayUnit).toBe('seconds')
     expect(listed.exit.arkdMinimum).toBe('2048')
+    expect(listed.delegate.leaf).toBe('user-and-vtxo-vault-cosigner-and-pinned-public-delegate-and-arkd')
     expect(listed.delegate.pinnedPublicDelegate).toBe(VAULT_POLICY_V1_PINNED_DELEGATE)
     expect(listed.delegate.origin).toBe(VAULT_POLICY_V1_DELEGATE_ORIGIN)
     expect(listed.delegate.capability).toBe(VAULT_POLICY_V1_DELEGATE_CAPABILITY)
+    expect(listed.notes).toMatch(/3-key \[user, VTXO VaultCosigner, Arkade Operator\]/)
+    expect(listed.notes).toMatch(/VaultCosigner independently enforces the Vault Program/)
     expect('tunnel' in listed).toBe(false)
   })
 })
