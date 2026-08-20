@@ -42,4 +42,10 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('passkey authentication failed'))).toMatch(/scan the QR|original/i)
     expect(humanizeVaultError(new Error('this passkey does not belong to this vault'))).toMatch(/scan the QR|original/i)
   })
+
+  it('does not mislabel a vault script mismatch as a passkey failure', () => {
+    expect(humanizeVaultError(new Error('savings tree does not match this vault’s address'))).toBe(
+      'Savings tree does not match this vault’s address',
+    )
+  })
 })
