@@ -31,6 +31,14 @@ export interface LiveSpendInput {
   feeSats: number
   prevTxHex: string
   vout: number
+  afterPublish?: (published: { txid: string; phoneRoutineSecret: Uint8Array }) => Promise<string | void>
+}
+
+export interface LiveSpendResult {
+  txid: string
+  challenge: string
+  followupTxid?: string
+  followupError?: string
 }
 
 function requireRPID(status: VaultStatus): string {
@@ -53,7 +61,7 @@ function requirePinnedOperational(status: VaultStatus) {
   return pin
 }
 
-export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: string; challenge: string }> {
+export async function sendRoutineSpend(input: LiveSpendInput): Promise<LiveSpendResult> {
   const { enrollment: rec, status } = input
   const vaultId = String(status.vaultId || rec.vaultId || '').trim()
   if (!vaultId) throw new Error('vault id required')
@@ -183,7 +191,16 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
     if (published.txid !== authorized.transactionId) {
       throw new Error('published txid does not match the authorized transaction')
     }
-    return { txid: published.txid, challenge: challengeHex }
+    let followupTxid: string | undefined
+    let followupError: string | undefined
+    if (input.afterPublish) {
+      try {
+        followupTxid = (await input.afterPublish({ txid: published.txid, phoneRoutineSecret })) || undefined
+      } catch (err) {
+        followupError = err instanceof Error ? err.message : 'The follow-up operation did not finish'
+      }
+    }
+    return { txid: published.txid, challenge: challengeHex, followupTxid, followupError }
   } finally {
     zeroBytes(prf, scalar, phoneRoutineSecret)
   }

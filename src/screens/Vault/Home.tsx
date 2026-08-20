@@ -32,6 +32,9 @@ export default function VaultHome() {
     account,
     addTestCoins,
     amountSats,
+    boardSpending,
+    boardingConfirmedSats,
+    boardingSats,
     busy,
     canSend,
     dailyLimit,
@@ -43,6 +46,7 @@ export default function VaultHome() {
     liveNetwork,
     initiateAlert,
     operationalAddress,
+    onchainSpendingSats,
     spendingArkAddress,
     preview,
     refreshBalance,
@@ -50,6 +54,7 @@ export default function VaultHome() {
     savingsSats,
     setAccount,
     status,
+    vtxoSpendingSats,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [picker, setPicker] = useState(false)
@@ -68,8 +73,7 @@ export default function VaultHome() {
   const spending = account === 'spend'
   const sats = spending ? amountSats : savingsSats
   const address = spending ? spendingArkAddress || fundableAddress(operationalAddress) : fundableAddress(savingsAddress)
-  const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
-  const used = Math.max(0, dailyLimit - availableSpend)
+  const used = Math.max(0, dailyLimit - dailyRemaining)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
   const satsUnit = sats === 1 ? 'SAT' : 'SATS'
 
@@ -200,9 +204,29 @@ export default function VaultHome() {
             {spending ? (
               <FlexCol gap='0.35rem'>
                 <Text color='neutral-600' tiny>
-                  {prettyNumber(availableSpend, 0)} / {prettyNumber(dailyLimit, 0)} available today
+                  {prettyNumber(dailyRemaining, 0)} / {prettyNumber(dailyLimit, 0)} remaining in the rolling 24h limit
                 </Text>
                 <Meter ratio={ratio} label='Daily limit used' />
+                {status?.vtxoBoardingActive ? (
+                  <Text color='neutral-600' tiny wrap>
+                    {prettyNumber(vtxoSpendingSats)} in VTXOs · {prettyNumber(onchainSpendingSats)} onchain
+                    {boardingSats > 0 ? ` · ${prettyNumber(boardingSats)} boarding` : ''}
+                  </Text>
+                ) : null}
+                {status?.vtxoBoardingActive && (onchainSpendingSats > 0 || boardingSats > 0) ? (
+                  <Button
+                    secondary
+                    disabled={busy || (boardingSats > 0 && boardingConfirmedSats === 0)}
+                    label={
+                      boardingConfirmedSats > 0
+                        ? 'Finish boarding'
+                        : boardingSats > 0
+                          ? 'Waiting for confirmation'
+                          : 'Move onchain funds to VTXOs'
+                    }
+                    onClick={() => void boardSpending()}
+                  />
+                ) : null}
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
