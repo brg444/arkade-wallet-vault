@@ -1,3 +1,4 @@
+import { ArkAddress } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { Address, OutScript, TEST_NETWORK } from '@scure/btc-signer'
 
@@ -27,6 +28,19 @@ export function isVaultBitcoinAddress(value: string, network?: string): boolean 
     if (!net) return false
     Address(net).decode(trimmed)
     return true
+  } catch {
+    return false
+  }
+}
+
+export function isVaultSpendAddress(value: string, network?: string): boolean {
+  return isVaultArkAddress(value, network) || isVaultBitcoinAddress(value, network)
+}
+
+export function isVaultArkAddress(value: string, network?: string): boolean {
+  try {
+    const decoded = ArkAddress.decode(value.trim())
+    return (!network || network === 'mutinynet' || network === 'regtest') && decoded.hrp === 'tark'
   } catch {
     return false
   }
