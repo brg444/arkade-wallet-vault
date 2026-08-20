@@ -12,9 +12,9 @@ import { VaultContext } from '../../providers/vault'
 import { Detail } from './ui'
 
 export default function VaultSuccess() {
-  const { lastSend, lastTxid, liveNetwork, navigate } = useContext(VaultContext)
+  const { lastSend, lastTxid, lastTxKind, liveNetwork, navigate } = useContext(VaultContext)
   const amount = lastSend ? prettyAmount(lastSend.amount) : 'Sent'
-  const explorer = lastTxid ? `https://mempool.mutinynet.arkade.sh/tx/${lastTxid}` : ''
+  const explorer = lastTxid && lastTxKind === 'onchain' ? `https://mempool.mutinynet.arkade.sh/tx/${lastTxid}` : ''
 
   return (
     <>
@@ -22,7 +22,10 @@ export default function VaultSuccess() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <Success headline={amount} text={lastTxid ? 'Broadcast on testnet' : 'Done'} />
+            <Success
+              headline={amount}
+              text={lastTxKind === 'vtxo' ? 'Sent as a VTXO' : lastTxid ? 'Broadcast on testnet' : 'Done'}
+            />
             {lastSend ? (
               <>
                 <Detail label='To' value={truncateAddress(lastSend.address, 8)} mono />
