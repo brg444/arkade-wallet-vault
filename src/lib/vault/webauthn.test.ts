@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   allowPasskey,
   bytesToBase64Url,
+  deviceSigningOptions,
   isCoarsePhone,
   passkeyCreateOptions,
   passkeyGetOptions,
@@ -63,6 +64,29 @@ describe('passkey options', () => {
     )
     expect(hybrid.allowCredentials?.[0].transports).toEqual(['hybrid'])
     expect((hybrid as { hints?: string[] }).hints).toEqual(['hybrid'])
+  })
+
+  it('keeps signing local on a phone and leaves cross-device signing available on desktop', () => {
+    const credentialId = new Uint8Array(16)
+    const request = () =>
+      deviceSigningOptions(
+        {
+          challenge: new Uint8Array(32),
+          rpId: 'example.test',
+          extensions: prfExtension(new Uint8Array(32), credentialId),
+        },
+        credentialId,
+      )
+
+    setUA('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')
+    const phone = request()
+    expect(phone.allowCredentials?.[0].transports).toEqual(['internal'])
+    expect((phone as { hints?: string[] }).hints).toEqual(['client-device'])
+
+    setUA('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/128.0.0.0')
+    const desktop = request()
+    expect(desktop.allowCredentials?.[0].transports).toEqual(['internal', 'hybrid'])
+    expect((desktop as { hints?: string[] }).hints).toEqual(['client-device', 'hybrid'])
   })
 })
 
