@@ -1,6 +1,5 @@
 import { p256 } from '@noble/curves/nist.js'
 import { secp256k1 } from '@noble/curves/secp256k1.js'
-import { sha256 } from '@noble/hashes/sha2.js'
 import { vaultPost } from './api'
 import { bytesToHex, hexToBytes } from './hex'
 import { xOnly } from './setupPlan'
@@ -32,33 +31,6 @@ export interface EnrollmentSecrets {
   phoneRoutineBip340Pub: string
   nonce: string
   ciphertext: string
-}
-
-const POP_DOMAIN = new TextEncoder().encode('arkade-2fa-vault/enrollment-pop/v3')
-
-export function enrollmentPoPDigest(input: {
-  vaultId: string
-  credentialId: string
-  webauthnP256: string
-  phoneDirectP256: string
-  phoneRoutineBip340Pub: string
-  externalOwnerWalletXOnly: string
-  descriptorHash: string
-}): Uint8Array {
-  const out: number[] = [...POP_DOMAIN]
-  for (const field of [
-    new TextEncoder().encode(input.vaultId),
-    hexToBytes(input.credentialId),
-    hexToBytes(input.webauthnP256),
-    hexToBytes(input.phoneDirectP256),
-    hexToBytes(input.phoneRoutineBip340Pub),
-    hexToBytes(input.externalOwnerWalletXOnly),
-    hexToBytes(input.descriptorHash),
-  ]) {
-    out.push(0)
-    out.push(...field)
-  }
-  return sha256(new Uint8Array(out))
 }
 
 function requireRPID(status: { rpId?: string; clientOrigin?: string }): string {
