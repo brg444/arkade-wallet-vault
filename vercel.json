@@ -42,6 +42,10 @@
       "destination": "https://mempool.mutinynet.arkade.sh/api/:path*"
     },
     {
+      "source": "/arkade/:path*",
+      "destination": "https://mutinynet.arkade.sh/:path*"
+    },
+    {
       "source": "/((?!assets/|api/|health(?:/|$)|v1(?:/|$)).*)",
       "destination": "/index.html"
     }

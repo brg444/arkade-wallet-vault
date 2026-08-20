@@ -26,6 +26,10 @@ import {
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 
+export function vaultArkServer(production = import.meta.env.PROD): string {
+  return production ? '/arkade' : testServer
+}
+
 export interface VtxoReserveResponse {
   operationId: string
   bundleDigest: string
@@ -328,7 +332,7 @@ export async function sendVaultVtxo(
     amountSats,
   })
   const offchain = buildReservedVtxoSpend(status, reserve, amountSats, destAddress)
-  const operator = new RestArkProvider(testServer)
+  const operator = new RestArkProvider(vaultArkServer())
   const operatorInfo = await requirePinnedOperator(operator, status, reserve.checkpointTapscript)
   const auth = await authorizeWithPasskey(enrollment, status, reserve.bundleDigest)
   try {
@@ -395,7 +399,7 @@ export async function sendVaultVtxo(
 export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number; maxCoin: number }> {
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
-  const provider = new RestIndexerProvider(testServer)
+  const provider = new RestIndexerProvider(vaultArkServer())
   const { vtxos } = await provider.getVtxos({ scripts: [hex.encode(script.pkScript)], spendableOnly: true })
   return {
     balance: vtxos.reduce((sum, vtxo) => sum + vtxo.value, 0),
