@@ -29,6 +29,13 @@
     { "source": "/v1/enroll/:action", "destination": "/api/v1/enroll/:action" },
     { "source": "/v1/passkey/:action", "destination": "/api/v1/passkey/:action" },
     { "source": "/v1/kit", "destination": "/api/kit" },
+    { "source": "/v1/vtxo/reserve", "destination": "/api/v1/vtxo-reserve" },
+    { "source": "/v1/vtxo/authorize", "destination": "/api/v1/vtxo-authorize" },
+    {
+      "source": "/v1/vtxo/checkpoints/authorize",
+      "destination": "/api/v1/vtxo-checkpoints-authorize"
+    },
+    { "source": "/v1/vtxo/finalize", "destination": "/api/v1/vtxo-finalize" },
     { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
     {
       "source": "/esplora/:path*",
