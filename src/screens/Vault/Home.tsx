@@ -32,8 +32,7 @@ export default function VaultHome() {
     account,
     addTestCoins,
     amountSats,
-    boardSpending,
-    boardingConfirmedSats,
+    boardingInProgress,
     boardingSats,
     busy,
     canSend,
@@ -213,19 +212,12 @@ export default function VaultHome() {
                     {boardingSats > 0 ? ` · ${prettyNumber(boardingSats)} boarding` : ''}
                   </Text>
                 ) : null}
-                {status?.vtxoBoardingActive && (onchainSpendingSats > 0 || boardingSats > 0) ? (
-                  <Button
-                    secondary
-                    disabled={busy || (boardingSats > 0 && boardingConfirmedSats === 0)}
-                    label={
-                      boardingConfirmedSats > 0
-                        ? 'Finish boarding'
-                        : boardingSats > 0
-                          ? 'Waiting for confirmation'
-                          : 'Move onchain funds to VTXOs'
-                    }
-                    onClick={() => void boardSpending()}
-                  />
+                {status?.vtxoBoardingActive && (boardingInProgress || boardingSats > 0) ? (
+                  <Text color='neutral-600' tiny wrap>
+                    {boardingInProgress
+                      ? 'Converting confirmed Bitcoin to VTXOs automatically.'
+                      : 'Waiting for confirmation. Boarding will resume automatically while the wallet is open.'}
+                  </Text>
                 ) : null}
               </FlexCol>
             ) : (

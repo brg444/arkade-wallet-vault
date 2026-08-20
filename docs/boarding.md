@@ -9,11 +9,18 @@ L1 Spending routine spend
     -> SDK settle to vault-policy-v1
 ```
 
+The Spending receive view publishes one BIP21 request containing the Arkade
+address and this Bitcoin intermediate. The wallet detects confirmed deposits
+and settles them to `vault-policy-v1` while it is open. Older confirmed Spending
+outputs are reconciled through one routine transfer to the same intermediate.
+That transfer still requires device approval because the existing output cannot
+move without its device signature.
+
 The intermediate uses the SDK's standard boarding tree: device + Arkade
 Operator before expiry, and device-only recovery after 604672 seconds. The
-vault service publishes the exact address, script, program name, and delay.
-The client reconstructs the tree from the device and Operator keys and refuses
-any mismatch before funding or signing it.
+vault service publishes the exact address, script, program name, and delay. The
+client reconstructs the tree from the device and Operator keys and refuses any
+mismatch before funding or signing it.
 
 Savings is never a boarding source. The settlement output is explicitly the
 `vault-policy-v1` Arkade address; SDK default change is not accepted.
@@ -24,17 +31,17 @@ principal is debited once, when a later VTXO payment leaves Spending.
 ## SDK observations
 
 - `Wallet.create()` always constructs `DefaultVtxo` as its receive contract.
-  It does not accept a custom offchain tapscript. Boarding therefore calls
-  `wallet.settle()` with an explicit `vault-policy-v1` output instead of using
-  parameterless settle, which would create a default VTXO.
+  It does not accept a custom offchain tapscript. Boarding passes an explicit
+  `vault-policy-v1` output to `wallet.settle()` because parameterless settle
+  creates a default VTXO.
 - The SDK's background boarding poll requires a continuously available signing
   `Identity`. The vault's device key is PRF-wrapped and only exists in memory
-  after a user verification ceremony. The app can finish automatically while
-  the initiating page remains open; after suspension or reload, the confirmed
-  intermediate is detected and `Finish boarding` asks for Face ID again.
+  after a user verification ceremony. The wallet detects unfinished boarding
+  after suspension or reload and requests device approval before settling it.
 - `settlementConfig: false` is required for this coordinator. Otherwise the
   SDK manager may race the explicit policy-directed settle with its own
   parameterless default-output settle.
 - A boarding settlement can outlive an ordinary HTTP request because it waits
   on the Operator event stream. The Arkade same-origin route must remain a
-  direct streaming rewrite rather than a buffered serverless function.
+  direct streaming rewrite. A buffered serverless function breaks the event
+  stream before settlement completes.

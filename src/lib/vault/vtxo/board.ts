@@ -67,6 +67,18 @@ export interface VaultBoardingFunds {
   total: number
 }
 
+export type VaultBoardingAction = 'fund' | 'settle' | 'wait' | 'idle'
+
+export function nextVaultBoardingAction(
+  onchainConfirmedSats: number,
+  boarding: Pick<VaultBoardingFunds, 'confirmed' | 'total'>,
+): VaultBoardingAction {
+  if (boarding.confirmed > 0) return 'settle'
+  if (boarding.total > 0) return 'wait'
+  if (onchainConfirmedSats > 0) return 'fund'
+  return 'idle'
+}
+
 export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<VaultBoardingFunds> {
   requireBoardingStatus(status)
   const coins = await fetchAddressUtxos(status.vtxoBoardingAddress!)
@@ -170,7 +182,7 @@ export async function waitForAndSettleVaultBoarding(
       return { txid: commitmentTxid, amountSats }
     }
     if (Date.now() >= deadline) {
-      throw new Error('Boarding transaction is waiting for confirmation. Return here and tap Finish boarding.')
+      throw new Error('Boarding is waiting for confirmation and will resume automatically while the wallet is open.')
     }
     await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? POLL_INTERVAL_MS))
   }

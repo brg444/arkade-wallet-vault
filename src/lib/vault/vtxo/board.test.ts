@@ -7,6 +7,7 @@ import {
   VAULT_BOARD_V1,
   VAULT_BOARD_V1_EXIT_DELAY,
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
+  nextVaultBoardingAction,
   vaultBoardScriptFromStatus,
 } from './board'
 
@@ -54,6 +55,13 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
 }
 
 describe('vault-board-v1', () => {
+  it('prioritizes automatic settlement and never starts a second boarding transfer', () => {
+    expect(nextVaultBoardingAction(50_000, { confirmed: 0, total: 0 })).toBe('fund')
+    expect(nextVaultBoardingAction(50_000, { confirmed: 0, total: 49_000 })).toBe('wait')
+    expect(nextVaultBoardingAction(50_000, { confirmed: 49_000, total: 49_000 })).toBe('settle')
+    expect(nextVaultBoardingAction(0, { confirmed: 0, total: 0 })).toBe('idle')
+  })
+
   it('reconstructs the distinct standard boarding contract pinned by status', async () => {
     const { current, operatorPub } = await status()
     const script = vaultBoardScriptFromStatus(current, operatorPub)
