@@ -1,10 +1,13 @@
 import { Intent, type DelegateInfo, type DelegateProvider, type SignedIntent } from '@arkade-os/sdk'
-import { VAULT_POLICY_V1_DELEGATE_CAPABILITY, VAULT_POLICY_V1_DELEGATE_ORIGIN } from './script'
+import {
+  VAULT_POLICY_V1_DELEGATE_CAPABILITY,
+  VAULT_POLICY_V1_DELEGATE_ORIGIN,
+  VAULT_POLICY_V1_PINNED_DELEGATE,
+} from './script'
 
 export interface VaultDelegatorProviderOptions {
   vaultOrigin: string
   vaultId: string
-  fulmineOrigin?: string
   gatewaySecret?: string
 }
 
@@ -23,24 +26,26 @@ interface VaultDelegateResponse {
 export class VaultDelegatorProvider implements DelegateProvider {
   readonly vaultOrigin: string
   readonly vaultId: string
-  readonly fulmineOrigin: string
+  readonly fulmineOrigin = VAULT_POLICY_V1_DELEGATE_ORIGIN
   readonly gatewaySecret?: string
 
   constructor(opts: VaultDelegatorProviderOptions) {
     this.vaultOrigin = opts.vaultOrigin.replace(/\/$/, '')
     this.vaultId = opts.vaultId
-    this.fulmineOrigin = (opts.fulmineOrigin ?? VAULT_POLICY_V1_DELEGATE_ORIGIN).replace(/\/$/, '')
     this.gatewaySecret = opts.gatewaySecret
   }
 
   async getDelegateInfo(): Promise<DelegateInfo> {
-    const response = await fetch(`${this.fulmineOrigin}/v1/delegator/info`)
+    const response = await fetch(`${this.fulmineOrigin}/v1/delegator/info`, { redirect: 'error' })
     if (!response.ok) {
       throw new Error(`Failed to get delegate info: ${await response.text()}`)
     }
     const data = (await response.json()) as DelegateInfo & { capabilities?: string[] }
     if (!data || typeof data.pubkey !== 'string' || data.pubkey === '') {
       throw new Error('Invalid delegate info')
+    }
+    if (data.pubkey !== VAULT_POLICY_V1_PINNED_DELEGATE) {
+      throw new Error('Delegate info does not match the pinned public delegate')
     }
     const delegateAddress =
       typeof data.delegateAddress === 'string' && data.delegateAddress !== ''

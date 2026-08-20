@@ -22,6 +22,16 @@ describe('frozen wallet protocol domains', () => {
     expect(STAGED_TEMPLATE).toBe('phone-hww-recovery-staged-v6')
   })
 
+  it('lists vault-policy-v1 as 3-key collaborative spend beside staged', () => {
+    const listed = pack.programs['vault-policy-v1']
+    expect(listed.status).toBe('listed')
+    expect(listed.module).toBe('vtxo')
+    expect(listed.template).toBe('vault-policy-v1-collaborative-3key')
+    expect(listed.spend.leaf).toBe('user-and-vtxo-vault-cosigner-and-arkd')
+    expect(listed.spend.note).toContain('VaultCosigner independently enforces the Vault Program')
+    expect(listed.notes).toContain('3-key [user, VTXO VaultCosigner, Arkade Operator]')
+  })
+
   it('pins the staged schema and recovery PoP tag', () => {
     expect(V5_SCHEMA).toBe('arkade-vault/v5')
     expect(V5_RECOVERY_POP_TAG).toBe('arkade-vault/v5/recovery-pop')
