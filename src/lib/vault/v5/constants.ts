@@ -53,8 +53,6 @@ export const FAMILY_KEYS = [
 ] as const
 export type FamilyKey = (typeof FAMILY_KEYS)[number]
 
-export const V5_RECOVERY_POP_TAG = 'arkade-vault/v5/recovery-pop'
-
 export { TAPROOT_NUMS_XONLY }
 
 export const TEMPLATE_REGISTRY = {

@@ -1,12 +1,10 @@
-import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { hashDescriptor, validateDescriptor } from '../descriptor'
 import { sampleDescriptor } from '../sample'
 import { UNSAFE_GENERATOR_2G } from '../setupPlan'
 import { FAMILY_KEYS, V5_CSV, V5_SCHEMA, V5_TEMPLATE } from './constants'
-import { buildV5Descriptor, hashV5Descriptor, recoveryXOnly, validateV5Descriptor } from './descriptor'
-import { V5_FIXTURE, scalarSecret } from './fixtures'
-import { recoveryPoPDigest, signRecoveryPoP, verifyRecoveryPoP } from './pop'
+import { buildV5Descriptor, hashV5Descriptor, validateV5Descriptor } from './descriptor'
+import { V5_FIXTURE } from './fixtures'
 
 function fixtureDescriptor() {
   return buildV5Descriptor(V5_FIXTURE)
@@ -65,39 +63,5 @@ describe('staged public descriptor', () => {
   it('does not hash JSON stringification', () => {
     const d = fixtureDescriptor()
     expect(hashV5Descriptor(d)).not.toBe(JSON.stringify(d))
-  })
-})
-
-describe('v5 recovery PoP', () => {
-  it('signs the descriptor hash with the recovery key', () => {
-    const d = fixtureDescriptor()
-    const digest = recoveryPoPDigest({
-      vaultId: d.vaultId,
-      inviteHandle: 'invite-1',
-      recoveryXOnly: recoveryXOnly(d),
-      descriptorHash: hashV5Descriptor(d),
-    })
-    expect(digest).toHaveLength(32)
-    const sig = signRecoveryPoP(scalarSecret(5), digest)
-    expect(verifyRecoveryPoP(sig, digest, d.keys.recovery)).toBe(true)
-    const other = recoveryPoPDigest({
-      vaultId: d.vaultId,
-      inviteHandle: 'invite-2',
-      recoveryXOnly: recoveryXOnly(d),
-      descriptorHash: hashV5Descriptor(d),
-    })
-    expect(hex.encode(other)).not.toBe(hex.encode(digest))
-    expect(verifyRecoveryPoP(sig, other, d.keys.recovery)).toBe(false)
-  })
-
-  it('refuses an empty invite', () => {
-    expect(() =>
-      recoveryPoPDigest({
-        vaultId: V5_FIXTURE.vaultId,
-        inviteHandle: '  ',
-        recoveryXOnly: '11'.repeat(32),
-        descriptorHash: '22'.repeat(32),
-      }),
-    ).toThrow(/invite/)
   })
 })
