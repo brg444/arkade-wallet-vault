@@ -15,7 +15,7 @@ import { vaultPost } from '../api'
 import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth.js'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
-import { allowPasskey, passkeyGetOptions, prfExtension, prfFrom } from '../webauthn'
+import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
   VAULT_POLICY_V1_EXIT_DELAY_UNIT,
@@ -146,13 +146,15 @@ async function authorizeWithPasskey(
   }
   const credentialId = requireHex(enrollment.credId, enrollment.credId.length / 2, 'credential id')
   const credential = (await navigator.credentials.get({
-    publicKey: passkeyGetOptions({
-      challenge: digest,
-      rpId,
-      allowCredentials: [allowPasskey(credentialId)],
-      userVerification: 'required',
-      extensions: prfExtension(PRF_SALT, credentialId),
-    }),
+    publicKey: deviceSigningOptions(
+      {
+        challenge: digest,
+        rpId,
+        userVerification: 'required',
+        extensions: prfExtension(PRF_SALT, credentialId),
+      },
+      credentialId,
+    ),
   })) as PublicKeyCredential | null
   if (!credential) throw new Error('The operation was aborted.')
   const prf = prfFrom(credential)
