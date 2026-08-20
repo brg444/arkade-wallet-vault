@@ -86,6 +86,12 @@ export interface VaultStatus {
   spendingOnchainAddress?: string
   spendingOnchainScript?: string
   vtxoDelegatePub?: string
+  vtxoBoardingActive?: boolean
+  vtxoBoardingProgram?: string
+  vtxoBoardingAddress?: string
+  vtxoBoardingScript?: string
+  vtxoBoardingExitDelay?: number
+  vtxoBoardingExitDelayUnit?: string
 }
 
 export interface WatchRecord {

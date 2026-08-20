@@ -43,6 +43,12 @@ import { sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
+import {
+  fetchVaultBoardingFunds,
+  settleVaultBoarding,
+  verifyVaultBoarding,
+  waitForAndSettleVaultBoarding,
+} from '../lib/vault/vtxo/board'
 import { fetchVaultStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -118,6 +124,10 @@ interface VaultContextProps {
   skipRecovery: () => void
   downloadRecoveryKit: () => string
   backupRecoveryKit: () => Promise<boolean>
+  boardSpending: () => Promise<void>
+  boardingAddress: string
+  boardingConfirmedSats: number
+  boardingSats: number
   restoreRecoveryKit: () => Promise<void>
   unlockMapWithHardware: (wrapRaw: string, hardwareSecret: string) => Promise<void>
   signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
@@ -157,6 +167,7 @@ interface VaultContextProps {
   recoverExit: VaultScreen
   networkLabel: string
   operationalAddress: string
+  onchainSpendingSats: number
   spendingArkAddress: string
   preview: boolean
   refreshBalance: () => Promise<void>
@@ -177,6 +188,7 @@ interface VaultContextProps {
   spend: VaultSpend
   status: VaultStatus | null
   lastSend: VaultSpend | null
+  vtxoSpendingSats: number
 }
 
 const DEFAULT_FEE = 500
@@ -192,6 +204,10 @@ export const VaultContext = createContext<VaultContextProps>({
   skipRecovery: () => {},
   downloadRecoveryKit: () => '',
   backupRecoveryKit: async () => false,
+  boardSpending: async () => {},
+  boardingAddress: '',
+  boardingConfirmedSats: 0,
+  boardingSats: 0,
   restoreRecoveryKit: async () => {},
   unlockMapWithHardware: async () => {},
   signGuardianExitWithDevice: async () => '',
@@ -228,6 +244,7 @@ export const VaultContext = createContext<VaultContextProps>({
   navigate: () => {},
   openRecover: () => {},
   recoverEntry: 'kit',
+  onchainSpendingSats: 0,
   recoverExit: 'keys',
   networkLabel: 'Test network',
   operationalAddress: '',
@@ -249,6 +266,7 @@ export const VaultContext = createContext<VaultContextProps>({
   spend: { address: '', amount: 0, fee: DEFAULT_FEE },
   status: null,
   lastSend: null,
+  vtxoSpendingSats: 0,
 })
 
 export function VaultProvider({ children }: { children: ReactNode }) {
@@ -276,6 +294,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [chainBalance, setChainBalance] = useState(0)
   const [vtxoBalance, setVtxoBalance] = useState(0)
   const [vtxoMaxCoin, setVtxoMaxCoin] = useState(0)
+  const [boardingBalance, setBoardingBalance] = useState(0)
+  const [boardingConfirmedBalance, setBoardingConfirmedBalance] = useState(0)
   const [savingsBalance, setSavingsBalance] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [account, setAccount] = useState<VaultAccount>('spend')
@@ -371,6 +391,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const operationalAddress = addressPin?.operationalAddress || ''
   const spendingArkAddress = status?.spendingArkAddress || ''
+  const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
   const allowDemoKeys = statusKnown && !liveNetwork
@@ -378,7 +399,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const dailyRemaining = status?.enrolled
     ? (status.periodRemaining ?? dailyLimit)
     : Math.max(0, dailyLimit - previewSpent)
-  const amountSats = status?.enrolled ? chainBalance + vtxoBalance : demoCredit
+  const amountSats = status?.enrolled ? chainBalance + vtxoBalance + boardingBalance : demoCredit
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
 
@@ -601,10 +622,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       try {
         const liveStatus = id && status?.vaultId !== id ? await fetchVaultStatus(undefined, id) : status
         const arkAddress = liveStatus?.spendingArkAddress || ''
-        if (!address && !savings && !arkAddress) {
+        const boardAddress = liveStatus?.vtxoBoardingAddress || ''
+        if (!address && !savings && !arkAddress && !boardAddress) {
           setChainBalance(0)
           setVtxoBalance(0)
           setVtxoMaxCoin(0)
+          setBoardingBalance(0)
+          setBoardingConfirmedBalance(0)
           setSavingsBalance(0)
           setHistory([])
           return
@@ -638,6 +662,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setVtxoBalance(0)
           setVtxoMaxCoin(0)
         }
+        if (boardAddress && liveStatus?.enrolled && liveStatus.vtxoBoardingActive) {
+          const funds = await fetchVaultBoardingFunds(liveStatus)
+          setBoardingBalance(funds.total)
+          setBoardingConfirmedBalance(funds.confirmed)
+        } else {
+          setBoardingBalance(0)
+          setBoardingConfirmedBalance(0)
+        }
         const [spendTxs, savTxs] = await Promise.all([
           address ? fetchAddressTxs(address).catch(() => []) : Promise.resolve([]),
           savings ? fetchAddressTxs(savings).catch(() => []) : Promise.resolve([]),
@@ -649,6 +681,84 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     [addressPin, status],
   )
+
+  const boardSpending = useCallback(async () => {
+    if (!status?.enrolled || !enrollment || !operationalAddress) {
+      setError('Sign in with the passkey that created this vault.')
+      return
+    }
+    if (!status.vtxoBoardingActive || !status.vtxoBoardingAddress) {
+      setError('Automatic boarding is not active on the vault service yet.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      if (boardingConfirmedBalance > 0) {
+        const phoneSecret = await unlockPhoneRoutine(enrollment, status)
+        try {
+          const settled = await settleVaultBoarding(phoneSecret, status)
+          setLastTxid(settled.txid)
+          setLastTxKind('vtxo')
+        } finally {
+          zeroBytes(phoneSecret)
+        }
+        await refreshBalance(status.vaultId)
+        return
+      }
+      if (boardingBalance > 0) {
+        setError(
+          'Boarding is waiting for an onchain confirmation. Keep this page open or return and tap Finish boarding.',
+        )
+        return
+      }
+      // Refuse before committing an L1 output if the live Operator no longer
+      // matches the board contract advertised by the vault service.
+      await verifyVaultBoarding(status)
+      const coins = (await fetchAddressUtxos(operationalAddress))
+        .filter((coin) => coin.status.confirmed)
+        .sort((a, b) => b.value - a.value)
+      const coin = coins[0]
+      if (!coin) throw new Error('No confirmed onchain Spending coin is available to board.')
+      const feeSats = liveNetwork ? LIVE_FEE : DEFAULT_FEE
+      const amountSats = Math.min(status.txCap, coin.value - feeSats - DUST_SATS, dailyRemaining - feeSats)
+      if (!Number.isSafeInteger(amountSats) || amountSats < DUST_SATS) {
+        throw new Error('Not enough onchain Spending balance and daily allowance to board.')
+      }
+      const prevTxHex = await fetchTxHex(coin.txid)
+      const result = await sendRoutineSpend({
+        enrollment,
+        status,
+        destAddress: status.vtxoBoardingAddress,
+        amountSats,
+        feeSats,
+        prevTxHex,
+        vout: coin.vout,
+        afterPublish: async ({ txid, phoneRoutineSecret }) => {
+          const settled = await waitForAndSettleVaultBoarding(phoneRoutineSecret, status, txid)
+          return settled.txid
+        },
+      })
+      setLastTxid(result.followupTxid || result.txid)
+      setLastTxKind(result.followupTxid ? 'vtxo' : 'onchain')
+      await refreshBalance(status.vaultId)
+      if (result.followupError) setError(result.followupError)
+    } catch (err) {
+      setError(humanizeVaultError(err))
+      await refreshBalance(status.vaultId)
+    } finally {
+      setBusy(false)
+    }
+  }, [
+    boardingBalance,
+    boardingConfirmedBalance,
+    dailyRemaining,
+    enrollment,
+    liveNetwork,
+    operationalAddress,
+    refreshBalance,
+    status,
+  ])
 
   const enroll = useCallback(
     async (token = '') => {
@@ -1140,6 +1250,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
+      boardSpending,
+      boardingAddress,
+      boardingConfirmedSats: boardingConfirmedBalance,
+      boardingSats: boardingBalance,
       restoreRecoveryKit,
       unlockMapWithHardware,
       signGuardianExitWithDevice,
@@ -1193,6 +1307,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverExit,
       networkLabel,
       operationalAddress,
+      onchainSpendingSats: chainBalance,
       spendingArkAddress,
       preview: preview || !status?.enrolled,
       refreshBalance,
@@ -1217,6 +1332,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       spend,
       status,
       lastSend,
+      vtxoSpendingSats: vtxoBalance,
     }),
     [
       acceptDesign,
@@ -1229,6 +1345,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
+      boardSpending,
+      boardingAddress,
+      boardingBalance,
+      boardingConfirmedBalance,
       restoreRecoveryKit,
       unlockMapWithHardware,
       signGuardianExitWithDevice,

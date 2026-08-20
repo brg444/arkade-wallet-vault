@@ -97,7 +97,7 @@ describe('vault UI lock', () => {
   it('rejects the retired singleton home chrome', () => {
     const home = read('src/screens/Vault/Home.tsx')
     expect(home).toContain('account-switcher')
-    expect(home).toContain('available today')
+    expect(home).toContain('remaining in the rolling 24h limit')
     expect(home).not.toMatch(/Phone may spend/)
     expect(home).not.toMatch(/Mutinynet · live coins/)
     expect(home).not.toMatch(/Daily path ready/)

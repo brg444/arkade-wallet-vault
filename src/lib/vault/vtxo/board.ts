@@ -1,0 +1,177 @@
+import {
+  DefaultVtxo,
+  Estimator,
+  RestArkProvider,
+  RestIndexerProvider,
+  SingleKey,
+  Wallet,
+  type ExtendedCoin,
+} from '@arkade-os/sdk'
+import { hex } from '@scure/base'
+import type { VaultStatus } from '../types'
+import { vaultAddressNetwork } from '../bitcoin'
+import { fetchAddressUtxos } from '../esplora'
+import { vaultArkServer } from './spend'
+
+export const VAULT_BOARD_V1 = 'vault-board-v1'
+export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
+export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
+
+const POLL_INTERVAL_MS = 3_000
+const CONFIRMATION_WAIT_MS = 180_000
+
+function xOnly(value: string | undefined, name: string): Uint8Array {
+  const raw = String(value || '').toLowerCase()
+  if (/^(02|03)[0-9a-f]{64}$/.test(raw)) return hex.decode(raw.slice(2))
+  if (/^[0-9a-f]{64}$/.test(raw)) return hex.decode(raw)
+  throw new Error(`${name} must be a secp256k1 public key`)
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+function requireBoardingStatus(status: VaultStatus) {
+  if (!status.enrolled || status.network !== 'mutinynet') throw new Error('boarding is Mutinynet-only')
+  if (!status.vtxoBoardingActive || status.vtxoBoardingProgram !== VAULT_BOARD_V1) {
+    throw new Error('vault-board-v1 is not active on the vault service')
+  }
+  if (
+    status.vtxoBoardingExitDelay !== Number(VAULT_BOARD_V1_EXIT_DELAY) ||
+    status.vtxoBoardingExitDelayUnit !== VAULT_BOARD_V1_EXIT_DELAY_UNIT
+  ) {
+    throw new Error('vault-board-v1 exit delay does not match this release')
+  }
+  if (!status.vtxoBoardingAddress || !status.vtxoBoardingScript || !status.spendingArkAddress) {
+    throw new Error('vault-board-v1 descriptor is incomplete')
+  }
+}
+
+export function vaultBoardScriptFromStatus(status: VaultStatus, operatorPub: Uint8Array) {
+  requireBoardingStatus(status)
+  const script = new DefaultVtxo.Script({
+    pubKey: xOnly(status.phoneRoutineBip340Pub, 'phone routine pubkey'),
+    serverPubKey: operatorPub,
+    csvTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
+  })
+  const advertised = hex.decode(status.vtxoBoardingScript!)
+  if (!sameBytes(script.pkScript, advertised)) throw new Error('vault-board-v1 script does not match the vault service')
+  const address = script.onchainAddress(vaultAddressNetwork(status.network))
+  if (address !== status.vtxoBoardingAddress) throw new Error('vault-board-v1 address does not match the vault service')
+  return script
+}
+
+export interface VaultBoardingFunds {
+  confirmed: number
+  unconfirmed: number
+  total: number
+}
+
+export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<VaultBoardingFunds> {
+  requireBoardingStatus(status)
+  const coins = await fetchAddressUtxos(status.vtxoBoardingAddress!)
+  const confirmed = coins.filter((coin) => coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
+  const unconfirmed = coins.filter((coin) => !coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
+  return { confirmed, unconfirmed, total: confirmed + unconfirmed }
+}
+
+async function liveBoardingOperator(status: VaultStatus) {
+  requireBoardingStatus(status)
+  const operator = new RestArkProvider(vaultArkServer())
+  const info = await operator.getInfo()
+  if (info.network !== 'mutinynet') throw new Error('Operator network is not Mutinynet')
+  if (BigInt(info.boardingExitDelay) !== VAULT_BOARD_V1_EXIT_DELAY) {
+    throw new Error('Operator boarding delay changed from the release pin')
+  }
+  const operatorPub = xOnly(info.signerPubkey, 'Operator signer pubkey')
+  vaultBoardScriptFromStatus(status, operatorPub)
+  return { operator, info }
+}
+
+export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
+  await liveBoardingOperator(status)
+}
+
+async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
+  const identity = SingleKey.fromPrivateKey(phoneSecret)
+  const { operator, info } = await liveBoardingOperator(status)
+  const wallet = await Wallet.create({
+    identity,
+    arkServerUrl: vaultArkServer(),
+    arkProvider: operator,
+    indexerProvider: new RestIndexerProvider(vaultArkServer()),
+    esploraUrl: '/esplora',
+    boardingTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
+    settlementConfig: false,
+  })
+  if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
+    throw new Error('SDK derived a different vault-board-v1 address')
+  }
+  return { wallet, info }
+}
+
+function boardingOutputAmount(
+  coin: ExtendedCoin,
+  status: VaultStatus,
+  intentFee: ConstructorParameters<typeof Estimator>[0],
+) {
+  const estimator = new Estimator(intentFee)
+  const inputFee = estimator.evalOnchainInput({ amount: BigInt(coin.value) })
+  let amount = coin.value - inputFee.satoshis
+  const outputFee = estimator.evalOffchainOutput({
+    amount: BigInt(amount),
+    script: String(status.spendingArkScript || ''),
+  })
+  amount -= outputFee.satoshis
+  if (!Number.isSafeInteger(amount) || amount < 330)
+    throw new Error('boarding output is below dust after Operator fees')
+  return amount
+}
+
+async function findConfirmedBoardingCoin(wallet: Wallet, txid?: string): Promise<ExtendedCoin | undefined> {
+  const coins = await wallet.getBoardingUtxos()
+  return coins
+    .filter((coin) => coin.status.confirmed && (!txid || coin.txid === txid))
+    .sort((a, b) => b.value - a.value)[0]
+}
+
+export async function settleVaultBoarding(
+  phoneSecret: Uint8Array,
+  status: VaultStatus,
+  txid?: string,
+): Promise<{ txid: string; amountSats: number }> {
+  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
+  const coin = await findConfirmedBoardingCoin(wallet, txid)
+  if (!coin) throw new Error('No confirmed boarding transaction yet')
+  const amountSats = boardingOutputAmount(coin, status, info.fees.intentFee)
+  const commitmentTxid = await wallet.settle({
+    inputs: [coin],
+    outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
+  })
+  return { txid: commitmentTxid, amountSats }
+}
+
+export async function waitForAndSettleVaultBoarding(
+  phoneSecret: Uint8Array,
+  status: VaultStatus,
+  txid: string,
+  options: { timeoutMs?: number; pollMs?: number } = {},
+): Promise<{ txid: string; amountSats: number }> {
+  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
+  const deadline = Date.now() + (options.timeoutMs ?? CONFIRMATION_WAIT_MS)
+  for (;;) {
+    const coin = await findConfirmedBoardingCoin(wallet, txid)
+    if (coin) {
+      const amountSats = boardingOutputAmount(coin, status, info.fees.intentFee)
+      const commitmentTxid = await wallet.settle({
+        inputs: [coin],
+        outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
+      })
+      return { txid: commitmentTxid, amountSats }
+    }
+    if (Date.now() >= deadline) {
+      throw new Error('Boarding transaction is waiting for confirmation. Return here and tap Finish boarding.')
+    }
+    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? POLL_INTERVAL_MS))
+  }
+}

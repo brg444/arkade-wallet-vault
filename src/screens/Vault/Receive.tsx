@@ -12,17 +12,18 @@ import { copyToClipboard } from '../../lib/clipboard'
 import { VaultContext } from '../../providers/vault'
 import { Panel } from './ui'
 
-type ReceiveDest = 'spend' | 'savings'
+type ReceiveDest = 'spend-vtxo' | 'spend-onchain' | 'savings'
 
 export default function VaultReceive() {
   const { account, faucetUrl, liveNetwork, navigate, operationalAddress, savingsAddress, spendingArkAddress } =
     useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
-  const [dest, setDest] = useState<ReceiveDest>(account === 'savings' ? 'savings' : 'spend')
+  const [dest, setDest] = useState<ReceiveDest>(account === 'savings' ? 'savings' : 'spend-vtxo')
 
-  const address = dest === 'savings' ? savingsAddress : spendingArkAddress || operationalAddress
-  const receivingVtxo = dest === 'spend' && Boolean(spendingArkAddress)
+  const address =
+    dest === 'savings' ? savingsAddress : dest === 'spend-onchain' ? operationalAddress : spendingArkAddress
+  const receivingVtxo = dest === 'spend-vtxo'
 
   const handleCopy = async () => {
     if (!address) return
@@ -42,18 +43,33 @@ export default function VaultReceive() {
             </Text>
             <div className='vault-receive-dests'>
               <Panel
-                selected={dest === 'spend'}
+                selected={dest === 'spend-vtxo'}
                 onClick={() => {
-                  setDest('spend')
+                  setDest('spend-vtxo')
                   setCopied(false)
                 }}
                 testId='receive-spend'
               >
                 <Text small bold>
-                  Spending
+                  VTXOs
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  {spendingArkAddress ? 'Receive VTXOs for regular sends' : 'This device, up to today’s limit'}
+                  Receive from another Arkade wallet
+                </Text>
+              </Panel>
+              <Panel
+                selected={dest === 'spend-onchain'}
+                onClick={() => {
+                  setDest('spend-onchain')
+                  setCopied(false)
+                }}
+                testId='receive-spend-onchain'
+              >
+                <Text small bold>
+                  Bitcoin
+                </Text>
+                <Text color='neutral-600' tiny wrap>
+                  Board into VTXOs after confirmation
                 </Text>
               </Panel>
               <Panel
@@ -90,7 +106,9 @@ export default function VaultReceive() {
               <Text color='neutral-600' tiny wrap>
                 {receivingVtxo
                   ? 'Send to this Arkade address from another Arkade wallet.'
-                  : 'This device can spend this, up to today’s limit.'}
+                  : dest === 'spend-onchain'
+                    ? 'After confirmation, return Home and use Face ID once. The app creates and finishes the boarding flow.'
+                    : 'This device can spend this, up to today’s limit.'}
               </Text>
             )}
           </FlexCol>
