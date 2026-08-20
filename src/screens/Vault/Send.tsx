@@ -12,7 +12,7 @@ import Scanner from '../../components/Scanner'
 import Text from '../../components/Text'
 import { decodeBip21, isBip21 } from '../../lib/bip21'
 import { prettyAmount, prettyNumber } from '../../lib/format'
-import { isVaultBitcoinAddress } from '../../lib/vault/bitcoin'
+import { isVaultSpendAddress } from '../../lib/vault/bitcoin'
 import { VaultContext } from '../../providers/vault'
 import { Meter } from './ui'
 
@@ -22,7 +22,7 @@ function payloadFromScan(raw: string): { address: string; amount?: number } {
     try {
       const decoded = decodeBip21(trimmed)
       return {
-        address: (decoded.address || '').trim(),
+        address: (decoded.arkAddress || decoded.address || '').trim(),
         amount: decoded.satoshis,
       }
     } catch {
@@ -97,11 +97,11 @@ export default function VaultSend() {
             />
             <InputAddress
               label='To'
-              placeholder='Bitcoin address'
+              placeholder='Arkade or Bitcoin address'
               value={spend.address}
               onChange={(value: string) => setSpendDraft({ address: value.trim() })}
               openScan={() => setScan(true)}
-              validator={(value) => isVaultBitcoinAddress(value, destNetwork)}
+              validator={(value) => isVaultSpendAddress(value, destNetwork)}
             />
             <Text color='neutral-600' tiny wrap>
               {fromSavings

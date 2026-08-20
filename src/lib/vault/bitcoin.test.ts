@@ -1,5 +1,7 @@
+import { ArkAddress } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
-import { isVaultBitcoinAddress, scriptHexFromAddress } from './bitcoin'
+import { isVaultArkAddress, isVaultBitcoinAddress, isVaultSpendAddress, scriptHexFromAddress } from './bitcoin'
 
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 
@@ -21,5 +23,15 @@ describe('vault bitcoin addresses', () => {
     expect(() => scriptHexFromAddress('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'mutinynet')).toThrow(
       /bitcoin address/,
     )
+  })
+
+  it('accepts only test-network Arkade addresses for the supported Vault networks', () => {
+    const signer = hex.decode('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+    const tapKey = hex.decode('c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
+    const testAddress = new ArkAddress(signer, tapKey, 'tark').encode()
+    const mainAddress = new ArkAddress(signer, tapKey, 'ark').encode()
+    expect(isVaultArkAddress(testAddress, 'mutinynet')).toBe(true)
+    expect(isVaultSpendAddress(testAddress, 'mutinynet')).toBe(true)
+    expect(isVaultArkAddress(mainAddress, 'mutinynet')).toBe(false)
   })
 })

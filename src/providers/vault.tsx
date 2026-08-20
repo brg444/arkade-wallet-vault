@@ -41,7 +41,8 @@ import {
 } from '../lib/vault/savingsSpend'
 import { sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
-import { isVaultBitcoinAddress } from '../lib/vault/bitcoin'
+import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
+import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
 import { fetchVaultStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -144,6 +145,7 @@ interface VaultContextProps {
   hasLocalEnrollment: boolean
   locked: boolean
   lastTxid: string
+  lastTxKind: 'onchain' | 'vtxo' | ''
   history: VaultHistoryItem[]
   selectedTx: VaultHistoryItem | null
   openTx: (tx: VaultHistoryItem) => void
@@ -155,6 +157,7 @@ interface VaultContextProps {
   recoverExit: VaultScreen
   networkLabel: string
   operationalAddress: string
+  spendingArkAddress: string
   preview: boolean
   refreshBalance: () => Promise<void>
   reset: () => void
@@ -216,6 +219,7 @@ export const VaultContext = createContext<VaultContextProps>({
   hasLocalEnrollment: false,
   locked: false,
   lastTxid: '',
+  lastTxKind: '',
   history: [],
   selectedTx: null,
   openTx: () => {},
@@ -227,6 +231,7 @@ export const VaultContext = createContext<VaultContextProps>({
   recoverExit: 'keys',
   networkLabel: 'Test network',
   operationalAddress: '',
+  spendingArkAddress: '',
   preview: true,
   refreshBalance: async () => {},
   reset: () => {},
@@ -265,9 +270,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: DEFAULT_FEE })
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
+  const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | ''>('')
   const [history, setHistory] = useState<VaultHistoryItem[]>([])
   const [selectedTx, setSelectedTx] = useState<VaultHistoryItem | null>(null)
   const [chainBalance, setChainBalance] = useState(0)
+  const [vtxoBalance, setVtxoBalance] = useState(0)
+  const [vtxoMaxCoin, setVtxoMaxCoin] = useState(0)
   const [savingsBalance, setSavingsBalance] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [account, setAccount] = useState<VaultAccount>('spend')
@@ -362,6 +370,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const operationalAddress = addressPin?.operationalAddress || ''
+  const spendingArkAddress = status?.spendingArkAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
   const allowDemoKeys = statusKnown && !liveNetwork
@@ -369,7 +378,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const dailyRemaining = status?.enrolled
     ? (status.periodRemaining ?? dailyLimit)
     : Math.max(0, dailyLimit - previewSpent)
-  const amountSats = status?.enrolled ? chainBalance : demoCredit
+  const amountSats = status?.enrolled ? chainBalance + vtxoBalance : demoCredit
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
 
@@ -589,22 +598,45 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const pin = id ? loadAddressPin(localStorage, id) : null
       const address = pin?.operationalAddress || ''
       const savings = pin?.savingsAddress || ''
-      if (!address && !savings) {
-        setChainBalance(0)
-        setSavingsBalance(0)
-        setHistory([])
-        return
-      }
       try {
+        const liveStatus = id && status?.vaultId !== id ? await fetchVaultStatus(undefined, id) : status
+        const arkAddress = liveStatus?.spendingArkAddress || ''
+        if (!address && !savings && !arkAddress) {
+          setChainBalance(0)
+          setVtxoBalance(0)
+          setVtxoMaxCoin(0)
+          setSavingsBalance(0)
+          setHistory([])
+          return
+        }
         if (address) {
           const stats = await fetchAddressStats(address)
           setChainBalance(Math.max(0, stats.funded - stats.spent))
+        } else {
+          setChainBalance(0)
         }
         if (savings) {
           const stats = await fetchAddressStats(savings)
           setSavingsBalance(Math.max(0, stats.funded - stats.spent))
         } else {
           setSavingsBalance(0)
+        }
+        if (arkAddress && liveStatus?.enrolled) {
+          const funds = await fetchVaultVtxoFunds(liveStatus)
+          setVtxoBalance(funds.balance)
+          setVtxoMaxCoin(funds.maxCoin)
+          setSpend((prev) => ({
+            ...prev,
+            fee:
+              isVaultArkAddress(prev.address, liveStatus.network) && funds.maxCoin >= prev.amount + DUST_SATS
+                ? 0
+                : liveStatus.network === 'mutinynet'
+                  ? LIVE_FEE
+                  : prev.fee,
+          }))
+        } else {
+          setVtxoBalance(0)
+          setVtxoMaxCoin(0)
         }
         const [spendTxs, savTxs] = await Promise.all([
           address ? fetchAddressTxs(address).catch(() => []) : Promise.resolve([]),
@@ -615,7 +647,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError(humanizeVaultError(err))
       }
     },
-    [addressPin, status?.vaultId],
+    [addressPin, status],
   )
 
   const enroll = useCallback(
@@ -782,22 +814,46 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [demoAvailable, setup.dailyLimitSats, status?.enrolled])
 
-  const setSpendDraft = useCallback((draft: Partial<VaultSpend>) => {
-    setSpend((prev) => ({ ...prev, ...draft }))
-    setError('')
-  }, [])
+  const setSpendDraft = useCallback(
+    (draft: Partial<VaultSpend>) => {
+      setSpend((prev) => {
+        const next = { ...prev, ...draft }
+        if (account === 'spend' && status?.enrolled) {
+          next.fee =
+            isVaultArkAddress(next.address, status.network) && vtxoMaxCoin >= next.amount + DUST_SATS
+              ? 0
+              : liveNetwork
+                ? LIVE_FEE
+                : next.fee
+        }
+        return next
+      })
+      setError('')
+    },
+    [account, liveNetwork, status?.enrolled, status?.network, vtxoMaxCoin],
+  )
 
   const reviewSpend = useCallback(() => {
     setError('')
-    if (!isVaultBitcoinAddress(spend.address, status?.network || (preview ? 'regtest' : 'mutinynet'))) {
-      setError('Enter a bitcoin address.')
+    const destNetwork = status?.network || (preview ? 'regtest' : 'mutinynet')
+    if (!isVaultSpendAddress(spend.address, destNetwork)) {
+      setError('Enter an Arkade or Bitcoin address.')
       return
     }
     if (!Number.isInteger(spend.amount) || spend.amount < DUST_SATS) {
       setError('At least 330 sats.')
       return
     }
-    const source = account === 'savings' ? savingsBalance : amountSats
+    const arkDestination = isVaultArkAddress(spend.address, destNetwork)
+    if (arkDestination && account === 'savings') {
+      setError('Savings sends require a Bitcoin address.')
+      return
+    }
+    if (arkDestination && vtxoMaxCoin < spend.amount + DUST_SATS) {
+      setError('An Arkade destination requires one VTXO large enough for the payment and change.')
+      return
+    }
+    const source = account === 'savings' ? savingsBalance : arkDestination ? vtxoMaxCoin : chainBalance
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -809,10 +865,25 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     }
     if (spend.amount + spend.fee > source) {
-      setError(account === 'savings' ? 'Not enough confirmed savings.' : 'Leave 330 sats of change.')
+      if (
+        account !== 'savings' &&
+        arkDestination &&
+        spend.amount + spend.fee <= vtxoBalance &&
+        vtxoMaxCoin < spend.amount + DUST_SATS
+      ) {
+        setError('This first VTXO release spends one VTXO at a time. Choose a smaller amount.')
+        return
+      }
+      setError(
+        account === 'savings'
+          ? 'Not enough confirmed savings.'
+          : arkDestination
+            ? 'Leave 330 sats of change.'
+            : 'Not enough confirmed spending funds.',
+      )
       return
     }
-    if (account !== 'savings' && spend.amount + spend.fee + DUST_SATS > amountSats) {
+    if (account !== 'savings' && spend.amount + spend.fee + DUST_SATS > source) {
       setError('Leave 330 sats of change.')
       return
     }
@@ -821,11 +892,23 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     setScreen('review')
-  }, [account, amountSats, dailyRemaining, preview, savingsBalance, setup.txCapSats, spend, status?.network])
+  }, [
+    account,
+    chainBalance,
+    dailyRemaining,
+    preview,
+    savingsBalance,
+    setup.txCapSats,
+    spend,
+    status?.network,
+    vtxoBalance,
+    vtxoMaxCoin,
+  ])
 
   const finishBroadcast = useCallback(
-    async (txid: string) => {
+    async (txid: string, kind: 'onchain' | 'vtxo' = 'onchain') => {
       setLastTxid(txid)
+      setLastTxKind(kind)
       setLastSend(spend)
       setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
       setHandoffPsbt('')
@@ -914,6 +997,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
         setLastSend(spend)
         setLastTxid('')
+        setLastTxKind('')
         setSpend({ address: '', amount: 0, fee: DEFAULT_FEE })
         setScreen('success')
         return
@@ -923,10 +1007,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setError('Sign in with the passkey that created this vault.')
           return
         }
-        if (!operationalAddress) {
+        if (!operationalAddress && !spendingArkAddress) {
           setError('No spending address yet.')
           return
         }
+      }
+      if (
+        status?.enrolled &&
+        enrollment &&
+        spendingArkAddress &&
+        isVaultArkAddress(spend.address, status.network) &&
+        vtxoMaxCoin >= spend.amount + DUST_SATS
+      ) {
+        const result = await sendVaultVtxo(enrollment, status, spend.address, spend.amount)
+        await finishBroadcast(result.txid, 'vtxo')
+        return
       }
       if (status?.enrolled && enrollment && operationalAddress) {
         const need = spend.amount + spend.fee
@@ -955,6 +1050,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setDemoCredit((n) => Math.max(0, n - outflow))
       setPreviewSpent((n) => n + outflow)
       setLastTxid('')
+      setLastTxKind('')
       setSpend({ address: '', amount: 0, fee: DEFAULT_FEE })
       setScreen('success')
     } catch (err) {
@@ -962,7 +1058,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [account, approveSavingsSend, enrollment, finishBroadcast, operationalAddress, preview, spend, status])
+  }, [
+    account,
+    approveSavingsSend,
+    enrollment,
+    finishBroadcast,
+    operationalAddress,
+    preview,
+    spend,
+    spendingArkAddress,
+    status,
+    vtxoMaxCoin,
+  ])
 
   const reset = useCallback(() => {
     setSessionLocked(true)
@@ -974,6 +1081,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
     setLastSend(null)
     setLastTxid('')
+    setLastTxKind('')
     setAccount('spend')
     setScanOnSend(false)
     setHandoffPsbt('')
@@ -1040,7 +1148,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       initiateAlerts,
       approvePreviewSend,
       busy,
-      canSend: amountSats > DUST_SATS + spend.fee,
+      canSend: Math.max(chainBalance, vtxoMaxCoin) > DUST_SATS + spend.fee,
       completeSavingsHandoff,
       handoffPsbt,
       confirmConditions,
@@ -1058,6 +1166,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       hasLocalEnrollment: Boolean(enrollment),
       locked,
       lastTxid,
+      lastTxKind,
       history: history.filter((item) => item.account === account),
       selectedTx,
       openTx: (tx) => {
@@ -1084,6 +1193,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverExit,
       networkLabel,
       operationalAddress,
+      spendingArkAddress,
       preview: preview || !status?.enrolled,
       refreshBalance,
       reset,
@@ -1113,6 +1223,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       account,
       addTestCoins,
       amountSats,
+      chainBalance,
       applyHardware,
       applyRecovery,
       skipRecovery,
@@ -1141,6 +1252,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       error,
       finishPlan,
       lastTxid,
+      lastTxKind,
       history,
       selectedTx,
       liveNetwork,
@@ -1152,6 +1264,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       loaded,
       networkLabel,
       operationalAddress,
+      spendingArkAddress,
       preview,
       recoverEntry,
       recoverExit,
@@ -1168,6 +1281,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       spend,
       status?.enrolled,
       status?.periodSpent,
+      vtxoBalance,
+      vtxoMaxCoin,
     ],
   )
 
