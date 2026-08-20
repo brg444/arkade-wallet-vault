@@ -17,7 +17,7 @@ import {
 import type { EnrollmentSecrets } from './tenantEnrollment'
 import { bytesToHex, hexToBytes } from './hex'
 import type { VaultStatus } from './types'
-import { allowPasskey, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
+import { deviceSigningOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -93,14 +93,17 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<{ txid: s
   const pre = await vaultPost<{ challenge: string }>('/v1/preflight', { vaultId, psbt: draft.psbt })
   const challengeHex = assertArkadeChallenge(parsed.arkadeChallenge, pre.challenge)
   const challenge = ceremonyHex(challengeHex, 32)
+  const credentialId = hexToBytes(rec.credId)
   const get = (await navigator.credentials.get({
-    publicKey: passkeyGetOptions({
-      challenge,
-      rpId,
-      allowCredentials: [allowPasskey(hexToBytes(rec.credId))],
-      userVerification: 'required',
-      extensions: prfExtension(PRF_SALT, hexToBytes(rec.credId)),
-    }),
+    publicKey: deviceSigningOptions(
+      {
+        challenge,
+        rpId,
+        userVerification: 'required',
+        extensions: prfExtension(PRF_SALT, credentialId),
+      },
+      credentialId,
+    ),
   })) as PublicKeyCredential | null
   if (!get) throw new Error('The operation was aborted.')
   const prf = prfFrom(get)

@@ -84,3 +84,17 @@ export function passkeyGetOptions(
   }
   return next
 }
+
+export function deviceSigningOptions(
+  options: Omit<PublicKeyCredentialRequestOptions, 'allowCredentials'>,
+  credentialId: Uint8Array,
+): PublicKeyCredentialRequestOptions {
+  const mode: PasskeyGetMode = isCoarsePhone() ? 'local' : 'any'
+  return passkeyGetOptions(
+    {
+      ...options,
+      allowCredentials: [allowPasskey(credentialId, mode)],
+    },
+    mode,
+  )
+}
