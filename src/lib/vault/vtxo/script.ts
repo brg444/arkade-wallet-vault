@@ -60,6 +60,10 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
   if (params.exitDelay !== VAULT_POLICY_V1_EXIT_DELAY) {
     throw new Error('vault-policy-v1 exit delay is frozen at 4608 seconds')
   }
+  const pinned = pinnedDelegateXOnly()
+  if (delegatePub.length !== pinned.length || !delegatePub.every((b, i) => b === pinned[i])) {
+    throw new Error('delegatePub must be the pinned public delegate')
+  }
 
   return {
     userPub,
