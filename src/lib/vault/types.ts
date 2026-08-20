@@ -76,7 +76,16 @@ export interface VaultStatus {
   passkeyLoginAvailable?: boolean
   savingsScript?: string
   recoveryPub?: string
+  recoveryKeyPub?: string
   warnings?: string[]
+  vtxoVaultCosignerPub?: string
+  vtxoExitDelay?: number
+  vtxoExitDelayUnit?: string
+  spendingArkAddress?: string
+  spendingArkScript?: string
+  spendingOnchainAddress?: string
+  spendingOnchainScript?: string
+  vtxoDelegatePub?: string
 }
 
 export interface WatchRecord {

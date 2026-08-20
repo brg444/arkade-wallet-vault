@@ -43,6 +43,7 @@ export default function VaultHome() {
     liveNetwork,
     initiateAlert,
     operationalAddress,
+    spendingArkAddress,
     preview,
     refreshBalance,
     savingsAddress,
@@ -66,7 +67,7 @@ export default function VaultHome() {
 
   const spending = account === 'spend'
   const sats = spending ? amountSats : savingsSats
-  const address = fundableAddress(spending ? operationalAddress : savingsAddress)
+  const address = spending ? spendingArkAddress || fundableAddress(operationalAddress) : fundableAddress(savingsAddress)
   const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
   const used = Math.max(0, dailyLimit - availableSpend)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0

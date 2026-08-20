@@ -15,12 +15,14 @@ import { Panel } from './ui'
 type ReceiveDest = 'spend' | 'savings'
 
 export default function VaultReceive() {
-  const { account, faucetUrl, liveNetwork, navigate, operationalAddress, savingsAddress } = useContext(VaultContext)
+  const { account, faucetUrl, liveNetwork, navigate, operationalAddress, savingsAddress, spendingArkAddress } =
+    useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState(false)
   const [dest, setDest] = useState<ReceiveDest>(account === 'savings' ? 'savings' : 'spend')
 
-  const address = dest === 'savings' ? savingsAddress : operationalAddress
+  const address = dest === 'savings' ? savingsAddress : spendingArkAddress || operationalAddress
+  const receivingVtxo = dest === 'spend' && Boolean(spendingArkAddress)
 
   const handleCopy = async () => {
     if (!address) return
@@ -51,7 +53,7 @@ export default function VaultReceive() {
                   Spending
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  This device, up to today’s limit
+                  {spendingArkAddress ? 'Receive VTXOs for regular sends' : 'This device, up to today’s limit'}
                 </Text>
               </Panel>
               <Panel
@@ -86,7 +88,9 @@ export default function VaultReceive() {
               </Text>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This device can spend this, up to today’s limit.
+                {receivingVtxo
+                  ? 'Send to this Arkade address from another Arkade wallet.'
+                  : 'This device can spend this, up to today’s limit.'}
               </Text>
             )}
           </FlexCol>
@@ -94,7 +98,7 @@ export default function VaultReceive() {
       </Content>
       <ButtonsOnBottom>
         <Button onClick={handleCopy} disabled={!address} label={copied ? 'Copied' : 'Copy address'} />
-        {liveNetwork && address ? (
+        {liveNetwork && address && !receivingVtxo ? (
           <Button
             onClick={() => window.open(`${faucetUrl}?address=${address}`, '_blank')}
             label='Get test coins'
