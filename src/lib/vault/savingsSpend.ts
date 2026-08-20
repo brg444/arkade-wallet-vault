@@ -9,6 +9,10 @@ import { bytesToHex, hexToBytes } from './hex'
 import { loadAddressPin, requireStatusMatchesPin } from './pin'
 import { requireSavingsTreeMatchesAddress, type SavingsTreeInput } from './savingsTree'
 import type { VaultStatus } from './types'
+import { isStagedTemplate } from './v5/constants'
+import { familyFromDescriptor } from './v5/descriptor'
+import { loadLocalKit } from './v5/kitStore'
+import { assertLiveKit } from './v5/liveKit'
 import { deviceSigningOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
@@ -42,6 +46,11 @@ export function chooseSavingsLeaf(coin: SavingsCoin, tipHeight: number, phoneCsv
   return 'admin'
 }
 
+export function chooseSavingsLeafForStatus(status: VaultStatus, coin: SavingsCoin, tipHeight: number): SavingsLeaf {
+  if (isStagedTemplate(status.templateVersion)) return 'admin'
+  return chooseSavingsLeaf(coin, tipHeight, status.operationalCsvBlocks)
+}
+
 export function buildSavingsPsbt(input: {
   status: VaultStatus
   phonePub: string
@@ -62,11 +71,41 @@ export function buildSavingsPsbt(input: {
   const change = input.coin.value - total
   if (change > 0 && change < DUST_SATS) throw new Error('leave 330 sats of change, or send the rest')
 
-  const tree = requireSavingsTreeMatchesAddress(treeInputFromStatus(input.status, input.phonePub), pin.savingsAddress)
+  let tree: {
+    address: string
+    script: Uint8Array
+    tapInternalKey?: Uint8Array
+    tapLeafScript?: [unknown, Uint8Array][]
+  }
+  let leafScript: Uint8Array
+  if (isStagedTemplate(input.status.templateVersion)) {
+    if (input.leaf !== 'admin') throw new Error('staged Savings always needs this device and hardware')
+    const stored = loadLocalKit(input.status.vaultId)
+    if (!stored) throw new Error('Savings needs the Recovery Kit saved on this device')
+    const kit = assertLiveKit(stored, input.status.vaultId, input.status.templateVersion)
+    if (kit.descriptor.savings.address !== pin.savingsAddress) {
+      throw new Error('Savings map does not match the pinned address')
+    }
+    if (kit.descriptor.keys.phoneRoutineBip340 !== input.phonePub) {
+      throw new Error('Savings map does not match this device key')
+    }
+    if (input.status.externalOwnerWalletPub && kit.descriptor.keys.hardware !== input.status.externalOwnerWalletPub) {
+      throw new Error('Savings map does not match the hardware key')
+    }
+    const savings = familyFromDescriptor(kit.descriptor).savings
+    tree = savings
+    leafScript = savings.admin
+  } else {
+    const legacy = requireSavingsTreeMatchesAddress(
+      treeInputFromStatus(input.status, input.phonePub),
+      pin.savingsAddress,
+    )
+    tree = legacy
+    leafScript = input.leaf === 'phoneCsv' ? legacy.phoneCsv.script : legacy.admin.script
+  }
   const dest = hex.decode(scriptHexFromAddress(input.destAddress, input.status.network))
-  const leaf = input.leaf === 'phoneCsv' ? tree.phoneCsv : tree.admin
   const tapLeafScript = tree.tapLeafScript?.find(
-    (entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(leaf.script),
+    (entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(leafScript),
   )
   if (!tapLeafScript) throw new Error('admin leaf is missing from the tree')
 

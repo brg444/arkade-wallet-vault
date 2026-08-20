@@ -31,7 +31,7 @@ import {
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import {
   buildSavingsPsbt,
-  chooseSavingsLeaf,
+  chooseSavingsLeafForStatus,
   finalizeSavingsPsbt,
   parseHardwareSecret,
   parseIncomingPsbt,
@@ -932,10 +932,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const coin = confirmedSpendable(utxos, need)
     if (!coin) throw new Error('No confirmed savings coin is large enough.')
     const tip = await fetchTipHeight()
-    const leaf = chooseSavingsLeaf(
+    const leaf = chooseSavingsLeafForStatus(
+      status,
       { txid: coin.txid, vout: coin.vout, value: coin.value, confirmedHeight: coin.status.block_height },
       tip,
-      status.operationalCsvBlocks,
     )
     const unsigned = buildSavingsPsbt({
       status,

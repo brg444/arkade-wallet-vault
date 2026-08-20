@@ -26,8 +26,11 @@ export function humanizeVaultError(err: unknown): string {
   }
   if (
     msg.includes('passkey authentication failed') ||
-    msg.includes('does not belong') ||
-    msg.includes('does not match this vault') ||
+    msg.includes('passkey credential does not match') ||
+    msg.includes('passkey does not belong') ||
+    msg.includes('selected passkey does not belong') ||
+    msg.includes('passkey direct key does not match') ||
+    msg.includes('phone routine key does not match') ||
     msg.includes('does not have the passkey')
   ) {
     return 'Wrong passkey. Use the device that created this vault. On a new device, scan the QR with that original device.'
