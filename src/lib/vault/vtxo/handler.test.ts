@@ -103,6 +103,9 @@ describe('VaultPolicyV1Handler', () => {
     expect(() => new VaultPolicyV1Script({ ...twoGuardianParams(), exitDelay: 2048n })).toThrow(
       /4608|below the arkd minimum|frozen/,
     )
+    expect(
+      () => new VaultPolicyV1Script({ ...twoGuardianParams(), delegatePub: xonly(golden.fixtures.userPub) }),
+    ).toThrow(/pinned public delegate/)
   })
 
   it('collaborative selectPath returns the 4-pub spend leaf, never exit/delegate/DefaultVtxo', () => {
