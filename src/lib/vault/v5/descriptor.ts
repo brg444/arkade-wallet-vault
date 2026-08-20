@@ -13,7 +13,6 @@ import {
   type VaultNetwork,
 } from '../constants'
 import { bytesToHex, encodeUtf8, hexToBytes, requireLowerHex } from '../hex'
-import { xOnlyFromCompressed } from '../savingsTree'
 import {
   familyClaimants,
   familyKeysFor,
@@ -418,11 +417,6 @@ export function encodeV5Descriptor(input: V5PublicDescriptor): Uint8Array {
 
 export function hashV5Descriptor(d: V5PublicDescriptor): string {
   return bytesToHex(sha256(encodeV5Descriptor(d)))
-}
-
-export function recoveryXOnly(d: V5PublicDescriptor): string {
-  if (!d.keys.recovery) throw new Error('recovery key is not on this vault')
-  return hex.encode(xOnlyFromCompressed(d.keys.recovery))
 }
 
 export function familyFromDescriptor(d: V5PublicDescriptor) {
