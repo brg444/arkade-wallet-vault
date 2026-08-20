@@ -17,6 +17,9 @@ any mismatch before funding or signing it.
 
 Savings is never a boarding source. The settlement output is explicitly the
 `vault-policy-v1` Arkade address; SDK default change is not accepted.
+The server recognizes only the exact advertised `vault-board-v1` script as an
+internal transfer: its L1 fee counts toward the rolling allowance, while its
+principal is debited once, when a later VTXO payment leaves Spending.
 
 ## SDK observations
 
