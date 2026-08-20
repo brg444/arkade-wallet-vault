@@ -21,7 +21,7 @@ const REQUIRED_PUBS = [
   'vtxoVaultCosignerPub',
   'tweakedEmulatorPub',
   'arkdServerPub',
-  'tweakedTunnelEmulatorPub',
+  'delegatePub',
   'exitDevicePub',
   'exitHardwarePub',
 ] as const
@@ -45,6 +45,9 @@ function decodeXOnlyHex(value: string | undefined, name: string): Uint8Array {
   } catch {
     throw new Error(`${name} must be hex`)
   }
+  if (bytes.length === 33 && (bytes[0] === 0x02 || bytes[0] === 0x03)) {
+    return bytes.subarray(1)
+  }
   if (bytes.length !== 32) {
     throw new Error(`${name} must be a 32-byte x-only pubkey`)
   }
@@ -58,7 +61,7 @@ export function serializeParams(params: VaultPolicyV1Params): Record<string, str
     vtxoVaultCosignerPub: hex.encode(typed.vtxoVaultCosignerPub),
     tweakedEmulatorPub: hex.encode(typed.tweakedEmulatorPub),
     arkdServerPub: hex.encode(typed.arkdServerPub),
-    tweakedTunnelEmulatorPub: hex.encode(typed.tweakedTunnelEmulatorPub),
+    delegatePub: hex.encode(typed.delegatePub),
     exitDelay: typed.exitDelay.toString(),
     exitDelayUnit: typed.exitDelayUnit,
     exitDevicePub: hex.encode(typed.exitDevicePub),
@@ -77,18 +80,15 @@ export function deserializeParams(params: Record<string, string>): VaultPolicyV1
 
   const exitDelay = params.exitDelay === undefined ? VAULT_POLICY_V1_EXIT_DELAY : BigInt(params.exitDelay)
   const exitDelayUnit = params.exitDelayUnit === undefined ? VAULT_POLICY_V1_EXIT_DELAY_UNIT : params.exitDelayUnit
-  if (exitDelay !== VAULT_POLICY_V1_EXIT_DELAY || exitDelayUnit !== VAULT_POLICY_V1_EXIT_DELAY_UNIT) {
-    throw new Error('vault-policy-v1 exit delay is frozen at 2048 seconds')
-  }
 
   return assertVaultPolicyV1Params({
     userPub: decodeXOnlyHex(params.userPub, 'userPub'),
     vtxoVaultCosignerPub: decodeXOnlyHex(params.vtxoVaultCosignerPub, 'vtxoVaultCosignerPub'),
     tweakedEmulatorPub: decodeXOnlyHex(params.tweakedEmulatorPub, 'tweakedEmulatorPub'),
     arkdServerPub: decodeXOnlyHex(params.arkdServerPub, 'arkdServerPub'),
-    tweakedTunnelEmulatorPub: decodeXOnlyHex(params.tweakedTunnelEmulatorPub, 'tweakedTunnelEmulatorPub'),
+    delegatePub: decodeXOnlyHex(params.delegatePub, 'delegatePub'),
     exitDelay,
-    exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+    exitDelayUnit: exitDelayUnit as typeof VAULT_POLICY_V1_EXIT_DELAY_UNIT,
     exitDevicePub: decodeXOnlyHex(params.exitDevicePub, 'exitDevicePub'),
     exitHardwarePub: decodeXOnlyHex(params.exitHardwarePub, 'exitHardwarePub'),
     exitRecoveryPub: params.exitRecoveryPub ? decodeXOnlyHex(params.exitRecoveryPub, 'exitRecoveryPub') : undefined,

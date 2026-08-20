@@ -3,22 +3,23 @@ import { hex } from '@scure/base'
 
 export const VAULT_POLICY_V1_TYPE = 'vault-policy-v1'
 
-/** Unilateral exit delay, frozen at 2048 seconds. */
-export const VAULT_POLICY_V1_EXIT_DELAY = 2048n
+/** Product-chosen guardian CSV. 4608 = 9*512 BIP68 seconds. Not arkd's 2048s minimum. */
+export const VAULT_POLICY_V1_EXIT_DELAY = 4608n
 export const VAULT_POLICY_V1_EXIT_DELAY_UNIT = 'seconds' as const
+export const VAULT_POLICY_V1_ARKD_MIN_EXIT_DELAY = 2048n
+export const VAULT_POLICY_V1_BIP68_SECONDS_MOD = 512n
 
-/** OP_TUNNEL = 0xf7 */
-export const OP_TUNNEL = 0xf7
-
-/** `<0> OP_TUNNEL` — Arkade packet script / tweak preimage, not a tapleaf. */
-export const TUNNEL_ARK_SCRIPT = new Uint8Array([0x00, OP_TUNNEL])
+/** Compressed Mutinynet Fulmine delegator. The tapleaf stores the x-only form. */
+export const VAULT_POLICY_V1_PINNED_DELEGATE = '032903b15efe236d9609da10e536fb32cdf1d144778797bbf32a9b94e86601be6a'
+export const VAULT_POLICY_V1_DELEGATE_ORIGIN = 'https://delegator.mutinynet.arkade.sh'
+export const VAULT_POLICY_V1_DELEGATE_CAPABILITY = 'multi-presigned-signature'
 
 export interface VaultPolicyV1Params {
   userPub: Uint8Array
   vtxoVaultCosignerPub: Uint8Array
   tweakedEmulatorPub: Uint8Array
   arkdServerPub: Uint8Array
-  tweakedTunnelEmulatorPub: Uint8Array
+  delegatePub: Uint8Array
   exitDelay: bigint
   exitDelayUnit: typeof VAULT_POLICY_V1_EXIT_DELAY_UNIT
   exitDevicePub: Uint8Array
@@ -33,18 +34,31 @@ function requireXOnly(value: Uint8Array | undefined, name: string): Uint8Array {
   return value
 }
 
+export function pinnedDelegateXOnly(): Uint8Array {
+  return hex.decode(VAULT_POLICY_V1_PINNED_DELEGATE.slice(2))
+}
+
 export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPolicyV1Params {
   const userPub = requireXOnly(params.userPub, 'userPub')
   const vtxoVaultCosignerPub = requireXOnly(params.vtxoVaultCosignerPub, 'vtxoVaultCosignerPub')
   const tweakedEmulatorPub = requireXOnly(params.tweakedEmulatorPub, 'tweakedEmulatorPub')
   const arkdServerPub = requireXOnly(params.arkdServerPub, 'arkdServerPub')
-  const tweakedTunnelEmulatorPub = requireXOnly(params.tweakedTunnelEmulatorPub, 'tweakedTunnelEmulatorPub')
+  const delegatePub = requireXOnly(params.delegatePub, 'delegatePub')
   const exitDevicePub = requireXOnly(params.exitDevicePub, 'exitDevicePub')
   const exitHardwarePub = requireXOnly(params.exitHardwarePub, 'exitHardwarePub')
   const exitRecoveryPub = params.exitRecoveryPub ? requireXOnly(params.exitRecoveryPub, 'exitRecoveryPub') : undefined
 
-  if (params.exitDelay !== VAULT_POLICY_V1_EXIT_DELAY || params.exitDelayUnit !== VAULT_POLICY_V1_EXIT_DELAY_UNIT) {
-    throw new Error('vault-policy-v1 exit delay is frozen at 2048 seconds')
+  if (params.exitDelayUnit !== VAULT_POLICY_V1_EXIT_DELAY_UNIT) {
+    throw new Error('vault-policy-v1 exit delay unit must be seconds')
+  }
+  if (params.exitDelay % VAULT_POLICY_V1_BIP68_SECONDS_MOD !== 0n) {
+    throw new Error('vault-policy-v1 exit delay must be a BIP68 seconds multiple of 512')
+  }
+  if (params.exitDelay < VAULT_POLICY_V1_ARKD_MIN_EXIT_DELAY) {
+    throw new Error('vault-policy-v1 exit delay is below the arkd minimum')
+  }
+  if (params.exitDelay !== VAULT_POLICY_V1_EXIT_DELAY) {
+    throw new Error('vault-policy-v1 exit delay is frozen at 4608 seconds')
   }
 
   return {
@@ -52,7 +66,7 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
     vtxoVaultCosignerPub,
     tweakedEmulatorPub,
     arkdServerPub,
-    tweakedTunnelEmulatorPub,
+    delegatePub,
     exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
     exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
     exitDevicePub,
@@ -62,14 +76,14 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
 }
 
 /**
- * vault-policy-v1 tap tree: 4-pub spend, guardian CSV exit, tunnel 2-of-2.
- * Tunnel is a bitcoin tapleaf only; `<0> OP_TUNNEL` is a different ArkScript tweak.
+ * vault-policy-v1 tap tree: 4-pub spend, exactly one guardian CSV exit,
+ * 4-pub delegate [user, vtxoVault, pinned public delegate, arkd].
  */
 export class VaultPolicyV1Script extends VtxoScript {
   readonly params: VaultPolicyV1Params
   readonly spendScript: string
   readonly exitScript: string
-  readonly tunnelScript: string
+  readonly delegateScript: string
 
   constructor(params: VaultPolicyV1Params) {
     const typed = assertVaultPolicyV1Params(params)
@@ -82,14 +96,14 @@ export class VaultPolicyV1Script extends VtxoScript {
         ? [typed.exitHardwarePub, typed.exitRecoveryPub]
         : [typed.exitDevicePub, typed.exitHardwarePub],
     })
-    const tunnel = MultisigTapscript.encode({
-      pubkeys: [typed.tweakedTunnelEmulatorPub, typed.arkdServerPub],
+    const delegate = MultisigTapscript.encode({
+      pubkeys: [typed.userPub, typed.vtxoVaultCosignerPub, typed.delegatePub, typed.arkdServerPub],
     })
-    super([spend.script, exit.script, tunnel.script])
+    super([spend.script, exit.script, delegate.script])
     this.params = typed
     this.spendScript = hex.encode(spend.script)
     this.exitScript = hex.encode(exit.script)
-    this.tunnelScript = hex.encode(tunnel.script)
+    this.delegateScript = hex.encode(delegate.script)
   }
 
   spend(): TapLeafScript {
@@ -100,7 +114,7 @@ export class VaultPolicyV1Script extends VtxoScript {
     return this.findLeaf(this.exitScript)
   }
 
-  tunnel(): TapLeafScript {
-    return this.findLeaf(this.tunnelScript)
+  delegate(): TapLeafScript {
+    return this.findLeaf(this.delegateScript)
   }
 }
