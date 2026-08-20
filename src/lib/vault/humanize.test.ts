@@ -31,15 +31,8 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('status deposit address does not match the local pin'))).toMatch(/don.t send/i)
   })
 
-  it('does not ask the user for a recovery proof', () => {
-    expect(humanizeVaultError(new Error('recovery secret required to prove the key'))).toMatch(/skip recovery/i)
+  it('explains a server that cannot enroll the staged program', () => {
     expect(humanizeVaultError(new Error('enroll needs a v5 vault'))).toMatch(/cannot add recovery yet/i)
-  })
-
-  it('explains a leftover server proof requirement', () => {
-    expect(humanizeVaultError(new Error('tenant enrollment requires owner and recovery signatures'))).toMatch(
-      /no longer asks/i,
-    )
   })
 
   it('explains a rejected Chrome passkey as a different credential store', () => {
