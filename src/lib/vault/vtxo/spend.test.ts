@@ -5,7 +5,13 @@ import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
 import {
   buildReservedVtxoSpend,
+  clearPersistedVtxoSpend,
+  isVtxoReceiptPendingError,
+  loadPersistedVtxoSpend,
+  persistVtxoSpend,
   requireOperatorSignedCheckpoint,
+  VtxoReceiptPendingError,
+  VtxoSpendInFlightError,
   type VtxoReserveResponse,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
@@ -149,5 +155,21 @@ describe('regular VTXO spend coordinator', () => {
     expect(() => buildReservedVtxoSpend(status(), reserve(), 12_000, TB1Q)).toThrow(
       /VTXO destination must be an Arkade address/,
     )
+  })
+
+  it('persists operator-finalized receipt state for reload recovery', () => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      arkTxid: 'aa'.repeat(32),
+      stage: 'operator-finalized',
+    })
+    expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-finalized')
+    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), 'op-1'))).toBe(true)
+    expect(new VtxoSpendInFlightError('aa'.repeat(32), 'op-1').message).toMatch(/still with the operator/)
+    clearPersistedVtxoSpend('vault-a')
+    expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
   })
 })
