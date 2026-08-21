@@ -29,6 +29,7 @@
     { "source": "/v1/enroll/:action", "destination": "/api/v1/enroll/:action" },
     { "source": "/v1/passkey/:action", "destination": "/api/v1/passkey/:action" },
     { "source": "/v1/kit", "destination": "/api/kit" },
+    { "source": "/v1/vtxo/operation", "destination": "/api/v1/vtxo-operation" },
     { "source": "/v1/vtxo/reserve", "destination": "/api/v1/vtxo-reserve" },
     { "source": "/v1/vtxo/authorize", "destination": "/api/v1/vtxo-authorize" },
     {
