@@ -45,3 +45,9 @@ principal is debited once, when a later VTXO payment leaves Spending.
   on the Operator event stream. The Arkade same-origin route must remain a
   direct streaming rewrite. A buffered serverless function breaks the event
   stream before settlement completes.
+- SDK 0.4.28 uses native `EventSource` for `Wallet.settle()`. Its error handler
+  discards the HTTP status, response body, and browser transport detail, then
+  throws only `EventSource error`. The vault coordinator uses a fetch-streaming
+  `RestArkProvider` subclass instead. It sends the required
+  `Accept: text/event-stream` header explicitly and preserves non-200 Operator
+  diagnostics without changing the SDK settlement state machine.

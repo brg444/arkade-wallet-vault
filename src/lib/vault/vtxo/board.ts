@@ -1,17 +1,10 @@
-import {
-  DefaultVtxo,
-  Estimator,
-  RestArkProvider,
-  RestIndexerProvider,
-  SingleKey,
-  Wallet,
-  type ExtendedCoin,
-} from '@arkade-os/sdk'
+import { DefaultVtxo, Estimator, RestIndexerProvider, SingleKey, Wallet, type ExtendedCoin } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
+import { VaultArkProvider } from './provider'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
@@ -89,7 +82,7 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
 
 async function liveBoardingOperator(status: VaultStatus) {
   requireBoardingStatus(status)
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new VaultArkProvider(vaultArkServer())
   const info = await operator.getInfo()
   if (info.network !== 'mutinynet') throw new Error('Operator network is not Mutinynet')
   if (BigInt(info.boardingExitDelay) !== VAULT_BOARD_V1_EXIT_DELAY) {
