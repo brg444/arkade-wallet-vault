@@ -11,6 +11,21 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('vault service is not running'))).toMatch(/can’t reach|try again/i)
   })
 
+  it('does not expose Operator intent internals during boarding', () => {
+    expect(
+      humanizeVaultError(new Error('INVALID_INTENT_PROOF (23): no matching intents found for intent proof')),
+    ).toMatch(/Spending transfer.*processing/i)
+    expect(humanizeVaultError(new Error('INTERNAL_ERROR (0): not enough intent confirmations received'))).toMatch(
+      /Spending transfer.*processing/i,
+    )
+  })
+
+  it('does not expose VTXO receipt internals after submission', () => {
+    expect(humanizeVaultError(new Error('Reserved outpoint not spent by ark txid'))).toMatch(
+      /send was submitted.*confirmed/i,
+    )
+  })
+
   it('explains a cancelled passkey', () => {
     expect(humanizeVaultError(new Error('The operation was aborted.'))).toMatch(/cancelled/i)
   })

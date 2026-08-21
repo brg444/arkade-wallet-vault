@@ -32,6 +32,7 @@ export default function VaultHome() {
     account,
     addTestCoins,
     amountSats,
+    boardingAddress,
     busy,
     canSend,
     dailyLimit,
@@ -42,13 +43,13 @@ export default function VaultHome() {
     openRecover,
     liveNetwork,
     initiateAlert,
-    operationalAddress,
     spendingArkAddress,
     preview,
     refreshBalance,
     savingsAddress,
     savingsSats,
     setAccount,
+    setSpendDraft,
     status,
   } = useContext(VaultContext)
   const { toast } = useToast()
@@ -67,7 +68,7 @@ export default function VaultHome() {
 
   const spending = account === 'spend'
   const sats = spending ? amountSats : savingsSats
-  const address = spending ? spendingArkAddress || fundableAddress(operationalAddress) : fundableAddress(savingsAddress)
+  const address = spending ? spendingArkAddress : fundableAddress(savingsAddress)
   const used = Math.max(0, dailyLimit - dailyRemaining)
   const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
   const satsUnit = sats === 1 ? 'SAT' : 'SATS'
@@ -232,12 +233,15 @@ export default function VaultHome() {
                 icon={<SendIcon />}
                 label='Send'
                 disabled={spending ? !canSend : savingsSats <= 330}
-                onClick={() => navigate('send')}
+                onClick={() => {
+                  if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
+                  navigate('send')
+                }}
               />
               <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
             </FlexRow>
             <VaultHistory />
-            {status?.enrolled && !operationalAddress ? (
+            {status?.enrolled && (!spendingArkAddress || !boardingAddress) ? (
               <Text color='neutral-600' tiny wrap>
                 Receive isn’t ready yet. Try again after setup finishes.
               </Text>

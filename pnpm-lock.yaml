@@ -12,8 +12,8 @@ importers:
         specifier: 0.3.33
         version: 0.3.33
       '@arkade-os/sdk':
-        specifier: 0.4.28
-        version: 0.4.28
+        specifier: 0.4.64
+        version: 0.4.64
       '@base-ui/react':
         specifier: ^1.4.1
         version: 1.4.1(@date-fns/tz@1.4.1)(@types/react@18.3.26)(date-fns@4.1.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -254,6 +254,27 @@ packages:
   '@arkade-os/sdk@0.4.28':
     resolution: {integrity: sha512-3sndSz69QLAxY2I7lkaaFGX761B+sPR/XGtbsCmZGI1PPVO6aZqN7YnlKDgagcxg8Q1h/msuNGe0HyajkcLujg==}
     engines: {node: '>=22.12.0 <25'}
+    peerDependencies:
+      '@react-native-async-storage/async-storage': '>=1.0.0'
+      expo: '>=54.0.0'
+      expo-background-task: ~1.0.10 || >=55.0.0
+      expo-sqlite: ~16.0.10 || >=55.0.0
+      expo-task-manager: ~14.0.9 || >=55.0.0
+    peerDependenciesMeta:
+      '@react-native-async-storage/async-storage':
+        optional: true
+      expo:
+        optional: true
+      expo-background-task:
+        optional: true
+      expo-sqlite:
+        optional: true
+      expo-task-manager:
+        optional: true
+
+  '@arkade-os/sdk@0.4.64':
+    resolution: {integrity: sha512-3R8ewgLzMiq/PGmImUhvINji2w4FkBz4GE1ohHzIFb6m1FiGbFBZUAin9EsRSm2OtBV2uciKWnXdjiQZv3CBEg==}
+    engines: {node: '>=22.12.0 <27'}
     peerDependencies:
       '@react-native-async-storage/async-storage': '>=1.0.0'
       expo: '>=54.0.0'
@@ -865,6 +886,11 @@ packages:
 
   '@marcbachmann/cel-js@7.3.1':
     resolution: {integrity: sha512-P6o26TvjStT8V8+8EF+yq9Pp7ZFV00bpiUMbssr76XbIZGxaB+NNWeBp6WNxOrR9gp0JPzvJueCKHpOs5LE9PQ==}
+    engines: {node: '>=20.19.0'}
+    hasBin: true
+
+  '@marcbachmann/cel-js@8.0.0':
+    resolution: {integrity: sha512-oaTrAziGr3zDLFiMt/yLU3nZuRMawyWQB5X1a0I7s9eGy3JYzX9l8ZXXHyMd64nzbeVFZTewuUShwsZQdK6UCA==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
@@ -4328,6 +4354,25 @@ snapshots:
       - ecpair
       - utf-8-validate
 
+  '@arkade-os/sdk@0.4.64':
+    dependencies:
+      '@bitcoinerlab/descriptors-scure': 3.1.7
+      '@marcbachmann/cel-js': 8.0.0
+      '@noble/curves': 2.0.1
+      '@noble/secp256k1': 3.0.0
+      '@scure/base': 2.0.0
+      '@scure/bip39': 2.0.1
+      '@scure/btc-signer': 2.0.1
+      bip68: 1.0.4
+      ws-electrumx-client: 1.0.5
+    transitivePeerDependencies:
+      - '@ledgerhq/ledger-bitcoin'
+      - bip32
+      - bitcoinjs-lib
+      - bufferutil
+      - ecpair
+      - utf-8-validate
+
   '@asamuzakjp/css-color@3.2.0':
     dependencies:
       '@csstools/css-calc': 2.1.4(@csstools/css-parser-algorithms@3.0.5(@csstools/css-tokenizer@3.0.4))(@csstools/css-tokenizer@3.0.4)
@@ -4890,6 +4935,8 @@ snapshots:
   '@lendasat/lendasat-wallet-bridge@0.0.90': {}
 
   '@marcbachmann/cel-js@7.3.1': {}
+
+  '@marcbachmann/cel-js@8.0.0': {}
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:

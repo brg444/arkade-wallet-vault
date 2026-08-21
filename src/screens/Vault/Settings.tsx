@@ -141,7 +141,7 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const { busy, faucetUrl, liveNetwork, navigate, operationalAddress, refreshBalance, reset, status } =
+  const { boardingAddress, busy, faucetUrl, liveNetwork, navigate, refreshBalance, reset, status } =
     useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<View>('menu')
@@ -279,7 +279,7 @@ export default function VaultSettings() {
                   label='Get test coins'
                   testId='settings-faucet'
                   onClick={() =>
-                    window.open(operationalAddress ? `${faucetUrl}?address=${operationalAddress}` : faucetUrl, '_blank')
+                    window.open(boardingAddress ? `${faucetUrl}?address=${boardingAddress}` : faucetUrl, '_blank')
                   }
                 />
               ) : null}

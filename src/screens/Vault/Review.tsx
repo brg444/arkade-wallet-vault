@@ -12,9 +12,11 @@ import { VaultContext } from '../../providers/vault'
 import { Detail, SignerRow } from './ui'
 
 export default function VaultReview() {
-  const { account, approvePreviewSend, busy, error, navigate, preview, spend } = useContext(VaultContext)
+  const { account, approvePreviewSend, boardingAddress, busy, error, navigate, preview, spend } =
+    useContext(VaultContext)
   const onPhone = isCoarsePhone()
   const fromSavings = account === 'savings'
+  const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
 
   return (
     <>
@@ -23,10 +25,10 @@ export default function VaultReview() {
         <Padded>
           <FlexCol>
             <div className='vault-hero'>
-              <p className='vault-kicker'>You’re sending</p>
+              <p className='vault-kicker'>{movingToSpending ? 'You’re moving' : 'You’re sending'}</p>
               <p className='vault-money'>{prettyAmount(spend.amount)}</p>
             </div>
-            <Detail label='To' value={spend.address} mono />
+            <Detail label='To' value={movingToSpending ? 'Spending' : spend.address} mono={!movingToSpending} />
             <Detail label='Fee' value={prettyAmount(spend.fee)} />
             <Detail label='Total' value={prettyAmount(spend.amount + spend.fee)} />
             <SignerRow

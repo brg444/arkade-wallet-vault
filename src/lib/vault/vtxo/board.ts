@@ -13,6 +13,14 @@ export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
 const POLL_INTERVAL_MS = 3_000
 const CONFIRMATION_WAIT_MS = 180_000
 
+export async function withVaultBoardingLock<T>(vaultId: string, run: () => Promise<T>): Promise<T | undefined> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
+  if (!locks) return run()
+  return locks.request(`arkade-vault-boarding:${vaultId}`, { mode: 'exclusive', ifAvailable: true }, async (lock) =>
+    lock ? run() : undefined,
+  )
+}
+
 function xOnly(value: string | undefined, name: string): Uint8Array {
   const raw = String(value || '').toLowerCase()
   if (/^(02|03)[0-9a-f]{64}$/.test(raw)) return hex.decode(raw.slice(2))
@@ -60,15 +68,13 @@ export interface VaultBoardingFunds {
   total: number
 }
 
-export type VaultBoardingAction = 'fund' | 'settle' | 'wait' | 'idle'
+export type VaultBoardingAction = 'settle' | 'wait' | 'idle'
 
 export function nextVaultBoardingAction(
-  onchainConfirmedSats: number,
   boarding: Pick<VaultBoardingFunds, 'confirmed' | 'total'>,
 ): VaultBoardingAction {
   if (boarding.confirmed > 0) return 'settle'
   if (boarding.total > 0) return 'wait'
-  if (onchainConfirmedSats > 0) return 'fund'
   return 'idle'
 }
 
@@ -116,13 +122,15 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
 }
 
 function boardingOutputAmount(
-  coin: ExtendedCoin,
+  coins: ExtendedCoin[],
   status: VaultStatus,
   intentFee: ConstructorParameters<typeof Estimator>[0],
 ) {
   const estimator = new Estimator(intentFee)
-  const inputFee = estimator.evalOnchainInput({ amount: BigInt(coin.value) })
-  let amount = coin.value - inputFee.satoshis
+  let amount = coins.reduce((sum, coin) => {
+    const inputFee = estimator.evalOnchainInput({ amount: BigInt(coin.value) })
+    return sum + coin.value - inputFee.satoshis
+  }, 0)
   const outputFee = estimator.evalOffchainOutput({
     amount: BigInt(amount),
     script: String(status.spendingArkScript || ''),
@@ -133,11 +141,11 @@ function boardingOutputAmount(
   return amount
 }
 
-async function findConfirmedBoardingCoin(wallet: Wallet, txid?: string): Promise<ExtendedCoin | undefined> {
+async function findConfirmedBoardingCoins(wallet: Wallet, txid?: string): Promise<ExtendedCoin[]> {
   const coins = await wallet.getBoardingUtxos()
   return coins
     .filter((coin) => coin.status.confirmed && (!txid || coin.txid === txid))
-    .sort((a, b) => b.value - a.value)[0]
+    .sort((a, b) => b.value - a.value)
 }
 
 export async function settleVaultBoarding(
@@ -146,11 +154,11 @@ export async function settleVaultBoarding(
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
   const { wallet, info } = await createBoardingWallet(phoneSecret, status)
-  const coin = await findConfirmedBoardingCoin(wallet, txid)
-  if (!coin) throw new Error('No confirmed boarding transaction yet')
-  const amountSats = boardingOutputAmount(coin, status, info.fees.intentFee)
+  const coins = await findConfirmedBoardingCoins(wallet, txid)
+  if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
+  const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
   const commitmentTxid = await wallet.settle({
-    inputs: [coin],
+    inputs: coins,
     outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
   })
   return { txid: commitmentTxid, amountSats }
@@ -165,11 +173,11 @@ export async function waitForAndSettleVaultBoarding(
   const { wallet, info } = await createBoardingWallet(phoneSecret, status)
   const deadline = Date.now() + (options.timeoutMs ?? CONFIRMATION_WAIT_MS)
   for (;;) {
-    const coin = await findConfirmedBoardingCoin(wallet, txid)
-    if (coin) {
-      const amountSats = boardingOutputAmount(coin, status, info.fees.intentFee)
+    const coins = await findConfirmedBoardingCoins(wallet, txid)
+    if (coins.length > 0) {
+      const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
       const commitmentTxid = await wallet.settle({
-        inputs: [coin],
+        inputs: coins,
         outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
       })
       return { txid: commitmentTxid, amountSats }

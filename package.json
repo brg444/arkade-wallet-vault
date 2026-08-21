@@ -5,7 +5,7 @@
   "homepage": ".",
   "dependencies": {
     "@arkade-os/boltz-swap": "0.3.33",
-    "@arkade-os/sdk": "0.4.28",
+    "@arkade-os/sdk": "0.4.64",
     "@base-ui/react": "^1.4.1",
     "@branta-ops/branta": "0.0.9",
     "@fontsource-variable/geist": "^5.2.8",
