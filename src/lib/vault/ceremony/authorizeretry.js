@@ -25,6 +25,10 @@ export function createAuthorizeRetryState() {
       return pending;
     },
 
+    hasPending() {
+      return pending !== null;
+    },
+
     markAuthorized(reviewKey, receipt) {
       if (!sameReview(pending, reviewKey)) throw new Error("authorize retry state mismatch");
       if (!receipt || typeof receipt !== "object") throw new Error("authorize retry receipt");

@@ -23,6 +23,10 @@ const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 const retry = createAuthorizeRetryState()
 
+export function hasPendingRoutineSpend(): boolean {
+  return retry.hasPending() === true
+}
+
 export interface LiveSpendInput {
   enrollment: EnrollmentSecrets
   status: VaultStatus
@@ -83,6 +87,33 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<LiveSpend
       throw new Error('published txid does not match the authorized transaction')
     }
     return { txid: published.txid, challenge: already.challengeHex }
+  }
+
+  // A transport failure can happen after the server durably reserved the
+  // exact PSBT. Re-submit the in-memory body before asking the authenticator
+  // for new signature bytes or reconstructing the transaction. Boarding
+  // settlement can resume separately after the L1 transaction is published.
+  const pending = retry.pendingFor(reviewKey)
+  if (pending) {
+    const body = JSON.parse(pending.bodyJSON) as Record<string, unknown>
+    const out = await vaultPost<{ signedPsbt: string; replay?: boolean }>('/v1/authorize', { vaultId, ...body })
+    const authorized = validateAuthorizedPSBT({
+      ...pending.validation,
+      authorizedB64: out.signedPsbt,
+    })
+    retry.markAuthorized(reviewKey, {
+      challengeHex: pending.challengeHex,
+      expectedTxid: authorized.transactionId,
+      replay: out.replay === true,
+    })
+    const published = await vaultPost<{ txid: string }>('/v1/publish', {
+      vaultId,
+      challenge: pending.challengeHex,
+    })
+    if (published.txid !== authorized.transactionId) {
+      throw new Error('published txid does not match the authorized transaction')
+    }
+    return { txid: published.txid, challenge: pending.challengeHex }
   }
 
   const draft = await vaultPost<{ psbt: string }>('/v1/draft', { ...intent, vaultId })
