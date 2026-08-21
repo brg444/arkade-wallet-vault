@@ -474,7 +474,37 @@ function operationNotFound(err: unknown): boolean {
   return msg.includes('not found') || msg.includes('404')
 }
 
-/** Map a read-only operation view onto the local durable record. */
+const VTXO_SPEND_STAGE_RANK: Record<PersistedVtxoSpendStage, number> = {
+  reserved: 0,
+  authorized: 1,
+  'operator-submitted': 2,
+  'checkpoints-authorized': 3,
+  'operator-finalized': 4,
+}
+
+export function laterVtxoSpendStage(
+  current: PersistedVtxoSpendStage,
+  incoming: PersistedVtxoSpendStage,
+): PersistedVtxoSpendStage {
+  return VTXO_SPEND_STAGE_RANK[incoming] > VTXO_SPEND_STAGE_RANK[current] ? incoming : current
+}
+
+function stageFloorFromOperationView(state: VtxoOperationState): PersistedVtxoSpendStage | undefined {
+  switch (state) {
+    case 'reserved':
+      return 'reserved'
+    case 'signed':
+      return 'authorized'
+    case 'submitted':
+      return 'checkpoints-authorized'
+    case 'finalized':
+      return 'operator-finalized'
+    default:
+      return undefined
+  }
+}
+
+/** Map a read-only operation view onto the local durable record. Never moves stage backward. */
 export function applyVtxoOperationView(
   pending: PersistedVtxoSpend,
   view: VtxoOperationView,
@@ -491,53 +521,34 @@ export function applyVtxoOperationView(
     case 'unresolved':
       persistVtxoSpend({ ...pending, arkTxid })
       throw new VtxoSpendUnresolvedError(arkTxid, pending.operationId)
-    case 'finalized': {
-      const next = { ...pending, arkTxid, stage: 'operator-finalized' as const }
-      persistVtxoSpend(next)
-      return next
-    }
-    case 'submitted': {
-      const checkpointPsbts = view.checkpointPsbts?.length ? view.checkpointPsbts : pending.checkpointPsbts
-      const authorizedPsbt = view.authorizedPsbt || pending.authorizedPsbt
-      const next: PersistedVtxoSpend = {
-        ...pending,
-        arkTxid,
-        authorizedPsbt,
-        checkpointPsbts,
-        stage: checkpointPsbts?.length ? 'checkpoints-authorized' : authorizedPsbt ? 'authorized' : pending.stage,
-      }
-      persistVtxoSpend(next)
-      return next
-    }
-    case 'signed': {
+    default: {
+      const floor = stageFloorFromOperationView(view.state)
+      if (!floor) return pending
       const next: PersistedVtxoSpend = {
         ...pending,
         arkTxid,
         authorizedPsbt: view.authorizedPsbt || pending.authorizedPsbt,
-        stage: view.authorizedPsbt || pending.authorizedPsbt ? 'authorized' : pending.stage,
+        checkpointPsbts: view.checkpointPsbts?.length ? view.checkpointPsbts : pending.checkpointPsbts,
+        stage: laterVtxoSpendStage(pending.stage, floor),
       }
       persistVtxoSpend(next)
       return next
     }
-    case 'reserved':
-      return pending
-    default:
-      return pending
   }
 }
 
 async function syncPersistedSpendWithOperation(pending: PersistedVtxoSpend): Promise<PersistedVtxoSpend | undefined> {
+  let view: VtxoOperationView
   try {
-    const view = await fetchVtxoOperation(pending.vaultId, pending.operationId)
-    return applyVtxoOperationView(pending, view)
+    view = await fetchVtxoOperation(pending.vaultId, pending.operationId)
   } catch (err) {
-    if (err instanceof VtxoSpendUnresolvedError) throw err
     if (operationNotFound(err)) {
       clearPersistedVtxoSpend(pending.vaultId)
       return undefined
     }
     return pending
   }
+  return applyVtxoOperationView(pending, view)
 }
 
 export type VtxoSpendReconcile =
@@ -905,11 +916,33 @@ export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balanc
   }
 }
 
+export type VtxoIndexerPage = { current: number; next: number; total: number }
+
+const MAX_VTXO_HISTORY_PAGES = 256
+
+export async function collectPagedVtxos<T>(
+  fetchPage: (pageIndex: number) => Promise<{ vtxos: T[]; page?: VtxoIndexerPage }>,
+): Promise<T[]> {
+  const all: T[] = []
+  const seen = new Set<number>()
+  let pageIndex = 0
+  for (;;) {
+    if (seen.has(pageIndex) || seen.size >= MAX_VTXO_HISTORY_PAGES) break
+    seen.add(pageIndex)
+    const { vtxos, page } = await fetchPage(pageIndex)
+    all.push(...vtxos)
+    if (!page || page.current + 1 >= page.total || page.next <= page.current) break
+    pageIndex = page.next
+  }
+  return all
+}
+
 export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultHistoryItem[]> {
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
   const provider = new RestIndexerProvider(vaultArkServer())
-  const { vtxos } = await provider.getVtxos({ scripts: [hex.encode(script.pkScript)] })
+  const scripts = [hex.encode(script.pkScript)]
+  const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, pageIndex }))
   return historyFromVtxos(
     vtxos.map((vtxo) => ({
       txid: vtxo.txid,

@@ -7,7 +7,9 @@ import {
   applyVtxoOperationView,
   buildReservedVtxoSpend,
   clearPersistedVtxoSpend,
+  collectPagedVtxos,
   isVtxoReceiptPendingError,
+  laterVtxoSpendStage,
   loadPersistedVtxoSpend,
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
@@ -278,6 +280,94 @@ describe('regular VTXO spend coordinator', () => {
         arkTxid: 'aa'.repeat(32),
       }),
     ).toThrow(VtxoSpendUnresolvedError)
+  })
+
+  it('merges operation status without moving the local stage backward', () => {
+    expect(laterVtxoSpendStage('operator-submitted', 'authorized')).toBe('operator-submitted')
+    expect(laterVtxoSpendStage('operator-finalized', 'checkpoints-authorized')).toBe('operator-finalized')
+    expect(laterVtxoSpendStage('reserved', 'authorized')).toBe('authorized')
+
+    clearPersistedVtxoSpend('vault-a')
+    const submitted: PersistedVtxoSpend = {
+      vaultId: 'vault-a',
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      stage: 'operator-submitted',
+      authorizedPsbt: 'cHNidP9local',
+      unsignedCheckpointPsbts: ['cHNidP9cp'],
+      operatorCheckpointPsbts: ['cHNidP9op'],
+    }
+    const afterSigned = applyVtxoOperationView(submitted, {
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      state: 'signed',
+      arkTxid: 'aa'.repeat(32),
+      authorizedPsbt: 'cHNidP9signed',
+    })
+    expect(afterSigned?.stage).toBe('operator-submitted')
+    expect(afterSigned?.authorizedPsbt).toBe('cHNidP9signed')
+    expect(afterSigned?.operatorCheckpointPsbts).toEqual(['cHNidP9op'])
+
+    const finalized: PersistedVtxoSpend = {
+      ...submitted,
+      stage: 'operator-finalized',
+      checkpointPsbts: ['cHNidP9local-final'],
+    }
+    const afterSubmitted = applyVtxoOperationView(finalized, {
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      state: 'submitted',
+      arkTxid: 'aa'.repeat(32),
+      authorizedPsbt: 'cHNidP9signed',
+      checkpointPsbts: ['cHNidP9final'],
+    })
+    expect(afterSubmitted?.stage).toBe('operator-finalized')
+    expect(afterSubmitted?.checkpointPsbts).toEqual(['cHNidP9final'])
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('rejects an operation view for a different id or digest', () => {
+    const pending: PersistedVtxoSpend = {
+      vaultId: 'vault-a',
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9signed',
+    }
+    expect(() =>
+      applyVtxoOperationView(pending, {
+        operationId: 'op-2',
+        bundleDigest: '11'.repeat(32),
+        state: 'signed',
+      }),
+    ).toThrow(/operation id mismatch/)
+    expect(() =>
+      applyVtxoOperationView(pending, {
+        operationId: 'op-1',
+        bundleDigest: '22'.repeat(32),
+        state: 'signed',
+      }),
+    ).toThrow(/digest mismatch/)
+  })
+
+  it('fetches every indexer page before classifying history', async () => {
+    const pages = [
+      { vtxos: [{ txid: 'input' }], page: { current: 0, next: 1, total: 2 } },
+      { vtxos: [{ txid: 'change' }], page: { current: 1, next: 2, total: 2 } },
+    ]
+    const requested: number[] = []
+    const vtxos = await collectPagedVtxos(async (pageIndex) => {
+      requested.push(pageIndex)
+      return pages[pageIndex]
+    })
+    expect(requested).toEqual([0, 1])
+    expect(vtxos.map((vtxo) => vtxo.txid)).toEqual(['input', 'change'])
   })
 
   it('rejects a resumed Operator submission that changed the Ark transaction', () => {
