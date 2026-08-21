@@ -1,4 +1,5 @@
-import { RestArkProvider, type SettlementEvent } from '@arkade-os/sdk'
+import { RestArkProvider, Transaction, type SettlementEvent } from '@arkade-os/sdk'
+import { base64 } from '@scure/base'
 
 function eventData(block: string): string | undefined {
   const lines = block.split(/\r?\n/)
@@ -26,6 +27,29 @@ async function responseDetail(response: Response): Promise<string> {
  * collapsed to the opaque string "EventSource error".
  */
 export class VaultArkProvider extends RestArkProvider {
+  override async registerIntent(
+    intent: Parameters<RestArkProvider['registerIntent']>[0],
+  ): ReturnType<RestArkProvider['registerIntent']> {
+    try {
+      return await super.registerIntent(intent)
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : ''
+      if (!message.includes('duplicated input') || !message.includes('already registered by another intent')) {
+        throw error
+      }
+      // Intent ids are the unsigned proof transaction id. A reload can lose
+      // the listener while the Operator keeps the exact deterministic intent
+      // queued. Reattach to that id so BatchStarted can be confirmed instead
+      // of deleting and recreating the same boarding intent in a race with the
+      // Operator's confirmation stage.
+      try {
+        return Transaction.fromPSBT(base64.decode(intent.proof)).id
+      } catch {
+        throw error
+      }
+    }
+  }
+
   override async *getEventStream(signal: AbortSignal, topics: string[]): AsyncIterableIterator<SettlementEvent> {
     const query = topics.length > 0 ? `?${topics.map((topic) => `topics=${encodeURIComponent(topic)}`).join('&')}` : ''
     const response = await fetch(`${this.serverUrl}/v1/batch/events${query}`, {

@@ -51,3 +51,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   `RestArkProvider` subclass instead. It sends the required
   `Accept: text/event-stream` header explicitly and preserves non-200 Operator
   diagnostics without changing the SDK settlement state machine.
+- A settlement intent survives a page reload in the Operator queue. SDK 0.4.28
+  treats the resulting duplicate input by deleting and recreating the intent.
+  That races the Operator's short confirmation stage: deletion can report
+  `no matching intents`, or the round can fail with `not enough intent
+confirmations`. Boarding proofs are deterministic, so the provider derives
+  the existing intent id from the signed proof transaction and reattaches the
+  new event listener to that exact intent. A different output produces a
+  different id and therefore cannot be confirmed by this path.
