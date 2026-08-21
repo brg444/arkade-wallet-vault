@@ -38,7 +38,7 @@ function downloadJson(name: string, body: string) {
 }
 
 const ACCOUNT_LABEL: Record<VaultKind, string> = {
-  daily: 'Spending',
+  daily: 'Legacy onchain',
   savings: 'Savings',
 }
 

@@ -680,11 +680,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setBoardingBalance(0)
           setBoardingConfirmedBalance(0)
         }
-        const [spendTxs, savTxs] = await Promise.all([
-          address ? fetchAddressTxs(address).catch(() => []) : Promise.resolve([]),
-          savings ? fetchAddressTxs(savings).catch(() => []) : Promise.resolve([]),
-        ])
-        setHistory([...historyFromTxs(spendTxs, address, 'spend'), ...historyFromTxs(savTxs, savings, 'savings')])
+        const savTxs = savings ? await fetchAddressTxs(savings).catch(() => []) : []
+        setHistory(historyFromTxs(savTxs, savings, 'savings'))
       } catch (err) {
         setError(humanizeVaultError(err))
       }
