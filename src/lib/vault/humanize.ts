@@ -15,6 +15,17 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('authorizer status') || msg.includes('unreachable')) {
     return 'Vault isn’t responding. Try again.'
   }
+  if (
+    msg.includes('invalid_intent_proof') ||
+    msg.includes('no matching intents found') ||
+    msg.includes('not enough intent confirmations') ||
+    msg.includes('event stream')
+  ) {
+    return 'The Spending transfer is still processing. Keep this wallet open and try again shortly.'
+  }
+  if (msg.includes('reserved outpoint not spent by ark txid') || msg.includes('vtxo finalization receipt')) {
+    return 'Your send was submitted and is still being confirmed. Refresh your balance before trying again.'
+  }
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
     return 'Open this page as http://localhost:3003.'
   }

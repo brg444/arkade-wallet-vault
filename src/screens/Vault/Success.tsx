@@ -12,23 +12,36 @@ import { VaultContext } from '../../providers/vault'
 import { Detail } from './ui'
 
 export default function VaultSuccess() {
-  const { lastSend, lastTxid, lastTxKind, liveNetwork, navigate } = useContext(VaultContext)
+  const { boardingAddress, lastSend, lastTxid, lastTxKind, liveNetwork, navigate } = useContext(VaultContext)
   const amount = lastSend ? prettyAmount(lastSend.amount) : 'Sent'
+  const movingToSpending = Boolean(lastSend && boardingAddress && lastSend.address === boardingAddress)
   const explorer = lastTxid && lastTxKind === 'onchain' ? `https://mempool.mutinynet.arkade.sh/tx/${lastTxid}` : ''
 
   return (
     <>
-      <Header text='Sent' />
+      <Header text={movingToSpending ? 'Moving' : 'Sent'} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
             <Success
               headline={amount}
-              text={lastTxKind === 'vtxo' ? 'Sent as a VTXO' : lastTxid ? 'Broadcast on testnet' : 'Done'}
+              text={
+                movingToSpending
+                  ? 'Finishes after Bitcoin confirms'
+                  : lastTxKind === 'vtxo'
+                    ? 'Sent as a VTXO'
+                    : lastTxid
+                      ? 'Broadcast on testnet'
+                      : 'Done'
+              }
             />
             {lastSend ? (
               <>
-                <Detail label='To' value={truncateAddress(lastSend.address, 8)} mono />
+                <Detail
+                  label='To'
+                  value={movingToSpending ? 'Spending' : truncateAddress(lastSend.address, 8)}
+                  mono={!movingToSpending}
+                />
                 <Detail label='Fee' value={prettyAmount(lastSend.fee)} />
               </>
             ) : null}

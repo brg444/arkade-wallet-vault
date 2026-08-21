@@ -26,7 +26,6 @@ import {
   fetchAddressTxs,
   fetchAddressUtxos,
   fetchTipHeight,
-  fetchTxHex,
 } from '../lib/vault/esplora'
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import {
@@ -39,7 +38,6 @@ import {
   signSavingsPsbt,
   unlockPhoneRoutine,
 } from '../lib/vault/savingsSpend'
-import { hasPendingRoutineSpend, sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
@@ -48,7 +46,7 @@ import {
   nextVaultBoardingAction,
   settleVaultBoarding,
   verifyVaultBoarding,
-  waitForAndSettleVaultBoarding,
+  withVaultBoardingLock,
 } from '../lib/vault/vtxo/board'
 import { fetchVaultStatus } from '../lib/vault/status'
 import {
@@ -296,6 +294,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [boardingBalance, setBoardingBalance] = useState(0)
   const [boardingConfirmedBalance, setBoardingConfirmedBalance] = useState(0)
   const [boardingInProgress, setBoardingInProgress] = useState(false)
+  const [boardingPulse, setBoardingPulse] = useState(0)
   const [savingsBalance, setSavingsBalance] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [account, setAccount] = useState<VaultAccount>('spend')
@@ -402,10 +401,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const dailyRemaining = status?.enrolled
     ? (status.periodRemaining ?? dailyLimit)
     : Math.max(0, dailyLimit - previewSpent)
-  const amountSats = status?.enrolled ? chainBalance + vtxoBalance + boardingBalance : demoCredit
+  const amountSats = status?.enrolled ? vtxoBalance : demoCredit
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
-  const boardingFundingMinimum = (liveNetwork ? LIVE_FEE : DEFAULT_FEE) + DUST_SATS * 2
 
   const acceptDesign = useCallback(() => {
     persist({ ...setup, acceptedDesign: true })
@@ -687,101 +685,44 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   )
 
   const reconcileSpendingToVtxos = useCallback(async () => {
-    if (boardingRun.current || !status?.enrolled || !enrollment || !operationalAddress) return
+    if (boardingRun.current || !status?.enrolled || !enrollment) return
     if (!status.vtxoBoardingActive || !status.vtxoBoardingAddress) return
-    const action = nextVaultBoardingAction(chainBalance >= boardingFundingMinimum ? chainBalance : 0, {
+    const action = nextVaultBoardingAction({
       confirmed: boardingConfirmedBalance,
       total: boardingBalance,
     })
-    if (action === 'idle' || action === 'wait') return
+    if (action !== 'settle') return
     boardingRun.current = true
     setBoardingInProgress(true)
     setError('')
     try {
-      if (action === 'settle') {
+      const settled = await withVaultBoardingLock(status.vaultId, async () => {
         const phoneSecret = await unlockPhoneRoutine(enrollment, status)
         try {
-          const settled = await settleVaultBoarding(phoneSecret, status)
-          setLastTxid(settled.txid)
-          setLastTxKind('vtxo')
+          return settleVaultBoarding(phoneSecret, status)
         } finally {
           zeroBytes(phoneSecret)
         }
-        await refreshBalance(status.vaultId)
-        return
-      }
-      // Refuse before committing an L1 output if the live Operator no longer
-      // matches the board contract advertised by the vault service.
-      await verifyVaultBoarding(status)
-      const coins = (await fetchAddressUtxos(operationalAddress))
-        .filter((coin) => coin.status.confirmed)
-        .sort((a, b) => b.value - a.value)
-      const coin = coins[0]
-      if (!coin) throw new Error('No confirmed onchain Spending coin is available to board.')
-      const feeSats = liveNetwork ? LIVE_FEE : DEFAULT_FEE
-      const amountSats = Math.min(status.txCap, coin.value - feeSats - DUST_SATS, dailyRemaining - feeSats)
-      if (!Number.isSafeInteger(amountSats) || amountSats < DUST_SATS) {
-        throw new Error('Not enough onchain Spending balance and daily allowance to board.')
-      }
-      const prevTxHex = await fetchTxHex(coin.txid)
-      const result = await sendRoutineSpend({
-        enrollment,
-        status,
-        destAddress: status.vtxoBoardingAddress,
-        amountSats,
-        feeSats,
-        prevTxHex,
-        vout: coin.vout,
-        afterPublish: async ({ txid, phoneRoutineSecret }) => {
-          await refreshBalance(status.vaultId)
-          const settled = await waitForAndSettleVaultBoarding(phoneRoutineSecret, status, txid)
-          return settled.txid
-        },
       })
-      setLastTxid(result.followupTxid || result.txid)
-      setLastTxKind(result.followupTxid ? 'vtxo' : 'onchain')
+      if (!settled) return
+      setLastTxid(settled.txid)
+      setLastTxKind('vtxo')
       boardingRetryAfter.current = 0
       await refreshBalance(status.vaultId)
-      if (result.followupError) setError(result.followupError)
     } catch (err) {
       setError(humanizeVaultError(err))
-      if (hasPendingRoutineSpend()) {
-        // The exact authorize body remains only in memory. Keep the automatic
-        // flow eligible to retry it after the normal balance-poll interval,
-        // without creating another PSBT or another passkey prompt.
-        boardingAttempt.current = ''
-        boardingRetryAfter.current = Date.now() + 15_000
-      }
+      boardingAttempt.current = ''
+      boardingRetryAfter.current = Date.now() + 5 * 60_000
       await refreshBalance(status.vaultId)
     } finally {
       boardingRun.current = false
       setBoardingInProgress(false)
     }
-  }, [
-    boardingBalance,
-    boardingConfirmedBalance,
-    boardingFundingMinimum,
-    chainBalance,
-    dailyRemaining,
-    enrollment,
-    liveNetwork,
-    operationalAddress,
-    refreshBalance,
-    status,
-  ])
+  }, [boardingBalance, boardingConfirmedBalance, enrollment, refreshBalance, status])
 
   useEffect(() => {
-    if (
-      busy ||
-      boardingInProgress ||
-      locked ||
-      !enrollment ||
-      !operationalAddress ||
-      !status?.enrolled ||
-      !status.vtxoBoardingActive
-    )
-      return
-    const action = nextVaultBoardingAction(chainBalance >= boardingFundingMinimum ? chainBalance : 0, {
+    if (busy || boardingInProgress || locked || !enrollment || !status?.enrolled || !status.vtxoBoardingActive) return
+    const action = nextVaultBoardingAction({
       confirmed: boardingConfirmedBalance,
       total: boardingBalance,
     })
@@ -790,20 +731,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     if (Date.now() < boardingRetryAfter.current) return
-    const key = `${status.vaultId}:${action}:${chainBalance}:${boardingConfirmedBalance}:${boardingBalance}`
+    const key = `${status.vaultId}:${action}:${boardingConfirmedBalance}:${boardingBalance}`
     if (boardingAttempt.current === key) return
     boardingAttempt.current = key
     void reconcileSpendingToVtxos()
   }, [
     boardingBalance,
     boardingConfirmedBalance,
-    boardingFundingMinimum,
     boardingInProgress,
+    boardingPulse,
     busy,
-    chainBalance,
     enrollment,
     locked,
-    operationalAddress,
     reconcileSpendingToVtxos,
     status,
   ])
@@ -811,7 +750,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (locked || !status?.enrolled || !status.vtxoBoardingActive) return
     const tick = () => {
-      if (document.visibilityState !== 'hidden') void refreshBalance(status.vaultId)
+      if (document.visibilityState !== 'hidden') {
+        void refreshBalance(status.vaultId)
+        setBoardingPulse((value) => value + 1)
+      }
     }
     const timer = window.setInterval(tick, 15_000)
     window.addEventListener('focus', tick)
@@ -1020,11 +962,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Savings sends require a Bitcoin address.')
       return
     }
+    if (!arkDestination && account === 'spend' && status?.enrolled) {
+      setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
+      return
+    }
     if (arkDestination && vtxoMaxCoin < spend.amount + DUST_SATS) {
       setError('An Arkade destination requires one VTXO large enough for the payment and change.')
       return
     }
-    const source = account === 'savings' ? savingsBalance : arkDestination ? vtxoMaxCoin : chainBalance
+    const source = account === 'savings' ? savingsBalance : vtxoMaxCoin
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -1065,13 +1011,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScreen('review')
   }, [
     account,
-    chainBalance,
     dailyRemaining,
     preview,
     savingsBalance,
     setup.txCapSats,
     spend,
     status?.network,
+    status?.enrolled,
     vtxoBalance,
     vtxoMaxCoin,
   ])
@@ -1108,6 +1054,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       { txid: coin.txid, vout: coin.vout, value: coin.value, confirmedHeight: coin.status.block_height },
       tip,
     )
+    if (spend.address === status.vtxoBoardingAddress) await verifyVaultBoarding(status)
     const unsigned = buildSavingsPsbt({
       status,
       phonePub: enrollment.phoneRoutineBip340Pub,
@@ -1178,7 +1125,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setError('Sign in with the passkey that created this vault.')
           return
         }
-        if (!operationalAddress && !spendingArkAddress) {
+        if (!spendingArkAddress) {
           setError('No spending address yet.')
           return
         }
@@ -1192,24 +1139,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       ) {
         const result = await sendVaultVtxo(enrollment, status, spend.address, spend.amount)
         await finishBroadcast(result.txid, 'vtxo')
-        return
-      }
-      if (status?.enrolled && enrollment && operationalAddress) {
-        const need = spend.amount + spend.fee
-        const utxos = await fetchAddressUtxos(operationalAddress)
-        const coin = confirmedSpendable(utxos, need)
-        if (!coin) throw new Error('No confirmed Mutinynet coin is large enough. Fund the spending address first.')
-        const prevTxHex = await fetchTxHex(coin.txid)
-        const result = await sendRoutineSpend({
-          enrollment,
-          status,
-          destAddress: spend.address,
-          amountSats: spend.amount,
-          feeSats: spend.fee,
-          prevTxHex,
-          vout: coin.vout,
-        })
-        await finishBroadcast(result.txid)
         return
       }
       if (status?.enrolled || !preview) {
@@ -1234,7 +1163,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     approveSavingsSend,
     enrollment,
     finishBroadcast,
-    operationalAddress,
     preview,
     spend,
     spendingArkAddress,
@@ -1322,7 +1250,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       initiateAlerts,
       approvePreviewSend,
       busy,
-      canSend: !boardingInProgress && Math.max(chainBalance, vtxoMaxCoin) > DUST_SATS + spend.fee,
+      canSend: vtxoMaxCoin > DUST_SATS + spend.fee,
       completeSavingsHandoff,
       handoffPsbt,
       confirmConditions,
@@ -1352,9 +1280,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       allowDemoKeys,
       navigate: (next) => {
         setError('')
-        if (next === 'send' && account === 'savings' && !spend.address && operationalAddress) {
-          setSpend((prev) => ({ ...prev, address: operationalAddress }))
-        }
         setScreen(next)
       },
       openRecover: (view = 'kit', exit = 'keys') => {

@@ -1,5 +1,7 @@
-import { RestArkProvider, Transaction, type SettlementEvent } from '@arkade-os/sdk'
-import { base64 } from '@scure/base'
+import { RestArkProvider, type SettlementEvent } from '@arkade-os/sdk'
+
+const DELETE_RETRY_DELAY_MS = 250
+const DELETE_RETRY_ATTEMPTS = 320
 
 function eventData(block: string): string | undefined {
   const lines = block.split(/\r?\n/)
@@ -27,6 +29,15 @@ async function responseDetail(response: Response): Promise<string> {
  * collapsed to the opaque string "EventSource error".
  */
 export class VaultArkProvider extends RestArkProvider {
+  private recoverQueuedIntent = false
+
+  constructor(
+    serverUrl: string,
+    private readonly deleteRetry = { attempts: DELETE_RETRY_ATTEMPTS, delayMs: DELETE_RETRY_DELAY_MS },
+  ) {
+    super(serverUrl)
+  }
+
   override async registerIntent(
     intent: Parameters<RestArkProvider['registerIntent']>[0],
   ): ReturnType<RestArkProvider['registerIntent']> {
@@ -34,20 +45,32 @@ export class VaultArkProvider extends RestArkProvider {
       return await super.registerIntent(intent)
     } catch (error) {
       const message = error instanceof Error ? error.message.toLowerCase() : ''
-      if (!message.includes('duplicated input') || !message.includes('already registered by another intent')) {
-        throw error
+      if (message.includes('duplicated input') && message.includes('already registered by another intent')) {
+        this.recoverQueuedIntent = true
       }
-      // Intent ids are the unsigned proof transaction id. A reload can lose
-      // the listener while the Operator keeps the exact deterministic intent
-      // queued. Reattach to that id so BatchStarted can be confirmed instead
-      // of deleting and recreating the same boarding intent in a race with the
-      // Operator's confirmation stage.
+      throw error
+    }
+  }
+
+  override async deleteIntent(
+    intent: Parameters<RestArkProvider['deleteIntent']>[0],
+  ): ReturnType<RestArkProvider['deleteIntent']> {
+    const attempts = this.recoverQueuedIntent ? this.deleteRetry.attempts : 1
+    this.recoverQueuedIntent = false
+    let lastError: unknown
+    for (let attempt = 0; attempt < attempts; attempt++) {
       try {
-        return Transaction.fromPSBT(base64.decode(intent.proof)).id
-      } catch {
-        throw error
+        return await super.deleteIntent(intent)
+      } catch (error) {
+        lastError = error
+        const message = error instanceof Error ? error.message.toLowerCase() : ''
+        if (!message.includes('no matching intents found for intent proof')) throw error
+        if (attempt + 1 < attempts && this.deleteRetry.delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, this.deleteRetry.delayMs))
+        }
       }
     }
+    throw lastError instanceof Error ? lastError : new Error('Unable to release the queued boarding intent')
   }
 
   override async *getEventStream(signal: AbortSignal, topics: string[]): AsyncIterableIterator<SettlementEvent> {

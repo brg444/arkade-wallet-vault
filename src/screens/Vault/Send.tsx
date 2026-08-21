@@ -36,6 +36,7 @@ export default function VaultSend() {
   const {
     account,
     amountSats,
+    boardingAddress,
     clearSendScan,
     dailyRemaining,
     error,
@@ -50,6 +51,7 @@ export default function VaultSend() {
     savingsSats,
   } = useContext(VaultContext)
   const fromSavings = account === 'savings'
+  const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
   const destNetwork = status?.network || (preview ? 'regtest' : 'mutinynet')
   const [scan, setScan] = useState(false)
   const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
@@ -82,7 +84,10 @@ export default function VaultSend() {
 
   return (
     <>
-      <Header text={fromSavings ? 'Send from Savings' : 'Send'} back={() => navigate('home')} />
+      <Header
+        text={movingToSpending ? 'Move to Spending' : fromSavings ? 'Send from Savings' : 'Send'}
+        back={() => navigate('home')}
+      />
       <Content noRefresh>
         <Padded>
           <FlexCol>
@@ -97,7 +102,7 @@ export default function VaultSend() {
             />
             <InputAddress
               label='To'
-              placeholder='Arkade or Bitcoin address'
+              placeholder={fromSavings ? 'Bitcoin address' : 'Arkade address'}
               value={spend.address}
               onChange={(value: string) => setSpendDraft({ address: value.trim() })}
               openScan={() => setScan(true)}
@@ -105,7 +110,9 @@ export default function VaultSend() {
             />
             <Text color='neutral-600' tiny wrap>
               {fromSavings
-                ? `From Savings · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
+                ? movingToSpending
+                  ? `To Spending · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
+                  : `From Savings · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
                 : `Fee ${prettyAmount(spend.fee)} · up to ${prettyAmount(setup.txCapSats)} per send`}
             </Text>
             {fromSavings ? (
