@@ -19,7 +19,19 @@ describe('humanizeVaultError', () => {
       /Moving received Bitcoin.*approve Face ID/i,
     )
     expect(isRecoverableVaultBoardingError(new Error('EventSource error'))).toBe(true)
+    expect(
+      isRecoverableVaultBoardingError(new Error('duplicated input, 11:0 already registered by another intent')),
+    ).toBe(true)
     expect(isRecoverableVaultBoardingError(new Error('Failed to fetch'))).toBe(false)
+  })
+
+  it('does not surface issuance-binding or mutated PhoneRoutine internals', () => {
+    expect(humanizeVaultError(new Error('issuance aa is already bound to a different exact request'))).toMatch(
+      /already in progress/i,
+    )
+    expect(humanizeVaultError(new Error('Authorized response mutated the PhoneRoutineBIP340 signature'))).toMatch(
+      /rejected a changed signature/i,
+    )
   })
 
   it('does not expose VTXO receipt internals after submission', () => {

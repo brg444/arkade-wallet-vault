@@ -18,8 +18,18 @@ export function humanizeVaultError(err: unknown): string {
   if (isRecoverableVaultBoardingError(err)) {
     return 'Moving received Bitcoin into Spending automatically. Keep this wallet open; approve Face ID if asked.'
   }
-  if (msg.includes('reserved outpoint not spent by ark txid') || msg.includes('vtxo finalization receipt')) {
+  if (
+    msg.includes('reserved outpoint not spent by ark txid') ||
+    msg.includes('vtxo finalization receipt') ||
+    msg.includes('vtxo spend is still with the operator')
+  ) {
     return 'Your send was submitted and is still being confirmed. Refresh your balance before trying again.'
+  }
+  if (msg.includes('already bound to a different exact request')) {
+    return 'This send is already in progress. Refresh your balance before trying again.'
+  }
+  if (msg.includes('mutated') && msg.includes('phoneroutine')) {
+    return 'The vault rejected a changed signature. Refresh your balance before trying again.'
   }
   if (msg.includes('invalid scalar') || msg.includes('scalar: out of range')) {
     return 'Couldn’t unlock Spending. Sign in again.'
@@ -115,6 +125,7 @@ export function isRecoverableVaultBoardingError(err: unknown): boolean {
     msg.includes('no matching intents found') ||
     msg.includes('not enough intent confirmations') ||
     msg.includes('eventsource') ||
-    msg.includes('event stream')
+    msg.includes('event stream') ||
+    msg.includes('duplicated input')
   )
 }
