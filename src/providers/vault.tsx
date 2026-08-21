@@ -39,7 +39,7 @@ import {
   signSavingsPsbt,
   unlockPhoneRoutine,
 } from '../lib/vault/savingsSpend'
-import { sendRoutineSpend } from '../lib/vault/spend'
+import { hasPendingRoutineSpend, sendRoutineSpend } from '../lib/vault/spend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
@@ -306,6 +306,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
   const boardingRun = useRef(false)
   const boardingAttempt = useRef('')
+  const boardingRetryAfter = useRef(0)
 
   useEffect(() => {
     let existing: EnrollmentSecrets | null = null
@@ -739,10 +740,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       })
       setLastTxid(result.followupTxid || result.txid)
       setLastTxKind(result.followupTxid ? 'vtxo' : 'onchain')
+      boardingRetryAfter.current = 0
       await refreshBalance(status.vaultId)
       if (result.followupError) setError(result.followupError)
     } catch (err) {
       setError(humanizeVaultError(err))
+      if (hasPendingRoutineSpend()) {
+        // The exact authorize body remains only in memory. Keep the automatic
+        // flow eligible to retry it after the normal balance-poll interval,
+        // without creating another PSBT or another passkey prompt.
+        boardingAttempt.current = ''
+        boardingRetryAfter.current = Date.now() + 15_000
+      }
       await refreshBalance(status.vaultId)
     } finally {
       boardingRun.current = false
@@ -780,6 +789,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       boardingAttempt.current = ''
       return
     }
+    if (Date.now() < boardingRetryAfter.current) return
     const key = `${status.vaultId}:${action}:${chainBalance}:${boardingConfirmedBalance}:${boardingBalance}`
     if (boardingAttempt.current === key) return
     boardingAttempt.current = key
