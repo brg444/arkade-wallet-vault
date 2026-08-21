@@ -8,6 +8,7 @@ import {
   clearPersistedVtxoSpend,
   isVtxoReceiptPendingError,
   loadPersistedVtxoSpend,
+  isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
   persistVtxoSpend,
   requireOperatorSignedCheckpoint,
@@ -169,7 +170,10 @@ describe('regular VTXO spend coordinator', () => {
       arkTxid: 'aa'.repeat(32),
       stage: 'operator-finalized',
     })
-    expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(true)
+    const pending = loadPersistedVtxoSpend('vault-a')
+    expect(pendingVtxoSpendBlocksNewSend(pending)).toBe(true)
+    expect(isSameVtxoPayment(pending!, 'tark1qqold', 12_000)).toBe(true)
+    expect(isSameVtxoPayment(pending!, 'tark1qqnew', 12_000)).toBe(false)
     expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), 'op-1'))).toBe(true)
     expect(new VtxoSpendInFlightError('aa'.repeat(32), 'op-1').message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
