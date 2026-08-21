@@ -8,6 +8,7 @@ import {
   clearPersistedVtxoSpend,
   isVtxoReceiptPendingError,
   loadPersistedVtxoSpend,
+  pendingVtxoSpendBlocksNewSend,
   persistVtxoSpend,
   requireOperatorSignedCheckpoint,
   VtxoReceiptPendingError,
@@ -157,19 +158,21 @@ describe('regular VTXO spend coordinator', () => {
     )
   })
 
-  it('persists operator-finalized receipt state for reload recovery', () => {
+  it('does not treat an older persisted spend as the newly approved payment', () => {
     clearPersistedVtxoSpend('vault-a')
     persistVtxoSpend({
       vaultId: 'vault-a',
       operationId: 'op-1',
       bundleDigest: '11'.repeat(32),
+      destAddress: 'tark1qqold',
+      amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
       stage: 'operator-finalized',
     })
-    expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-finalized')
+    expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(true)
     expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), 'op-1'))).toBe(true)
     expect(new VtxoSpendInFlightError('aa'.repeat(32), 'op-1').message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
-    expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
+    expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(false)
   })
 })

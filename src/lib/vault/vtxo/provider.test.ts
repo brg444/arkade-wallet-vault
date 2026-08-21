@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  boardingIntentFingerprint,
   memoryBoardingIntentCache,
   queuedIntentIdForDuplicate,
   VaultArkProvider,
-  type QueuedBoardingIntent,
 } from './provider'
 
 const originalFetch = globalThis.fetch
@@ -100,10 +100,24 @@ describe('VaultArkProvider event stream', () => {
     await expect(register('proof-b')).rejects.toThrow(/duplicated input/i)
   })
 
-  it('refuses a stale UUID whose fingerprint does not match the current proof', () => {
-    const stored: QueuedBoardingIntent = { intentId: 'old-uuid', fingerprint: 'opaque:proof-a' }
-    expect(queuedIntentIdForDuplicate(stored, 'opaque:proof-a')).toBe('old-uuid')
-    expect(queuedIntentIdForDuplicate(stored, 'opaque:proof-b')).toBeUndefined()
-    expect(queuedIntentIdForDuplicate(undefined, 'opaque:proof-a')).toBeUndefined()
+  it('fingerprints the full register proof and message, not only inputs', () => {
+    const base = {
+      proof: 'proof-a',
+      message: {
+        type: 'register' as const,
+        onchain_output_indexes: [] as number[],
+        valid_at: 0,
+        expire_at: 0,
+        cosigners_public_keys: [] as string[],
+      },
+    }
+    const sameInputsDifferentOutputs = {
+      ...base,
+      message: { ...base.message, cosigners_public_keys: ['aa'] },
+    }
+    expect(boardingIntentFingerprint(base)).not.toBe(boardingIntentFingerprint(sameInputsDifferentOutputs))
+    const stored = { intentId: 'old-uuid', fingerprint: boardingIntentFingerprint(base) }
+    expect(queuedIntentIdForDuplicate(stored, boardingIntentFingerprint(base))).toBe('old-uuid')
+    expect(queuedIntentIdForDuplicate(stored, boardingIntentFingerprint(sameInputsDifferentOutputs))).toBeUndefined()
   })
 })

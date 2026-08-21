@@ -45,11 +45,12 @@ import {
   fetchVaultVtxoFunds,
   isVtxoReceiptPendingError,
   isVtxoSpendInFlightError,
+  reconcilePersistedVtxoSpend,
   sendVaultVtxo,
 } from '../lib/vault/vtxo/spend'
 import {
   boardingAttemptKeyAfterLock,
-  boardingRetryDelayMs,
+  boardingFailureHold,
   fetchVaultBoardingFunds,
   nextVaultBoardingAction,
   settleVaultBoarding,
@@ -719,8 +720,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       consoleError(err, 'automatic Spending transfer')
       setError('')
-      boardingAttempt.current = ''
-      boardingRetryAfter.current = Date.now() + boardingRetryDelayMs(err)
+      const hold = boardingFailureHold(err, `${status.vaultId}:settle:${boardingConfirmedBalance}:${boardingBalance}`)
+      boardingAttempt.current = hold.attemptKey
+      boardingRetryAfter.current = Date.now() + hold.retryDelayMs
       await refreshBalance(status.vaultId)
     } finally {
       boardingRun.current = false
@@ -764,6 +766,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     const onFocus = () => {
       boardingAttempt.current = ''
+      if (status?.enrolled && status.vaultId) {
+        void reconcilePersistedVtxoSpend(status)
+          .then((result) => {
+            if (result.kind !== 'idle') return refreshBalance(status.vaultId)
+          })
+          .catch((err) => consoleError(err, 'VTXO spend recovery'))
+      }
       pulse()
     }
     const timer = window.setInterval(pulse, 15_000)
@@ -772,7 +781,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [locked, refreshBalance, status?.enrolled, status?.vaultId, status?.vtxoBoardingActive])
+  }, [locked, refreshBalance, status])
 
   const enroll = useCallback(
     async (token = '') => {

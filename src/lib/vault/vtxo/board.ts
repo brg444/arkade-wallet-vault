@@ -41,10 +41,15 @@ export function boardingAttemptKeyAfterLock(held: boolean, key: string): string 
   return held ? key : ''
 }
 
-export function boardingRetryDelayMs(err: unknown): number {
+export function isPasskeyCancellation(err: unknown): boolean {
   const raw = err instanceof Error ? err.message.toLowerCase() : String(err || '').toLowerCase()
-  if (raw.includes('the operation was aborted') || raw.includes('notallowederror')) return 0
-  return 5 * 60_000
+  return raw.includes('the operation was aborted') || raw.includes('notallowederror')
+}
+
+/** Cancelled Face ID must not re-enter the settle effect until the next focus. */
+export function boardingFailureHold(err: unknown, key: string): { attemptKey: string; retryDelayMs: number } {
+  if (isPasskeyCancellation(err)) return { attemptKey: key, retryDelayMs: 0 }
+  return { attemptKey: '', retryDelayMs: 5 * 60_000 }
 }
 
 export async function withVaultBoardingSecret<T>(secret: Uint8Array, run: (secret: Uint8Array) => Promise<T>) {
