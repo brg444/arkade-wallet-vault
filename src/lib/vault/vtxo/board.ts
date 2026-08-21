@@ -5,7 +5,7 @@ import { vaultAddressNetwork } from '../bitcoin'
 import { zeroBytes } from '../ceremony/directauth.js'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
-import { VaultArkProvider } from './provider'
+import { localBoardingIntentCache, VaultArkProvider } from './provider'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
@@ -14,12 +14,37 @@ export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
 const POLL_INTERVAL_MS = 3_000
 const CONFIRMATION_WAIT_MS = 180_000
 
-export async function withVaultBoardingLock<T>(vaultId: string, run: () => Promise<T>): Promise<T | undefined> {
-  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-  if (!locks) return run()
+export type VaultBoardingLockResult<T> = { held: false } | { held: true; value: T }
+
+type BoardingLockManager = {
+  request: (
+    name: string,
+    options: { mode: 'exclusive'; ifAvailable: boolean },
+    callback: (lock: unknown) => Promise<VaultBoardingLockResult<unknown>>,
+  ) => Promise<VaultBoardingLockResult<unknown>>
+}
+
+export async function withVaultBoardingLock<T>(
+  vaultId: string,
+  run: () => Promise<T>,
+  locks: BoardingLockManager | undefined = typeof navigator === 'undefined'
+    ? undefined
+    : (navigator.locks as unknown as BoardingLockManager),
+): Promise<VaultBoardingLockResult<T>> {
+  if (!locks) return { held: true, value: await run() }
   return locks.request(`arkade-vault-boarding:${vaultId}`, { mode: 'exclusive', ifAvailable: true }, async (lock) =>
-    lock ? run() : undefined,
-  )
+    lock ? { held: true, value: await run() } : { held: false },
+  ) as Promise<VaultBoardingLockResult<T>>
+}
+
+export function boardingAttemptKeyAfterLock(held: boolean, key: string): string {
+  return held ? key : ''
+}
+
+export function boardingRetryDelayMs(err: unknown): number {
+  const raw = err instanceof Error ? err.message.toLowerCase() : String(err || '').toLowerCase()
+  if (raw.includes('the operation was aborted') || raw.includes('notallowederror')) return 0
+  return 5 * 60_000
 }
 
 export async function withVaultBoardingSecret<T>(secret: Uint8Array, run: (secret: Uint8Array) => Promise<T>) {
@@ -97,7 +122,9 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
 
 async function liveBoardingOperator(status: VaultStatus) {
   requireBoardingStatus(status)
-  const operator = new VaultArkProvider(vaultArkServer())
+  const operator = new VaultArkProvider(vaultArkServer(), {
+    intentCache: localBoardingIntentCache(status.vaultId || 'unknown'),
+  })
   const info = await operator.getInfo()
   if (info.network !== 'mutinynet') throw new Error('Operator network is not Mutinynet')
   if (BigInt(info.boardingExitDelay) !== VAULT_BOARD_V1_EXIT_DELAY) {
@@ -127,7 +154,7 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
   if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
     throw new Error('SDK derived a different vault-board-v1 address')
   }
-  return { wallet, info }
+  return { wallet, info, operator }
 }
 
 function boardingOutputAmount(
@@ -162,7 +189,7 @@ export async function settleVaultBoarding(
   status: VaultStatus,
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
-  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info, operator } = await createBoardingWallet(phoneSecret, status)
   const coins = await findConfirmedBoardingCoins(wallet, txid)
   if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
   const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
@@ -170,6 +197,7 @@ export async function settleVaultBoarding(
     inputs: coins,
     outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
   })
+  operator.clearQueuedIntent()
   return { txid: commitmentTxid, amountSats }
 }
 
@@ -179,7 +207,7 @@ export async function waitForAndSettleVaultBoarding(
   txid: string,
   options: { timeoutMs?: number; pollMs?: number } = {},
 ): Promise<{ txid: string; amountSats: number }> {
-  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info, operator } = await createBoardingWallet(phoneSecret, status)
   const deadline = Date.now() + (options.timeoutMs ?? CONFIRMATION_WAIT_MS)
   for (;;) {
     const coins = await findConfirmedBoardingCoins(wallet, txid)
@@ -189,6 +217,7 @@ export async function waitForAndSettleVaultBoarding(
         inputs: coins,
         outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
       })
+      operator.clearQueuedIntent()
       return { txid: commitmentTxid, amountSats }
     }
     if (Date.now() >= deadline) {
