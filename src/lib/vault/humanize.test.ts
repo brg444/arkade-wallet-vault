@@ -38,6 +38,8 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('Reserved outpoint not spent by ark txid'))).toMatch(
       /send was submitted.*confirmed/i,
     )
+    expect(humanizeVaultError(new Error('VTXO spend is unresolved'))).toMatch(/did not finish/i)
+    expect(humanizeVaultError(new Error('VTXO reservation expired'))).toMatch(/did not finish/i)
   })
 
   it('does not expose signing scalar internals', () => {

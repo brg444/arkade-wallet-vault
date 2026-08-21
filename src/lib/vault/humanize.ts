@@ -18,6 +18,9 @@ export function humanizeVaultError(err: unknown): string {
   if (isRecoverableVaultBoardingError(err)) {
     return 'Moving received Bitcoin into Spending automatically. Keep this wallet open; approve Face ID if asked.'
   }
+  if (msg.includes('vtxo spend is unresolved') || msg.includes('vtxo reservation expired')) {
+    return 'This send did not finish. Refresh your balance before trying again.'
+  }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
     msg.includes('vtxo finalization receipt') ||
