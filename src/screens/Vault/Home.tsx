@@ -32,8 +32,6 @@ export default function VaultHome() {
     account,
     addTestCoins,
     amountSats,
-    boardingInProgress,
-    boardingSats,
     busy,
     canSend,
     dailyLimit,
@@ -45,7 +43,6 @@ export default function VaultHome() {
     liveNetwork,
     initiateAlert,
     operationalAddress,
-    onchainSpendingSats,
     spendingArkAddress,
     preview,
     refreshBalance,
@@ -53,7 +50,6 @@ export default function VaultHome() {
     savingsSats,
     setAccount,
     status,
-    vtxoSpendingSats,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [picker, setPicker] = useState(false)
@@ -206,19 +202,6 @@ export default function VaultHome() {
                   {prettyNumber(dailyRemaining, 0)} / {prettyNumber(dailyLimit, 0)} remaining in the rolling 24h limit
                 </Text>
                 <Meter ratio={ratio} label='Daily limit used' />
-                {status?.vtxoBoardingActive ? (
-                  <Text color='neutral-600' tiny wrap>
-                    {prettyNumber(vtxoSpendingSats)} in VTXOs · {prettyNumber(onchainSpendingSats)} onchain
-                    {boardingSats > 0 ? ` · ${prettyNumber(boardingSats)} boarding` : ''}
-                  </Text>
-                ) : null}
-                {status?.vtxoBoardingActive && (boardingInProgress || boardingSats > 0) ? (
-                  <Text color='neutral-600' tiny wrap>
-                    {boardingInProgress
-                      ? 'Converting confirmed Bitcoin to VTXOs automatically.'
-                      : 'Waiting for confirmation. Boarding will resume automatically while the wallet is open.'}
-                  </Text>
-                ) : null}
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
