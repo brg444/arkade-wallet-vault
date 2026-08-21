@@ -1,5 +1,6 @@
-import { RestArkProvider, Transaction, type SettlementEvent } from '@arkade-os/sdk'
-import { base64, hex } from '@scure/base'
+import { Intent, RestArkProvider, type SettlementEvent } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
+import { sha256 } from '@noble/hashes/sha2.js'
 
 const STREAM_RECONNECT_MS = 500
 
@@ -59,22 +60,13 @@ export function localBoardingIntentCache(vaultId: string): BoardingIntentCache {
   }
 }
 
-/** Sorted boarding/VTXO outpoints from the intent proof. Dummy BIP322 input 0 is skipped. */
-export function boardingIntentFingerprint(proof: string): string {
-  try {
-    const tx = Transaction.fromPSBT(base64.decode(proof))
-    const points: string[] = []
-    for (let index = 1; index < tx.inputsLength; index++) {
-      const input = tx.getInput(index)
-      if (!input.txid || input.index === undefined) continue
-      const txid = typeof input.txid === 'string' ? input.txid : hex.encode(input.txid)
-      points.push(`${txid}:${input.index}`)
-    }
-    if (points.length === 0) return `opaque:${proof}`
-    return points.sort().join('|')
-  } catch {
-    return `opaque:${proof}`
-  }
+/** Digest of the exact signed register request: proof PSBT plus encoded message. */
+export function boardingIntentFingerprint(intent: {
+  proof: string
+  message: Parameters<typeof Intent.encodeMessage>[0]
+}): string {
+  const encoded = Intent.encodeMessage(intent.message)
+  return hex.encode(sha256(new TextEncoder().encode(`${intent.proof}\n${encoded}`)))
 }
 
 export function queuedIntentIdForDuplicate(
@@ -131,7 +123,7 @@ export class VaultArkProvider extends RestArkProvider {
   override async registerIntent(
     intent: Parameters<RestArkProvider['registerIntent']>[0],
   ): ReturnType<RestArkProvider['registerIntent']> {
-    const fingerprint = boardingIntentFingerprint(intent.proof)
+    const fingerprint = boardingIntentFingerprint(intent)
     try {
       const intentId = await super.registerIntent(intent)
       this.intentCache.set({ intentId, fingerprint })

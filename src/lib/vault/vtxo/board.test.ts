@@ -8,7 +8,7 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY,
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
-  boardingRetryDelayMs,
+  boardingFailureHold,
   nextVaultBoardingAction,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
@@ -116,8 +116,15 @@ describe('vault-board-v1', () => {
     expect(boardingAttemptKeyAfterLock(result.held, 'vault-a:settle:49000:49000')).toBe('')
   })
 
-  it('does not impose the five-minute settle backoff after a cancelled passkey', () => {
-    expect(boardingRetryDelayMs(new Error('The operation was aborted.'))).toBe(0)
-    expect(boardingRetryDelayMs(new Error('INVALID_INTENT_PROOF (23): no matching intents found'))).toBe(5 * 60_000)
+  it('holds a cancelled passkey until the next focus instead of retrying immediately', () => {
+    const key = 'vault-a:settle:49000:49000'
+    expect(boardingFailureHold(new Error('The operation was aborted.'), key)).toEqual({
+      attemptKey: key,
+      retryDelayMs: 0,
+    })
+    expect(boardingFailureHold(new Error('INVALID_INTENT_PROOF (23): no matching intents found'), key)).toEqual({
+      attemptKey: '',
+      retryDelayMs: 5 * 60_000,
+    })
   })
 })
