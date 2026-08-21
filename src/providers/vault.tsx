@@ -28,6 +28,7 @@ import {
   fetchTipHeight,
 } from '../lib/vault/esplora'
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
+import { consoleError } from '../lib/logs'
 import {
   buildSavingsPsbt,
   chooseSavingsLeafForStatus,
@@ -38,7 +39,7 @@ import {
   signSavingsPsbt,
   unlockPhoneRoutine,
 } from '../lib/vault/savingsSpend'
-import { humanizeVaultError, isRecoverableVaultBoardingError } from '../lib/vault/humanize'
+import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
 import {
@@ -126,7 +127,6 @@ export interface VaultContextProps {
   backupRecoveryKit: () => Promise<boolean>
   boardingAddress: string
   boardingInProgress: boolean
-  boardingSats: number
   restoreRecoveryKit: () => Promise<void>
   unlockMapWithHardware: (wrapRaw: string, hardwareSecret: string) => Promise<void>
   signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
@@ -205,7 +205,6 @@ export const VaultContext = createContext<VaultContextProps>({
   backupRecoveryKit: async () => false,
   boardingAddress: '',
   boardingInProgress: false,
-  boardingSats: 0,
   restoreRecoveryKit: async () => {},
   unlockMapWithHardware: async () => {},
   signGuardianExitWithDevice: async () => '',
@@ -707,7 +706,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       boardingRetryAfter.current = 0
       await refreshBalance(status.vaultId)
     } catch (err) {
-      setError(isRecoverableVaultBoardingError(err) ? '' : humanizeVaultError(err))
+      consoleError(err, 'automatic Spending transfer')
+      setError('')
       boardingAttempt.current = ''
       boardingRetryAfter.current = Date.now() + 5 * 60_000
       await refreshBalance(status.vaultId)
@@ -1238,7 +1238,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       backupRecoveryKit,
       boardingAddress,
       boardingInProgress,
-      boardingSats: boardingBalance,
       restoreRecoveryKit,
       unlockMapWithHardware,
       signGuardianExitWithDevice,
@@ -1328,8 +1327,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       downloadRecoveryKit,
       backupRecoveryKit,
       boardingAddress,
-      boardingBalance,
-      boardingConfirmedBalance,
       boardingInProgress,
       restoreRecoveryKit,
       unlockMapWithHardware,

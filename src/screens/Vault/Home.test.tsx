@@ -58,9 +58,8 @@ describe('Vault home account boundaries', () => {
     expect(value.navigate).toHaveBeenCalledWith('send')
   })
 
-  it('describes pending boarding as automatic instead of asking the user to retry', () => {
-    renderHome({ account: 'spend', boardingSats: 48_000 })
-    expect(screen.getByText(/Moving received Bitcoin into Spending automatically/i)).toBeTruthy()
-    expect(screen.queryByText(/try again/i)).toBeNull()
+  it('does not expose background boarding state on Home', () => {
+    renderHome({ account: 'spend', boardingInProgress: true })
+    expect(screen.queryByText(/boarding|processing|Moving received Bitcoin|Face ID/i)).toBeNull()
   })
 })
