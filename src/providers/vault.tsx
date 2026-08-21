@@ -38,7 +38,7 @@ import {
   signSavingsPsbt,
   unlockPhoneRoutine,
 } from '../lib/vault/savingsSpend'
-import { humanizeVaultError } from '../lib/vault/humanize'
+import { humanizeVaultError, isRecoverableVaultBoardingError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
 import {
@@ -707,7 +707,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       boardingRetryAfter.current = 0
       await refreshBalance(status.vaultId)
     } catch (err) {
-      setError(humanizeVaultError(err))
+      setError(isRecoverableVaultBoardingError(err) ? '' : humanizeVaultError(err))
       boardingAttempt.current = ''
       boardingRetryAfter.current = Date.now() + 5 * 60_000
       await refreshBalance(status.vaultId)

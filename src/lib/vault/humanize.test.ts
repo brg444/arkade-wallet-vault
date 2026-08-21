@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { humanizeVaultError } from './humanize'
+import { humanizeVaultError, isRecoverableVaultBoardingError } from './humanize'
 
 describe('humanizeVaultError', () => {
   it('turns a network failure into a service message', () => {
@@ -14,10 +14,12 @@ describe('humanizeVaultError', () => {
   it('does not expose Operator intent internals during boarding', () => {
     expect(
       humanizeVaultError(new Error('INVALID_INTENT_PROOF (23): no matching intents found for intent proof')),
-    ).toMatch(/Spending transfer.*processing/i)
+    ).toMatch(/Moving received Bitcoin.*approve Face ID/i)
     expect(humanizeVaultError(new Error('INTERNAL_ERROR (0): not enough intent confirmations received'))).toMatch(
-      /Spending transfer.*processing/i,
+      /Moving received Bitcoin.*approve Face ID/i,
     )
+    expect(isRecoverableVaultBoardingError(new Error('EventSource error'))).toBe(true)
+    expect(isRecoverableVaultBoardingError(new Error('Failed to fetch'))).toBe(false)
   })
 
   it('does not expose VTXO receipt internals after submission', () => {
