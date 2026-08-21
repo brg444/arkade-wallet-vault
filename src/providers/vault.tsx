@@ -41,8 +41,15 @@ import {
 } from '../lib/vault/savingsSpend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
-import { fetchVaultVtxoFunds, sendVaultVtxo } from '../lib/vault/vtxo/spend'
 import {
+  fetchVaultVtxoFunds,
+  isVtxoReceiptPendingError,
+  isVtxoSpendInFlightError,
+  sendVaultVtxo,
+} from '../lib/vault/vtxo/spend'
+import {
+  boardingAttemptKeyAfterLock,
+  boardingRetryDelayMs,
   fetchVaultBoardingFunds,
   nextVaultBoardingAction,
   settleVaultBoarding,
@@ -693,15 +700,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     })
     if (action !== 'settle') return
     boardingRun.current = true
-    setBoardingInProgress(true)
     setError('')
     try {
       const settled = await withVaultBoardingLock(status.vaultId, async () => {
+        setBoardingInProgress(true)
         const phoneSecret = await unlockPhoneRoutine(enrollment, status)
         return withVaultBoardingSecret(phoneSecret, (liveSecret) => settleVaultBoarding(liveSecret, status))
       })
-      if (!settled) return
-      setLastTxid(settled.txid)
+      if (!settled.held) {
+        boardingAttempt.current = boardingAttemptKeyAfterLock(false, '')
+        return
+      }
+      boardingAttempt.current = `${status.vaultId}:settle:${boardingConfirmedBalance}:${boardingBalance}`
+      setLastTxid(settled.value.txid)
       setLastTxKind('vtxo')
       boardingRetryAfter.current = 0
       await refreshBalance(status.vaultId)
@@ -709,7 +720,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       consoleError(err, 'automatic Spending transfer')
       setError('')
       boardingAttempt.current = ''
-      boardingRetryAfter.current = Date.now() + 5 * 60_000
+      boardingRetryAfter.current = Date.now() + boardingRetryDelayMs(err)
       await refreshBalance(status.vaultId)
     } finally {
       boardingRun.current = false
@@ -730,7 +741,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (Date.now() < boardingRetryAfter.current) return
     const key = `${status.vaultId}:${action}:${boardingConfirmedBalance}:${boardingBalance}`
     if (boardingAttempt.current === key) return
-    boardingAttempt.current = key
     void reconcileSpendingToVtxos()
   }, [
     boardingBalance,
@@ -746,17 +756,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (locked || !status?.enrolled || !status.vtxoBoardingActive) return
-    const tick = () => {
+    const pulse = () => {
       if (document.visibilityState !== 'hidden') {
         void refreshBalance(status.vaultId)
         setBoardingPulse((value) => value + 1)
       }
     }
-    const timer = window.setInterval(tick, 15_000)
-    window.addEventListener('focus', tick)
+    const onFocus = () => {
+      boardingAttempt.current = ''
+      pulse()
+    }
+    const timer = window.setInterval(pulse, 15_000)
+    window.addEventListener('focus', onFocus)
     return () => {
       window.clearInterval(timer)
-      window.removeEventListener('focus', tick)
+      window.removeEventListener('focus', onFocus)
     }
   }, [locked, refreshBalance, status?.enrolled, status?.vaultId, status?.vtxoBoardingActive])
 
@@ -1134,9 +1148,27 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         isVaultArkAddress(spend.address, status.network) &&
         vtxoMaxCoin >= spend.amount + DUST_SATS
       ) {
-        const result = await sendVaultVtxo(enrollment, status, spend.address, spend.amount)
-        await finishBroadcast(result.txid, 'vtxo')
-        return
+        if (boardingInProgress) {
+          setError('Spending is still boarding Bitcoin. Try again in a moment.')
+          return
+        }
+        try {
+          const result = await sendVaultVtxo(enrollment, status, spend.address, spend.amount)
+          await finishBroadcast(result.txid, 'vtxo')
+          return
+        } catch (err) {
+          if (isVtxoReceiptPendingError(err)) {
+            await finishBroadcast(err.txid, 'vtxo')
+            return
+          }
+          if (status.vaultId) await refreshBalance(status.vaultId)
+          if (isVtxoSpendInFlightError(err)) {
+            setError(humanizeVaultError(err))
+            setScreen('home')
+            return
+          }
+          throw err
+        }
       }
       if (status?.enrolled || !preview) {
         setError('Vault isn’t ready to send.')
@@ -1158,9 +1190,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [
     account,
     approveSavingsSend,
+    boardingInProgress,
     enrollment,
     finishBroadcast,
     preview,
+    refreshBalance,
     spend,
     spendingArkAddress,
     status,

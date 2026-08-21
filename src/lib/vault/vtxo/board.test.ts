@@ -7,8 +7,11 @@ import {
   VAULT_BOARD_V1,
   VAULT_BOARD_V1_EXIT_DELAY,
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
+  boardingAttemptKeyAfterLock,
+  boardingRetryDelayMs,
   nextVaultBoardingAction,
   vaultBoardScriptFromStatus,
+  withVaultBoardingLock,
   withVaultBoardingSecret,
 } from './board'
 
@@ -98,5 +101,23 @@ describe('vault-board-v1', () => {
     finish()
     await expect(settlement).resolves.toBe('settled')
     expect(hex.encode(secret)).toBe('00'.repeat(32))
+  })
+
+  it('does not stick a boarding attempt when another tab already holds the lock', async () => {
+    const busy = {
+      request: async (
+        _name: string,
+        _options: { mode: 'exclusive'; ifAvailable: boolean },
+        callback: (lock: unknown) => Promise<unknown>,
+      ) => callback(null),
+    }
+    const result = await withVaultBoardingLock('vault-a', async () => 'settled', busy)
+    expect(result).toEqual({ held: false })
+    expect(boardingAttemptKeyAfterLock(result.held, 'vault-a:settle:49000:49000')).toBe('')
+  })
+
+  it('does not impose the five-minute settle backoff after a cancelled passkey', () => {
+    expect(boardingRetryDelayMs(new Error('The operation was aborted.'))).toBe(0)
+    expect(boardingRetryDelayMs(new Error('INVALID_INTENT_PROOF (23): no matching intents found'))).toBe(5 * 60_000)
   })
 })
