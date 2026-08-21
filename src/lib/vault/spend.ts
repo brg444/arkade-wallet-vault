@@ -3,7 +3,7 @@ import { loadAddressPin, requireStatusMatchesPin } from './pin'
 import { fetchVaultStatus } from './status'
 import { scriptHexFromAddress } from './bitcoin'
 import { createAuthorizeRetryState } from './ceremony/authorizeretry.js'
-import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth.js'
+import { deriveDirectP256, signDirectP256, verifyDirectP256, zeroBytes } from './ceremony/directauth.js'
 import {
   assertArkadeChallenge,
   assertDirectP256,
@@ -11,6 +11,7 @@ import {
   hexToBytes as ceremonyHex,
   phoneRoutineSignPSBT,
   validateAuthorizedPSBT,
+  validateAuthorizeRetryPSBT,
   validateBoundPSBT,
   validateDraftPSBT,
 } from './ceremony/psbtcheck.js'
@@ -79,6 +80,32 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<LiveSpend
     fee: input.feeSats,
   }
   const reviewKey = JSON.stringify(intent)
+  const validateServerRequest = (currentB64: string, requestB64: string, challengeHex: string) => {
+    if (!requestB64) throw new Error('authorizer did not return the bound request')
+    const request = validateAuthorizeRetryPSBT({
+      currentB64,
+      requestB64,
+      prevTxHex: intent.prevTxHex,
+      vout: String(intent.vout),
+      recipientScript: intent.recipientScript,
+      recipientAmount: String(intent.recipientAmount),
+      fee: String(intent.fee),
+      operationalScriptHex: pin.operationalScript,
+      operationalAddress: pin.operationalAddress,
+      network: status.network,
+    })
+    assertArkadeChallenge(challengeHex, request.arkadeChallenge)
+    if (
+      !verifyDirectP256(
+        ceremonyHex(rec.phoneDirectP256, 33),
+        ceremonyHex(challengeHex, 32),
+        ceremonyHex(request.directSignature, 64),
+      )
+    ) {
+      throw new Error('bound authorize request direct signature invalid')
+    }
+    return requestB64
+  }
   retry.clearUnless(reviewKey)
   const already = retry.completedFor(reviewKey)
   if (already) {
@@ -96,9 +123,18 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<LiveSpend
   const pending = retry.pendingFor(reviewKey)
   if (pending) {
     const body = JSON.parse(pending.bodyJSON) as Record<string, unknown>
-    const out = await vaultPost<{ signedPsbt: string; replay?: boolean }>('/v1/authorize', { vaultId, ...body })
+    const out = await vaultPost<{ requestPsbt: string; signedPsbt: string; replay?: boolean }>('/v1/authorize', {
+      vaultId,
+      ...body,
+    })
+    const requestB64 = validateServerRequest(
+      String(pending.validation.submittedB64 || ''),
+      out.requestPsbt,
+      pending.challengeHex,
+    )
     const authorized = validateAuthorizedPSBT({
       ...pending.validation,
+      submittedB64: requestB64,
       authorizedB64: out.signedPsbt,
     })
     retry.markAuthorized(reviewKey, {
@@ -201,13 +237,14 @@ export async function sendRoutineSpend(input: LiveSpendInput): Promise<LiveSpend
       },
       challengeHex,
     )
-    const out = await vaultPost<{ signedPsbt: string; replay?: boolean }>('/v1/authorize', {
+    const out = await vaultPost<{ requestPsbt: string; signedPsbt: string; replay?: boolean }>('/v1/authorize', {
       vaultId,
       psbt: signed,
       ...assertion,
     })
+    const requestB64 = validateServerRequest(signed, out.requestPsbt, challengeHex)
     const authorized = validateAuthorizedPSBT({
-      submittedB64: signed,
+      submittedB64: requestB64,
       authorizedB64: out.signedPsbt,
       phoneRoutineBip340PubHex: rec.phoneRoutineBip340Pub,
       tweakedVaultCosignerXOnly: live.tweakedVaultCosignerXOnly,
