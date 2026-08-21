@@ -43,6 +43,7 @@ import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
   fetchVaultVtxoFunds,
+  fetchVaultVtxoHistory,
   isVtxoReceiptPendingError,
   isVtxoSpendInFlightError,
   reconcilePersistedVtxoSpend,
@@ -681,7 +682,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setBoardingConfirmedBalance(0)
         }
         const savTxs = savings ? await fetchAddressTxs(savings).catch(() => []) : []
-        setHistory(historyFromTxs(savTxs, savings, 'savings'))
+        const vtxoHistory =
+          arkAddress && liveStatus?.enrolled ? await fetchVaultVtxoHistory(liveStatus).catch(() => []) : []
+        setHistory([...historyFromTxs(savTxs, savings, 'savings'), ...vtxoHistory])
       } catch (err) {
         setError(humanizeVaultError(err))
       }
@@ -753,9 +756,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     status,
   ])
 
+  const recoverVtxoSpend = useCallback(async () => {
+    if (!status?.enrolled || !status.vaultId) return
+    try {
+      const result = await reconcilePersistedVtxoSpend(status)
+      if (result.kind === 'receipt-finalized') await refreshBalance(status.vaultId)
+    } catch (err) {
+      consoleError(err, 'VTXO spend recovery')
+    }
+  }, [refreshBalance, status])
+
   useEffect(() => {
-    if (locked || !status?.enrolled || !status.vtxoBoardingActive) return
+    if (locked || !status?.enrolled) return
+    void recoverVtxoSpend()
     const pulse = () => {
+      if (!status.vtxoBoardingActive) return
       if (document.visibilityState !== 'hidden') {
         void refreshBalance(status.vaultId)
         setBoardingPulse((value) => value + 1)
@@ -763,22 +778,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     const onFocus = () => {
       boardingAttempt.current = ''
-      if (status?.enrolled && status.vaultId) {
-        void reconcilePersistedVtxoSpend(status)
-          .then((result) => {
-            if (result.kind !== 'idle') return refreshBalance(status.vaultId)
-          })
-          .catch((err) => consoleError(err, 'VTXO spend recovery'))
-      }
+      void recoverVtxoSpend()
       pulse()
     }
-    const timer = window.setInterval(pulse, 15_000)
+    const timer = status.vtxoBoardingActive ? window.setInterval(pulse, 15_000) : 0
     window.addEventListener('focus', onFocus)
     return () => {
-      window.clearInterval(timer)
+      if (timer) window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [locked, refreshBalance, status])
+  }, [locked, recoverVtxoSpend, refreshBalance, status])
 
   const enroll = useCallback(
     async (token = '') => {

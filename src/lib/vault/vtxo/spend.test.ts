@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
 import {
+  applyVtxoOperationView,
   buildReservedVtxoSpend,
   clearPersistedVtxoSpend,
   isVtxoReceiptPendingError,
@@ -11,9 +12,12 @@ import {
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
   persistVtxoSpend,
+  requireMatchingOperatorSubmit,
   requireOperatorSignedCheckpoint,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
+  VtxoSpendUnresolvedError,
+  type PersistedVtxoSpend,
   type VtxoReserveResponse,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
@@ -178,5 +182,113 @@ describe('regular VTXO spend coordinator', () => {
     expect(new VtxoSpendInFlightError('aa'.repeat(32), 'op-1').message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
     expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(false)
+  })
+
+  it('persists the reservation and PSBT material before authorization', () => {
+    clearPersistedVtxoSpend('vault-a')
+    const reserved: PersistedVtxoSpend = {
+      vaultId: 'vault-a',
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      reservationExpires: '2026-08-20T00:02:00Z',
+      stage: 'reserved',
+      unsignedArkPsbt: 'cHNidP9ark',
+      unsignedCheckpointPsbts: ['cHNidP9cp'],
+    }
+    persistVtxoSpend(reserved)
+    expect(loadPersistedVtxoSpend('vault-a')).toMatchObject(reserved)
+    expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(true)
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('uses the operation view to resume a lost authorize response', () => {
+    clearPersistedVtxoSpend('vault-a')
+    const reserved: PersistedVtxoSpend = {
+      vaultId: 'vault-a',
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      stage: 'reserved',
+      unsignedArkPsbt: 'cHNidP9ark',
+      unsignedCheckpointPsbts: ['cHNidP9cp'],
+    }
+    persistVtxoSpend(reserved)
+    const signed = applyVtxoOperationView(reserved, {
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      state: 'signed',
+      arkTxid: 'aa'.repeat(32),
+      authorizedPsbt: 'cHNidP9signed',
+    })
+    expect(signed?.stage).toBe('authorized')
+    expect(signed?.authorizedPsbt).toBe('cHNidP9signed')
+    expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('authorized')
+
+    const submitted = applyVtxoOperationView(signed!, {
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      state: 'submitted',
+      arkTxid: 'aa'.repeat(32),
+      authorizedPsbt: 'cHNidP9signed',
+      checkpointPsbts: ['cHNidP9final'],
+    })
+    expect(submitted?.stage).toBe('checkpoints-authorized')
+    expect(submitted?.checkpointPsbts).toEqual(['cHNidP9final'])
+
+    const finalized = applyVtxoOperationView(submitted!, {
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      state: 'finalized',
+      arkTxid: 'aa'.repeat(32),
+    })
+    expect(finalized?.stage).toBe('operator-finalized')
+
+    expect(
+      applyVtxoOperationView(finalized!, {
+        operationId: 'op-1',
+        bundleDigest: '11'.repeat(32),
+        state: 'aborted',
+      }),
+    ).toBeUndefined()
+    expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
+  })
+
+  it('fails closed on an unresolved operation', () => {
+    const pending: PersistedVtxoSpend = {
+      vaultId: 'vault-a',
+      operationId: 'op-1',
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9signed',
+      unsignedCheckpointPsbts: ['cHNidP9cp'],
+    }
+    expect(() =>
+      applyVtxoOperationView(pending, {
+        operationId: 'op-1',
+        bundleDigest: '11'.repeat(32),
+        state: 'unresolved',
+        arkTxid: 'aa'.repeat(32),
+      }),
+    ).toThrow(VtxoSpendUnresolvedError)
+  })
+
+  it('rejects a resumed Operator submission that changed the Ark transaction', () => {
+    expect(() =>
+      requireMatchingOperatorSubmit({ arkTxid: 'bb'.repeat(32), signedCheckpointTxs: ['cHNidP9'] }, 'aa'.repeat(32), 1),
+    ).toThrow(/Operator submission does not match/)
+    expect(() =>
+      requireMatchingOperatorSubmit({ arkTxid: 'aa'.repeat(32), signedCheckpointTxs: [] }, 'aa'.repeat(32), 1),
+    ).toThrow(/Operator submission does not match/)
+    expect(() =>
+      requireMatchingOperatorSubmit({ arkTxid: 'aa'.repeat(32), signedCheckpointTxs: ['cHNidP9'] }, 'aa'.repeat(32), 1),
+    ).not.toThrow()
   })
 })

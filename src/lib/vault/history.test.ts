@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyAddressTx, historyFromTxs, type VaultHistoryItem } from './history'
+import { classifyAddressTx, historyFromTxs, historyFromVtxos, type VaultHistoryItem } from './history'
 import type { EsploraTx } from './esplora'
 
 const ADDRESS = 'tb1pspend'
@@ -71,5 +71,17 @@ describe('vault history', () => {
       'spend',
     )
     expect(rows.map((row) => row.txid)).toEqual(['mem', 'new', 'old'])
+  })
+
+  it('classifies indexer VTXOs as spending receives and net sends', () => {
+    const rows = historyFromVtxos([
+      { txid: 'recv', value: 20_000, createdAtMs: 2_000, isSpent: true, arkTxId: 'send', isLeaf: true },
+      { txid: 'send', value: 8_000, createdAtMs: 4_000, isSpent: false, isLeaf: false },
+    ])
+    expect(rows.map((row) => ({ txid: row.txid, type: row.type, amount: row.amount }))).toEqual([
+      { txid: 'send', type: 'sent', amount: 12_000 },
+      { txid: 'recv', type: 'received', amount: 20_000 },
+    ])
+    expect(rows.find((row) => row.txid === 'send')?.confirmed).toBe(true)
   })
 })
