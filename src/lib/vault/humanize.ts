@@ -26,6 +26,9 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('reserved outpoint not spent by ark txid') || msg.includes('vtxo finalization receipt')) {
     return 'Your send was submitted and is still being confirmed. Refresh your balance before trying again.'
   }
+  if (msg.includes('invalid scalar') || msg.includes('scalar: out of range')) {
+    return 'Couldn’t unlock Spending. Sign in again.'
+  }
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
     return 'Open this page as http://localhost:3003.'
   }

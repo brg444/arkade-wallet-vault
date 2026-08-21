@@ -26,6 +26,12 @@ describe('humanizeVaultError', () => {
     )
   })
 
+  it('does not expose signing scalar internals', () => {
+    expect(humanizeVaultError(new Error('Invalid scalar: out of range'))).toBe(
+      'Couldn’t unlock Spending. Sign in again.',
+    )
+  })
+
   it('explains a cancelled passkey', () => {
     expect(humanizeVaultError(new Error('The operation was aborted.'))).toMatch(/cancelled/i)
   })
