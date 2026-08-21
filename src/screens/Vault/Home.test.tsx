@@ -57,4 +57,10 @@ describe('Vault home account boundaries', () => {
     expect(value.setSpendDraft).toHaveBeenCalledWith({ address: value.boardingAddress })
     expect(value.navigate).toHaveBeenCalledWith('send')
   })
+
+  it('describes pending boarding as automatic instead of asking the user to retry', () => {
+    renderHome({ account: 'spend', boardingSats: 48_000 })
+    expect(screen.getByText(/Moving received Bitcoin into Spending automatically/i)).toBeTruthy()
+    expect(screen.queryByText(/try again/i)).toBeNull()
+  })
 })

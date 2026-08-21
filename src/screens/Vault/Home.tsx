@@ -33,6 +33,7 @@ export default function VaultHome() {
     addTestCoins,
     amountSats,
     boardingAddress,
+    boardingSats,
     busy,
     canSend,
     dailyLimit,
@@ -225,6 +226,11 @@ export default function VaultHome() {
                   vault can cancel with hardware alone.
                 </Text>
               </button>
+            ) : null}
+            {spending && boardingSats > 0 ? (
+              <Text color='neutral-600' tiny wrap>
+                Moving received Bitcoin into Spending automatically. Keep this wallet open; approve Face ID if asked.
+              </Text>
             ) : null}
             <ErrorMessage error={Boolean(error)} text={error} />
             <FlexRow padding='0 0 0.5rem 0'>

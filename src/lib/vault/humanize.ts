@@ -15,13 +15,8 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('authorizer status') || msg.includes('unreachable')) {
     return 'Vault isn’t responding. Try again.'
   }
-  if (
-    msg.includes('invalid_intent_proof') ||
-    msg.includes('no matching intents found') ||
-    msg.includes('not enough intent confirmations') ||
-    msg.includes('event stream')
-  ) {
-    return 'The Spending transfer is still processing. Keep this wallet open and try again shortly.'
+  if (isRecoverableVaultBoardingError(err)) {
+    return 'Moving received Bitcoin into Spending automatically. Keep this wallet open; approve Face ID if asked.'
   }
   if (msg.includes('reserved outpoint not spent by ark txid') || msg.includes('vtxo finalization receipt')) {
     return 'Your send was submitted and is still being confirmed. Refresh your balance before trying again.'
@@ -111,4 +106,15 @@ export function humanizeVaultError(err: unknown): string {
     return 'Use a different hardware key.'
   }
   return raw.charAt(0).toUpperCase() + raw.slice(1)
+}
+
+export function isRecoverableVaultBoardingError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err || '')).toLowerCase()
+  return (
+    msg.includes('invalid_intent_proof') ||
+    msg.includes('no matching intents found') ||
+    msg.includes('not enough intent confirmations') ||
+    msg.includes('eventsource') ||
+    msg.includes('event stream')
+  )
 }
