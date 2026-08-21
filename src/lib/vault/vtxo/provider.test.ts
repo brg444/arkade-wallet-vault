@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { VaultArkProvider } from './provider'
+import {
+  memoryBoardingIntentCache,
+  queuedIntentIdForDuplicate,
+  VaultArkProvider,
+  type QueuedBoardingIntent,
+} from './provider'
 
 const originalFetch = globalThis.fetch
 
@@ -61,9 +66,11 @@ describe('VaultArkProvider event stream', () => {
     await expect(stream.next()).rejects.toThrow(/501.*Streaming Method Not Allowed/)
   })
 
-  it('waits for an in-round intent to return to the queue before deleting it', async () => {
+  it('rejoins a cached UUID only when the duplicate proof names the same outpoints', async () => {
+    const cache = memoryBoardingIntentCache()
     globalThis.fetch = vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ intentId: 'queued-uuid' }), { status: 200 }))
       .mockResolvedValueOnce(
         new Response(arkError(0, 'INTERNAL_ERROR', 'duplicated input, 11:0 already registered by another intent'), {
           status: 500,
@@ -71,22 +78,15 @@ describe('VaultArkProvider event stream', () => {
         }),
       )
       .mockResolvedValueOnce(
-        new Response(arkError(23, 'INVALID_INTENT_PROOF', 'no matching intents found for intent proof'), {
-          status: 400,
+        new Response(arkError(0, 'INTERNAL_ERROR', 'duplicated input, 22:0 already registered by another intent'), {
+          status: 500,
           headers: { 'Content-Type': 'application/json' },
         }),
       )
-      .mockResolvedValueOnce(
-        new Response(arkError(23, 'INVALID_INTENT_PROOF', 'no matching intents found for intent proof'), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      )
-      .mockResolvedValueOnce(new Response('{}', { headers: { 'Content-Type': 'application/json' } }))
-    const provider = new VaultArkProvider('/arkade', { attempts: 3, delayMs: 0 })
-    await expect(
+    const provider = new VaultArkProvider('/arkade', { intentCache: cache })
+    const register = (proof: string) =>
       provider.registerIntent({
-        proof: 'proof',
+        proof,
         message: {
           type: 'register',
           onchain_output_indexes: [],
@@ -94,14 +94,16 @@ describe('VaultArkProvider event stream', () => {
           expire_at: 0,
           cosigners_public_keys: [],
         },
-      }),
-    ).rejects.toThrow(/duplicated input/i)
-    await expect(
-      provider.deleteIntent({
-        proof: 'proof',
-        message: { type: 'delete' },
-      }),
-    ).resolves.toBeUndefined()
-    expect(globalThis.fetch).toHaveBeenCalledTimes(4)
+      })
+    await expect(register('proof-a')).resolves.toBe('queued-uuid')
+    await expect(register('proof-a')).resolves.toBe('queued-uuid')
+    await expect(register('proof-b')).rejects.toThrow(/duplicated input/i)
+  })
+
+  it('refuses a stale UUID whose fingerprint does not match the current proof', () => {
+    const stored: QueuedBoardingIntent = { intentId: 'old-uuid', fingerprint: 'opaque:proof-a' }
+    expect(queuedIntentIdForDuplicate(stored, 'opaque:proof-a')).toBe('old-uuid')
+    expect(queuedIntentIdForDuplicate(stored, 'opaque:proof-b')).toBeUndefined()
+    expect(queuedIntentIdForDuplicate(undefined, 'opaque:proof-a')).toBeUndefined()
   })
 })
