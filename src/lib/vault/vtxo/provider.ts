@@ -1,7 +1,89 @@
-import { RestArkProvider, type SettlementEvent } from '@arkade-os/sdk'
+import { RestArkProvider, Transaction, type SettlementEvent } from '@arkade-os/sdk'
+import { base64, hex } from '@scure/base'
 
-const DELETE_RETRY_DELAY_MS = 250
-const DELETE_RETRY_ATTEMPTS = 320
+const STREAM_RECONNECT_MS = 500
+
+export interface QueuedBoardingIntent {
+  intentId: string
+  fingerprint: string
+}
+
+export interface BoardingIntentCache {
+  get(): QueuedBoardingIntent | undefined
+  set(record: QueuedBoardingIntent): void
+  clear(): void
+}
+
+export function memoryBoardingIntentCache(): BoardingIntentCache {
+  let record: QueuedBoardingIntent | undefined
+  return {
+    get: () => record,
+    set: (next) => {
+      record = next
+    },
+    clear: () => {
+      record = undefined
+    },
+  }
+}
+
+export function localBoardingIntentCache(vaultId: string): BoardingIntentCache {
+  const key = `arkade-vault-boarding-intent:${vaultId}`
+  const storage = typeof localStorage === 'undefined' ? undefined : localStorage
+  if (!storage) return memoryBoardingIntentCache()
+  return {
+    get() {
+      try {
+        const raw = storage.getItem(key)
+        if (!raw) return undefined
+        const parsed = JSON.parse(raw) as Partial<QueuedBoardingIntent>
+        if (
+          typeof parsed.intentId === 'string' &&
+          typeof parsed.fingerprint === 'string' &&
+          parsed.intentId &&
+          parsed.fingerprint
+        ) {
+          return { intentId: parsed.intentId, fingerprint: parsed.fingerprint }
+        }
+      } catch {
+        return undefined
+      }
+      return undefined
+    },
+    set(record) {
+      storage.setItem(key, JSON.stringify(record))
+    },
+    clear() {
+      storage.removeItem(key)
+    },
+  }
+}
+
+/** Sorted boarding/VTXO outpoints from the intent proof. Dummy BIP322 input 0 is skipped. */
+export function boardingIntentFingerprint(proof: string): string {
+  try {
+    const tx = Transaction.fromPSBT(base64.decode(proof))
+    const points: string[] = []
+    for (let index = 1; index < tx.inputsLength; index++) {
+      const input = tx.getInput(index)
+      if (!input.txid || input.index === undefined) continue
+      const txid = typeof input.txid === 'string' ? input.txid : hex.encode(input.txid)
+      points.push(`${txid}:${input.index}`)
+    }
+    if (points.length === 0) return `opaque:${proof}`
+    return points.sort().join('|')
+  } catch {
+    return `opaque:${proof}`
+  }
+}
+
+export function queuedIntentIdForDuplicate(
+  stored: QueuedBoardingIntent | undefined,
+  fingerprint: string,
+): string | undefined {
+  if (!stored?.intentId || !fingerprint || stored.fingerprint !== fingerprint) return undefined
+  return stored.intentId
+}
 
 function eventData(block: string): string | undefined {
   const lines = block.split(/\r?\n/)
@@ -22,32 +104,41 @@ async function responseDetail(response: Response): Promise<string> {
   }
 }
 
+function isDuplicatedInput(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+  return message.includes('duplicated input') && message.includes('already registered by another intent')
+}
+
 /**
- * The SDK's browser provider uses native EventSource, whose error callback
- * discards the HTTP status and response body. Use fetch streaming for the
- * settlement coordinator so Safari failures remain actionable and do not get
- * collapsed to the opaque string "EventSource error".
+ * Fetch SSE instead of native EventSource so HTTP failures keep status/body.
+ * Reconnect after a clean EOF does not replay a missed BatchStarted; that ack
+ * is still lost unless arkd emits it again on a later round.
  */
 export class VaultArkProvider extends RestArkProvider {
-  private recoverQueuedIntent = false
+  private readonly intentCache: BoardingIntentCache
+  private readonly streamReconnectMs: number
 
-  constructor(
-    serverUrl: string,
-    private readonly deleteRetry = { attempts: DELETE_RETRY_ATTEMPTS, delayMs: DELETE_RETRY_DELAY_MS },
-  ) {
+  constructor(serverUrl: string, options: { intentCache?: BoardingIntentCache; streamReconnectMs?: number } = {}) {
     super(serverUrl)
+    this.intentCache = options.intentCache ?? memoryBoardingIntentCache()
+    this.streamReconnectMs = options.streamReconnectMs ?? STREAM_RECONNECT_MS
+  }
+
+  clearQueuedIntent() {
+    this.intentCache.clear()
   }
 
   override async registerIntent(
     intent: Parameters<RestArkProvider['registerIntent']>[0],
   ): ReturnType<RestArkProvider['registerIntent']> {
+    const fingerprint = boardingIntentFingerprint(intent.proof)
     try {
-      return await super.registerIntent(intent)
+      const intentId = await super.registerIntent(intent)
+      this.intentCache.set({ intentId, fingerprint })
+      return intentId
     } catch (error) {
-      const message = error instanceof Error ? error.message.toLowerCase() : ''
-      if (message.includes('duplicated input') && message.includes('already registered by another intent')) {
-        this.recoverQueuedIntent = true
-      }
+      const queued = queuedIntentIdForDuplicate(this.intentCache.get(), fingerprint)
+      if (queued && isDuplicatedInput(error)) return queued
       throw error
     }
   }
@@ -55,72 +146,63 @@ export class VaultArkProvider extends RestArkProvider {
   override async deleteIntent(
     intent: Parameters<RestArkProvider['deleteIntent']>[0],
   ): ReturnType<RestArkProvider['deleteIntent']> {
-    const attempts = this.recoverQueuedIntent ? this.deleteRetry.attempts : 1
-    this.recoverQueuedIntent = false
-    let lastError: unknown
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      try {
-        return await super.deleteIntent(intent)
-      } catch (error) {
-        lastError = error
-        const message = error instanceof Error ? error.message.toLowerCase() : ''
-        if (!message.includes('no matching intents found for intent proof')) throw error
-        if (attempt + 1 < attempts && this.deleteRetry.delayMs > 0) {
-          await new Promise((resolve) => setTimeout(resolve, this.deleteRetry.delayMs))
-        }
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error('Unable to release the queued boarding intent')
+    await super.deleteIntent(intent)
+    this.intentCache.clear()
   }
 
   override async *getEventStream(signal: AbortSignal, topics: string[]): AsyncIterableIterator<SettlementEvent> {
     const query = topics.length > 0 ? `?${topics.map((topic) => `topics=${encodeURIComponent(topic)}`).join('&')}` : ''
-    const response = await fetch(`${this.serverUrl}/v1/batch/events${query}`, {
-      method: 'GET',
-      headers: {
-        Accept: 'text/event-stream',
-        'Cache-Control': 'no-cache',
-      },
-      cache: 'no-store',
-      signal,
-    })
-    if (!response.ok) {
-      const detail = await responseDetail(response)
-      throw new Error(`Operator event stream returned ${response.status}${detail ? `: ${detail}` : ''}`)
-    }
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.toLowerCase().includes('text/event-stream')) {
-      throw new Error(`Operator event stream returned ${contentType || 'an unknown content type'}`)
-    }
-    if (!response.body) throw new Error('Operator event stream returned no response body')
+    while (!signal.aborted) {
+      const response = await fetch(`${this.serverUrl}/v1/batch/events${query}`, {
+        method: 'GET',
+        headers: {
+          Accept: 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+        cache: 'no-store',
+        signal,
+      })
+      if (!response.ok) {
+        const detail = await responseDetail(response)
+        throw new Error(`Operator event stream returned ${response.status}${detail ? `: ${detail}` : ''}`)
+      }
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.toLowerCase().includes('text/event-stream')) {
+        throw new Error(`Operator event stream returned ${contentType || 'an unknown content type'}`)
+      }
+      if (!response.body) throw new Error('Operator event stream returned no response body')
 
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        buffer += decoder.decode(value, { stream: !done })
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      try {
         for (;;) {
-          const boundary = buffer.match(/\r?\n\r?\n/)
-          if (!boundary || boundary.index == null) break
-          const block = buffer.slice(0, boundary.index)
-          buffer = buffer.slice(boundary.index + boundary[0].length)
-          const data = eventData(block)
-          if (!data) continue
-          const event = this.parseSettlementEvent(JSON.parse(data))
+          const { done, value } = await reader.read()
+          buffer += decoder.decode(value, { stream: !done })
+          for (;;) {
+            const boundary = buffer.match(/\r?\n\r?\n/)
+            if (!boundary || boundary.index == null) break
+            const block = buffer.slice(0, boundary.index)
+            buffer = buffer.slice(boundary.index + boundary[0].length)
+            const data = eventData(block)
+            if (!data) continue
+            const event = this.parseSettlementEvent(JSON.parse(data))
+            if (event) yield event
+          }
+          if (done) break
+        }
+        const trailing = eventData(buffer)
+        if (trailing) {
+          const event = this.parseSettlementEvent(JSON.parse(trailing))
           if (event) yield event
         }
-        if (done) break
+      } finally {
+        await reader.cancel().catch(() => {})
       }
-      const trailing = eventData(buffer)
-      if (trailing) {
-        const event = this.parseSettlementEvent(JSON.parse(trailing))
-        if (event) yield event
+      if (signal.aborted) return
+      if (this.streamReconnectMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, this.streamReconnectMs))
       }
-      if (!signal.aborted) throw new Error('Operator event stream closed before settlement completed')
-    } finally {
-      await reader.cancel().catch(() => {})
     }
   }
 }
