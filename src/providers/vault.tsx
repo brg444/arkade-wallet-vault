@@ -47,6 +47,7 @@ import {
   settleVaultBoarding,
   verifyVaultBoarding,
   withVaultBoardingLock,
+  withVaultBoardingSecret,
 } from '../lib/vault/vtxo/board'
 import { fetchVaultStatus } from '../lib/vault/status'
 import {
@@ -698,11 +699,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     try {
       const settled = await withVaultBoardingLock(status.vaultId, async () => {
         const phoneSecret = await unlockPhoneRoutine(enrollment, status)
-        try {
-          return settleVaultBoarding(phoneSecret, status)
-        } finally {
-          zeroBytes(phoneSecret)
-        }
+        return withVaultBoardingSecret(phoneSecret, (liveSecret) => settleVaultBoarding(liveSecret, status))
       })
       if (!settled) return
       setLastTxid(settled.txid)

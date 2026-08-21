@@ -2,6 +2,7 @@ import { DefaultVtxo, Estimator, RestIndexerProvider, SingleKey, Wallet, type Ex
 import { hex } from '@scure/base'
 import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
+import { zeroBytes } from '../ceremony/directauth.js'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
 import { VaultArkProvider } from './provider'
@@ -19,6 +20,14 @@ export async function withVaultBoardingLock<T>(vaultId: string, run: () => Promi
   return locks.request(`arkade-vault-boarding:${vaultId}`, { mode: 'exclusive', ifAvailable: true }, async (lock) =>
     lock ? run() : undefined,
   )
+}
+
+export async function withVaultBoardingSecret<T>(secret: Uint8Array, run: (secret: Uint8Array) => Promise<T>) {
+  try {
+    return await run(secret)
+  } finally {
+    zeroBytes(secret)
+  }
 }
 
 function xOnly(value: string | undefined, name: string): Uint8Array {

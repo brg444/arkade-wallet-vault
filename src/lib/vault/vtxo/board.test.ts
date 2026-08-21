@@ -9,6 +9,7 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   nextVaultBoardingAction,
   vaultBoardScriptFromStatus,
+  withVaultBoardingSecret,
 } from './board'
 
 async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array }> {
@@ -78,5 +79,24 @@ describe('vault-board-v1', () => {
     expect(() =>
       vaultBoardScriptFromStatus({ ...current, vtxoBoardingScript: `5120${'11'.repeat(32)}` }, operatorPub),
     ).toThrow(/script does not match/)
+  })
+
+  it('keeps the signing scalar live until asynchronous settlement finishes, then wipes it', async () => {
+    const secret = hex.decode('01'.padStart(64, '0'))
+    let finish!: () => void
+    const settlement = withVaultBoardingSecret(secret, async (liveSecret) => {
+      expect(hex.encode(liveSecret)).toBe('01'.padStart(64, '0'))
+      await new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      expect(hex.encode(liveSecret)).toBe('01'.padStart(64, '0'))
+      return 'settled'
+    })
+
+    await Promise.resolve()
+    expect(hex.encode(secret)).toBe('01'.padStart(64, '0'))
+    finish()
+    await expect(settlement).resolves.toBe('settled')
+    expect(hex.encode(secret)).toBe('00'.repeat(32))
   })
 })
