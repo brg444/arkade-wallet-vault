@@ -19,6 +19,7 @@ const RATE_WINDOW_MS = 60_000
 const RATE_LIMIT = 60
 
 const FLAT_VTXO_PATHS: Record<string, string> = {
+  '/api/v1/vtxo-operation': '/v1/vtxo/operation',
   '/api/v1/vtxo-reserve': '/v1/vtxo/reserve',
   '/api/v1/vtxo-authorize': '/v1/vtxo/authorize',
   '/api/v1/vtxo-checkpoints-authorize': '/v1/vtxo/checkpoints/authorize',
