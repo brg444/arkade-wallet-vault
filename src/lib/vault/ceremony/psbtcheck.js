@@ -209,6 +209,35 @@ export function assertArkadeChallenge(local, server) {
   return expected;
 }
 
+export function validateAuthorizeRetryPSBT(args) {
+  if (!args || !args.currentB64 || !args.requestB64) {
+    throw new Error("current and bound authorize requests required");
+  }
+  const current = inspectPSBT({
+    ...args,
+    b64: args.currentB64,
+    expectEmptyWitness: false,
+  });
+  const request = inspectPSBT({
+    ...args,
+    b64: args.requestB64,
+    expectEmptyWitness: false,
+  });
+  if (current.arkadeChallenge !== request.arkadeChallenge) {
+    throw new Error("bound authorize request changed the reviewed transaction");
+  }
+  if (JSON.stringify(reviewFields(current)) !== JSON.stringify(reviewFields(request))) {
+    throw new Error("bound authorize request changed reviewed fields");
+  }
+  if (request.packet.witness.length !== 1) {
+    throw new Error("bound authorize request direct signature");
+  }
+  return {
+    arkadeChallenge: request.arkadeChallenge,
+    directSignature: request.packet.witness[0],
+  };
+}
+
 export function validateAuthorizedPSBT(args) {
   if (!args || !args.submittedB64 || !args.authorizedB64) {
     throw new Error("submitted and authorized psbts required");
