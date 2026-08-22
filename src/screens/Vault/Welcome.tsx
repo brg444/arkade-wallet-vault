@@ -1,7 +1,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import Content from '../../components/Content'
+import Content from './Content'
 import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
 import OnboardingLogo from '../../components/OnboardingLogo'

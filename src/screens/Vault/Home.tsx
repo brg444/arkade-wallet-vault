@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from 'react'
 import Button from '../../components/Button'
-import Content from '../../components/Content'
+import Content from './Content'
 import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
 import FlexRow from '../../components/FlexRow'
