@@ -2,7 +2,7 @@ import { createContext } from 'react'
 import type { VaultHistoryItem } from '../lib/vault/history'
 import { emptySetupPlan, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
-import type { InitiateAlert } from '../lib/vault/v5/watch'
+import type { InitiateAlert } from '../lib/vault/program/watch'
 
 export type VaultAccount = 'spend' | 'savings'
 
@@ -22,7 +22,6 @@ export type VaultScreen =
   | 'settings'
   | 'signin'
   | 'handoff'
-  | 'hwsign'
   | 'recovery'
   | 'recover'
   | 'tx'
@@ -45,7 +44,6 @@ export interface VaultContextProps {
   boardingAddress: string
   boardingInProgress: boolean
   restoreRecoveryKit: () => Promise<void>
-  unlockMapWithHardware: (wrapRaw: string, hardwareSecret: string) => Promise<void>
   signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
   hasRecoveryKit: boolean
   initiateAlert: string
@@ -91,9 +89,6 @@ export interface VaultContextProps {
   savingsSats: number
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
-  setCondition: (
-    patch: Partial<Pick<VaultSetupPlan, 'txCapSats' | 'dailyLimitSats' | 'operationalCsvBlocks' | 'savingsCsvBlocks'>>,
-  ) => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
   setup: VaultSetupPlan
   spend: VaultSpend
@@ -116,7 +111,6 @@ export const VaultContext = createContext<VaultContextProps>({
   boardingAddress: '',
   boardingInProgress: false,
   restoreRecoveryKit: async () => {},
-  unlockMapWithHardware: async () => {},
   signGuardianExitWithDevice: async () => '',
   hasRecoveryKit: false,
   initiateAlert: '',
@@ -162,7 +156,6 @@ export const VaultContext = createContext<VaultContextProps>({
   savingsSats: 0,
   screen: 'welcome',
   setAccount: () => {},
-  setCondition: () => {},
   setSpendDraft: () => {},
   setup: emptySetupPlan(),
   spend: { address: '', amount: 0, fee: DEFAULT_SPEND_FEE_SATS },

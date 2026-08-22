@@ -7,7 +7,6 @@ import VaultReview from './screens/Vault/Review'
 import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
 import VaultHandoff from './screens/Vault/Handoff'
-import VaultHwSign from './screens/Vault/HwSign'
 import VaultWelcome from './screens/Vault/Welcome'
 import VaultKeys from './screens/Vault/Keys'
 import VaultSettings from './screens/Vault/Settings'
@@ -24,7 +23,7 @@ import VaultPillNav, { tabForScreen } from './screens/Vault/PillNav'
 import { bootVaultPrefs } from './lib/vault/prefs'
 
 export default function VaultApp() {
-  const { navigate, screen } = useContext(VaultContext)
+  const { screen } = useContext(VaultContext)
   useEffect(() => {
     document.title = 'Arkade Vault'
     bootVaultPrefs()
@@ -34,7 +33,6 @@ export default function VaultApp() {
   const pages = {
     welcome: <VaultWelcome />,
     handoff: <VaultHandoff />,
-    hwsign: <VaultHwSign onBack={() => navigate('settings')} />,
     design: <VaultDesign />,
     hardware: <VaultHardware />,
     recovery: <VaultRecovery />,

@@ -4,25 +4,18 @@ import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
 import { unlockLocalEnrollment } from '../lib/vault/signIn'
-import { parseHardwareSecret, unlockPhoneRoutine } from '../lib/vault/savingsSpend'
-import { signGuardianExitPsbt } from '../lib/vault/v5/guardianExit'
-import {
-  kitFromFacts,
-  pullMapBackup,
-  pushMapBackup,
-  unwrapMapWithHardware,
-  wrapMapForHardware,
-  type HardwareMapWrap,
-} from '../lib/vault/v5/kitBackup'
-import { loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
-import { kitMatchesLiveVault, selectLiveKit } from '../lib/vault/v5/liveKit'
+import { unlockPhoneRoutine } from '../lib/vault/savingsSpend'
+import { signGuardianExitPsbt } from '../lib/vault/program/guardianExit'
+import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/program/kitBackup'
+import { loadLocalKit, saveLocalKit } from '../lib/vault/program/kitStore'
+import { kitMatchesLiveVault, selectLiveKit } from '../lib/vault/program/liveKit'
 import {
   alertCopy,
   loadSeenOutpoints,
   pollPendingInitiates,
   saveSeenOutpoints,
   type InitiateAlert,
-} from '../lib/vault/v5/watch'
+} from '../lib/vault/program/watch'
 
 interface RecoveryKitOptions {
   enrollment: EnrollmentSecrets | null
@@ -41,9 +34,8 @@ export function useRecoveryKit({ enrollment, status, hardwarePub, recoveryPub, c
 
   const resolveKit = useCallback(() => {
     const id = status?.vaultId || enrollment?.vaultId || ''
-    const template = String(status?.templateVersion || '')
     const stored = id ? loadLocalKit(id) : null
-    if (status?.enrolled && stored && kitMatchesLiveVault(stored, id, template)) return stored
+    if (status?.enrolled && stored && kitMatchesLiveVault(stored, status)) return stored
     return kitFromFacts({
       enrollment,
       status,
@@ -65,9 +57,7 @@ export function useRecoveryKit({ enrollment, status, hardwarePub, recoveryPub, c
     if (!kit) throw new Error('This vault has no recovery map. Add recovery on a new vault.')
     saveLocalKit(kit)
     const id = kit.descriptor.vaultId
-    const hardware = hardwarePub || status?.externalOwnerWalletPub || ''
-    const wrap = hardware ? await wrapMapForHardware(kit, hardware) : undefined
-    return id ? pushMapBackup(id, kit, wrap) : false
+    return id ? pushMapBackup(id, kit) : false
   }, [clearError, enrollment, hardwarePub, resolveKit, status])
 
   const restoreRecoveryKit = useCallback(async () => {
@@ -91,21 +81,6 @@ export function useRecoveryKit({ enrollment, status, hardwarePub, recoveryPub, c
     saveLocalKit(kit)
   }, [clearError, enrollment, hardwarePub, recoveryPub, status])
 
-  const unlockMapWithHardware = useCallback(
-    async (wrapRaw: string, hardwareSecret: string) => {
-      clearError()
-      let privateKey: Uint8Array | undefined
-      try {
-        privateKey = parseHardwareSecret(hardwareSecret)
-        const wrap = JSON.parse(wrapRaw) as HardwareMapWrap
-        saveLocalKit(await unwrapMapWithHardware(wrap, privateKey))
-      } finally {
-        privateKey?.fill(0)
-      }
-    },
-    [clearError],
-  )
-
   const signGuardianExitWithDevice = useCallback(
     async (psbtHex: string) => {
       if (!enrollment || !status?.enrolled) throw new Error('Unlock this device on this vault first')
@@ -121,14 +96,9 @@ export function useRecoveryKit({ enrollment, status, hardwarePub, recoveryPub, c
 
   useEffect(() => {
     const id = status?.vaultId || enrollment?.vaultId || ''
-    const template = String(status?.templateVersion || '')
     setInitiateAlerts([])
     setInitiateAlert('')
-    const kit = selectLiveKit({
-      vaultId: id,
-      templateVersion: template,
-      stored: id ? loadLocalKit(id) : null,
-    })
+    const kit = status?.enrolled ? selectLiveKit({ status, stored: id ? loadLocalKit(id) : null }) : null
     if (!kit) return
     let cancelled = false
     const poll = async () => {
@@ -164,6 +134,5 @@ export function useRecoveryKit({ enrollment, status, hardwarePub, recoveryPub, c
     initiateAlerts,
     restoreRecoveryKit,
     signGuardianExitWithDevice,
-    unlockMapWithHardware,
   }
 }

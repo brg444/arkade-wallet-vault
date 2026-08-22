@@ -27,5 +27,6 @@ describe('Vault settings account boundaries', () => {
     )
 
     expect(screen.queryByTestId('settings-faucet')).toBeNull()
+    expect(screen.queryByTestId('settings-hwsign')).toBeNull()
   })
 })

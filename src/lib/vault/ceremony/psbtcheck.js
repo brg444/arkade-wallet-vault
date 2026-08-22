@@ -18,7 +18,6 @@ export const MAX_PSBT_BYTES = 256 * 1024;
 export const MAX_PREV_TX_BYTES = 1024 * 1024;
 export const PACKET_TYPE = 0x01;
 export const ARK_MAGIC = new Uint8Array([0x41, 0x52, 0x4b]);
-const REGTEST = Object.freeze({ ...TEST_NETWORK, bech32: "bcrt" });
 
 export function bytesToHex(b) {
   return [...toBytes(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -100,7 +99,6 @@ export function scriptFromAddress(addr, network) {
 }
 
 function addressNetwork(network) {
-  if (network === "regtest") return REGTEST;
   if (network === "mutinynet") return TEST_NETWORK;
   throw new Error("unsupported vault network");
 }

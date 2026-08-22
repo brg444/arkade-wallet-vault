@@ -21,6 +21,8 @@ export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
 export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
 
+const VAULT_SDK_STORAGE_PREFIX = 'arkade-vault-v2'
+
 const POLL_INTERVAL_MS = 3_000
 const CONFIRMATION_WAIT_MS = 180_000
 
@@ -135,8 +137,49 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
   return { confirmed, unconfirmed, total: confirmed + unconfirmed }
 }
 
+export function vaultBoardingStorageNames(vaultId: string): { wallet: string; intents: string } {
+  const id = String(vaultId || '').trim()
+  if (!id) throw new Error('vault id required for SDK storage')
+  const scope = encodeURIComponent(id)
+  return {
+    wallet: `${VAULT_SDK_STORAGE_PREFIX}:${scope}:wallet`,
+    intents: `${VAULT_SDK_STORAGE_PREFIX}:${scope}:intents`,
+  }
+}
+
+type BoardingStorageFactories<W, C, I> = {
+  walletRepository: (dbName: string) => W
+  contractRepository: (dbName: string) => C
+  intentRepository: (dbName: string) => I
+}
+
+export function createVaultBoardingStorage(vaultId: string): {
+  walletRepository: IndexedDBWalletRepository
+  contractRepository: IndexedDBContractRepository
+  intentRepository: IndexedDBIntentRepository
+}
+export function createVaultBoardingStorage<W, C, I>(
+  vaultId: string,
+  factories: BoardingStorageFactories<W, C, I>,
+): { walletRepository: W; contractRepository: C; intentRepository: I }
+export function createVaultBoardingStorage<W, C, I>(
+  vaultId: string,
+  factories: BoardingStorageFactories<W, C, I> = {
+    walletRepository: (dbName) => new IndexedDBWalletRepository(dbName) as W,
+    contractRepository: (dbName) => new IndexedDBContractRepository(dbName) as C,
+    intentRepository: (dbName) => new IndexedDBIntentRepository(dbName) as I,
+  },
+) {
+  const names = vaultBoardingStorageNames(vaultId)
+  return {
+    walletRepository: factories.walletRepository(names.wallet),
+    contractRepository: factories.contractRepository(names.wallet),
+    intentRepository: factories.intentRepository(names.intents),
+  }
+}
+
 function vaultIntentRepository(vaultId: string) {
-  return new IndexedDBIntentRepository(`arkade-vault-intents:${vaultId || 'unknown'}`)
+  return new IndexedDBIntentRepository(vaultBoardingStorageNames(vaultId).intents)
 }
 
 async function liveBoardingOperator(
@@ -161,7 +204,8 @@ export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
 
 async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
   const identity = SingleKey.fromPrivateKey(phoneSecret)
-  const intentRepository = vaultIntentRepository(status.vaultId || 'unknown')
+  const storage = createVaultBoardingStorage(status.vaultId)
+  const intentRepository = storage.intentRepository
   const { operator, info } = await liveBoardingOperator(status, intentRepositoryBoardingCache(intentRepository))
   const wallet = await Wallet.create({
     identity,
@@ -171,11 +215,7 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
     esploraUrl: '/esplora',
     boardingTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
     settlementConfig: false,
-    storage: {
-      walletRepository: new IndexedDBWalletRepository(),
-      contractRepository: new IndexedDBContractRepository(),
-      intentRepository,
-    },
+    storage,
   })
   if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
     throw new Error('SDK derived a different vault-board-v1 address')

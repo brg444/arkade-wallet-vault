@@ -41,11 +41,3 @@ async function vaultRequest<T>(path: string, bodyJSON?: string, extraHeaders: Re
     throw new Error('vault service is not running')
   }
 }
-
-export async function fetchDemoInfo(): Promise<{ demo?: boolean } | null> {
-  try {
-    return await vaultGet('/v1/demo/info')
-  } catch {
-    return null
-  }
-}

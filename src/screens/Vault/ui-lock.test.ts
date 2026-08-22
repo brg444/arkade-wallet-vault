@@ -26,9 +26,8 @@ describe('vault UI lock', () => {
     expect(app).toContain('has-pill-navbar')
     const content = read('src/screens/Vault/Content.tsx')
     expect(content).toContain('VaultRefresher')
-    expect(app).toContain("navigate('settings')")
     const nav = read('src/screens/Vault/PillNav.tsx')
-    expect(nav).toMatch(/hwsign/)
+    expect(nav).not.toMatch(/hwsign/)
   })
 
   it('keeps optional recovery chrome and the kit path', () => {
@@ -49,7 +48,7 @@ describe('vault UI lock', () => {
     expect(recover).toMatch(/not a seed/)
     expect(recover).toMatch(/Back up map/)
     expect(recover).toMatch(/Get map/)
-    expect(recover).toMatch(/Unlock map with hardware/)
+    expect(recover).not.toMatch(/Unlock map with hardware/)
     expect(recover).toMatch(/cannot start recovery/)
     const app = read('src/VaultApp.tsx')
     expect(app).toContain('VaultRecovery')
@@ -57,16 +56,17 @@ describe('vault UI lock', () => {
     const enroll = read('src/lib/vault/tenantEnrollment.ts')
     expect(enroll).toMatch(/recoveryXOnly/)
     expect(enroll).toMatch(/wantRecovery/)
-    const descriptorCheck = read('src/lib/vault/v5/enroll.ts')
-    expect(descriptorCheck).toMatch(/enroll needs a v5 vault/)
+    const descriptorCheck = read('src/lib/vault/program/enroll.ts')
+    expect(descriptorCheck).toMatch(/enroll needs the current Vault Program descriptor/)
     expect(descriptorCheck).not.toMatch(/requireV4ProposedDescriptor/)
     expect(enroll).toMatch(/this setup skipped recovery/)
-    const constants = read('src/lib/vault/v5/constants.ts')
+    const constants = read('src/lib/vault/program/constants.ts')
     expect(constants).toContain('arkade-vault/v5')
     expect(constants).toContain('phone-hww-recovery-staged-v6')
     const settings = read('src/screens/Vault/Settings.tsx')
     expect(settings).not.toMatch(/settings-recover/)
     expect(settings).not.toMatch(/settings-kit/)
+    expect(settings).not.toMatch(/settings-hwsign/)
     expect(settings).toMatch(/Sign out/)
     const keys = read('src/screens/Vault/Keys.tsx')
     expect(keys).toMatch(/title='Recovery'/)
@@ -79,6 +79,18 @@ describe('vault UI lock', () => {
     expect(keys).not.toMatch(/PolicyTimeline/)
     expect(keys).not.toMatch(/If you lose one/)
     expect(keys).toMatch(/I lost a key/)
+  })
+
+  it('keeps raw private keys out of production routes', () => {
+    expect(existsSync(resolve(root, 'src/screens/Vault/HwSign.tsx'))).toBe(false)
+    const app = read('src/VaultApp.tsx')
+    const recover = read('src/screens/Vault/Recover.tsx')
+    const savings = read('src/lib/vault/savingsSpend.ts')
+    for (const productionSource of [app, recover, savings]) {
+      expect(productionSource).not.toMatch(/parseHardwareSecret|WIF or 64-char|hardware-map-secret/)
+    }
+    expect(recover).toMatch(/recover-guardian-signed-file/)
+    expect(recover).toMatch(/acceptGuardianExitSignature/)
   })
 
   it('collapses the obsolete Savings page and keeps the live spend path', () => {

@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { VAULT_ID } from './constants'
 import {
-  ENROLL_STORE,
   clearEnrollment,
   clearSelectedVaultId,
   enrollmentStoreKey,
@@ -16,6 +14,7 @@ import {
   saveStagedEnrollment,
   setSessionLocked,
 } from './enrollmentStore'
+const VAULT_ID = 'vault-test-current'
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
   return {
@@ -35,6 +34,7 @@ function memoryStorage(): Storage {
 }
 
 const sample = {
+  vaultId: VAULT_ID,
   credId: 'aa',
   webauthnP256: '02' + 'bb'.repeat(32),
   phoneDirectP256: '03' + 'cc'.repeat(32),
@@ -44,17 +44,10 @@ const sample = {
 }
 
 describe('namespaced enrollment store', () => {
-  it('reads the unprefixed first-vault key', () => {
-    const storage = memoryStorage()
-    storage.setItem(ENROLL_STORE, JSON.stringify(sample))
-    expect(loadEnrollment(storage)?.credId).toBe('aa')
-    expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
-  })
-
   it('does not let a second vault read the first vault secrets', () => {
     const storage = memoryStorage()
     saveEnrollment(sample, storage, VAULT_ID)
-    saveEnrollment({ ...sample, credId: 'bb' }, storage, 'tenant-b')
+    saveEnrollment({ ...sample, vaultId: 'tenant-b', credId: 'bb' }, storage, 'tenant-b')
     expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
     expect(loadEnrollment(storage, 'tenant-b')?.credId).toBe('bb')
     expect(storage.getItem(enrollmentStoreKey('tenant-b'))).toContain('bb')
@@ -63,7 +56,7 @@ describe('namespaced enrollment store', () => {
   it('clears only the requested vault', () => {
     const storage = memoryStorage()
     saveEnrollment(sample, storage, VAULT_ID)
-    saveEnrollment({ ...sample, credId: 'bb' }, storage, 'tenant-b')
+    saveEnrollment({ ...sample, vaultId: 'tenant-b', credId: 'bb' }, storage, 'tenant-b')
     clearEnrollment(storage, 'tenant-b')
     expect(loadEnrollment(storage, 'tenant-b')).toBeNull()
     expect(loadEnrollment(storage, VAULT_ID)?.credId).toBe('aa')
@@ -83,12 +76,12 @@ describe('namespaced enrollment store', () => {
     expect(() => enrollmentStoreKey('')).toThrow(/vault id required/)
   })
 
-  it('persists the selected vault id independently of the first-vault default', () => {
+  it('persists the selected vault id independently of credentials', () => {
     const storage = memoryStorage()
     saveEnrollment({ ...sample, credId: 'bb', vaultId: 'tenant-b' }, storage, 'tenant-b')
     saveSelectedVaultId('tenant-b', storage)
     expect(loadSelectedVaultId(storage)).toBe('tenant-b')
-    expect(loadEnrollment(storage, loadSelectedVaultId(storage) || undefined)?.credId).toBe('bb')
+    expect(loadEnrollment(storage, loadSelectedVaultId(storage) || '')?.credId).toBe('bb')
     clearSelectedVaultId(storage)
     expect(loadSelectedVaultId(storage)).toBeNull()
   })

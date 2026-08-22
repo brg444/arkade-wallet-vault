@@ -11,11 +11,10 @@ import {
 } from '../lib/vault/enrollmentStore'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
-import { broadcastTx, confirmedSpendable, fetchAddressUtxos, fetchTipHeight } from '../lib/vault/esplora'
+import { broadcastTx, confirmedSpendables, fetchAddressUtxos } from '../lib/vault/esplora'
 import type { VaultHistoryItem } from '../lib/vault/history'
 import {
   buildSavingsPsbt,
-  chooseSavingsLeafForStatus,
   finalizeSavingsPsbt,
   parseIncomingPsbt,
   requireSameSavingsIntent,
@@ -26,7 +25,7 @@ import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import { isVtxoReceiptPendingError, isVtxoSpendInFlightError, sendVaultVtxo } from '../lib/vault/vtxo/spend'
 import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
-import { fetchVaultStatus } from '../lib/vault/status'
+import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
   emptySetupPlan,
@@ -63,6 +62,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [recoverExit, setRecoverExit] = useState<VaultScreen>('keys')
   const [setup, setSetup] = useState<VaultSetupPlan>(emptySetupPlan)
   const [status, setStatus] = useState<VaultStatus | null>(null)
+  const [deployment, setDeployment] = useState<PublicAuthorizerStatus | null>(null)
   const [enrollment, setEnrollment] = useState<EnrollmentSecrets | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -113,9 +113,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setScreen('home')
           return
         }
-        const live = selectedId ? await fetchVaultStatus(undefined, selectedId) : await fetchVaultStatus()
-        setStatus(live)
-        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        if (selectedId) {
+          const live = await fetchVaultStatus(undefined, selectedId)
+          setStatus(live)
+          setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        } else {
+          setDeployment(await fetchPublicStatus())
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : ''
         if (msg.includes('local pin') || msg.includes('not pinned locally')) {
@@ -160,7 +164,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const spendingArkAddress = status?.spendingArkAddress || ''
   const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
-  const liveNetwork = status?.network === 'mutinynet'
+  const liveNetwork = (status?.network || deployment?.network) === 'mutinynet'
   const reportError = useCallback((message: string) => setError(message), [])
   const onBoarded = useCallback((txid: string) => {
     setLastTxid(txid)
@@ -199,7 +203,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     initiateAlerts,
     restoreRecoveryKit,
     signGuardianExitWithDevice,
-    unlockMapWithHardware,
   } = useRecoveryKit({
     enrollment,
     status,
@@ -222,7 +225,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (status?.externalOwnerWalletPub && hardwarePub !== status.externalOwnerWalletPub) {
           throw new Error('This Mutinynet vault requires the hardware key already configured on the service')
         }
-        persist({ ...setup, hardwarePub, hardwareIsDemo: false })
+        persist({ ...setup, hardwarePub })
         setScreen('recovery')
       } catch (err) {
         setError(humanizeVaultError(err))
@@ -238,7 +241,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const recoveryPub = parseCompressedPub(raw, 'recovery key')
         if (!setup.hardwarePub) throw new Error('Set hardware first')
         if (sameRole(recoveryPub, setup.hardwarePub)) throw new Error('Recovery must be a different key')
-        persist({ ...setup, recoveryPub, recoveryIsDemo: false })
+        persist({ ...setup, recoveryPub })
         setScreen('conditions')
       } catch (err) {
         setError(humanizeVaultError(err))
@@ -249,29 +252,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const skipRecovery = useCallback(() => {
     setError('')
-    persist({ ...setup, recoveryPub: '', recoveryIsDemo: false })
+    persist({ ...setup, recoveryPub: '' })
     setScreen('conditions')
   }, [persist, setup])
 
-  const setCondition = useCallback(
-    (
-      patch: Partial<
-        Pick<VaultSetupPlan, 'txCapSats' | 'dailyLimitSats' | 'operationalCsvBlocks' | 'savingsCsvBlocks'>
-      >,
-    ) => {
-      persist({ ...setup, ...patch })
-    },
-    [persist, setup],
-  )
-
   const confirmConditions = useCallback(() => {
     setError('')
-    if (setup.txCapSats > setup.dailyLimitSats) {
-      setError('Daily limit must be at least one payment.')
-      return
-    }
     setScreen('plan')
-  }, [setup])
+  }, [])
 
   const finishPlan = useCallback(() => {
     setError('')
@@ -424,14 +412,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     const need = spend.amount + spend.fee
     const utxos = await fetchAddressUtxos(savingsAddress)
-    const coin = confirmedSpendable(utxos, need)
-    if (!coin) throw new Error('No confirmed savings coin is large enough.')
-    const tip = await fetchTipHeight()
-    const leaf = chooseSavingsLeafForStatus(
-      status,
-      { txid: coin.txid, vout: coin.vout, value: coin.value, confirmedHeight: coin.status.block_height },
-      tip,
-    )
+    const coins = confirmedSpendables(utxos, need)
+    if (coins.length === 0) throw new Error('Confirmed Savings funds do not cover this transfer.')
+    const leaf = 'admin' as const
     if (spend.address === status.vtxoBoardingAddress) await verifyVaultBoarding(status)
     const unsigned = buildSavingsPsbt({
       status,
@@ -439,18 +422,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       destAddress: spend.address,
       amountSats: spend.amount,
       feeSats: spend.fee,
-      coin: { txid: coin.txid, vout: coin.vout, value: coin.value, confirmedHeight: coin.status.block_height },
+      coins: coins.map((coin) => ({
+        txid: coin.txid,
+        vout: coin.vout,
+        value: coin.value,
+        confirmedHeight: coin.status.block_height,
+      })),
       leaf,
     })
     const secret = await unlockPhoneRoutine(enrollment, status)
     try {
       const signed = signSavingsPsbt(unsigned, secret)
-      if (leaf === 'phoneCsv') {
-        const final = finalizeSavingsPsbt(signed)
-        const txid = await broadcastTx(final.txHex)
-        await finishBroadcast(txid)
-        return
-      }
       setHandoffPsbt(signed)
       setScreen('handoff')
     } finally {
@@ -567,7 +549,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       boardingAddress,
       boardingInProgress,
       restoreRecoveryKit,
-      unlockMapWithHardware,
       signGuardianExitWithDevice,
       hasRecoveryKit,
       initiateAlert,
@@ -629,7 +610,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       savingsSats,
       screen: loaded ? screen : 'welcome',
       setAccount,
-      setCondition,
       setSpendDraft,
       setup,
       signIn,
@@ -651,7 +631,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       boardingAddress,
       boardingInProgress,
       restoreRecoveryKit,
-      unlockMapWithHardware,
       signGuardianExitWithDevice,
       hasRecoveryKit,
       initiateAlert,
@@ -692,7 +671,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       savingsAddress,
       savingsSats,
       screen,
-      setCondition,
       setSpendDraft,
       setup,
       spend,

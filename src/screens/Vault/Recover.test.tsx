@@ -1,15 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { buildV5Descriptor } from '../../lib/vault/v5/descriptor'
-import { V6_FIXTURE } from '../../lib/vault/v5/fixtures'
-import { buildRecoveryKit } from '../../lib/vault/v5/kit'
+import { buildVaultProgramDescriptor } from '../../lib/vault/program/descriptor'
+import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
+import { buildRecoveryKit } from '../../lib/vault/program/kit'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultRecover from './Recover'
-import type { InitiateAlert } from '../../lib/vault/v5/watch'
-import type { FamilyKey } from '../../lib/vault/v5/constants'
+import type { InitiateAlert } from '../../lib/vault/program/watch'
+import type { FamilyKey } from '../../lib/vault/program/constants'
 
-const kit = buildRecoveryKit(buildV5Descriptor(V6_FIXTURE))
+const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
 const dest = kit.descriptor.daily.address
 
 function alert(familyKey: FamilyKey): InitiateAlert {
@@ -28,7 +28,6 @@ function renderLost(familyKey: FamilyKey, extra: Partial<VaultContextProps> = {}
     downloadRecoveryKit: () => JSON.stringify(kit),
     backupRecoveryKit: async () => false,
     restoreRecoveryKit: async () => {},
-    unlockMapWithHardware: async () => {},
     signGuardianExitWithDevice: async (psbt) => psbt,
     hasRecoveryKit: true,
     initiateAlert: 'Someone started recovery',
@@ -63,8 +62,7 @@ describe('claimant-aware cancel without services', () => {
     startCancel('daily-phone')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/Hardware and Recovery/)
     expect(screen.queryByTestId('recover-guardian-device')).toBeNull()
-    expect(screen.getByTestId('recover-guardian-hardware')).toBeTruthy()
-    expect(screen.getByTestId('recover-guardian-recovery')).toBeTruthy()
+    expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)
     expect(screen.getByTestId('recover-guardian-signers').textContent).not.toMatch(/This device/)
   })
 
@@ -72,15 +70,13 @@ describe('claimant-aware cancel without services', () => {
     startCancel('savings-hardware')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/This device and Recovery/)
     expect(screen.getByTestId('recover-guardian-device')).toBeTruthy()
-    expect(screen.queryByTestId('recover-guardian-hardware')).toBeNull()
-    expect(screen.getByTestId('recover-guardian-recovery')).toBeTruthy()
+    expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Recovery/)
   })
 
   it('asks this device and hardware after recovery starts recovery', () => {
     startCancel('daily-recovery')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/This device and Hardware/)
     expect(screen.getByTestId('recover-guardian-device')).toBeTruthy()
-    expect(screen.getByTestId('recover-guardian-hardware')).toBeTruthy()
-    expect(screen.queryByTestId('recover-guardian-recovery')).toBeNull()
+    expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)
   })
 })

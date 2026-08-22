@@ -218,14 +218,14 @@ export async function discoverVaultIdFromPasskey(): Promise<string> {
 }
 
 export async function signInWithPasskey(
-  vaultId?: string,
+  vaultId: string,
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
   let phoneRoutineSecret: Uint8Array | undefined
   try {
-    const id = arguments.length > 0 ? String(vaultId ?? '').trim() : undefined
-    if (arguments.length > 0 && !id) throw new Error('vault id required')
-    const status = id ? await fetchVaultStatus(undefined, id) : await fetchVaultStatus()
+    const id = String(vaultId || '').trim()
+    if (!id) throw new Error('vault id required')
+    const status = await fetchVaultStatus(undefined, id)
     if (!status.enrolled) throw new Error('this deployment has not been set up yet')
     if (!status.passkeyLoginAvailable) {
       throw new Error('passkey sign-in must first be enabled on the original enrolled device')

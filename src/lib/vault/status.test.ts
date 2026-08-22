@@ -1,78 +1,60 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
-import { V5_TEMPLATE } from './v5/constants'
+import { POLICY_VERSION } from './constants'
+import { STAGED_TEMPLATE } from './program/constants'
 import { parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
 import type { VaultStatus } from './types'
+
+const VAULT_ID = 'vault-test-current'
 
 function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
   return {
     enrolled: true,
     network: 'mutinynet',
-    clientOrigin: 'https://arkade-vault-demo.vercel.app',
-    rpId: 'arkade-vault-demo.vercel.app',
+    clientOrigin: 'https://vault.example',
+    rpId: 'vault.example',
     vaultId: VAULT_ID,
-    templateVersion: TEMPLATE_VERSION,
+    templateVersion: STAGED_TEMPLATE,
     policyVersion: POLICY_VERSION,
     operationalCsvBlocks: 144,
     savingsCsvBlocks: 6,
     operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
     savingsAddress: 'tb1ptest',
     savingsExcludesRoutineCosigners: true,
-    periodAllowance: 100000,
+    periodAllowance: 100_000,
     periodSpent: 0,
-    periodRemaining: 100000,
-    txCap: 50000,
-    absoluteFeeCap: 5000,
+    periodRemaining: 100_000,
+    txCap: 50_000,
+    absoluteFeeCap: 5_000,
     feerateCapSatVb: 10,
     ...over,
   }
 }
 
 describe('status identity binding', () => {
-  it('accepts the requested vault id and rejects a wrong-vault response', () => {
-    const first = requireStatusIdentity(sampleStatus())
-    expect(first.vaultId).toBe(VAULT_ID)
+  it('requires the selected vault id and refuses a wrong-vault response', () => {
+    expect(requireStatusIdentity(sampleStatus(), VAULT_ID).vaultId).toBe(VAULT_ID)
     expect(() => requireStatusIdentity(sampleStatus(), 'tenant-b')).toThrow(/vault id/)
-    expect(() => requireStatusIdentity(sampleStatus({ vaultId: 'tenant-b' }))).toThrow(/vault id/)
-    expect(() => requireStatusIdentity(sampleStatus({ vaultId: 'tenant-b' }), VAULT_ID)).toThrow(/vault id/)
-  })
-
-  it('binds parseStatusJson to the expected vault', () => {
-    const raw = JSON.stringify(sampleStatus({ vaultId: 'tenant-b' }))
-    expect(parseStatusJson(raw, 'tenant-b').vaultId).toBe('tenant-b')
-    expect(() => parseStatusJson(raw, VAULT_ID)).toThrow(/vault id/)
-  })
-
-  it('asks the authorizer for the selected vault id', () => {
-    expect(vaultStatusPath()).toBe(`/v1/status?vault=${encodeURIComponent(VAULT_ID)}`)
-    expect(vaultStatusPath('tenant-b')).toBe('/v1/status?vault=tenant-b')
-    expect(() => vaultStatusPath('')).toThrow(/vault id required/)
     expect(() => requireStatusIdentity(sampleStatus(), '')).toThrow(/vault id required/)
   })
 
-  it('does not treat vault id agreement as a deposit-address bind', () => {
-    const swapped = sampleStatus({ operationalAddress: 'tb1pattacker' })
-    expect(requireStatusIdentity(swapped).operationalAddress).toBe('tb1pattacker')
+  it('binds serialized status and the request path to an explicit vault', () => {
+    const raw = JSON.stringify(sampleStatus({ vaultId: 'tenant-b' }))
+    expect(parseStatusJson(raw, 'tenant-b').vaultId).toBe('tenant-b')
+    expect(() => parseStatusJson(raw, VAULT_ID)).toThrow(/vault id/)
+    expect(vaultStatusPath('tenant-b')).toBe('/v1/status?vault=tenant-b')
+    expect(() => vaultStatusPath('')).toThrow(/vault id required/)
   })
 
-  it('rejects a leftover v4 recovery key or a v3 template, and accepts v5', () => {
-    expect(() => requireStatusIdentity(sampleStatus({ recoveryKeyPub: '02' + '11'.repeat(32) } as never))).toThrow(
-      /template version/,
-    )
+  it('accepts only the current staged template', () => {
     expect(() =>
-      requireStatusIdentity(sampleStatus({ templateVersion: 'phone-direct-p256-routine-3of3-admin-2of2-v3' })),
+      requireStatusIdentity(sampleStatus({ templateVersion: 'phone-hww-recovery-staged-v5' }), VAULT_ID),
     ).toThrow(/template version/)
-    expect(
-      requireStatusIdentity(sampleStatus({ templateVersion: V5_TEMPLATE, recoveryPub: '02' + '11'.repeat(32) }))
-        .templateVersion,
-    ).toBe(V5_TEMPLATE)
+    expect(requireStatusIdentity(sampleStatus(), VAULT_ID).templateVersion).toBe(STAGED_TEMPLATE)
   })
 })
 
 describe('pingVaultService', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
+  afterEach(() => vi.unstubAllGlobals())
 
   it('is online when public status answers this release', async () => {
     vi.stubGlobal(
@@ -82,9 +64,9 @@ describe('pingVaultService', () => {
           new Response(
             JSON.stringify({
               network: 'mutinynet',
-              clientOrigin: 'https://arkade-vault-demo.vercel.app',
-              rpId: 'arkade-vault-demo.vercel.app',
-              templateVersion: V5_TEMPLATE,
+              clientOrigin: 'https://vault.example',
+              rpId: 'vault.example',
+              templateVersion: STAGED_TEMPLATE,
               policyVersion: POLICY_VERSION,
               operationalCsvBlocks: 144,
               savingsCsvBlocks: 6,

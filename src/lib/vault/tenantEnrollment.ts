@@ -10,13 +10,13 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollmentStore'
-import { requireV5ProposedDescriptor } from './v5/enroll'
-import { saveLocalKit } from './v5/kitStore'
-import { buildRecoveryKit } from './v5/kit'
+import { requireProposedProgramDescriptor } from './program/enroll'
+import { saveLocalKit } from './program/kitStore'
+import { buildRecoveryKit } from './program/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
-import type { V5PublicDescriptor } from './v5/descriptor'
+import type { VaultProgramDescriptor } from './program/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
@@ -90,7 +90,7 @@ export async function enrollWithPasskey(
 export async function beginTenantEnrollment(
   enrollmentToken: string,
   roles: EnrollmentRoles,
-): Promise<{ enrollment: EnrollmentSecrets; descriptor?: V5PublicDescriptor }> {
+): Promise<{ enrollment: EnrollmentSecrets; descriptor?: VaultProgramDescriptor }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
@@ -197,7 +197,7 @@ export async function beginTenantEnrollment(
     { 'X-Vault-Enrollment-Token': token },
   )
   if (wantRecovery) {
-    const descriptor = requireV5ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
+    const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
     if (xOnly(descriptor.keys.recovery || '') !== recoveryXOnly) {
       throw new Error('proposed recovery key does not match this client')
     }
@@ -223,7 +223,7 @@ export async function beginTenantEnrollment(
     saveLocalKit(buildRecoveryKit(descriptor))
     return { enrollment, descriptor }
   }
-  const descriptor = requireV5ProposedDescriptor(proposed.descriptor, proposed.descriptorHash)
+  const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
   if (descriptor.keys.recovery) throw new Error('this setup skipped recovery')
   if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
     throw new Error('proposed hardware key does not match this client')

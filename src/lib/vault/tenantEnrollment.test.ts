@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { vaultStatusPath } from './status'
-import { requireV5ProposedDescriptor } from './v5/enroll'
-import { sampleDescriptor } from './sample'
+import { requireProposedProgramDescriptor } from './program/enroll'
 
 describe('tenant enrollment identity', () => {
-  it('rejects an explicit empty vault id on the status path', () => {
+  it('requires an explicit vault id on the status path', () => {
     expect(() => vaultStatusPath('')).toThrow(/vault id required/)
   })
 
-  it('rejects a leftover v4 propose', () => {
-    expect(() => requireV5ProposedDescriptor(sampleDescriptor(), '00'.repeat(32))).toThrow(/v5 vault/)
+  it('rejects a descriptor outside the current program', () => {
+    expect(() => requireProposedProgramDescriptor({ schema: 'retired' }, '00'.repeat(32))).toThrow(
+      /current Vault Program descriptor/,
+    )
   })
 })

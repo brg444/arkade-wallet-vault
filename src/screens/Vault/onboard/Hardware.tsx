@@ -11,7 +11,7 @@ import { OnboardLayout } from './Layout'
 export default function VaultHardware() {
   const { applyHardware, error, navigate, setup, status } = useContext(VaultContext)
   const required = status?.externalOwnerWalletPub || ''
-  const [value, setValue] = useState(required || (setup.hardwareIsDemo ? '' : setup.hardwarePub))
+  const [value, setValue] = useState(required || setup.hardwarePub)
 
   useEffect(() => {
     if (required) setValue(required)

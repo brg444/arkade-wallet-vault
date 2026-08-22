@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { POLICY_VERSION, TEMPLATE_VERSION, VAULT_ID } from './constants'
-import { TRUSTED_KIOSK_PIN_FIELDS } from './kiosk'
+import { POLICY_VERSION } from './constants'
+import { STAGED_TEMPLATE } from './program/constants'
 import {
   addressPinHash,
   addressPinStoreKey,
@@ -10,7 +10,6 @@ import {
   loadStoredAddressPin,
   pinEnrolledStatus,
   pinFromEnrolledStatus,
-  trustedKioskPin,
 } from './pin'
 import type { VaultStatus } from './types'
 
@@ -36,10 +35,10 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
   return {
     enrolled: true,
     network: 'mutinynet',
-    clientOrigin: 'https://arkade-vault-demo.vercel.app',
-    rpId: 'arkade-vault-demo.vercel.app',
+    clientOrigin: 'https://vault.example',
+    rpId: 'vault.example',
     vaultId: VAULT_ID,
-    templateVersion: TEMPLATE_VERSION,
+    templateVersion: STAGED_TEMPLATE,
     policyVersion: POLICY_VERSION,
     operationalCsvBlocks: 144,
     savingsCsvBlocks: 6,
@@ -75,11 +74,10 @@ describe('local address pin', () => {
     expect(() => pinEnrolledStatus(tenantStatus({ operationalAddress: 'tb1pattacker' }), storage)).toThrow(/local pin/)
   })
 
-  it('does not seed the retired singleton vault from a compiled address', () => {
+  it('does not synthesize a pin before enrollment commits one', () => {
     const storage = memoryStorage()
-    expect(loadAddressPin(storage)).toBeNull()
-    expect(loadStoredAddressPin(storage)).toBeNull()
-    expect(trustedKioskPin().operationalAddress).toBe(TRUSTED_KIOSK_PIN_FIELDS.operationalAddress)
+    expect(loadAddressPin(storage, VAULT_ID)).toBeNull()
+    expect(loadStoredAddressPin(storage, VAULT_ID)).toBeNull()
     expect(bindStatusToLocalPin(sampleStatus({ operationalAddress: 'tb1pattacker' }), storage).operationalAddress).toBe(
       'tb1pattacker',
     )
@@ -108,11 +106,7 @@ describe('local address pin', () => {
   it('namespaces pins by vault id', () => {
     const storage = memoryStorage()
     pinEnrolledStatus(tenantStatus(), storage)
-    expect(loadAddressPin(storage)).toBeNull()
     expect(loadAddressPin(storage, 'tenant-b')?.vaultId).toBe('tenant-b')
-    expect(loadAddressPin(storage, 'tenant-b')?.operationalAddress).not.toBe(
-      TRUSTED_KIOSK_PIN_FIELDS.operationalAddress,
-    )
   })
 
   it('clears only the requested vault pin', () => {
@@ -120,7 +114,6 @@ describe('local address pin', () => {
     pinEnrolledStatus(tenantStatus(), storage)
     clearAddressPin(storage, 'tenant-b')
     expect(loadAddressPin(storage, 'tenant-b')).toBeNull()
-    expect(loadAddressPin(storage)).toBeNull()
   })
 
   it('hashes operational script into the pin', () => {
@@ -129,3 +122,4 @@ describe('local address pin', () => {
     expect(a.pinHash).not.toBe(b.pinHash)
   })
 })
+const VAULT_ID = 'vault-test-current'

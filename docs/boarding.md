@@ -49,6 +49,12 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - `settlementConfig: false` is required for this coordinator. Otherwise the
   SDK manager may race the explicit policy-directed settle with its own
   parameterless default-output settle.
+- The SDK defaults its wallet and contract repositories to one global IndexedDB
+  database. Contract initialization loads every contract in that database, and
+  wallet sync metadata is global to it. The Vault client supplies one versioned
+  database per vault for both repositories and a separate per-vault intent
+  database. The old global database is retired preview state and is not
+  migrated.
 - The explicit coordinator uses one Web Lock per vault. A second tab observes
   the same confirmed output but does not register a competing intent or request
   another device approval.
@@ -56,7 +62,7 @@ principal is debited once, when a later VTXO payment leaves Spending.
   on the Operator event stream. The Arkade same-origin route must remain a
   direct streaming rewrite. A buffered serverless function breaks the event
   stream before settlement completes.
-- SDK 0.4.64 uses native `EventSource` by default for `Wallet.settle()`. Its
+- SDK 0.4.65 uses native `EventSource` by default for `Wallet.settle()`. Its
   error handler discards the HTTP status, response body, and browser transport
   detail, then throws only `EventSource error`. The vault coordinator uses a
   fetch-streaming `RestArkProvider` subclass instead. It sends the required

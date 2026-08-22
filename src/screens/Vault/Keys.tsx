@@ -8,7 +8,7 @@ import FingerprintIcon from '../../icons/Fingerprint'
 import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
-import { isFixturePub, shortKey } from '../../lib/vault/setupPlan'
+import { shortKey } from '../../lib/vault/setupPlan'
 import { pingVaultService } from '../../lib/vault/status'
 import { VaultContext } from '../../vault/context'
 import { HubGroup, HubRow } from './ui'
@@ -54,13 +54,7 @@ export default function VaultKeys() {
                     : undefined
                 }
               />
-              <HubRow
-                icon={<ShieldCheckOutlineIcon />}
-                title='Hardware'
-                status={
-                  setup.hardwareIsDemo || (hardwarePub && isFixturePub(hardwarePub)) ? 'Demo' : shortKey(hardwarePub)
-                }
-              />
+              <HubRow icon={<ShieldCheckOutlineIcon />} title='Hardware' status={shortKey(hardwarePub)} />
               <HubRow
                 icon={<ServerIcon />}
                 title='Vault service'
@@ -72,7 +66,7 @@ export default function VaultKeys() {
                   icon={<SafeIcon />}
                   title='Recovery'
                   detail='Starts a wait you can cancel'
-                  status={setup.recoveryIsDemo ? 'Demo' : shortKey(recoveryPub)}
+                  status={shortKey(recoveryPub)}
                 />
               ) : null}
             </HubGroup>
