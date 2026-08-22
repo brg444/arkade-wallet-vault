@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
+import { hex } from '@scure/base'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from './Content'
@@ -11,19 +12,25 @@ import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { broadcastTx, fetchAddressUtxos } from '../../lib/vault/esplora'
-import { parseHardwareSecret } from '../../lib/vault/savingsSpend'
-import { CLAIMANTS, V6_TEMPLATE, VAULT_KINDS, type Claimant, type VaultKind } from '../../lib/vault/v5/constants'
-import { familyFromDescriptor } from '../../lib/vault/v5/descriptor'
+import { parseIncomingPsbt, psbtFile } from '../../lib/vault/savingsSpend'
 import {
+  CLAIMANTS,
+  STAGED_TEMPLATE,
+  VAULT_KINDS,
+  type Claimant,
+  type VaultKind,
+} from '../../lib/vault/program/constants'
+import { familyFromDescriptor } from '../../lib/vault/program/descriptor'
+import {
+  acceptGuardianExitSignature,
   assertGuardianExitSigners,
   describeGuardianExitSigners,
   finalizeGuardianExit,
   requiredGuardianExitSigners,
-  signGuardianExitPsbt,
-} from '../../lib/vault/v5/guardianExit'
-import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/v5/kit'
-import { planClaim, planClawback, planInitiate } from '../../lib/vault/v5/recoverFlow'
-import { buildGuardianExitPsbt } from '../../lib/vault/v5/spend'
+} from '../../lib/vault/program/guardianExit'
+import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/program/kit'
+import { planClaim, planClawback, planInitiate } from '../../lib/vault/program/recoverFlow'
+import { buildGuardianExitPsbt } from '../../lib/vault/program/spend'
 import { VaultContext } from '../../vault/context'
 import { KeyCard, Reveal } from './ui'
 import { ChoiceCard } from './onboard/Layout'
@@ -31,6 +38,15 @@ import { ChoiceCard } from './onboard/Layout'
 function downloadJson(name: string, body: string) {
   const hidden = document.createElement('a')
   hidden.href = URL.createObjectURL(new Blob([body], { type: 'application/json' }))
+  hidden.download = name
+  document.body.appendChild(hidden)
+  hidden.click()
+  hidden.remove()
+}
+
+function downloadPsbt(name: string, psbtHex: string) {
+  const hidden = document.createElement('a')
+  hidden.href = URL.createObjectURL(psbtFile(psbtHex, name))
   hidden.download = name
   document.body.appendChild(hidden)
   hidden.click()
@@ -64,7 +80,6 @@ export default function VaultRecover() {
     restoreRecoveryKit,
     savingsAddress,
     signGuardianExitWithDevice,
-    unlockMapWithHardware,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<'kit' | 'lost'>(recoverEntry)
@@ -80,13 +95,10 @@ export default function VaultRecover() {
   const [claimant, setClaimant] = useState<Claimant>('hardware')
   const [claimDest, setClaimDest] = useState('')
   const [psbtOut, setPsbtOut] = useState('')
-  const [wrapJson, setWrapJson] = useState('')
-  const [hardwareSecret, setHardwareSecret] = useState('')
   const [cancelPsbt, setCancelPsbt] = useState('')
   const [cancelSigners, setCancelSigners] = useState<Claimant[]>([])
   const [cancelHave, setCancelHave] = useState<Claimant[]>([])
-  const [cancelHardware, setCancelHardware] = useState('')
-  const [cancelRecovery, setCancelRecovery] = useState('')
+  const [signedCancelPsbt, setSignedCancelPsbt] = useState('')
 
   const kitJson = useMemo(() => {
     try {
@@ -98,7 +110,7 @@ export default function VaultRecover() {
 
   const canCancelWithoutServices = useMemo(() => {
     try {
-      return parseRecoveryKit(JSON.parse(downloadRecoveryKit())).descriptor.templateVersion === V6_TEMPLATE
+      return parseRecoveryKit(JSON.parse(downloadRecoveryKit())).descriptor.templateVersion === STAGED_TEMPLATE
     } catch {
       return false
     }
@@ -126,6 +138,7 @@ export default function VaultRecover() {
 
   if (view === 'lost') {
     const inProcess = initiateAlerts[0]
+    const externalRole = cancelSigners.find((role) => role !== 'phone' && !cancelHave.includes(role))
     return (
       <>
         <Header
@@ -221,74 +234,63 @@ export default function VaultRecover() {
                       }}
                     />
                   ) : null}
-                  {cancelSigners.includes('hardware') && !cancelHave.includes('hardware') ? (
+                  {externalRole ? (
                     <>
-                      <Input
-                        label='Hardware key'
-                        placeholder='WIF or 64-char hex'
-                        value={cancelHardware}
-                        onChange={setCancelHardware}
-                        testId='recover-guardian-hardware-secret'
-                      />
                       <Button
                         secondary
-                        label='Copy cancel for hardware'
-                        testId='recover-guardian-hardware-copy'
+                        label={`Download cancel for ${KEY_LABEL[externalRole]}`}
+                        testId='recover-guardian-external-download'
                         onClick={() => {
-                          void copyToClipboard(cancelPsbt)
-                          toast('Cancel copied for hardware')
+                          downloadPsbt('arkade-cancel.psbt', cancelPsbt)
+                          toast(`Cancel PSBT saved for ${KEY_LABEL[externalRole]}`)
                         }}
                       />
-                      <Button
-                        label='Sign with hardware'
-                        testId='recover-guardian-hardware'
-                        disabled={!cancelHardware.trim()}
-                        onClick={() => {
-                          setLocalError('')
-                          let priv: Uint8Array | undefined
-                          try {
-                            priv = parseHardwareSecret(cancelHardware)
-                            const next = signGuardianExitPsbt(cancelPsbt, priv)
-                            setCancelPsbt(next)
-                            setCancelHave((have) => [...have, 'hardware'])
-                            setCancelHardware('')
-                            toast('Hardware signed')
-                          } catch (err) {
-                            setLocalError(err instanceof Error ? err.message : 'Could not sign with hardware')
-                          } finally {
-                            priv?.fill(0)
-                          }
-                        }}
-                      />
-                    </>
-                  ) : null}
-                  {cancelSigners.includes('recovery') && !cancelHave.includes('recovery') ? (
-                    <>
+                      <label>
+                        <Text color='neutral-600' tiny>
+                          Signed cancel PSBT file
+                        </Text>
+                        <input
+                          type='file'
+                          accept='.psbt,application/octet-stream'
+                          data-testid='recover-guardian-signed-file'
+                          onChange={(event) => {
+                            const file = event.target.files?.[0]
+                            if (!file) return
+                            void file
+                              .arrayBuffer()
+                              .then((body) => setSignedCancelPsbt(hex.encode(new Uint8Array(body))))
+                          }}
+                        />
+                      </label>
                       <Input
-                        label='Recovery key'
-                        placeholder='WIF or 64-char hex'
-                        value={cancelRecovery}
-                        onChange={setCancelRecovery}
-                        testId='recover-guardian-recovery-secret'
+                        label={`Signed by ${KEY_LABEL[externalRole]}`}
+                        placeholder='Paste a signed PSBT, or choose the file'
+                        value={signedCancelPsbt}
+                        onChange={setSignedCancelPsbt}
+                        testId='recover-guardian-signed-psbt'
                       />
                       <Button
-                        label='Sign with recovery'
-                        testId='recover-guardian-recovery'
-                        disabled={!cancelRecovery.trim()}
+                        label={`Accept ${KEY_LABEL[externalRole]} signature`}
+                        testId='recover-guardian-external'
+                        disabled={!signedCancelPsbt.trim()}
                         onClick={() => {
                           setLocalError('')
-                          let priv: Uint8Array | undefined
                           try {
-                            priv = parseHardwareSecret(cancelRecovery)
-                            const next = signGuardianExitPsbt(cancelPsbt, priv)
+                            const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                            const expectedPub =
+                              externalRole === 'hardware' ? kit.descriptor.keys.hardware : kit.descriptor.keys.recovery
+                            if (!expectedPub) throw new Error(`${KEY_LABEL[externalRole]} is not configured`)
+                            const next = acceptGuardianExitSignature(
+                              cancelPsbt,
+                              parseIncomingPsbt(signedCancelPsbt),
+                              expectedPub,
+                            )
                             setCancelPsbt(next)
-                            setCancelHave((have) => [...have, 'recovery'])
-                            setCancelRecovery('')
-                            toast('Recovery signed')
+                            setCancelHave((have) => [...have, externalRole])
+                            setSignedCancelPsbt('')
+                            toast(`${KEY_LABEL[externalRole]} signature accepted`)
                           } catch (err) {
-                            setLocalError(err instanceof Error ? err.message : 'Could not sign with recovery')
-                          } finally {
-                            priv?.fill(0)
+                            setLocalError(err instanceof Error ? err.message : 'Could not accept the signed PSBT')
                           }
                         }}
                       />
@@ -308,6 +310,7 @@ export default function VaultRecover() {
                             setCancelPsbt('')
                             setCancelSigners([])
                             setCancelHave([])
+                            setSignedCancelPsbt('')
                           } catch (err) {
                             setLocalError(err instanceof Error ? err.message : 'Could not broadcast the cancel')
                           }
@@ -359,7 +362,7 @@ export default function VaultRecover() {
                     try {
                       const [k, c] = inProcess.familyKey.split('-') as [VaultKind, Claimant]
                       const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-                      if (kit.descriptor.templateVersion !== V6_TEMPLATE) {
+                      if (kit.descriptor.templateVersion !== STAGED_TEMPLATE) {
                         throw new Error('this vault cannot cancel pending recovery without the services')
                       }
                       const hasRecovery = Boolean(kit.descriptor.keys.recovery)
@@ -377,6 +380,7 @@ export default function VaultRecover() {
                       setCancelPsbt(built.psbtHex)
                       setCancelSigners(signers)
                       setCancelHave([])
+                      setSignedCancelPsbt('')
                       setPsbtOut(built.psbtHex)
                       toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
                     } catch (err) {
@@ -491,39 +495,6 @@ export default function VaultRecover() {
                 value={pasted}
                 onChange={setPasted}
                 testId='recovery-kit-json'
-              />
-            </Reveal>
-            <Reveal label='Unlock map with hardware'>
-              <Input
-                label='Hardware wrap'
-                placeholder='Paste the hardware wrap'
-                value={wrapJson}
-                onChange={setWrapJson}
-                testId='hardware-map-wrap'
-              />
-              <Input
-                label='Hardware key'
-                placeholder='WIF or 64-char hex'
-                value={hardwareSecret}
-                onChange={setHardwareSecret}
-                testId='hardware-map-secret'
-              />
-              <Button
-                label='Unlock with hardware'
-                testId='unlock-map-hardware'
-                disabled={!wrapJson.trim() || !hardwareSecret.trim()}
-                onClick={() => {
-                  setLocalError('')
-                  void (async () => {
-                    try {
-                      await unlockMapWithHardware(wrapJson, hardwareSecret)
-                      setHardwareSecret('')
-                      toast('Map unlocked with hardware')
-                    } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not unlock the map')
-                    }
-                  })()
-                }}
               />
             </Reveal>
             <KeyCard

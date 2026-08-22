@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION } from './constants'
-import { V5_SCHEMA, STAGED_TEMPLATE } from './v5/constants'
+import { PROGRAM_SCHEMA, STAGED_TEMPLATE } from './program/constants'
 import pack from './contract-pack.json'
 
 describe('frozen wallet protocol domains', () => {
   it('matches the published contract pack', () => {
     expect(POLICY_VERSION).toBe(pack.programs.staged.policy)
-    expect(V5_SCHEMA).toBe(pack.programs.staged.schema)
+    expect(PROGRAM_SCHEMA).toBe(pack.programs.staged.schema)
     expect(STAGED_TEMPLATE).toBe(pack.programs.staged.template)
     expect(pack.programs.staged.status).toBe('live')
     expect(pack.programs.staged.enrollable).toBe(true)
@@ -31,7 +31,7 @@ describe('frozen wallet protocol domains', () => {
   })
 
   it('pins the staged schema', () => {
-    expect(V5_SCHEMA).toBe('arkade-vault/v5')
+    expect(PROGRAM_SCHEMA).toBe('arkade-vault/v5')
   })
 
   it('pins client HKDF domains in source', () => {

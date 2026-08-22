@@ -1,20 +1,18 @@
 import type { EnrollmentSecrets } from './tenantEnrollment'
-import { VAULT_ID } from './constants'
 
 export const ENROLL_STORE = 'arkade-vault-enroll-secrets-v3'
 export const SELECTED_VAULT_STORE = 'arkade-vault-selected-v1'
 export const ENROLL_STAGE_STORE = 'arkade-vault-enroll-staged-v1'
 export const SESSION_LOCK_STORE = 'arkade-vault-session-lock-v1'
 
-function requestedEnrollmentId(vaultId: string | undefined, supplied: boolean): string {
-  if (!supplied) return VAULT_ID
-  const id = String(vaultId ?? '').trim()
+function requestedEnrollmentId(vaultId: string): string {
+  const id = String(vaultId || '').trim()
   if (!id) throw new Error('vault id required')
   return id
 }
 
-export function enrollmentStoreKey(vaultId?: string): string {
-  return `${ENROLL_STORE}:${requestedEnrollmentId(vaultId, arguments.length > 0)}`
+export function enrollmentStoreKey(vaultId: string): string {
+  return `${ENROLL_STORE}:${requestedEnrollmentId(vaultId)}`
 }
 
 function parseEnrollment(raw: string | null): EnrollmentSecrets | null {
@@ -32,31 +30,23 @@ function bindEnrollment(rec: EnrollmentSecrets | null, vaultId: string): Enrollm
   return { ...rec, vaultId }
 }
 
-export function loadEnrollment(storage: Storage = localStorage, vaultId?: string): EnrollmentSecrets | null {
-  const id = requestedEnrollmentId(vaultId, arguments.length > 1)
+export function loadEnrollment(storage: Storage = localStorage, vaultId = ''): EnrollmentSecrets | null {
+  const id = requestedEnrollmentId(vaultId)
   const namespaced = bindEnrollment(parseEnrollment(storage.getItem(enrollmentStoreKey(id))), id)
-  if (namespaced) return namespaced
-  if (id === VAULT_ID) return bindEnrollment(parseEnrollment(storage.getItem(ENROLL_STORE)), id)
-  return null
+  return namespaced
 }
 
-export function saveEnrollment(rec: EnrollmentSecrets, storage: Storage = localStorage, vaultId?: string) {
-  const id =
-    arguments.length > 2
-      ? requestedEnrollmentId(vaultId, true)
-      : rec.vaultId !== undefined
-        ? requestedEnrollmentId(rec.vaultId, true)
-        : VAULT_ID
+export function saveEnrollment(rec: EnrollmentSecrets, storage: Storage = localStorage, vaultId = rec.vaultId) {
+  const id = requestedEnrollmentId(vaultId)
   if (rec.vaultId && rec.vaultId !== id) {
     throw new Error('enrollment record vault id does not match')
   }
   storage.setItem(enrollmentStoreKey(id), JSON.stringify({ ...rec, vaultId: id }))
 }
 
-export function clearEnrollment(storage: Storage = localStorage, vaultId?: string) {
-  const id = requestedEnrollmentId(vaultId, arguments.length > 1)
+export function clearEnrollment(storage: Storage = localStorage, vaultId = '') {
+  const id = requestedEnrollmentId(vaultId)
   storage.removeItem(enrollmentStoreKey(id))
-  if (id === VAULT_ID) storage.removeItem(ENROLL_STORE)
 }
 
 export function loadSelectedVaultId(storage: Storage = localStorage): string | null {
@@ -89,8 +79,6 @@ export function findStoredEnrollment(storage: Storage = localStorage): Enrollmen
     const rec = loadEnrollment(storage, selected)
     if (rec) return rec
   }
-  const legacy = loadEnrollment(storage)
-  if (legacy) return legacy
   for (let i = 0; i < storage.length; i++) {
     const key = storage.key(i)
     if (!key || !key.startsWith(`${ENROLL_STORE}:`)) continue

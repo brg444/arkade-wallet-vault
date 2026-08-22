@@ -63,8 +63,26 @@ export async function fetchAddressStats(address: string): Promise<{ funded: numb
   }
 }
 
-export function confirmedSpendable(utxos: EsploraUtxo[], need: number): EsploraUtxo | null {
-  return utxos.filter((u) => u.status.confirmed && u.value >= need).sort((a, b) => a.value - b.value)[0] || null
+function compareOutpoints(a: EsploraUtxo, b: EsploraUtxo): number {
+  return a.txid.localeCompare(b.txid) || a.vout - b.vout
+}
+
+export function confirmedSpendables(utxos: EsploraUtxo[], need: number): EsploraUtxo[] {
+  if (!Number.isSafeInteger(need) || need <= 0) return []
+  const confirmed = utxos.filter((utxo) => utxo.status.confirmed && Number.isSafeInteger(utxo.value) && utxo.value > 0)
+  const single = confirmed
+    .filter((utxo) => utxo.value >= need)
+    .sort((a, b) => a.value - b.value || compareOutpoints(a, b))[0]
+  if (single) return [single]
+
+  const selected: EsploraUtxo[] = []
+  let total = 0
+  for (const utxo of confirmed.sort((a, b) => b.value - a.value || compareOutpoints(a, b))) {
+    selected.push(utxo)
+    total += utxo.value
+    if (total >= need) return selected.sort(compareOutpoints)
+  }
+  return []
 }
 
 export async function fetchTipHeight(): Promise<number> {

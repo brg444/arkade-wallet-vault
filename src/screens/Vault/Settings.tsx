@@ -141,7 +141,7 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const { busy, liveNetwork, navigate, refreshBalance, reset, status } = useContext(VaultContext)
+  const { busy, liveNetwork, refreshBalance, reset, status } = useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<View>('menu')
   const [theme, setTheme] = useState(loadVaultTheme)
@@ -250,7 +250,6 @@ export default function VaultSettings() {
             </FlexCol>
             <FlexCol gap='0'>
               <TextLabel>Advanced</TextLabel>
-              <Row label='Sign with hardware' testId='settings-hwsign' onClick={() => navigate('hwsign')} />
               <Row
                 label={checkingUpdate ? 'Checking…' : 'Check for update'}
                 testId='settings-update'

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { parseKitCli, parseRecoveryKit, runKitCliAsync } from '../src/lib/vault/v5/kitCli'
+import { parseKitCli, parseRecoveryKit, runKitCliAsync } from '../src/lib/vault/program/kitCli'
 
 function loadKit(path: string) {
   return parseRecoveryKit(JSON.parse(readFileSync(path, 'utf8')))

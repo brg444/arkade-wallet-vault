@@ -68,8 +68,10 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('status deposit address does not match the local pin'))).toMatch(/don.t send/i)
   })
 
-  it('explains a server that cannot enroll the staged program', () => {
-    expect(humanizeVaultError(new Error('enroll needs a v5 vault'))).toMatch(/cannot add recovery yet/i)
+  it('explains a server that cannot enroll the current program', () => {
+    expect(humanizeVaultError(new Error('enroll needs the current Vault Program descriptor'))).toMatch(
+      /doesn.t match|update/i,
+    )
   })
 
   it('explains a rejected Chrome passkey as a different credential store', () => {

@@ -41,7 +41,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'Open this page as http://localhost:3003.'
   }
   if (msg.includes('rp id') || msg.includes('origin does not match') || msg.includes('signing client')) {
-    return 'Wrong site. Open arkade-vault-demo.vercel.app.'
+    return 'Wrong site. Open the Vault app from its approved address.'
   }
   if (msg.includes('passkey sign-in must first be enabled') || msg.includes('has not been enabled')) {
     return 'Enable sign-in on the original device first.'
@@ -69,13 +69,6 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('not enrolled') || msg.includes('enroll first')) {
     return 'Create a passkey first.'
   }
-  if (
-    msg.includes('recovery needs a v5 vault') ||
-    msg.includes('enrolls v5 only') ||
-    msg.includes('enroll needs a v5 vault')
-  ) {
-    return 'This vault service cannot add recovery yet. Skip recovery, or update the service.'
-  }
   if (msg.includes('this setup skipped recovery')) {
     return 'This vault came back with recovery, but setup skipped it. Start over and add a recovery key.'
   }
@@ -85,7 +78,11 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('could not rebuild the map')) {
     return 'Could not rebuild the map. Save it while this app is open.'
   }
-  if (msg.includes('template version') || msg.includes('policy version')) {
+  if (
+    msg.includes('template version') ||
+    msg.includes('policy version') ||
+    msg.includes('current vault program descriptor')
+  ) {
     return 'This app doesn’t match the vault. Update and try again.'
   }
   if (msg.includes('does not match the local pin') || msg.includes('not pinned locally')) {

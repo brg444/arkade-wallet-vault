@@ -9,10 +9,9 @@ import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultPasskey() {
-  const { busy, enroll, error, navigate, status } = useContext(VaultContext)
+  const { busy, enroll, error, navigate } = useContext(VaultContext)
   const [token, setToken] = useState('')
   const onPhone = isCoarsePhone()
-  const requiresInvite = status?.enrollmentMode === 'token'
   return (
     <OnboardLayout
       title='This device'
@@ -23,7 +22,7 @@ export default function VaultPasskey() {
         <>
           <Button
             onClick={() => enroll(token.trim())}
-            disabled={busy || (requiresInvite && token.trim().length < 32)}
+            disabled={busy || token.trim().length < 32}
             label={
               busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting…') : onPhone ? 'Use Face ID' : 'Create this device'
             }
@@ -37,15 +36,13 @@ export default function VaultPasskey() {
           : 'This is this device’s daily spend key. Prefer Face ID on the device that will spend.'}
       </Text>
       <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spend. Not hardware. Not the Recovery Kit.' />
-      {requiresInvite ? (
-        <Input
-          label='Invite'
-          value={token}
-          onChange={setToken}
-          placeholder='Paste your invite'
-          testId='enrollment-token'
-        />
-      ) : null}
+      <Input
+        label='Invite'
+        value={token}
+        onChange={setToken}
+        placeholder='Paste your invite'
+        testId='enrollment-token'
+      />
     </OnboardLayout>
   )
 }

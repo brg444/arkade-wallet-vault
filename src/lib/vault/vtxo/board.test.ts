@@ -9,7 +9,9 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
+  createVaultBoardingStorage,
   nextVaultBoardingAction,
+  vaultBoardingStorageNames,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
   withVaultBoardingSecret,
@@ -59,6 +61,69 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
 }
 
 describe('vault-board-v1', () => {
+  it('isolates SDK wallet, contract, and intent state by vault', async () => {
+    const databases = new Map<string, Set<string>>()
+    class FakeRepository {
+      private readonly rows: Set<string>
+
+      constructor(
+        readonly kind: string,
+        readonly dbName: string,
+      ) {
+        const key = `${kind}:${dbName}`
+        this.rows = databases.get(key) || new Set<string>()
+        databases.set(key, this.rows)
+      }
+
+      add(value: string) {
+        this.rows.add(value)
+      }
+
+      has(value: string) {
+        return this.rows.has(value)
+      }
+
+      clear() {
+        this.rows.clear()
+      }
+    }
+    const factories = {
+      walletRepository: (dbName: string) => new FakeRepository('wallet', dbName),
+      contractRepository: (dbName: string) => new FakeRepository('contract', dbName),
+      intentRepository: (dbName: string) => new FakeRepository('intent', dbName),
+    }
+
+    const vaultA = createVaultBoardingStorage('vault-a', factories)
+    const vaultB = createVaultBoardingStorage('vault-b', factories)
+    vaultA.walletRepository.add('cursor-a')
+    vaultA.contractRepository.add('contract-a')
+
+    expect(vaultB.walletRepository.has('cursor-a')).toBe(false)
+    expect(vaultB.contractRepository.has('contract-a')).toBe(false)
+    expect(vaultA.walletRepository.dbName).toBe(vaultA.contractRepository.dbName)
+    expect(vaultB.walletRepository.dbName).toBe(vaultB.contractRepository.dbName)
+    expect(vaultA.walletRepository.dbName).not.toBe(vaultB.walletRepository.dbName)
+    expect(vaultA.intentRepository.dbName).not.toBe(vaultA.walletRepository.dbName)
+
+    vaultB.walletRepository.add('cursor-b')
+    vaultB.contractRepository.add('contract-b')
+    vaultB.walletRepository.clear()
+    vaultB.contractRepository.clear()
+    const reopenedB = createVaultBoardingStorage('vault-b', factories)
+    expect(reopenedB.walletRepository.has('cursor-b')).toBe(false)
+    expect(reopenedB.contractRepository.has('contract-b')).toBe(false)
+    expect(vaultA.walletRepository.has('cursor-a')).toBe(true)
+    expect(vaultA.contractRepository.has('contract-a')).toBe(true)
+  })
+
+  it('uses explicit versioned storage names and rejects a missing vault id', () => {
+    expect(vaultBoardingStorageNames('vault-a')).toEqual({
+      wallet: 'arkade-vault-v2:vault-a:wallet',
+      intents: 'arkade-vault-v2:vault-a:intents',
+    })
+    expect(() => vaultBoardingStorageNames('')).toThrow(/vault id/)
+  })
+
   it('settles only deposits already sent to the boarding address', () => {
     expect(nextVaultBoardingAction({ confirmed: 0, total: 49_000 })).toBe('wait')
     expect(nextVaultBoardingAction({ confirmed: 49_000, total: 49_000 })).toBe('settle')

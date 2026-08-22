@@ -1,6 +1,6 @@
 import { readBounded } from './bounded'
-import { POLICY_VERSION, VAULT_ID } from './constants'
-import { isKnownTemplate, isStagedTemplate } from './v5/constants'
+import { POLICY_VERSION } from './constants'
+import { STAGED_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus } from './types'
 
@@ -24,15 +24,14 @@ export type PublicAuthorizerStatus = {
   enrollmentExpiresAt?: string
 }
 
-function requestedVaultId(expectedVaultId: string | undefined, supplied: boolean): string {
-  if (!supplied) return VAULT_ID
-  const id = String(expectedVaultId ?? '').trim()
+function requestedVaultId(expectedVaultId: string): string {
+  const id = String(expectedVaultId || '').trim()
   if (!id) throw new Error('vault id required')
   return id
 }
 
-export function vaultStatusPath(expectedVaultId?: string): string {
-  const id = requestedVaultId(expectedVaultId, arguments.length > 0)
+export function vaultStatusPath(expectedVaultId: string): string {
+  const id = requestedVaultId(expectedVaultId)
   return `/v1/status?vault=${encodeURIComponent(id)}`
 }
 
@@ -60,7 +59,7 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   }
   const body = parseJsonObject<PublicAuthorizerStatus>(text, 'status')
   if ('vaultId' in body && body.vaultId) throw new Error('public status must not name a vault')
-  if (!isKnownTemplate(body.templateVersion)) throw new Error('template version is not this release')
+  if (body.templateVersion !== STAGED_TEMPLATE) throw new Error('template version is not this release')
   if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   return body
 }
@@ -74,9 +73,9 @@ export async function pingVaultService(signal?: AbortSignal): Promise<boolean> {
   }
 }
 
-export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId?: string): Promise<VaultStatus> {
+export async function fetchVaultStatus(signal: AbortSignal | undefined, expectedVaultId: string): Promise<VaultStatus> {
   const base = authorizerBase()
-  const id = requestedVaultId(expectedVaultId, arguments.length > 1)
+  const id = requestedVaultId(expectedVaultId)
   const res = await fetch(`${base}${vaultStatusPath(id)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
@@ -91,22 +90,17 @@ export async function fetchVaultStatus(signal?: AbortSignal, expectedVaultId?: s
   return bindStatusToLocalPin(body)
 }
 
-export function parseStatusJson(raw: string, expectedVaultId?: string): VaultStatus {
+export function parseStatusJson(raw: string, expectedVaultId: string): VaultStatus {
   const body = JSON.parse(raw) as VaultStatus
-  return requireStatusIdentity(body, requestedVaultId(expectedVaultId, arguments.length > 1))
+  return requireStatusIdentity(body, requestedVaultId(expectedVaultId))
 }
 
-export function requireStatusIdentity(status: VaultStatus, expectedVaultId?: string): VaultStatus {
-  const expected = requestedVaultId(expectedVaultId, arguments.length > 1)
+export function requireStatusIdentity(status: VaultStatus, expectedVaultId: string): VaultStatus {
+  const expected = requestedVaultId(expectedVaultId)
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
   if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
   if (status.vaultId !== expected) throw new Error('status vault id does not match')
-  if (!isKnownTemplate(status.templateVersion)) throw new Error('template version is not this release')
+  if (status.templateVersion !== STAGED_TEMPLATE) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
-  const leftover =
-    'recoveryKeyPub' in status ? String((status as { recoveryKeyPub?: string }).recoveryKeyPub || '') : ''
-  if (!isStagedTemplate(status.templateVersion) && leftover) {
-    throw new Error('template version is not this release')
-  }
   return status
 }

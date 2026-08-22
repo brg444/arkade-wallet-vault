@@ -27,14 +27,14 @@ export default function VaultPlan() {
         <KeyCard
           icon={<ShieldCheckOutlineIcon />}
           title='Hardware'
-          role={setup.hardwareIsDemo ? 'Demo key' : 'With this device, moves everything'}
+          role='With this device, moves everything'
           fingerprint={setup.hardwarePub}
         />
         {setup.recoveryPub ? (
           <KeyCard
             icon={<SafeIcon />}
             title='Recovery'
-            role={setup.recoveryIsDemo ? 'Demo recovery key' : 'Starts a waiting period you can cancel'}
+            role='Starts a waiting period you can cancel'
             fingerprint={setup.recoveryPub}
           />
         ) : (

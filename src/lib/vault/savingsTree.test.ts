@@ -11,7 +11,7 @@ import {
 const PHONE = '02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9'
 const HARDWARE = '02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13'
 
-describe('savings tree matches Go v4', () => {
+describe('Vault Program Savings tree', () => {
   it('encodes CSV integers the way ScriptBuilder does', () => {
     expect(bytesToHex(encodeScriptInt(6))).toBe('56')
     expect(bytesToHex(encodeScriptInt(144))).toBe('029000')
@@ -46,7 +46,7 @@ describe('savings tree matches Go v4', () => {
     )
   })
 
-  it('never puts the retired generator G on a v4 leaf', () => {
+  it('never puts the forbidden generator G on a spend leaf', () => {
     const retired = '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
     const tree = buildSavingsTree({
       phonePub: PHONE,

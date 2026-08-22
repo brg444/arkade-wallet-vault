@@ -18,8 +18,8 @@ import { planReady, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import { fetchVaultStatus } from '../lib/vault/status'
 import { enrollWithPasskey, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
-import { kitFromFacts, pullMapBackup, pushMapBackup, wrapMapForHardware } from '../lib/vault/v5/kitBackup'
-import { saveLocalKit } from '../lib/vault/v5/kitStore'
+import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/program/kitBackup'
+import { saveLocalKit } from '../lib/vault/program/kitStore'
 import type { VaultScreen } from './context'
 
 interface VaultSessionOptions {
@@ -80,7 +80,7 @@ export function useVaultSession({
         reportError('This vault expects a different hardware key.')
         return
       }
-      if (status?.enrollmentMode === 'token' && token.trim().length < 32) {
+      if (token.trim().length < 32) {
         reportError('Paste your invite.')
         return
       }
@@ -97,23 +97,19 @@ export function useVaultSession({
         setStatus(result.status)
         setAddressPin(loadAddressPin(localStorage, result.status.vaultId))
         sealPlan()
-        if (setup.recoveryPub) {
-          try {
-            const kit = kitFromFacts({
-              enrollment: result.enrollment,
-              status: result.status,
-              hardwarePub: setup.hardwarePub,
-              recoveryPub: setup.recoveryPub || result.status.recoveryPub,
-            })
-            if (kit) {
-              saveLocalKit(kit)
-              const hardwarePub = setup.hardwarePub || result.status.externalOwnerWalletPub || ''
-              const wrap = hardwarePub ? await wrapMapForHardware(kit, hardwarePub) : undefined
-              await pushMapBackup(kit.descriptor.vaultId, kit, wrap)
-            }
-          } catch {
-            // The local Recovery Kit remains usable if remote backup is unavailable.
-          }
+        try {
+          const kit = kitFromFacts({
+            enrollment: result.enrollment,
+            status: result.status,
+            hardwarePub: setup.hardwarePub,
+            recoveryPub: setup.recoveryPub || result.status.recoveryPub,
+          })
+          if (!kit) throw new Error('vault service did not return the committed Recovery Kit facts')
+          saveLocalKit(kit)
+          await pushMapBackup(kit.descriptor.vaultId, kit)
+        } catch {
+          // Enrollment already saved the server-proposed kit locally. Remote
+          // backup remains best effort and never replaces that committed map.
         }
         try {
           setStatus(await enablePasskeyLogin(result.enrollment))

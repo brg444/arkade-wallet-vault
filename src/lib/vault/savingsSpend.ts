@@ -1,25 +1,22 @@
-import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { hex } from '@scure/base'
-import { TEST_NETWORK, Transaction, WIF } from '@scure/btc-signer'
+import { Transaction } from '@scure/btc-signer'
 import { scriptHexFromAddress } from './bitcoin'
 import { zeroBytes } from './ceremony/directauth.js'
 import { DUST_SATS } from './constants'
 import type { EnrollmentSecrets } from './tenantEnrollment'
-import { bytesToHex, hexToBytes } from './hex'
+import { hexToBytes } from './hex'
 import { loadAddressPin, requireStatusMatchesPin } from './pin'
-import { requireSavingsTreeMatchesAddress, type SavingsTreeInput } from './savingsTree'
 import type { VaultStatus } from './types'
-import { isStagedTemplate } from './v5/constants'
-import { familyFromDescriptor } from './v5/descriptor'
-import { loadLocalKit } from './v5/kitStore'
-import { assertLiveKit } from './v5/liveKit'
+import { familyFromDescriptor } from './program/descriptor'
+import { loadLocalKit } from './program/kitStore'
+import { assertLiveKit } from './program/liveKit'
 import { deviceSigningOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 const TX_OPTS = { version: 2, allowUnknownInputs: true, allowUnknownOutputs: true } as const
 
-export type SavingsLeaf = 'admin' | 'phoneCsv'
+export type SavingsLeaf = 'admin'
 
 export interface SavingsCoin {
   txid: string
@@ -28,36 +25,13 @@ export interface SavingsCoin {
   confirmedHeight?: number
 }
 
-export function treeInputFromStatus(status: VaultStatus, phonePub: string): SavingsTreeInput {
-  const hardware = String(status.externalOwnerWalletPub || '').trim()
-  if (!hardware) throw new Error('this vault has no hardware key')
-  return {
-    phonePub,
-    hardwarePub: hardware,
-    phoneCsvBlocks: status.operationalCsvBlocks,
-    hardwareCsvBlocks: status.savingsCsvBlocks,
-    network: status.network,
-  }
-}
-
-export function chooseSavingsLeaf(coin: SavingsCoin, tipHeight: number, phoneCsvBlocks: number): SavingsLeaf {
-  const born = Number(coin.confirmedHeight || 0)
-  if (born > 0 && tipHeight >= born && tipHeight - born + 1 >= phoneCsvBlocks) return 'phoneCsv'
-  return 'admin'
-}
-
-export function chooseSavingsLeafForStatus(status: VaultStatus, coin: SavingsCoin, tipHeight: number): SavingsLeaf {
-  if (isStagedTemplate(status.templateVersion)) return 'admin'
-  return chooseSavingsLeaf(coin, tipHeight, status.operationalCsvBlocks)
-}
-
 export function buildSavingsPsbt(input: {
   status: VaultStatus
   phonePub: string
   destAddress: string
   amountSats: number
   feeSats: number
-  coin: SavingsCoin
+  coins: SavingsCoin[]
   leaf: SavingsLeaf
 }): string {
   const pin = loadAddressPin(localStorage, input.status.vaultId)
@@ -67,42 +41,38 @@ export function buildSavingsPsbt(input: {
   if (!Number.isInteger(input.amountSats) || input.amountSats < DUST_SATS) throw new Error('at least 330 sats')
   if (!Number.isInteger(input.feeSats) || input.feeSats < 0) throw new Error('fee required')
   const total = input.amountSats + input.feeSats
-  if (input.coin.value < total) throw new Error('not enough confirmed savings')
-  const change = input.coin.value - total
+  if (input.coins.length === 0) throw new Error('confirmed Savings coins required')
+  const coins = [...input.coins].sort((a, b) => a.txid.localeCompare(b.txid) || a.vout - b.vout)
+  const seen = new Set<string>()
+  let inputValue = 0
+  for (const coin of coins) {
+    if (!/^[0-9a-f]{64}$/.test(coin.txid) || !Number.isInteger(coin.vout) || coin.vout < 0) {
+      throw new Error('invalid Savings outpoint')
+    }
+    if (!Number.isSafeInteger(coin.value) || coin.value <= 0) throw new Error('invalid Savings coin value')
+    const outpoint = `${coin.txid}:${coin.vout}`
+    if (seen.has(outpoint)) throw new Error('duplicate Savings outpoint')
+    seen.add(outpoint)
+    inputValue += coin.value
+  }
+  if (!Number.isSafeInteger(inputValue) || inputValue < total) throw new Error('not enough confirmed Savings')
+  const change = inputValue - total
   if (change > 0 && change < DUST_SATS) throw new Error('leave 330 sats of change, or send the rest')
 
-  let tree: {
-    address: string
-    script: Uint8Array
-    tapInternalKey?: Uint8Array
-    tapLeafScript?: [unknown, Uint8Array][]
+  const stored = loadLocalKit(input.status.vaultId)
+  if (!stored) throw new Error('Savings needs the Recovery Kit saved on this device')
+  const kit = assertLiveKit(stored, input.status)
+  if (kit.descriptor.savings.address !== pin.savingsAddress) {
+    throw new Error('Savings map does not match the pinned address')
   }
-  let leafScript: Uint8Array
-  if (isStagedTemplate(input.status.templateVersion)) {
-    if (input.leaf !== 'admin') throw new Error('staged Savings always needs this device and hardware')
-    const stored = loadLocalKit(input.status.vaultId)
-    if (!stored) throw new Error('Savings needs the Recovery Kit saved on this device')
-    const kit = assertLiveKit(stored, input.status.vaultId, input.status.templateVersion)
-    if (kit.descriptor.savings.address !== pin.savingsAddress) {
-      throw new Error('Savings map does not match the pinned address')
-    }
-    if (kit.descriptor.keys.phoneRoutineBip340 !== input.phonePub) {
-      throw new Error('Savings map does not match this device key')
-    }
-    if (input.status.externalOwnerWalletPub && kit.descriptor.keys.hardware !== input.status.externalOwnerWalletPub) {
-      throw new Error('Savings map does not match the hardware key')
-    }
-    const savings = familyFromDescriptor(kit.descriptor).savings
-    tree = savings
-    leafScript = savings.admin
-  } else {
-    const legacy = requireSavingsTreeMatchesAddress(
-      treeInputFromStatus(input.status, input.phonePub),
-      pin.savingsAddress,
-    )
-    tree = legacy
-    leafScript = input.leaf === 'phoneCsv' ? legacy.phoneCsv.script : legacy.admin.script
+  if (kit.descriptor.keys.phoneRoutineBip340 !== input.phonePub) {
+    throw new Error('Savings map does not match this device key')
   }
+  if (input.status.externalOwnerWalletPub && kit.descriptor.keys.hardware !== input.status.externalOwnerWalletPub) {
+    throw new Error('Savings map does not match the hardware key')
+  }
+  const tree = familyFromDescriptor(kit.descriptor).savings
+  const leafScript = tree.admin
   const dest = hex.decode(scriptHexFromAddress(input.destAddress, input.status.network))
   const tapLeafScript = tree.tapLeafScript?.find(
     (entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(leafScript),
@@ -110,14 +80,16 @@ export function buildSavingsPsbt(input: {
   if (!tapLeafScript) throw new Error('admin leaf is missing from the tree')
 
   const tx = new Transaction(TX_OPTS)
-  tx.addInput({
-    txid: hex.decode(input.coin.txid),
-    index: input.coin.vout,
-    witnessUtxo: { script: tree.script, amount: BigInt(input.coin.value) },
-    tapInternalKey: tree.tapInternalKey,
-    tapLeafScript: [tapLeafScript],
-    sequence: input.leaf === 'phoneCsv' ? input.status.operationalCsvBlocks : 0xffffffff,
-  })
+  for (const coin of coins) {
+    tx.addInput({
+      txid: hex.decode(coin.txid),
+      index: coin.vout,
+      witnessUtxo: { script: tree.script, amount: BigInt(coin.value) },
+      tapInternalKey: tree.tapInternalKey,
+      tapLeafScript: [tapLeafScript],
+      sequence: 0xffffffff,
+    })
+  }
   tx.addOutput({ script: dest, amount: BigInt(input.amountSats) })
   if (change >= DUST_SATS) tx.addOutput({ script: tree.script, amount: BigInt(change) })
   return hex.encode(tx.toPSBT())
@@ -166,7 +138,7 @@ export async function unlockPhoneRoutine(rec: EnrollmentSecrets, status: VaultSt
 export function signSavingsPsbt(psbtHex: string, priv: Uint8Array): string {
   if (priv.length !== 32) throw new Error('private key must be 32 bytes')
   const tx = Transaction.fromPSBT(hex.decode(psbtHex), TX_OPTS)
-  if (tx.inputsLength !== 1) throw new Error('savings spend must have one input')
+  if (tx.inputsLength < 1) throw new Error('Savings spend needs an input')
   tx.sign(priv)
   return hex.encode(tx.toPSBT())
 }
@@ -199,20 +171,6 @@ export function parseIncomingPsbt(raw: string): string {
   }
 }
 
-export function parseHardwareSecret(raw: string): Uint8Array {
-  const trimmed = raw.trim()
-  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) return hexToBytes(trimmed.toLowerCase())
-  try {
-    return WIF(TEST_NETWORK).decode(trimmed)
-  } catch {
-    throw new Error('paste the hardware private key as 64-char hex or WIF')
-  }
-}
-
-export function hardwarePubFromSecret(priv: Uint8Array): string {
-  return bytesToHex(secp256k1.getPublicKey(priv, true))
-}
-
 export function finalizeSavingsPsbt(psbtHex: string): { txHex: string; txid: string } {
   const tx = Transaction.fromPSBT(hex.decode(psbtHex), TX_OPTS)
   tx.finalize()
@@ -222,18 +180,40 @@ export function finalizeSavingsPsbt(psbtHex: string): { txHex: string; txid: str
 
 export function inspectSavingsPsbt(psbtHex: string) {
   const tx = Transaction.fromPSBT(hex.decode(psbtHex), TX_OPTS)
-  if (tx.inputsLength !== 1) throw new Error('savings spend must have one input')
+  if (tx.inputsLength < 1) throw new Error('Savings spend needs an input')
   if (tx.outputsLength < 1 || tx.outputsLength > 2) throw new Error('unexpected savings outputs')
-  const input = tx.getInput(0)
-  const dest = tx.getOutput(0)
-  if (!input.witnessUtxo || dest.amount === undefined || !dest.script) throw new Error('incomplete savings psbt')
+  const inputs = Array.from({ length: tx.inputsLength }, (_, index) => {
+    const current = tx.getInput(index)
+    if (!current.txid || current.index === undefined || !current.witnessUtxo) {
+      throw new Error('incomplete Savings input')
+    }
+    return {
+      txid: hex.encode(current.txid),
+      vout: current.index,
+      value: Number(current.witnessUtxo.amount),
+      script: hex.encode(current.witnessUtxo.script),
+      tapInternalKey: current.tapInternalKey ? hex.encode(current.tapInternalKey) : '',
+      tapLeafScript: (current.tapLeafScript || []).map(([control, script]) => ({
+        version: control.version,
+        internalKey: hex.encode(control.internalKey),
+        merklePath: control.merklePath.map((node) => hex.encode(node)),
+        script: hex.encode(script),
+      })),
+      sequence: current.sequence,
+      sigs: (current.tapScriptSig || []).length,
+    }
+  })
+  const outputs = Array.from({ length: tx.outputsLength }, (_, index) => {
+    const current = tx.getOutput(index)
+    if (current.amount === undefined || !current.script) throw new Error('incomplete Savings output')
+    return { amount: Number(current.amount), script: hex.encode(current.script) }
+  })
   return {
-    value: Number(input.witnessUtxo.amount),
-    destAmount: Number(dest.amount),
-    destScript: hex.encode(dest.script),
-    sigs: (input.tapScriptSig || []).length,
-    txid: hex.encode(input.txid || new Uint8Array()),
-    vout: input.index ?? 0,
+    inputs,
+    outputs,
+    fee:
+      inputs.reduce((sum, current) => sum + current.value, 0) -
+      outputs.reduce((sum, current) => sum + current.amount, 0),
   }
 }
 
@@ -246,12 +226,17 @@ export function requireSameSavingsIntent(
 ) {
   const before = inspectSavingsPsbt(unsignedHex)
   const after = inspectSavingsPsbt(signedHex)
-  if (before.txid !== after.txid || before.vout !== after.vout) throw new Error('signed PSBT spends a different coin')
-  if (before.destAmount !== after.destAmount || before.destScript !== after.destScript) {
-    throw new Error('signed PSBT changed the destination')
+  const unsignedInputs = before.inputs.map((current) => ({ ...current, sigs: 0 }))
+  const signedInputs = after.inputs.map((current) => ({ ...current, sigs: 0 }))
+  if (JSON.stringify(unsignedInputs) !== JSON.stringify(signedInputs)) {
+    throw new Error('signed PSBT changed a Savings input')
   }
-  if (after.destAmount !== amountSats) throw new Error('signed amount does not match')
+  if (JSON.stringify(before.outputs) !== JSON.stringify(after.outputs) || before.fee !== after.fee || after.fee < 0) {
+    throw new Error('signed PSBT changed an output or fee')
+  }
+  const destination = after.outputs[0]
+  if (destination.amount !== amountSats) throw new Error('signed amount does not match')
   const want = scriptHexFromAddress(destAddress, network)
-  if (after.destScript !== want) throw new Error('signed destination does not match')
-  if (after.sigs < 1) throw new Error('hardware did not sign')
+  if (destination.script !== want) throw new Error('signed destination does not match')
+  if (after.inputs.some((current) => current.sigs < 2)) throw new Error('hardware did not sign every Savings input')
 }

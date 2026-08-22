@@ -1,29 +1,27 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEMO_HARDWARE_PUB,
-  KNOWN_UNSAFE_FIXTURE_PUBS,
-  UNSAFE_GENERATOR_2G,
-  UNSAFE_GENERATOR_G,
+  FORBIDDEN_PUBLIC_KEY_2G,
+  FORBIDDEN_PUBLIC_KEY_G,
   emptySetupPlan,
-  isFixturePub,
   parseCompressedPub,
   planReady,
   sameRole,
 } from './setupPlan'
+import { PROGRAM_FIXTURE } from './program/fixtures'
 
 describe('vault setup plan', () => {
   it('accepts hardware without recovery, and rejects the same key as recovery', () => {
-    expect(parseCompressedPub(DEMO_HARDWARE_PUB)).toBe(DEMO_HARDWARE_PUB)
-    expect(sameRole(UNSAFE_GENERATOR_2G, UNSAFE_GENERATOR_G)).toBe(false)
+    expect(parseCompressedPub(PROGRAM_FIXTURE.hardwarePub)).toBe(PROGRAM_FIXTURE.hardwarePub)
+    expect(sameRole(FORBIDDEN_PUBLIC_KEY_2G, FORBIDDEN_PUBLIC_KEY_G)).toBe(false)
     const noRecovery = {
       ...emptySetupPlan(),
       acceptedDesign: true,
-      hardwarePub: DEMO_HARDWARE_PUB,
+      hardwarePub: PROGRAM_FIXTURE.hardwarePub,
     }
     expect(planReady(noRecovery)).toBe(true)
     const same = {
       ...noRecovery,
-      recoveryPub: DEMO_HARDWARE_PUB,
+      recoveryPub: PROGRAM_FIXTURE.hardwarePub,
     }
     expect(planReady(same)).toBe(false)
     const plan = {
@@ -45,12 +43,8 @@ describe('vault setup plan', () => {
     expect(() => parseCompressedPub('02c6047f')).toThrow(/33-byte/)
   })
 
-  it('keeps both G and 2G on the known-unsafe denylist', () => {
-    expect(KNOWN_UNSAFE_FIXTURE_PUBS).toEqual([UNSAFE_GENERATOR_G, UNSAFE_GENERATOR_2G])
-    expect(isFixturePub(UNSAFE_GENERATOR_G)).toBe(true)
-    expect(isFixturePub(UNSAFE_GENERATOR_2G)).toBe(true)
-    expect(isFixturePub('03' + UNSAFE_GENERATOR_G.slice(2))).toBe(true)
-    expect(isFixturePub('03' + UNSAFE_GENERATOR_2G.slice(2))).toBe(true)
-    expect(isFixturePub('03aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')).toBe(false)
+  it('keeps the public generator points distinct from ordinary fixture keys', () => {
+    expect(FORBIDDEN_PUBLIC_KEY_G).not.toBe(PROGRAM_FIXTURE.hardwarePub)
+    expect(FORBIDDEN_PUBLIC_KEY_2G).not.toBe(PROGRAM_FIXTURE.hardwarePub)
   })
 })

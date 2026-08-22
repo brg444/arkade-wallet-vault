@@ -1,7 +1,5 @@
 import { sha256 } from '@noble/hashes/sha2.js'
-import { VAULT_ID } from './constants'
 import { bytesToHex, encodeUtf8 } from './hex'
-import { TRUSTED_KIOSK_PIN_FIELDS } from './kiosk'
 import type { VaultStatus } from './types'
 
 export const ADDRESS_PIN_STORE = 'arkade-vault-address-pin-v1'
@@ -22,15 +20,14 @@ export type AddressPinFields = {
   savingsAddress: string
 }
 
-function requestedPinId(vaultId: string | undefined, supplied: boolean): string {
-  if (!supplied) return VAULT_ID
-  const id = String(vaultId ?? '').trim()
+function requestedPinId(vaultId: string): string {
+  const id = String(vaultId || '').trim()
   if (!id) throw new Error('vault id required')
   return id
 }
 
-export function addressPinStoreKey(vaultId?: string): string {
-  return `${ADDRESS_PIN_STORE}:${requestedPinId(vaultId, arguments.length > 0)}`
+export function addressPinStoreKey(vaultId: string): string {
+  return `${ADDRESS_PIN_STORE}:${requestedPinId(vaultId)}`
 }
 
 function appendText(parts: Uint8Array[], value: string, name: string) {
@@ -111,23 +108,15 @@ function requireAddressPin(rec: AddressPin, expectedVaultId: string): AddressPin
   return { ...rec, vaultId, pinHash: hash }
 }
 
-export function trustedKioskPin(): AddressPin {
-  return {
-    ...TRUSTED_KIOSK_PIN_FIELDS,
-    pinHash: addressPinHash(TRUSTED_KIOSK_PIN_FIELDS),
-    pinnedAt: '2026-08-17T00:00:00.000Z',
-  }
-}
-
-export function loadStoredAddressPin(storage: Storage = localStorage, vaultId?: string): AddressPin | null {
-  const id = requestedPinId(vaultId, arguments.length > 1)
+export function loadStoredAddressPin(storage: Storage = localStorage, vaultId = ''): AddressPin | null {
+  const id = requestedPinId(vaultId)
   const raw = storage.getItem(addressPinStoreKey(id))
   if (!raw) return null
   return requireAddressPin(JSON.parse(raw) as AddressPin, id)
 }
 
-export function loadAddressPin(storage: Storage = localStorage, vaultId?: string): AddressPin | null {
-  const id = requestedPinId(vaultId, arguments.length > 1)
+export function loadAddressPin(storage: Storage = localStorage, vaultId = ''): AddressPin | null {
+  const id = requestedPinId(vaultId)
   return loadStoredAddressPin(storage, id)
 }
 
@@ -137,8 +126,8 @@ export function saveAddressPin(pin: AddressPin, storage: Storage = localStorage)
   return valid
 }
 
-export function clearAddressPin(storage: Storage = localStorage, vaultId?: string) {
-  const id = requestedPinId(vaultId, arguments.length > 1)
+export function clearAddressPin(storage: Storage = localStorage, vaultId = '') {
+  const id = requestedPinId(vaultId)
   storage.removeItem(addressPinStoreKey(id))
 }
 
