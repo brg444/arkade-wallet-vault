@@ -1,53 +1,55 @@
-# How the Vault Program is built
+# Vault Program
 
-This release enrolls one program, stored as
-`phone-hww-recovery-staged-v6`. That string is a template id, not a
-schema integer and not a release. Schema, program, and HMAC/HKDF
-domains are independent — see
-[arkade-vault-server/docs/versions.md](https://github.com/brg444/arkade-vault-server/blob/main/docs/versions.md).
+The current enrollment template is `phone-hww-recovery-savings-v1`, and its
+descriptor schema is `arkade-vault/savings-v1`; together they identify the
+Savings-only L1 program. Spending uses the separate `vault-policy-v1` VTXO
+program, while database versions, templates, programs, and digest domains
+remain independent contracts.
 
-The program can cancel a pending recovery with the remaining user keys. The
-in-app pending watcher is best-effort local polling, not a watchtower.
+The server and wallet pin the same machine-readable values in
+[`contract-pack.json`](../src/lib/vault/contract-pack.json) and verify the same
+canonical Savings vectors.
 
-Per-transaction, fee, and recursive-change rules are enforced by script
-and by the server. Only the rolling 24-hour allowance is server-only.
+## Spending
 
-The current deployment remains a Mutinynet release candidate. Real-fund use
-begins only after the mainnet release gates close.
+Spending is VTXO-only and has no L1 Daily account. The collaborative
+`vault-policy-v1` leaf requires the phone, VTXO VaultCosigner, and Arkade
+Operator. The Vault service independently verifies the complete Arkade
+transaction and checkpoints and enforces recipient, fee, and rolling 24-hour
+allowance policy before signing.
 
-Recovery is optional. Skip it: this device and hardware. Add a recovery
-key: a third person who can start a wait, not spend everyday coins
-alone.
+An ordinary send begins with a phone-signed, idempotent reservation. The user
+then authorizes the transaction-bound digest. The two ceremonies are separate:
+the first prevents an unauthenticated caller from locking the vault's VTXO,
+while the second approves the exact transaction built from the reservation.
 
-The names are pinned in
-[`src/lib/vault/contract-pack.json`](../src/lib/vault/contract-pack.json).
-The service has the same file.
+The current Mutinynet spend shape is one input, one destination, mandatory dust
+change, P2A, and zero Operator fee. Those are implementation limits, not
+general properties of the Vault Program.
 
-## What each key is for
+## Savings
 
-| Who                  | What they can do                                                           |
-| -------------------- | -------------------------------------------------------------------------- |
-| This device          | Daily spend (with the service), and start recovery as this device          |
-| Hardware             | Savings and full sweep, with this device. Can start recovery as “hardware” |
-| Recovery (optional)  | Start a waiting period. Cannot spend everyday coins alone                  |
-| Vault service        | Cosign daily spend, and cosign start/cancel of recovery                    |
-| Public Arkade signer | The other cosignature on those same steps                                  |
+Savings is the only L1 balance in a fresh vault. Its ordinary admin leaf
+requires the phone and hardware keys. The VaultCosigner has no routine path to
+pay an arbitrary Savings recipient.
 
-Face ID is not a Bitcoin key. It proves you are at this site.
+Moving Savings to Spending pays the exact `vault-board-v1` address. After the
+output confirms, the wallet settles it to the advertised `vault-policy-v1`
+Arkade address. A Savings withdrawal to another Bitcoin address remains an
+external PSBT workflow.
 
-## Daily and Savings
+## Recovery
 
-**Daily.** Spend with Face ID, under a limit. The Bitcoin path is this
-device plus the two services.
+Recovery is optional. The enrolled program can begin a new Pending output for
+the phone, hardware key, or optional recovery key. The current Mutinynet delays
+are 144, 6, and 288 blocks respectively. Those values begin when the Pending
+output confirms; the age of the original Savings output does not satisfy them.
 
-**Savings.** This device and hardware together. No daily path.
+The remaining guardians can claw a Pending output into a Quarantine tree before
+the claimant matures. A matured claimant may recover through the committed
+claim path. The in-app watcher is local best-effort polling, not a watchtower.
 
-Stolen hardware cannot sweep a Savings coin just because that coin is
-old. They have to start a **new** wait. You can cancel that wait and
-send the coin to a hold that leaves them out.
-
-The release pins its recovery waits in the descriptor: hardware 6 blocks, this
-device 144 blocks, and recovery 288 blocks.
-
-The vault app and the service independently build exact scripts from the same
-public description.
+Face ID is a local user-verification ceremony, not a Bitcoin key. Production
+screens never request raw hardware or recovery private keys. They export and
+import PSBTs so an external signer can preserve the custom tapscript data and
+approve the intended leaf.

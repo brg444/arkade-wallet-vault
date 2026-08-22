@@ -1,28 +1,42 @@
-# Security
+# Security boundary
 
-This is a testnet demo. It is not something you should trust with real
-money.
+The current build is a Mutinynet release candidate with open mainnet release
+gates. Real-fund use remains out of scope.
 
-**We do this**
+## Enforced invariants
 
-- A caller cannot hand us their own signer and skip the vault’s rules
-- Daily spend needs Face ID, the real transaction, and the remaining limit
-- This device checks the sighash it is about to approve
-- A request with no vault id cannot spend someone else’s leftover coins
-- New vaults do not put the service’s master key on chain
-- The curve generator is not accepted as hardware
+- The wallet rebuilds the enrolled Savings, boarding, and Spending programs
+  from pinned public facts and refuses mismatched scripts or addresses.
+- A VTXO operation ID is persisted before reservation. The phone authenticates
+  its vault, purpose, destination script, and amount before the service may
+  reserve an outpoint.
+- Transaction authorization is separate from reservation and binds the exact
+  Arkade transaction and checkpoint requests.
+- Savings ordinary spend requires the phone and an external hardware
+  signature. Raw hardware and recovery private keys are not accepted by
+  production routes.
+- The Vault service holds authoritative allowance state and independently
+  validates transactions before adding the VaultCosigner signature.
+- Every fresh wallet is bound to the current template, network, Operator, and
+  canonical descriptor. Older preview and migration formats are rejected.
 
-**We do not claim this**
+## Assumptions and open gates
 
-Real gaps, not oversights. Read each one as “the demo does not protect
-you here.”
+- Browser code controls a wrapped phone secret after successful local user
+  verification. A compromised origin or injected script in that session can
+  attack the browser boundary.
+- The current VaultCosigner is file-backed, not isolated in attested production
+  hardware.
+- Boarding temporarily uses a phone-plus-Operator contract before value reaches
+  `vault-policy-v1`. Vault policy does not govern that intermediate.
+- Browser concurrency depends on Web Locks. Unsupported browsers currently run
+  without an equivalent durable lease.
+- Several arkd and SDK intent-recovery cases remain upstream release gates.
+- The wallet provides a local recovery watcher, not a continuously available
+  watchtower.
+- External hardware support must be qualified against the custom tapscript PSBT
+  before any device is listed for mainnet.
 
-- **Root on the server.** We isolate a process. We do not claim that
-  someone with root cannot reach the service key
-- **A bug in this website.** XSS on this site can steal the device key
-  while you are unlocked. Nothing here prevents that
-- **A watchtower.** Nobody watches the 6-block hardware wait for you. If
-  you are not looking, a recovery someone started can mature
-- **Mainnet.** Not supported and not audited
-
-How to tell us about a problem: [SECURITY.md](../SECURITY.md).
+The full release criteria are tracked in
+[mainnet-v2-baseline.md](mainnet-v2-baseline.md). Report a suspected security
+defect through [the private disclosure process](../SECURITY.md).

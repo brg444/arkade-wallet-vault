@@ -1,5 +1,5 @@
 import { fiatDecimalsFor, FIAT_SYMBOLS } from './fiat'
-import { Fiats, Tx } from './types'
+import { Fiats } from './types'
 import { Decimal } from 'decimal.js'
 
 export const fromSatoshis = (num: number): number => {
@@ -116,14 +116,6 @@ export const prettyNumber = (
     minimumFractionDigits,
     useGrouping,
   }).format(num)
-}
-
-export const isIssuance = (tx: Tx): boolean => {
-  return tx.type === 'sent' && tx.amount === 0 && (tx.assets ?? []).some((a) => a.amount > 0)
-}
-
-export const isBurn = (tx: Tx): boolean => {
-  return tx.type === 'sent' && tx.amount === 0 && (tx.assets ?? []).some((a) => a.amount < 0)
 }
 
 export const toUint8Array = (str: string): Uint8Array => {

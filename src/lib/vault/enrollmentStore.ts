@@ -1,9 +1,9 @@
 import type { EnrollmentSecrets } from './tenantEnrollment'
 
-export const ENROLL_STORE = 'arkade-vault-enroll-secrets-v4'
-export const SELECTED_VAULT_STORE = 'arkade-vault-selected-v1'
-export const ENROLL_STAGE_STORE = 'arkade-vault-enroll-staged-v2'
-export const SESSION_LOCK_STORE = 'arkade-vault-session-lock-v1'
+export const ENROLL_STORE = 'arkade-vault-v2:enrollment'
+export const SELECTED_VAULT_STORE = 'arkade-vault-v2:selected-vault'
+export const ENROLL_STAGE_STORE = 'arkade-vault-v2:enrollment-staged'
+export const SESSION_LOCK_STORE = 'arkade-vault-v2:session-lock'
 
 function requestedEnrollmentId(vaultId: string): string {
   const id = String(vaultId || '').trim()

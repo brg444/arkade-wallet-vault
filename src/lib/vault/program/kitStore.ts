@@ -1,6 +1,6 @@
 import { buildRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
 
-export const LOCAL_KIT_STORE = 'arkade-vault-kit-v3'
+export const LOCAL_KIT_STORE = 'arkade-vault-v2:kit'
 
 export function localKitStoreKey(vaultId: string): string {
   const id = vaultId.trim()

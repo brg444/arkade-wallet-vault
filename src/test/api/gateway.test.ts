@@ -36,16 +36,16 @@ describe('same-origin authorizer gateway', () => {
   it('treats Origin as a CSRF filter, not authentication', () => {
     expect(
       sameOriginAllowed({
-        host: 'arkade-vault-demo.vercel.app',
+        host: 'vault.example.com',
         origin: 'https://evil.example',
         secFetchSite: 'cross-site',
       }),
     ).toBe(false)
-    expect(sameOriginAllowed({ host: 'arkade-vault-demo.vercel.app' })).toBe(true)
+    expect(sameOriginAllowed({ host: 'vault.example.com' })).toBe(true)
     expect(
       sameOriginAllowed({
-        host: 'arkade-vault-demo.vercel.app',
-        origin: 'https://arkade-vault-demo.vercel.app',
+        host: 'vault.example.com',
+        origin: 'https://vault.example.com',
         secFetchSite: 'same-origin',
       }),
     ).toBe(true)
