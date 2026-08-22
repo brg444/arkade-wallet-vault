@@ -79,7 +79,7 @@ export interface VaultContextProps {
   spendingArkAddress: string
   refreshBalance: () => Promise<void>
   reset: () => void
-  reviewSpend: () => void
+  reviewSpend: () => Promise<void>
   openSendScan: () => void
   scanOnSend: boolean
   clearSendScan: () => void
@@ -144,7 +144,7 @@ export const VaultContext = createContext<VaultContextProps>({
   spendingArkAddress: '',
   refreshBalance: async () => {},
   reset: () => {},
-  reviewSpend: () => {},
+  reviewSpend: async () => {},
   openSendScan: () => {},
   scanOnSend: false,
   clearSendScan: () => {},

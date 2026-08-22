@@ -23,7 +23,12 @@ import {
 } from '../lib/vault/savingsSpend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
-import { isVtxoReceiptPendingError, isVtxoSpendInFlightError, sendVaultVtxo } from '../lib/vault/vtxo/spend'
+import {
+  isVtxoReceiptPendingError,
+  isVtxoSpendInFlightError,
+  reserveVaultVtxo,
+  sendVaultVtxo,
+} from '../lib/vault/vtxo/spend'
 import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
 import {
@@ -293,7 +298,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [account, liveNetwork, status?.enrolled, status?.network, vtxoMaxCoin],
   )
 
-  const reviewSpend = useCallback(() => {
+  const reviewSpend = useCallback(async () => {
     setError('')
     if (!status?.enrolled) {
       setError('Unlock this vault before sending.')
@@ -317,60 +322,44 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
       return
     }
-    if (arkDestination && vtxoMaxCoin < spend.amount + DUST_SATS) {
-      setError('An Arkade destination requires one VTXO large enough for the payment and change.')
-      return
-    }
-    const source = account === 'savings' ? savingsSats : vtxoMaxCoin
+    const source = account === 'savings' ? savingsSats : vtxoSpendingSats
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
         return
       }
-      if (spend.amount + spend.fee > dailyRemaining) {
-        setError('Over today’s limit. Wait, or send from Savings.')
-        return
-      }
     }
-    if (spend.amount + spend.fee > source) {
-      if (
-        account !== 'savings' &&
-        arkDestination &&
-        spend.amount + spend.fee <= vtxoSpendingSats &&
-        vtxoMaxCoin < spend.amount + DUST_SATS
-      ) {
-        setError('This first VTXO release spends one VTXO at a time. Choose a smaller amount.')
-        return
-      }
-      setError(
-        account === 'savings'
-          ? 'Not enough confirmed savings.'
-          : arkDestination
-            ? 'Leave 330 sats of change.'
-            : 'Not enough confirmed spending funds.',
-      )
-      return
-    }
-    if (account !== 'savings' && spend.amount + spend.fee + DUST_SATS > source) {
-      setError('Leave 330 sats of change.')
+    const preliminaryTotal = account === 'savings' ? spend.amount + spend.fee : spend.amount
+    if (preliminaryTotal > source) {
+      setError(account === 'savings' ? 'Not enough confirmed savings.' : 'Not enough confirmed spending funds.')
       return
     }
     if (account === 'savings' && spend.amount + spend.fee < source && source - (spend.amount + spend.fee) < DUST_SATS) {
       setError('Leave 330 sats of change, or send the rest.')
       return
     }
+    if (account !== 'savings') {
+      if (!enrollment) {
+        setError('Sign in with the passkey that created this vault.')
+        return
+      }
+      setBusy(true)
+      try {
+        const quote = await reserveVaultVtxo(enrollment, status, spend.address, spend.amount)
+        setSpend((current) =>
+          current.address === spend.address && current.amount === spend.amount
+            ? { ...current, fee: quote.feeSats }
+            : current,
+        )
+      } catch (err) {
+        setError(humanizeVaultError(err))
+        return
+      } finally {
+        setBusy(false)
+      }
+    }
     setScreen('review')
-  }, [
-    account,
-    dailyRemaining,
-    savingsSats,
-    setup.txCapSats,
-    spend,
-    status?.network,
-    status?.enrolled,
-    vtxoSpendingSats,
-    vtxoMaxCoin,
-  ])
+  }, [account, enrollment, savingsSats, setup.txCapSats, spend, status, vtxoSpendingSats])
 
   const finishBroadcast = useCallback(
     async (txid: string, kind: 'onchain' | 'vtxo' = 'onchain') => {
@@ -460,11 +449,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('No spending address yet.')
         return
       }
-      if (
-        spendingArkAddress &&
-        isVaultArkAddress(spend.address, status.network) &&
-        vtxoMaxCoin >= spend.amount + DUST_SATS
-      ) {
+      if (spendingArkAddress && isVaultArkAddress(spend.address, status.network) && vtxoSpendingSats >= spend.amount) {
         if (boardingInProgress) {
           setError('Spending is still boarding Bitcoin. Try again in a moment.')
           return
@@ -539,7 +524,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       initiateAlerts,
       approveSend,
       busy,
-      canSend: vtxoMaxCoin > DUST_SATS + spend.fee,
+      canSend: vtxoSpendingSats >= DUST_SATS,
       completeSavingsHandoff,
       handoffPsbt,
       confirmConditions,

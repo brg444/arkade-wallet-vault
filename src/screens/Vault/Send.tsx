@@ -44,6 +44,7 @@ export default function VaultSend() {
     account,
     amountSats,
     boardingAddress,
+    busy,
     clearSendScan,
     dailyRemaining,
     error,
@@ -125,7 +126,7 @@ export default function VaultSend() {
                 ? movingToSpending
                   ? `To Spending · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
                   : `From Savings · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
-                : `Fee ${prettyAmount(spend.fee)} · up to ${prettyAmount(setup.txCapSats)} per send`}
+                : `Fee confirmed on Review · up to ${prettyAmount(setup.txCapSats)} per send`}
             </Text>
             {fromSavings ? (
               <Text color='neutral-600' tiny>
@@ -144,7 +145,7 @@ export default function VaultSend() {
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={reviewSpend} label='Review' />
+        <Button onClick={reviewSpend} disabled={busy} loading={busy} label={busy ? 'Confirming fee…' : 'Review'} />
       </ButtonsOnBottom>
     </>
   )
