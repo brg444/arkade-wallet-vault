@@ -1,6 +1,6 @@
 import { schnorr } from '@noble/curves/secp256k1.js'
 import { vaultPost } from './api'
-import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth.js'
+import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth'
 import type { EnrollmentSecrets } from './tenantEnrollment'
 import { bytesToHex, hexToBytes } from './hex'
 import {
@@ -106,7 +106,7 @@ export async function beginPasskeySession(
 
 export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultStatus> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
-  let phoneRoutineSecret: Uint8Array | undefined
+  let phoneSecret: Uint8Array | undefined
   try {
     const vaultId = rec.vaultId
     if (!vaultId) throw new Error('vault id required')
@@ -114,7 +114,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     if (!status.enrolled) throw new Error('vault is not enrolled')
     session = await beginPasskeySession('install-envelope', status, rec.credId)
     const kek = await deriveKEK(session.prf)
-    phoneRoutineSecret = new Uint8Array(
+    phoneSecret = new Uint8Array(
       await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
     )
     const bindingResponse = await vaultPost<{ binding: string; bindingDigest: string }>('/v1/passkey/binding', {
@@ -128,14 +128,14 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
       throw new Error('server recovery binding digest mismatch')
     }
     const bindingDirectSig = signDirectP256(session.scalar, digest)
-    const bindingPhoneSig = schnorr.sign(digest, phoneRoutineSecret)
+    const bindingPhoneSig = schnorr.sign(digest, phoneSecret)
     verifyRecoveryBindingSignatures({
       binding: bindingResponse.binding,
       bindingDigestHex: bindingResponse.bindingDigest,
       bindingDirectSigHex: bytesToHex(bindingDirectSig),
       bindingPhoneSigHex: bytesToHex(bindingPhoneSig),
       derivedDirectPub: session.derivedDirectPub,
-      phoneRoutineSecret,
+      phoneSecret,
     })
     await vaultPost('/v1/passkey/install', {
       vaultId,
@@ -157,7 +157,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     }
     return live
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneRoutineSecret)
+    zeroBytes(session?.prf, session?.scalar, phoneSecret)
   }
 }
 
@@ -221,7 +221,7 @@ export async function signInWithPasskey(
   vaultId: string,
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
-  let phoneRoutineSecret: Uint8Array | undefined
+  let phoneSecret: Uint8Array | undefined
   try {
     const id = String(vaultId || '').trim()
     if (!id) throw new Error('vault id required')
@@ -244,7 +244,7 @@ export async function signInWithPasskey(
       throw new Error('selected passkey does not belong to this vault')
     }
     const kek = await deriveKEK(session.prf)
-    phoneRoutineSecret = new Uint8Array(
+    phoneSecret = new Uint8Array(
       await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: hexToBytes(recovered.envelopeNonce) },
         kek,
@@ -257,12 +257,12 @@ export async function signInWithPasskey(
       bindingDirectSigHex: recovered.bindingDirectSig,
       bindingPhoneSigHex: recovered.bindingPhoneSig,
       derivedDirectPub: session.derivedDirectPub,
-      phoneRoutineSecret,
+      phoneSecret,
     })
     assertRecoveryBindingMatchesStatus(verified, status)
     pinEnrolledStatus(status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneRoutineSecret)
+    zeroBytes(session?.prf, session?.scalar, phoneSecret)
   }
 }

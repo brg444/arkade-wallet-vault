@@ -13,7 +13,6 @@ describe('Vault settings account boundaries', () => {
       busy: false,
       liveNetwork: true,
       navigate: vi.fn(),
-      operationalAddress: 'tb1poldoperationaladdress',
       refreshBalance: vi.fn().mockResolvedValue(undefined),
       reset: vi.fn(),
       status: null,

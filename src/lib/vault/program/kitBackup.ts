@@ -1,27 +1,20 @@
 import { vaultGet, vaultPost } from '../api'
-import { requireLowerHex } from '../hex'
 import { beginPasskeySession } from '../signIn'
 import { fetchVaultStatus } from '../status'
-import { xOnly } from '../setupPlan'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
 import { buildVaultProgramDescriptor } from './descriptor'
 import { buildRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
-import { STAGED_TEMPLATE } from './constants'
+import { SAVINGS_TEMPLATE } from './constants'
 
 export const MAP_BACKUP_NAME = 'arkade-vault-map'
-export const MAP_BACKUP_VERSION = 1
+export const MAP_BACKUP_VERSION = 2
 
 export interface MapBackup {
   name: typeof MAP_BACKUP_NAME
   version: typeof MAP_BACKUP_VERSION
   kit: RecoveryKit
   backedUpAt: string
-}
-
-export function evenYCompressed(xonly: string): string {
-  const hex = requireLowerHex(xonly, 'x-only', 32)
-  return `02${hex}`
 }
 
 export function parseMapBackup(raw: unknown): MapBackup {
@@ -46,14 +39,14 @@ export function buildMapBackup(kit: RecoveryKit, now = new Date().toISOString())
 }
 
 export function kitFromFacts(input: {
-  enrollment?: Pick<EnrollmentSecrets, 'phoneRoutineBip340Pub' | 'phoneDirectP256' | 'vaultId'> | null
+  enrollment?: Pick<EnrollmentSecrets, 'phoneBip340Pub' | 'phoneDirectP256' | 'vaultId'> | null
   status?: VaultStatus | null
   hardwarePub?: string
   recoveryPub?: string
 }): RecoveryKit | null {
   const recoveryPub = input.recoveryPub || input.status?.recoveryPub || ''
   const hardwarePub = input.hardwarePub || input.status?.externalOwnerWalletPub || ''
-  const phonePub = input.enrollment?.phoneRoutineBip340Pub || input.status?.phoneRoutineBip340Pub || ''
+  const phonePub = input.enrollment?.phoneBip340Pub || input.status?.phoneBip340Pub || ''
   const phoneDirectP256 = input.enrollment?.phoneDirectP256 || input.status?.phoneDirectP256 || ''
   if (!hardwarePub) return null
 
@@ -70,7 +63,7 @@ export function kitFromFacts(input: {
     signerOrigin &&
     signerVersion &&
     input.status?.network === 'mutinynet' &&
-    liveTemplate === STAGED_TEMPLATE
+    liveTemplate === SAVINGS_TEMPLATE
   ) {
     try {
       const descriptor = buildVaultProgramDescriptor({
@@ -82,22 +75,16 @@ export function kitFromFacts(input: {
         phoneDirectP256,
         vaultCosignerBase: input.status!.vaultCosignerBasePub!,
         arkadeCosignerBase: input.status!.arkadeCosignerBasePub!,
-        routineVault: evenYCompressed(
-          input.status!.tweakedVaultCosignerXOnly || xOnly(input.status!.vaultCosignerBasePub!),
-        ),
-        routineArkade: evenYCompressed(
-          input.status!.tweakedArkadeCosignerXOnly || xOnly(input.status!.arkadeCosignerBasePub!),
-        ),
         arkadeCosigner: {
           origin: signerOrigin,
           version: signerVersion,
         },
         templateVersion: liveTemplate,
       })
-      if (input.status?.operationalAddress && descriptor.daily.address !== input.status.operationalAddress) {
+      if (input.status?.savingsAddress && descriptor.savings.address !== input.status.savingsAddress) {
         throw new Error('rebuilt map does not match this vault')
       }
-      if (input.status?.savingsAddress && descriptor.savings.address !== input.status.savingsAddress) {
+      if (input.status?.savingsScript && descriptor.savings.script !== input.status.savingsScript) {
         throw new Error('rebuilt map does not match this vault')
       }
       return buildRecoveryKit(descriptor)

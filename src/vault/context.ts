@@ -76,8 +76,6 @@ export interface VaultContextProps {
   recoverEntry: 'kit' | 'lost'
   recoverExit: VaultScreen
   networkLabel: string
-  operationalAddress: string
-  onchainSpendingSats: number
   spendingArkAddress: string
   refreshBalance: () => Promise<void>
   reset: () => void
@@ -141,10 +139,8 @@ export const VaultContext = createContext<VaultContextProps>({
   navigate: () => {},
   openRecover: () => {},
   recoverEntry: 'kit',
-  onchainSpendingSats: 0,
   recoverExit: 'keys',
   networkLabel: 'Test network',
-  operationalAddress: '',
   spendingArkAddress: '',
   refreshBalance: async () => {},
   reset: () => {},

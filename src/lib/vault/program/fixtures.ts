@@ -21,18 +21,16 @@ export const FIXTURE_PHONE_DIRECT_P256 = '02c9afa9d845ba75166b5c215767b1d6934e50
 export const PROGRAM_FIXTURE = {
   vaultId: 'aabbccddeeff00112233445566778899',
   network: 'mutinynet' as const,
-  templateVersion: 'phone-hww-recovery-staged-v6' as const,
+  templateVersion: 'phone-hww-recovery-savings-v1' as const,
   phonePub: compressedFromScalar(3),
   hardwarePub: compressedFromScalar(4),
   recoveryPub: compressedFromScalar(5),
   phoneDirectP256: FIXTURE_PHONE_DIRECT_P256,
   vaultCosignerBase: compressedFromScalar(14),
   arkadeCosignerBase: compressedFromScalar(15),
-  routineVault: compressedFromScalar(6),
-  routineArkade: compressedFromScalar(7),
   arkadeCosigner: {
-    origin: 'http://emulator.local',
-    version: 'v5-fixture',
+    origin: 'https://operator.example',
+    version: 'savings-v1-fixture',
   },
 }
 
@@ -44,8 +42,6 @@ export const PROGRAM_FIXTURE_FAMILY = {
   phoneDirectP256: PROGRAM_FIXTURE.phoneDirectP256,
   vaultCosignerBase: PROGRAM_FIXTURE.vaultCosignerBase,
   arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
-  routineVault: PROGRAM_FIXTURE.routineVault,
-  routineArkade: PROGRAM_FIXTURE.routineArkade,
   network: PROGRAM_FIXTURE.network,
   templateVersion: PROGRAM_FIXTURE.templateVersion,
 }

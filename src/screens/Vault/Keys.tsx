@@ -14,15 +14,23 @@ import { VaultContext } from '../../vault/context'
 import { HubGroup, HubRow } from './ui'
 
 export default function VaultKeys() {
-  const { busy, enablePasskeyLogin, hasLocalEnrollment, openRecover, operationalAddress, setup, status } =
-    useContext(VaultContext)
+  const {
+    busy,
+    enablePasskeyLogin,
+    hasLocalEnrollment,
+    openRecover,
+    savingsAddress,
+    setup,
+    spendingArkAddress,
+    status,
+  } = useContext(VaultContext)
   const phoneCovered = Boolean(status?.enrolled)
   const devicesCovered = Boolean(status?.passkeyLoginAvailable)
   const canEnableOther = hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable
   const hardwarePub = status?.externalOwnerWalletPub || setup.hardwarePub
   const recoveryPub = status?.recoveryPub || setup.recoveryPub
   const hasRecovery = Boolean(recoveryPub)
-  const addressCovered = Boolean(operationalAddress)
+  const addressCovered = Boolean(savingsAddress && spendingArkAddress)
   const [service, setService] = useState<'checking' | 'online' | 'down'>(status ? 'online' : 'checking')
 
   useEffect(() => {

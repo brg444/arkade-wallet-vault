@@ -267,14 +267,14 @@ export function SignerRow({
 export function PolicyTimeline({
   txCap,
   dailyLimit,
-  operationalBlocks,
-  savingsBlocks,
+  phoneRecoveryBlocks,
+  hardwareRecoveryBlocks,
   network,
 }: {
   txCap: number
   dailyLimit: number
-  operationalBlocks: number
-  savingsBlocks: number
+  phoneRecoveryBlocks: number
+  hardwareRecoveryBlocks: number
   network?: string
 }) {
   const rows = [
@@ -284,11 +284,11 @@ export function PolicyTimeline({
     },
     {
       title: 'If you lose this device',
-      detail: `Sign in on another device, or start recovery with hardware (${waitLabel(savingsBlocks, network)}).`,
+      detail: `Sign in on another device, or start recovery with hardware (${waitLabel(hardwareRecoveryBlocks, network)}).`,
     },
     {
       title: 'If you lose hardware',
-      detail: `Start recovery from this device (${waitLabel(operationalBlocks, network)}). Cancel if it wasn’t you.`,
+      detail: `Start recovery from this device (${waitLabel(phoneRecoveryBlocks, network)}). Cancel if it wasn’t you.`,
     },
     {
       title: 'Savings',

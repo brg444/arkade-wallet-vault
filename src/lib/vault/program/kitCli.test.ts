@@ -13,12 +13,12 @@ describe('Recovery Kit CLI', () => {
   it('inspects every tree and rebuilds the family from the kit', () => {
     const kit = fixtureKit()
     const out = runKitCli({ name: 'inspect', kit })
-    expect(out).toContain(kit.descriptor.daily.address)
+    expect(out).toContain(kit.descriptor.savings.address)
     expect(out).toContain(kit.descriptor.pending['savings-hardware'].address)
     expect(out).toContain('cannot exit a Normal')
     const family = familyFromDescriptor(kit.descriptor)
-    expect(family.daily.address).toBe(kit.descriptor.daily.address)
-    expect(family.pending['daily-recovery'].address).toBe(kit.descriptor.pending['daily-recovery'].address)
+    expect(family.savings.address).toBe(kit.descriptor.savings.address)
+    expect(family.pending['savings-recovery'].address).toBe(kit.descriptor.pending['savings-recovery'].address)
   })
 
   it('builds an initiate PSBT from CLI flags', () => {
@@ -27,8 +27,6 @@ describe('Recovery Kit CLI', () => {
       [
         'initiate',
         'kit.json',
-        '--kind',
-        'savings',
         '--claimant',
         'hardware',
         '--txid',
@@ -54,8 +52,6 @@ describe('Recovery Kit CLI', () => {
       [
         'clawback',
         'kit.json',
-        '--kind',
-        'savings',
         '--claimant',
         'hardware',
         '--guardian',
@@ -77,17 +73,14 @@ describe('Recovery Kit CLI', () => {
   it('reports remaining CSV from chain heights, not Normal UTXO age', () => {
     const kit = fixtureKit()
     const cmd = parseKitCli(
-      ['status', 'kit.json', '--kind', 'savings', '--claimant', 'hardware', '--tip', '105', '--height', '100'],
+      ['status', 'kit.json', '--claimant', 'hardware', '--tip', '105', '--height', '100'],
       () => kit,
     )
     const out = runKitCli(cmd)
     expect(out).toContain('state claimable')
     expect(out).toContain('remaining 0')
     const early = runKitCli(
-      parseKitCli(
-        ['status', 'kit.json', '--kind', 'savings', '--claimant', 'hardware', '--tip', '104', '--height', '100'],
-        () => kit,
-      ),
+      parseKitCli(['status', 'kit.json', '--claimant', 'hardware', '--tip', '104', '--height', '100'], () => kit),
     )
     expect(early).toContain('state pending')
     expect(early).toContain('remaining 1')
@@ -97,7 +90,7 @@ describe('Recovery Kit CLI', () => {
   it('accepts Esplora-backed status without a local tip', () => {
     const kit = fixtureKit()
     const cmd = parseKitCli(
-      ['status', 'kit.json', '--kind', 'savings', '--claimant', 'hardware', '--esplora', 'https://mutinynet.com/api'],
+      ['status', 'kit.json', '--claimant', 'hardware', '--esplora', 'https://mutinynet.com/api'],
       () => kit,
     )
     expect(cmd).toMatchObject({ name: 'status', esplora: 'https://mutinynet.com/api' })
@@ -111,8 +104,6 @@ describe('Recovery Kit CLI', () => {
         [
           'initiate',
           'kit.json',
-          '--kind',
-          'savings',
           '--claimant',
           'hardware',
           '--txid',
@@ -139,8 +130,6 @@ describe('Recovery Kit CLI', () => {
       [
         'clawback',
         'kit.json',
-        '--kind',
-        'savings',
         '--claimant',
         'hardware',
         '--guardian',

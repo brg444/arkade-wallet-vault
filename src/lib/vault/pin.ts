@@ -2,22 +2,20 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex, encodeUtf8 } from './hex'
 import type { VaultStatus } from './types'
 
-export const ADDRESS_PIN_STORE = 'arkade-vault-address-pin-v1'
+export const ADDRESS_PIN_STORE = 'arkade-vault-savings-pin-v1'
 
 export type AddressPin = {
   vaultId: string
   pinHash: string
-  operationalAddress: string
-  operationalScript: string
   savingsAddress: string
+  savingsScript: string
   pinnedAt: string
 }
 
 export type AddressPinFields = {
   vaultId: string
-  operationalAddress: string
-  operationalScript: string
   savingsAddress: string
+  savingsScript: string
 }
 
 function requestedPinId(vaultId: string): string {
@@ -41,23 +39,14 @@ function appendText(parts: Uint8Array[], value: string, name: string) {
 export function addressPinHash(fields: AddressPinFields): string {
   const vaultId = String(fields.vaultId || '').trim()
   if (!vaultId) throw new Error('vault id required')
-  const operationalAddress = String(fields.operationalAddress || '').trim()
-  const operationalScript = String(fields.operationalScript || '').trim()
   const savingsAddress = String(fields.savingsAddress || '').trim()
-  if (!operationalAddress) throw new Error('operational address required')
-  if (
-    !operationalScript ||
-    operationalScript !== operationalScript.toLowerCase() ||
-    operationalScript.length % 2 !== 0
-  ) {
-    throw new Error('operational script required')
-  }
   if (!savingsAddress) throw new Error('savings address required')
-  const parts: Uint8Array[] = [encodeUtf8('arkade-2fa-vault/address-pin/v1')]
+  const savingsScript = String(fields.savingsScript || '').trim()
+  if (!savingsScript) throw new Error('savings script required')
+  const parts: Uint8Array[] = [encodeUtf8('arkade-vault/savings-pin/v1')]
   appendText(parts, vaultId, 'vaultId')
-  appendText(parts, operationalAddress, 'operationalAddress')
-  appendText(parts, operationalScript, 'operationalScript')
   appendText(parts, savingsAddress, 'savingsAddress')
+  appendText(parts, savingsScript, 'savingsScript')
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
   let offset = 0
   for (const part of parts) {
@@ -73,9 +62,8 @@ export function pinFieldsFromStatus(status: VaultStatus): AddressPinFields {
   if (!vaultId) throw new Error('vault id required')
   return {
     vaultId,
-    operationalAddress: String(status.operationalAddress || '').trim(),
-    operationalScript: String(status.operationalScript || '').trim(),
     savingsAddress: String(status.savingsAddress || '').trim(),
+    savingsScript: String(status.savingsScript || '').trim(),
   }
 }
 
@@ -98,7 +86,7 @@ export function requireStatusMatchesPin(status: VaultStatus, pin: AddressPin): V
 }
 
 function requireAddressPin(rec: AddressPin, expectedVaultId: string): AddressPin {
-  if (!rec?.pinHash || !rec.operationalAddress || !rec.operationalScript || !rec.savingsAddress || !rec.pinnedAt) {
+  if (!rec?.pinHash || !rec.savingsAddress || !rec.savingsScript || !rec.pinnedAt) {
     throw new Error('incomplete address pin')
   }
   const vaultId = String(rec.vaultId || '').trim()

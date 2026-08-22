@@ -20,13 +20,12 @@ function memoryStorage(): Storage {
   }
 }
 
-describe('staged recover flow', () => {
+describe('Savings recovery flow', () => {
   it('starts a hold to the matching Pending and records sign-once dest', () => {
     const family = buildVaultProgramFamily(PROGRAM_FIXTURE_FAMILY)
     const storage = memoryStorage()
     const built = planInitiate({
       family,
-      kind: 'savings',
       claimant: 'hardware',
       coin: COIN,
       feeSats: 500,
@@ -35,14 +34,13 @@ describe('staged recover flow', () => {
     })
     expect(built.destAddress).toBe(family.pending['savings-hardware'].address)
     expect(inspectTransitionPsbt(built.psbtHex).p2aSats).toBe(240)
-    expect(storage.getItem('arkade-vault-v5-replay-v1:vault-a')).toContain(COIN.txid)
+    expect(storage.getItem('arkade-vault-savings-v1-replay-v1:vault-a')).toContain(COIN.txid)
   })
 
   it('clawback excludes the suspected claimant', () => {
     const family = buildVaultProgramFamily(PROGRAM_FIXTURE_FAMILY)
     const built = planClawback({
       family,
-      kind: 'savings',
       claimant: 'hardware',
       coin: COIN,
       feeSats: 500,
@@ -54,7 +52,6 @@ describe('staged recover flow', () => {
     expect(() =>
       planClawback({
         family,
-        kind: 'savings',
         claimant: 'hardware',
         guardian: 'hardware',
         coin: COIN,
@@ -70,10 +67,9 @@ describe('staged recover flow', () => {
     expect(() =>
       planClaim({
         family,
-        kind: 'savings',
         claimant: 'hardware',
         coin: COIN,
-        destAddress: family.daily.address,
+        destAddress: family.quarantine['savings-hardware'].address,
         feeSats: 500,
         network: 'mutinynet',
         tipHeight: 104,

@@ -3,7 +3,7 @@ import { hex } from '@scure/base'
 import { utils as btcUtils } from '@scure/btc-signer'
 import { encodeUtf8 } from '../hex'
 import { TAPROOT_NUMS_XONLY } from '../savingsTree'
-import { CLAIMANTS, type Claimant, type VaultKind, PROGRAM_INTERNAL_TAG, STAGED_TEMPLATE } from './constants'
+import { CLAIMANTS, type Claimant, PROGRAM_INTERNAL_TAG, SAVINGS_TEMPLATE } from './constants'
 
 export function taggedHash(tag: string, ...messages: Uint8Array[]): Uint8Array {
   const tagH = sha256(encodeUtf8(tag))
@@ -33,7 +33,6 @@ function appendText(parts: Uint8Array[], value: string, name: string) {
 
 export function encodeTreeContext(input: {
   vaultId: string
-  kind: VaultKind
   claimant?: Claimant | ''
   templateVersion?: string
 }): Uint8Array {
@@ -41,9 +40,9 @@ export function encodeTreeContext(input: {
   if (claimant && !CLAIMANTS.includes(claimant as Claimant)) throw new Error('unknown claimant')
   const parts: Uint8Array[] = []
   appendText(parts, input.vaultId, 'vaultId')
-  appendText(parts, input.kind, 'kind')
+  appendText(parts, 'savings', 'kind')
   appendText(parts, claimant === '' ? '-' : claimant, 'claimant')
-  appendText(parts, input.templateVersion || STAGED_TEMPLATE, 'templateVersion')
+  appendText(parts, input.templateVersion || SAVINGS_TEMPLATE, 'templateVersion')
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
   let offset = 0
   for (const part of parts) {
@@ -56,7 +55,6 @@ export function encodeTreeContext(input: {
 /** BIP341 TapTweak of the NUMS point with a context hash. Always a valid x-only. */
 export function contextInternalKey(input: {
   vaultId: string
-  kind: VaultKind
   claimant?: Claimant | ''
   templateVersion?: string
 }): Uint8Array {

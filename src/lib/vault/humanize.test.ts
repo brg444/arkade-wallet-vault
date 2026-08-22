@@ -25,11 +25,11 @@ describe('humanizeVaultError', () => {
     expect(isRecoverableVaultBoardingError(new Error('Failed to fetch'))).toBe(false)
   })
 
-  it('does not surface issuance-binding or mutated PhoneRoutine internals', () => {
+  it('does not surface issuance-binding or mutated Phone internals', () => {
     expect(humanizeVaultError(new Error('issuance aa is already bound to a different exact request'))).toMatch(
       /already in progress/i,
     )
-    expect(humanizeVaultError(new Error('Authorized response mutated the PhoneRoutineBIP340 signature'))).toMatch(
+    expect(humanizeVaultError(new Error('Authorized response mutated the PhoneBIP340 signature'))).toMatch(
       /rejected a changed signature/i,
     )
   })

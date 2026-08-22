@@ -4,7 +4,7 @@ import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
 import { unlockLocalEnrollment } from '../lib/vault/signIn'
-import { unlockPhoneRoutine } from '../lib/vault/savingsSpend'
+import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import { signGuardianExitPsbt } from '../lib/vault/program/guardianExit'
 import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/program/kitBackup'
 import { loadLocalKit, saveLocalKit } from '../lib/vault/program/kitStore'
@@ -84,7 +84,7 @@ export function useRecoveryKit({ enrollment, status, hardwarePub, recoveryPub, c
   const signGuardianExitWithDevice = useCallback(
     async (psbtHex: string) => {
       if (!enrollment || !status?.enrolled) throw new Error('Unlock this device on this vault first')
-      const privateKey = await unlockPhoneRoutine(enrollment, status)
+      const privateKey = await unlockPhoneBip340(enrollment, status)
       try {
         return signGuardianExitPsbt(psbtHex, privateKey)
       } finally {

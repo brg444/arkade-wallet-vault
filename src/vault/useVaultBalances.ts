@@ -6,7 +6,7 @@ import { fetchAddressStats, fetchAddressTxs } from '../lib/vault/esplora'
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
-import { unlockPhoneRoutine } from '../lib/vault/savingsSpend'
+import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
@@ -48,7 +48,6 @@ export function useVaultBalances({
   setSpend,
   status,
 }: VaultBalancesOptions) {
-  const [onchainSpendingSats, setOnchainSpendingSats] = useState(0)
   const [vtxoSpendingSats, setVtxoSpendingSats] = useState(0)
   const [vtxoMaxCoin, setVtxoMaxCoin] = useState(0)
   const [boardingBalance, setBoardingBalance] = useState(0)
@@ -65,14 +64,12 @@ export function useVaultBalances({
     async (vaultId?: string) => {
       const id = String(vaultId || status?.vaultId || addressPin?.vaultId || '').trim()
       const pin = id ? loadAddressPin(localStorage, id) : null
-      const operationalAddress = pin?.operationalAddress || ''
       const savingsAddress = pin?.savingsAddress || ''
       try {
         const liveStatus = id && status?.vaultId !== id ? await fetchVaultStatus(undefined, id) : status
         const spendingAddress = liveStatus?.spendingArkAddress || ''
         const boardingAddress = liveStatus?.vtxoBoardingAddress || ''
-        if (!operationalAddress && !savingsAddress && !spendingAddress && !boardingAddress) {
-          setOnchainSpendingSats(0)
+        if (!savingsAddress && !spendingAddress && !boardingAddress) {
           setVtxoSpendingSats(0)
           setVtxoMaxCoin(0)
           setBoardingBalance(0)
@@ -80,12 +77,6 @@ export function useVaultBalances({
           setSavingsSats(0)
           setHistory([])
           return
-        }
-        if (operationalAddress) {
-          const stats = await fetchAddressStats(operationalAddress)
-          setOnchainSpendingSats(Math.max(0, stats.funded - stats.spent))
-        } else {
-          setOnchainSpendingSats(0)
         }
         if (savingsAddress) {
           const stats = await fetchAddressStats(savingsAddress)
@@ -139,7 +130,7 @@ export function useVaultBalances({
     try {
       const settled = await withVaultBoardingLock(status.vaultId, async () => {
         setBoardingInProgress(true)
-        const phoneSecret = await unlockPhoneRoutine(enrollment, status)
+        const phoneSecret = await unlockPhoneBip340(enrollment, status)
         return withVaultBoardingSecret(phoneSecret, (liveSecret) => settleVaultBoarding(liveSecret, status))
       })
       if (!settled.held) {
@@ -220,7 +211,6 @@ export function useVaultBalances({
   return {
     boardingInProgress,
     history,
-    onchainSpendingSats,
     refreshBalance,
     savingsSats,
     vtxoMaxCoin,

@@ -1,12 +1,12 @@
 import { schnorr, secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { verifyDirectP256 } from './ceremony/directauth.js'
+import { verifyDirectP256 } from './ceremony/directauth'
 import { bytesToHex, hexToBytes } from './hex'
 import type { EnrollmentSecrets } from './tenantEnrollment'
 import type { VaultStatus } from './types'
 
 const encoder = new TextEncoder()
-const BINDING_DOMAIN = encoder.encode('arkade-2fa-vault/recovery-binding/v1')
+const BINDING_DOMAIN = encoder.encode('arkade-vault/recovery-binding/v2')
 const PROOF_DOMAIN = encoder.encode('arkade-2fa-vault/passkey-proof/v1')
 const ZERO = Uint8Array.of(0)
 
@@ -46,12 +46,10 @@ export function parseRecoveryBinding(binding: string): Record<string, string | n
     'credentialId',
     'webauthnP256',
     'phoneDirectP256',
-    'phoneRoutineBip340Pub',
+    'phoneBip340Pub',
     'externalOwnerWalletPub',
     'vaultCosignerBasePub',
-    'tweakedVaultCosignerXOnly',
     'arkadeCosignerBasePub',
-    'tweakedArkadeCosignerXOnly',
     'arkadeCosignerOrigin',
     'arkadeCosignerVersion',
     'clientOrigin',
@@ -60,12 +58,6 @@ export function parseRecoveryBinding(binding: string): Record<string, string | n
     'vaultId',
     'templateVersion',
     'policyVersion',
-    'operationalCsvType',
-    'operationalCsvValue',
-    'savingsCsvType',
-    'savingsCsvValue',
-    'operationalAddress',
-    'operationalScript',
     'savingsAddress',
     'savingsScript',
     'recipientDustSats',
@@ -80,7 +72,7 @@ export function parseRecoveryBinding(binding: string): Record<string, string | n
   if (got.length !== expected.length || expected.some((field, i) => got[i] !== field)) {
     throw new Error('recovery binding fields or order')
   }
-  if (value.version !== 1) throw new Error('recovery binding version')
+  if (value.version !== 2) throw new Error('recovery binding version')
   return value
 }
 
@@ -91,12 +83,10 @@ export function assertRecoveryBindingMatchesStatus(
   const value = typeof binding === 'string' ? parseRecoveryBinding(binding) : binding
   const pairs: [string, keyof VaultStatus][] = [
     ['phoneDirectP256', 'phoneDirectP256'],
-    ['phoneRoutineBip340Pub', 'phoneRoutineBip340Pub'],
+    ['phoneBip340Pub', 'phoneBip340Pub'],
     ['externalOwnerWalletPub', 'externalOwnerWalletPub'],
     ['vaultCosignerBasePub', 'vaultCosignerBasePub'],
-    ['tweakedVaultCosignerXOnly', 'tweakedVaultCosignerXOnly'],
     ['arkadeCosignerBasePub', 'arkadeCosignerBasePub'],
-    ['tweakedArkadeCosignerXOnly', 'tweakedArkadeCosignerXOnly'],
     ['arkadeCosignerOrigin', 'arkadeCosignerOrigin'],
     ['arkadeCosignerVersion', 'arkadeCosignerVersion'],
     ['clientOrigin', 'clientOrigin'],
@@ -105,11 +95,8 @@ export function assertRecoveryBindingMatchesStatus(
     ['vaultId', 'vaultId'],
     ['templateVersion', 'templateVersion'],
     ['policyVersion', 'policyVersion'],
-    ['operationalCsvValue', 'operationalCsvBlocks'],
-    ['savingsCsvValue', 'savingsCsvBlocks'],
-    ['operationalAddress', 'operationalAddress'],
-    ['operationalScript', 'operationalScript'],
     ['savingsAddress', 'savingsAddress'],
+    ['savingsScript', 'savingsScript'],
     ['txRecipientCapSats', 'txCap'],
     ['periodAllowanceSats', 'periodAllowance'],
     ['absoluteFeeCapSats', 'absoluteFeeCap'],
@@ -129,7 +116,7 @@ export function verifyRecoveryBindingSignatures(input: {
   bindingDirectSigHex: string
   bindingPhoneSigHex: string
   derivedDirectPub: Uint8Array
-  phoneRoutineSecret: Uint8Array
+  phoneSecret: Uint8Array
 }) {
   const value = parseRecoveryBinding(input.binding)
   const digest = recoveryBindingDigest(input.binding)
@@ -140,12 +127,12 @@ export function verifyRecoveryBindingSignatures(input: {
   if (!verifyDirectP256(input.derivedDirectPub, digest, hexToBytes(input.bindingDirectSigHex))) {
     throw new Error('recovery binding DirectP256 signature invalid')
   }
-  const derivedPhone = secp256k1.getPublicKey(input.phoneRoutineSecret, true)
-  if (bytesToHex(derivedPhone) !== value.phoneRoutineBip340Pub) {
-    throw new Error('recovered PhoneRoutine key does not match enrollment')
+  const derivedPhone = secp256k1.getPublicKey(input.phoneSecret, true)
+  if (bytesToHex(derivedPhone) !== value.phoneBip340Pub) {
+    throw new Error('recovered Phone key does not match enrollment')
   }
   if (!schnorr.verify(hexToBytes(input.bindingPhoneSigHex), digest, derivedPhone.slice(1))) {
-    throw new Error('recovery binding PhoneRoutine signature invalid')
+    throw new Error('recovery binding Phone signature invalid')
   }
   return value
 }
@@ -158,7 +145,7 @@ export function recordFromRecoveryBinding(value: Record<string, string | number>
     credId: String(value.credentialId),
     webauthnP256: String(value.webauthnP256),
     phoneDirectP256: String(value.phoneDirectP256),
-    phoneRoutineBip340Pub: String(value.phoneRoutineBip340Pub),
+    phoneBip340Pub: String(value.phoneBip340Pub),
     nonce: String(value.envelopeNonce),
     ciphertext: String(value.envelopeCiphertext),
   }

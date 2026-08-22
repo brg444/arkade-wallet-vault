@@ -9,7 +9,6 @@ import {
   TRANSITION_SEQUENCE,
   type Claimant,
   type FamilyKey,
-  type VaultKind,
 } from './constants'
 import { emulatorPacketScript } from './packet'
 import { clawbackWitnessBytes, initiateWitnessBytes } from './script'
@@ -25,8 +24,8 @@ export interface VaultProgramCoin {
   value: number
 }
 
-function familyKey(kind: VaultKind, claimant: Claimant): FamilyKey {
-  return `${kind}-${claimant}`
+function familyKey(claimant: Claimant): FamilyKey {
+  return `savings-${claimant}`
 }
 
 function requireCoin(coin: VaultProgramCoin) {
@@ -66,15 +65,14 @@ function transitionDestSats(value: number, feeSats: number) {
 
 export function buildInitiatePsbt(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   coin: VaultProgramCoin
   feeSats: number
 }): { psbtHex: string; destAddress: string; authScript: Uint8Array; destSats: number } {
   const coin = requireCoin(input.coin)
   const feeSats = requireFee(input.feeSats)
-  const key = familyKey(input.kind, input.claimant)
-  const source = input.kind === 'daily' ? input.family.daily : input.family.savings
+  const key = familyKey(input.claimant)
+  const source = input.family.savings
   const destTree = input.family.pending[key]
   const authScript = input.family.initiateAuth[key]
   const destSats = transitionDestSats(coin.value, feeSats)
@@ -97,7 +95,6 @@ export function buildInitiatePsbt(input: {
 
 export function buildClawbackPsbt(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   guardian: Claimant
   coin: VaultProgramCoin
@@ -108,7 +105,7 @@ export function buildClawbackPsbt(input: {
   const guardians = pendingGuardians(input.claimant)
   const guardianIndex = guardians.indexOf(input.guardian)
   if (guardianIndex < 0) throw new Error('guardian cannot claw back this pending output')
-  const key = familyKey(input.kind, input.claimant)
+  const key = familyKey(input.claimant)
   const source = input.family.pending[key]
   const destTree = input.family.quarantine[key]
   const authScript = input.family.clawbackAuth[key]
@@ -129,7 +126,6 @@ export function buildClawbackPsbt(input: {
 
 export function buildGuardianExitPsbt(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   coin: VaultProgramCoin
   destAddress: string
@@ -140,7 +136,7 @@ export function buildGuardianExitPsbt(input: {
   const feeSats = requireFee(input.feeSats)
   const destSats = coin.value - feeSats
   if (destSats < DUST_SATS) throw new Error('cancel dest is below dust')
-  const key = familyKey(input.kind, input.claimant)
+  const key = familyKey(input.claimant)
   const source = input.family.pending[key]
   if (!source.guardianExit) throw new Error('this vault cannot cancel pending recovery without the services')
   const dest = hex.decode(scriptHexFromAddress(input.destAddress, input.network))
@@ -160,7 +156,6 @@ export function buildGuardianExitPsbt(input: {
 
 export function buildClaimPsbt(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   coin: VaultProgramCoin
   destAddress: string
@@ -171,7 +166,7 @@ export function buildClaimPsbt(input: {
   const feeSats = requireFee(input.feeSats)
   const destSats = coin.value - feeSats
   if (destSats < DUST_SATS) throw new Error('claim dest is below dust')
-  const key = familyKey(input.kind, input.claimant)
+  const key = familyKey(input.claimant)
   const source = input.family.pending[key]
   const dest = hex.decode(scriptHexFromAddress(input.destAddress, input.network))
   const leaf = tapLeafForScript(source.tapLeafScript, source.claim)

@@ -5,6 +5,7 @@ import FingerprintIcon from '../../../icons/Fingerprint'
 import SafeIcon from '../../../icons/Safe'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import { prettyAmount } from '../../../lib/format'
+import { PROGRAM_CSV } from '../../../lib/vault/program/constants'
 import { VaultContext } from '../../../vault/context'
 import { KeyCard, PolicyTimeline, Section } from '../ui'
 import { OnboardLayout } from './Layout'
@@ -45,8 +46,8 @@ export default function VaultPlan() {
       <PolicyTimeline
         txCap={setup.txCapSats}
         dailyLimit={setup.dailyLimitSats}
-        operationalBlocks={setup.operationalCsvBlocks}
-        savingsBlocks={setup.savingsCsvBlocks}
+        phoneRecoveryBlocks={PROGRAM_CSV.phone}
+        hardwareRecoveryBlocks={PROGRAM_CSV.hardware}
         network={liveNetwork ? 'mutinynet' : undefined}
       />
     </OnboardLayout>

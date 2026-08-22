@@ -6,30 +6,23 @@ export interface VaultStatus {
   vaultId: string
   templateVersion: string
   policyVersion: string
-  operationalCsvBlocks: number
-  savingsCsvBlocks: number
   externalOwnerWalletPub?: string
   vaultCosignerBasePub?: string
   arkadeCosignerBasePub?: string
   arkadeCosignerOrigin?: string
   arkadeCosignerVersion?: string
-  operationalAddress: string
-  operationalScript?: string
   savingsAddress: string
-  savingsExcludesRoutineCosigners: boolean
+  savingsScript: string
   periodAllowance: number
   periodSpent: number
   periodRemaining: number
   txCap: number
   absoluteFeeCap: number
   feerateCapSatVb: number
-  phoneRoutineBip340Pub?: string
+  phoneBip340Pub?: string
   phoneDirectP256?: string
-  tweakedVaultCosignerXOnly?: string
-  tweakedArkadeCosignerXOnly?: string
   enrollmentMode?: string
   passkeyLoginAvailable?: boolean
-  savingsScript?: string
   recoveryPub?: string
   recoveryKeyPub?: string
   warnings?: string[]
@@ -38,8 +31,6 @@ export interface VaultStatus {
   vtxoExitDelayUnit?: string
   spendingArkAddress?: string
   spendingArkScript?: string
-  spendingOnchainAddress?: string
-  spendingOnchainScript?: string
   vtxoDelegatePub?: string
   vtxoBoardingActive?: boolean
   vtxoBoardingProgram?: string

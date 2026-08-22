@@ -1,5 +1,5 @@
 import { loadSessionView } from './chain'
-import { CLAIMANTS, VAULT_KINDS, type Claimant, type VaultKind } from './constants'
+import { CLAIMANTS, type Claimant } from './constants'
 import { deriveSession } from './session'
 import { familyFromDescriptor } from './descriptor'
 import { inspectRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
@@ -18,7 +18,6 @@ export type KitCliCommand =
   | {
       name: 'initiate'
       kit: RecoveryKit
-      kind: VaultKind
       claimant: Claimant
       txid: string
       vout: number
@@ -28,7 +27,6 @@ export type KitCliCommand =
   | {
       name: 'clawback'
       kit: RecoveryKit
-      kind: VaultKind
       claimant: Claimant
       guardian: Claimant
       txid: string
@@ -39,7 +37,6 @@ export type KitCliCommand =
   | {
       name: 'claim'
       kit: RecoveryKit
-      kind: VaultKind
       claimant: Claimant
       dest: string
       txid: string
@@ -52,7 +49,6 @@ export type KitCliCommand =
   | {
       name: 'status'
       kit: RecoveryKit
-      kind: VaultKind
       claimant: Claimant
       tip?: number
       height?: number
@@ -75,12 +71,6 @@ function requireFlag(args: string[], name: string): string {
   const value = flag(args, name)
   if (!value) throw new Error(`--${name} required`)
   return value
-}
-
-function requireKind(args: string[]): VaultKind {
-  const value = requireFlag(args, 'kind')
-  if (!(VAULT_KINDS as readonly string[]).includes(value)) throw new Error('kind must be daily or savings')
-  return value as VaultKind
 }
 
 function requireClaimant(args: string[], name = 'claimant'): Claimant {
@@ -120,7 +110,6 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
     return {
       name: 'status',
       kit,
-      kind: requireKind(rest),
       claimant: requireClaimant(rest),
       tip: flag(rest, 'tip') ? requireInt(rest, 'tip') : undefined,
       height: flag(rest, 'height') ? requireInt(rest, 'height') : undefined,
@@ -140,13 +129,12 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
     fee: requireInt(rest, 'fee'),
   }
   if (name === 'initiate') {
-    return { name: 'initiate', kit, kind: requireKind(rest), claimant: requireClaimant(rest), ...coin }
+    return { name: 'initiate', kit, claimant: requireClaimant(rest), ...coin }
   }
   if (name === 'clawback') {
     return {
       name: 'clawback',
       kit,
-      kind: requireKind(rest),
       claimant: requireClaimant(rest),
       guardian: requireClaimant(rest, 'guardian'),
       ...coin,
@@ -156,7 +144,6 @@ export function parseKitCli(argv: string[], loadKit: (path: string) => RecoveryK
     return {
       name: 'claim',
       kit,
-      kind: requireKind(rest),
       claimant: requireClaimant(rest),
       dest: requireFlag(rest, 'dest'),
       ...coin,
@@ -200,18 +187,14 @@ export function runKitCli(cmd: KitCliCommand): string {
   const family = familyFromDescriptor(cmd.kit.descriptor)
   const coin = { txid: cmd.txid, vout: cmd.vout, value: cmd.value }
   if (cmd.name === 'initiate') {
-    selectRoute({ role: 'normal', kind: cmd.kind }, { type: 'initiate', claimant: cmd.claimant })
-    const built = buildInitiatePsbt({ family, kind: cmd.kind, claimant: cmd.claimant, coin, feeSats: cmd.fee })
+    selectRoute({ role: 'normal' }, { type: 'initiate', claimant: cmd.claimant })
+    const built = buildInitiatePsbt({ family, claimant: cmd.claimant, coin, feeSats: cmd.fee })
     return `${built.destAddress}\n${built.psbtHex}`
   }
   if (cmd.name === 'clawback') {
-    selectRoute(
-      { role: 'pending', kind: cmd.kind, claimant: cmd.claimant },
-      { type: 'clawback', guardian: cmd.guardian },
-    )
+    selectRoute({ role: 'pending', claimant: cmd.claimant }, { type: 'clawback', guardian: cmd.guardian })
     const built = buildClawbackPsbt({
       family,
-      kind: cmd.kind,
       claimant: cmd.claimant,
       guardian: cmd.guardian,
       coin,
@@ -219,10 +202,9 @@ export function runKitCli(cmd: KitCliCommand): string {
     })
     return `${built.destAddress}\n${built.psbtHex}`
   }
-  selectRoute({ role: 'pending', kind: cmd.kind, claimant: cmd.claimant }, { type: 'claim' })
+  selectRoute({ role: 'pending', claimant: cmd.claimant }, { type: 'claim' })
   const built = buildClaimPsbt({
     family,
-    kind: cmd.kind,
     claimant: cmd.claimant,
     coin,
     destAddress: cmd.dest,
@@ -233,7 +215,7 @@ export function runKitCli(cmd: KitCliCommand): string {
 }
 
 function formatStatus(cmd: Extract<KitCliCommand, { name: 'status' }>, view?: Parameters<typeof deriveSession>[1]) {
-  const key = `${cmd.kind}-${cmd.claimant}` as const
+  const key = `savings-${cmd.claimant}` as const
   const pending = cmd.kit.descriptor.pending[key]
   const snapshot = deriveSession(
     pending.delay,
@@ -260,7 +242,7 @@ function formatStatus(cmd: Extract<KitCliCommand, { name: 'status' }>, view?: Pa
 
 export async function runKitCliAsync(cmd: KitCliCommand): Promise<string> {
   if (cmd.name === 'status' && cmd.esplora) {
-    const key = `${cmd.kind}-${cmd.claimant}` as const
+    const key = `savings-${cmd.claimant}` as const
     const pending = cmd.kit.descriptor.pending[key]
     const quarantine = cmd.kit.descriptor.quarantine[key]
     const view = await loadSessionView({

@@ -1,6 +1,8 @@
 import { ArkAddress, CSVMultisigTapscript, SingleKey } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
+import { POLICY_VERSION } from '../constants'
+import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
 import {
@@ -55,20 +57,17 @@ function status(): VaultStatus {
     clientOrigin: 'https://vault.test',
     rpId: 'vault.test',
     vaultId: 'vault-a',
-    templateVersion: 'phone-hww-recovery-staged-v6',
-    policyVersion: 'operational-vault-v1',
-    operationalCsvBlocks: 12,
-    savingsCsvBlocks: 144,
-    operationalAddress: '',
+    templateVersion: SAVINGS_TEMPLATE,
+    policyVersion: POLICY_VERSION,
     savingsAddress: '',
-    savingsExcludesRoutineCosigners: true,
+    savingsScript: '',
     periodAllowance: 100_000,
     periodSpent: 0,
     periodRemaining: 100_000,
     txCap: 50_000,
     absoluteFeeCap: 1_500,
     feerateCapSatVb: 10,
-    phoneRoutineBip340Pub: compressed(golden.fixtures.userPub),
+    phoneBip340Pub: compressed(golden.fixtures.userPub),
     phoneDirectP256: compressed(golden.fixtures.exitDevicePub),
     externalOwnerWalletPub: compressed(golden.fixtures.exitHardwarePub),
     vtxoVaultCosignerPub: compressed(golden.fixtures.vtxoVaultCosignerPub),

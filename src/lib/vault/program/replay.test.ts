@@ -11,7 +11,7 @@ const coin = { txid: '11'.repeat(32), vout: 0, value: 50_000 }
 describe('sign-once replay oracle', () => {
   it('signs the first dest, re-signs a fee bump, refuses a second dest', () => {
     const family = buildVaultProgramFamily(PROGRAM_FIXTURE_FAMILY)
-    const first = buildInitiatePsbt({ family, kind: 'savings', claimant: 'hardware', coin, feeSats: 500 })
+    const first = buildInitiatePsbt({ family, claimant: 'hardware', coin, feeSats: 500 })
     const view = inspectTransitionPsbt(first.psbtHex)
     const store = memoryReplayStore()
     const req = {
@@ -54,7 +54,7 @@ describe('sign-once replay oracle', () => {
 
   it('bumps fee without changing dest or input', () => {
     const family = buildVaultProgramFamily(PROGRAM_FIXTURE_FAMILY)
-    const first = buildInitiatePsbt({ family, kind: 'savings', claimant: 'hardware', coin, feeSats: 500 })
+    const first = buildInitiatePsbt({ family, claimant: 'hardware', coin, feeSats: 500 })
     const bumped = bumpTransitionFee(first.psbtHex, 800)
     const a = inspectTransitionPsbt(first.psbtHex)
     const b = inspectTransitionPsbt(bumped)
@@ -67,7 +67,7 @@ describe('sign-once replay oracle', () => {
 
   it('lets a fee race re-sign while dest stays pinned', () => {
     const family = buildVaultProgramFamily(PROGRAM_FIXTURE_FAMILY)
-    const first = buildInitiatePsbt({ family, kind: 'savings', claimant: 'hardware', coin, feeSats: 500 })
+    const first = buildInitiatePsbt({ family, claimant: 'hardware', coin, feeSats: 500 })
     const mid = bumpTransitionFee(first.psbtHex, 900)
     const win = bumpTransitionFee(mid, 1400)
     const store = memoryReplayStore()

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VaultStatus } from '../types'
-import { STAGED_TEMPLATE } from './constants'
+import { SAVINGS_TEMPLATE } from './constants'
 import { buildVaultProgramDescriptor } from './descriptor'
 import { PROGRAM_FIXTURE } from './fixtures'
 import { buildRecoveryKit } from './kit'
@@ -16,18 +16,16 @@ function statusForProgram(): VaultStatus {
     vaultId: descriptor.vaultId,
     templateVersion: descriptor.templateVersion,
     policyVersion: descriptor.policyVersion,
-    operationalCsvBlocks: descriptor.csv.phone,
-    savingsCsvBlocks: descriptor.csv.hardware,
-    operationalAddress: descriptor.daily.address,
     savingsAddress: descriptor.savings.address,
-    savingsExcludesRoutineCosigners: true,
+    savingsScript: descriptor.savings.script,
     periodAllowance: descriptor.policy.periodAllowanceSats,
     periodSpent: 0,
     periodRemaining: descriptor.policy.periodAllowanceSats,
     txCap: descriptor.policy.recipientCapSats,
     absoluteFeeCap: descriptor.policy.absoluteFeeCapSats,
     feerateCapSatVb: descriptor.policy.feerateCapSatVb,
-    phoneRoutineBip340Pub: descriptor.keys.phoneRoutineBip340,
+    phoneBip340Pub: descriptor.keys.phoneBip340,
+    phoneDirectP256: descriptor.keys.phoneDirectP256,
     externalOwnerWalletPub: descriptor.keys.hardware,
     recoveryPub: descriptor.keys.recovery,
     vaultCosignerBasePub: descriptor.keys.vaultCosignerBase,
@@ -37,26 +35,26 @@ function statusForProgram(): VaultStatus {
   }
 }
 
-describe('live kit and watcher policy', () => {
-  it('starts only for the current program', () => {
-    expect(watcherEnabledForTemplate(STAGED_TEMPLATE)).toBe(true)
-    expect(watcherEnabledForTemplate('phone-hww-recovery-staged-v5')).toBe(false)
+describe('live Savings kit policy', () => {
+  it('enables the watcher only for this release', () => {
+    expect(watcherEnabledForTemplate(SAVINGS_TEMPLATE)).toBe(true)
+    expect(watcherEnabledForTemplate('phone-hww-recovery-staged-v6')).toBe(false)
     expect(watcherEnabledForTemplate('')).toBe(false)
   })
 
-  it('binds the kit to the complete live identity', () => {
+  it('binds selection to the complete live Savings identity', () => {
     const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
     const status = statusForProgram()
     expect(kitMatchesLiveVault(kit, status)).toBe(true)
     expect(selectLiveKit({ status, stored: kit })).toBe(kit)
     expect(kitMatchesLiveVault(kit, { ...status, vaultId: 'another-vault' })).toBe(false)
     expect(kitMatchesLiveVault(kit, { ...status, savingsAddress: 'tb1pstale' })).toBe(false)
-    expect(kitMatchesLiveVault(kit, { ...status, arkadeCosignerVersion: 'stale' })).toBe(false)
+    expect(kitMatchesLiveVault(kit, { ...status, savingsScript: '5120' + '00'.repeat(32) })).toBe(false)
+    expect(kitMatchesLiveVault(kit, { ...status, arkadeCosignerVersion: 'preview' })).toBe(false)
   })
 
-  it('does not let a pre-enrollment kit drive recovery', () => {
+  it('does not let pre-enrollment state drive recovery', () => {
     const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
-    const status = { ...statusForProgram(), enrolled: false }
-    expect(selectLiveKit({ status, stored: kit })).toBeNull()
+    expect(selectLiveKit({ status: { ...statusForProgram(), enrolled: false }, stored: kit })).toBeNull()
   })
 })

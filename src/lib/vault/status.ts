@@ -1,6 +1,6 @@
 import { readBounded } from './bounded'
 import { POLICY_VERSION } from './constants'
-import { STAGED_TEMPLATE } from './program/constants'
+import { SAVINGS_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus } from './types'
 
@@ -18,8 +18,6 @@ export type PublicAuthorizerStatus = {
   rpId: string
   templateVersion: string
   policyVersion: string
-  operationalCsvBlocks: number
-  savingsCsvBlocks: number
   enrollmentMode: string
   enrollmentExpiresAt?: string
 }
@@ -59,7 +57,7 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   }
   const body = parseJsonObject<PublicAuthorizerStatus>(text, 'status')
   if ('vaultId' in body && body.vaultId) throw new Error('public status must not name a vault')
-  if (body.templateVersion !== STAGED_TEMPLATE) throw new Error('template version is not this release')
+  if (body.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   return body
 }
@@ -100,7 +98,10 @@ export function requireStatusIdentity(status: VaultStatus, expectedVaultId: stri
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
   if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
   if (status.vaultId !== expected) throw new Error('status vault id does not match')
-  if (status.templateVersion !== STAGED_TEMPLATE) throw new Error('template version is not this release')
+  if (status.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
+  if (status.enrolled && (!String(status.savingsAddress || '').trim() || !String(status.savingsScript || '').trim())) {
+    throw new Error('enrolled status is missing the Savings descriptor')
+  }
   return status
 }
