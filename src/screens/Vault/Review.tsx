@@ -8,12 +8,11 @@ import Header from './Header'
 import Padded from '../../components/Padded'
 import { prettyAmount } from '../../lib/format'
 import { isCoarsePhone } from '../../lib/vault/webauthn'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import { Detail, SignerRow } from './ui'
 
 export default function VaultReview() {
-  const { account, approvePreviewSend, boardingAddress, busy, error, navigate, preview, spend } =
-    useContext(VaultContext)
+  const { account, approveSend, boardingAddress, busy, error, navigate, spend } = useContext(VaultContext)
   const onPhone = isCoarsePhone()
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
@@ -31,12 +30,7 @@ export default function VaultReview() {
             <Detail label='To' value={movingToSpending ? 'Spending' : spend.address} mono={!movingToSpending} />
             <Detail label='Fee' value={prettyAmount(spend.fee)} />
             <Detail label='Total' value={prettyAmount(spend.amount + spend.fee)} />
-            <SignerRow
-              title='You'
-              detail={preview ? 'No passkey in preview' : onPhone ? 'Face ID' : 'Your passkey'}
-              state='you'
-              mark='1'
-            />
+            <SignerRow title='You' detail={onPhone ? 'Face ID' : 'Your passkey'} state='you' mark='1' />
             {fromSavings ? (
               <SignerRow title='Hardware' detail='Signs next, on the other device' state='you' mark='2' />
             ) : (
@@ -51,7 +45,7 @@ export default function VaultReview() {
       </Content>
       <ButtonsOnBottom>
         <Button
-          onClick={approvePreviewSend}
+          onClick={approveSend}
           disabled={busy}
           loading={busy}
           label={
@@ -61,9 +55,7 @@ export default function VaultReview() {
                 : 'Waiting for passkey…'
               : fromSavings
                 ? 'Sign on this device'
-                : preview
-                  ? 'Send'
-                  : 'Approve'
+                : 'Approve'
           }
         />
       </ButtonsOnBottom>

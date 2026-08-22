@@ -9,7 +9,7 @@ import Padded from '../../../components/Padded'
 import Text from '../../../components/Text'
 import FingerprintIcon from '../../../icons/Fingerprint'
 import { isCoarsePhone } from '../../../lib/vault/webauthn'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { KeyCard } from '../ui'
 
 export default function VaultSignIn() {

@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { VaultContext, type VaultAccount, type VaultContextProps } from '../../providers/vault'
+import { VaultContext, type VaultAccount, type VaultContextProps } from '../../vault/context'
 import VaultReceive from './Receive'
 
 vi.mock('../../components/QrCode', () => ({
@@ -12,7 +12,6 @@ function renderReceive(account: VaultAccount) {
   const value = {
     account,
     boardingAddress: 'tb1qboarding',
-    faucetUrl: 'https://faucet.test/',
     liveNetwork: true,
     navigate: () => {},
     savingsAddress: 'tb1qsavings',

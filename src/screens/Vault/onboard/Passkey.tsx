@@ -4,14 +4,15 @@ import Input from '../../../components/Input'
 import Text from '../../../components/Text'
 import FingerprintIcon from '../../../icons/Fingerprint'
 import { isCoarsePhone } from '../../../lib/vault/webauthn'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultPasskey() {
-  const { busy, enterWithoutPasskey, enroll, error, liveNetwork, navigate } = useContext(VaultContext)
+  const { busy, enroll, error, navigate, status } = useContext(VaultContext)
   const [token, setToken] = useState('')
   const onPhone = isCoarsePhone()
+  const requiresInvite = status?.enrollmentMode === 'token'
   return (
     <OnboardLayout
       title='This device'
@@ -22,12 +23,11 @@ export default function VaultPasskey() {
         <>
           <Button
             onClick={() => enroll(token.trim())}
-            disabled={busy || (liveNetwork && token.trim().length < 32)}
+            disabled={busy || (requiresInvite && token.trim().length < 32)}
             label={
               busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting…') : onPhone ? 'Use Face ID' : 'Create this device'
             }
           />
-          {liveNetwork ? null : <Button onClick={enterWithoutPasskey} disabled={busy} label='Skip for now' secondary />}
         </>
       }
     >
@@ -37,7 +37,7 @@ export default function VaultPasskey() {
           : 'This is this device’s daily spend key. Prefer Face ID on the device that will spend.'}
       </Text>
       <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spend. Not hardware. Not the Recovery Kit.' />
-      {liveNetwork ? (
+      {requiresInvite ? (
         <Input
           label='Invite'
           value={token}
@@ -45,11 +45,7 @@ export default function VaultPasskey() {
           placeholder='Paste your invite'
           testId='enrollment-token'
         />
-      ) : (
-        <Text color='neutral-600' tiny wrap>
-          You can skip this and fund later.
-        </Text>
-      )}
+      ) : null}
     </OnboardLayout>
   )
 }

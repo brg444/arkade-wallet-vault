@@ -4,7 +4,7 @@ import Text from '../../../components/Text'
 import { prettyAmount } from '../../../lib/format'
 import { waitLabel } from '../../../lib/vault/policy'
 import { DAILY_LIMIT_CHOICES, DELAY_PROFILES, PAYMENT_CAP_CHOICES } from '../../../lib/vault/setupPlan'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { PolicyTimeline, Section } from '../ui'
 import { ChoiceCard, OnboardLayout } from './Layout'
 

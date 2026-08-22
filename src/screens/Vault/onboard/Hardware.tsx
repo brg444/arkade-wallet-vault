@@ -3,14 +3,13 @@ import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
 import { pasteFromClipboard } from '../../../lib/clipboard'
-import { DEMO_HARDWARE_PUB } from '../../../lib/vault/setupPlan'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultHardware() {
-  const { allowDemoKeys, applyHardware, error, navigate, setup, status } = useContext(VaultContext)
+  const { applyHardware, error, navigate, setup, status } = useContext(VaultContext)
   const required = status?.externalOwnerWalletPub || ''
   const [value, setValue] = useState(required || (setup.hardwareIsDemo ? '' : setup.hardwarePub))
 
@@ -26,14 +25,7 @@ export default function VaultHardware() {
       step={2}
       error={error}
       onBack={() => navigate('design')}
-      actions={
-        <>
-          <Button onClick={() => applyHardware(required || value)} disabled={!ready} label='Continue' />
-          {required || !allowDemoKeys ? null : (
-            <Button onClick={() => applyHardware(DEMO_HARDWARE_PUB, true)} label='Use a demo key' secondary />
-          )}
-        </>
-      }
+      actions={<Button onClick={() => applyHardware(required || value)} disabled={!ready} label='Continue' />}
     >
       <Text wrap>
         {required

@@ -5,7 +5,7 @@ import FingerprintIcon from '../../../icons/Fingerprint'
 import SafeIcon from '../../../icons/Safe'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import { prettyAmount } from '../../../lib/format'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { KeyCard, PolicyTimeline, Section } from '../ui'
 import { OnboardLayout } from './Layout'
 

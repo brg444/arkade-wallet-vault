@@ -1,5 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { fetchDemoInfo, vaultPost } from '../lib/vault/api'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DUST_SATS } from '../lib/vault/constants'
 import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import {
@@ -64,7 +63,6 @@ import {
   clearSetupPlan,
   emptySetupPlan,
   loadSetupPlan,
-  isFixturePub,
   parseCompressedPub,
   planReady,
   saveSetupPlan,
@@ -72,7 +70,6 @@ import {
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
 
-import { buildRecoveryKit } from '../lib/vault/v5/kit'
 import {
   kitFromFacts,
   pullMapBackup,
@@ -84,8 +81,7 @@ import {
 
 import { signGuardianExitPsbt } from '../lib/vault/v5/guardianExit'
 import { loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
-import { isPreviewDescriptor, kitMatchesLiveVault, selectLiveKit } from '../lib/vault/v5/liveKit'
-import { previewV5Descriptor } from '../lib/vault/v5/preview'
+import { kitMatchesLiveVault, selectLiveKit } from '../lib/vault/v5/liveKit'
 import {
   alertCopy,
   loadSeenOutpoints,
@@ -94,201 +90,31 @@ import {
   type InitiateAlert,
 } from '../lib/vault/v5/watch'
 import type { VaultStatus } from '../lib/vault/types'
+import {
+  DEFAULT_SPEND_FEE_SATS,
+  VaultContext,
+  type VaultAccount,
+  type VaultContextProps,
+  type VaultScreen,
+  type VaultSpend,
+} from '../vault/context'
 
-export type VaultAccount = 'spend' | 'savings'
+export { VaultContext } from '../vault/context'
+export type { VaultAccount, VaultContextProps, VaultScreen, VaultSpend } from '../vault/context'
 
-export type VaultScreen =
-  | 'welcome'
-  | 'design'
-  | 'hardware'
-  | 'conditions'
-  | 'plan'
-  | 'passkey'
-  | 'home'
-  | 'receive'
-  | 'send'
-  | 'review'
-  | 'success'
-  | 'keys'
-  | 'settings'
-  | 'signin'
-  | 'handoff'
-  | 'hwsign'
-  | 'recovery'
-  | 'recover'
-  | 'tx'
-
-export interface VaultSpend {
-  address: string
-  amount: number
-  fee: number
-}
-
-export interface VaultContextProps {
-  acceptDesign: () => void
-  account: VaultAccount
-  addTestCoins: () => Promise<void>
-  amountSats: number
-  applyHardware: (raw: string, demo?: boolean) => void
-  applyRecovery: (raw: string, demo?: boolean) => void
-  skipRecovery: () => void
-  downloadRecoveryKit: () => string
-  backupRecoveryKit: () => Promise<boolean>
-  boardingAddress: string
-  boardingInProgress: boolean
-  restoreRecoveryKit: () => Promise<void>
-  unlockMapWithHardware: (wrapRaw: string, hardwareSecret: string) => Promise<void>
-  signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
-  hasRecoveryKit: boolean
-  initiateAlert: string
-  initiateAlerts: InitiateAlert[]
-  approvePreviewSend: () => Promise<void>
-  busy: boolean
-  canSend: boolean
-  completeSavingsHandoff: (signedPsbt: string) => Promise<void>
-  handoffPsbt: string
-  confirmConditions: () => void
-  dailyLimit: number
-  dailyRemaining: number
-  dailySpent: number
-  demoAvailable: boolean
-  enterWithoutPasskey: () => void
-  enablePasskeyLogin: () => Promise<void>
-  enroll: (token?: string) => Promise<void>
-  enrolled: boolean
-  error: string
-  signIn: () => Promise<void>
-  finishPlan: () => void
-  faucetUrl: string
-  hasLocalEnrollment: boolean
-  locked: boolean
-  lastTxid: string
-  lastTxKind: 'onchain' | 'vtxo' | ''
-  history: VaultHistoryItem[]
-  selectedTx: VaultHistoryItem | null
-  openTx: (tx: VaultHistoryItem) => void
-  liveNetwork: boolean
-  allowDemoKeys: boolean
-  navigate: (screen: VaultScreen) => void
-  openRecover: (view?: 'kit' | 'lost', exit?: VaultScreen) => void
-  recoverEntry: 'kit' | 'lost'
-  recoverExit: VaultScreen
-  networkLabel: string
-  operationalAddress: string
-  onchainSpendingSats: number
-  spendingArkAddress: string
-  preview: boolean
-  refreshBalance: () => Promise<void>
-  reset: () => void
-  reviewSpend: () => void
-  openSendScan: () => void
-  scanOnSend: boolean
-  clearSendScan: () => void
-  savingsAddress: string
-  savingsSats: number
-  screen: VaultScreen
-  setAccount: (account: VaultAccount) => void
-  setCondition: (
-    patch: Partial<Pick<VaultSetupPlan, 'txCapSats' | 'dailyLimitSats' | 'operationalCsvBlocks' | 'savingsCsvBlocks'>>,
-  ) => void
-  setSpendDraft: (draft: Partial<VaultSpend>) => void
-  setup: VaultSetupPlan
-  spend: VaultSpend
-  status: VaultStatus | null
-  lastSend: VaultSpend | null
-  vtxoSpendingSats: number
-}
-
-const DEFAULT_FEE = 500
+const DEFAULT_FEE = DEFAULT_SPEND_FEE_SATS
 const LIVE_FEE = 1500
-
-export const VaultContext = createContext<VaultContextProps>({
-  acceptDesign: () => {},
-  account: 'spend',
-  addTestCoins: async () => {},
-  amountSats: 0,
-  applyHardware: () => {},
-  applyRecovery: () => {},
-  skipRecovery: () => {},
-  downloadRecoveryKit: () => '',
-  backupRecoveryKit: async () => false,
-  boardingAddress: '',
-  boardingInProgress: false,
-  restoreRecoveryKit: async () => {},
-  unlockMapWithHardware: async () => {},
-  signGuardianExitWithDevice: async () => '',
-  hasRecoveryKit: false,
-  initiateAlert: '',
-  initiateAlerts: [],
-  approvePreviewSend: async () => {},
-  busy: false,
-  canSend: false,
-  completeSavingsHandoff: async () => {},
-  handoffPsbt: '',
-  confirmConditions: () => {},
-  dailyLimit: 0,
-  dailyRemaining: 0,
-  dailySpent: 0,
-  demoAvailable: false,
-  enterWithoutPasskey: () => {},
-  enablePasskeyLogin: async () => {},
-  enroll: async () => {},
-  enrolled: false,
-  error: '',
-  signIn: async () => {},
-  finishPlan: () => {},
-  faucetUrl: 'https://faucet.mutinynet.com/',
-  hasLocalEnrollment: false,
-  locked: false,
-  lastTxid: '',
-  lastTxKind: '',
-  history: [],
-  selectedTx: null,
-  openTx: () => {},
-  liveNetwork: false,
-  allowDemoKeys: false,
-  navigate: () => {},
-  openRecover: () => {},
-  recoverEntry: 'kit',
-  onchainSpendingSats: 0,
-  recoverExit: 'keys',
-  networkLabel: 'Test network',
-  operationalAddress: '',
-  spendingArkAddress: '',
-  preview: true,
-  refreshBalance: async () => {},
-  reset: () => {},
-  reviewSpend: () => {},
-  openSendScan: () => {},
-  scanOnSend: false,
-  clearSendScan: () => {},
-  savingsAddress: '',
-  savingsSats: 0,
-  screen: 'welcome',
-  setAccount: () => {},
-  setCondition: () => {},
-  setSpendDraft: () => {},
-  setup: emptySetupPlan(),
-  spend: { address: '', amount: 0, fee: DEFAULT_FEE },
-  status: null,
-  lastSend: null,
-  vtxoSpendingSats: 0,
-})
 
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
   const [recoverExit, setRecoverExit] = useState<VaultScreen>('keys')
   const [setup, setSetup] = useState<VaultSetupPlan>(emptySetupPlan)
-  const [preview, setPreview] = useState(false)
   const [status, setStatus] = useState<VaultStatus | null>(null)
   const [enrollment, setEnrollment] = useState<EnrollmentSecrets | null>(null)
   const [initiateAlert, setInitiateAlert] = useState('')
   const [initiateAlerts, setInitiateAlerts] = useState<InitiateAlert[]>([])
 
-  const [demoAvailable, setDemoAvailable] = useState(false)
-  const [demoCredit, setDemoCredit] = useState(0)
-  const [previewSpent, setPreviewSpent] = useState(0)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: DEFAULT_FEE })
@@ -309,7 +135,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<VaultAccount>('spend')
   const [scanOnSend, setScanOnSend] = useState(false)
   const [handoffPsbt, setHandoffPsbt] = useState('')
-  const [statusKnown, setStatusKnown] = useState(false)
   const [locked, setLocked] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
   const boardingRun = useRef(false)
@@ -323,8 +148,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (plan) {
         setSetup(plan)
         if (plan.complete) {
-          setPreview(true)
-          setScreen('home')
+          setScreen('passkey')
         }
       }
       const selected = loadSelectedVaultId()
@@ -360,14 +184,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (msg.includes('local pin') || msg.includes('not pinned locally')) {
           setError(humanizeVaultError(err))
         }
-      } finally {
-        setStatusKnown(true)
       }
     }
     void boot()
-    fetchDemoInfo()
-      .then((info) => setDemoAvailable(Boolean(info?.demo)))
-      .catch(() => setDemoAvailable(false))
   }, [])
 
   useEffect(() => {
@@ -405,12 +224,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
-  const allowDemoKeys = statusKnown && !liveNetwork
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
-  const dailyRemaining = status?.enrolled
-    ? (status.periodRemaining ?? dailyLimit)
-    : Math.max(0, dailyLimit - previewSpent)
-  const amountSats = status?.enrolled ? vtxoBalance : demoCredit
+  const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
+  const amountSats = status?.enrolled ? vtxoBalance : 0
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
 
@@ -421,42 +237,36 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [persist, setup])
 
   const applyHardware = useCallback(
-    (raw: string, demo = false) => {
+    (raw: string) => {
       setError('')
       try {
         const hardwarePub = parseCompressedPub(raw, 'hardware key')
-        if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(hardwarePub)) {
-          throw new Error('Demo keys cannot be used on this vault')
-        }
         if (status?.externalOwnerWalletPub && hardwarePub !== status.externalOwnerWalletPub) {
           throw new Error('This Mutinynet vault requires the hardware key already configured on the service')
         }
-        persist({ ...setup, hardwarePub, hardwareIsDemo: demo })
+        persist({ ...setup, hardwarePub, hardwareIsDemo: false })
         setScreen('recovery')
       } catch (err) {
         setError(humanizeVaultError(err))
       }
     },
-    [liveNetwork, persist, setup, status?.externalOwnerWalletPub, status?.network],
+    [persist, setup, status?.externalOwnerWalletPub],
   )
 
   const applyRecovery = useCallback(
-    (raw: string, demo = false) => {
+    (raw: string) => {
       setError('')
       try {
         const recoveryPub = parseCompressedPub(raw, 'recovery key')
         if (!setup.hardwarePub) throw new Error('Set hardware first')
         if (sameRole(recoveryPub, setup.hardwarePub)) throw new Error('Recovery must be a different key')
-        if ((liveNetwork || status?.network === 'mutinynet') && isFixturePub(recoveryPub)) {
-          throw new Error('Demo keys cannot be used on this vault')
-        }
-        persist({ ...setup, recoveryPub, recoveryIsDemo: demo })
+        persist({ ...setup, recoveryPub, recoveryIsDemo: false })
         setScreen('conditions')
       } catch (err) {
         setError(humanizeVaultError(err))
       }
     },
-    [liveNetwork, persist, setup, status?.network],
+    [persist, setup],
   )
 
   const skipRecovery = useCallback(() => {
@@ -494,29 +304,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScreen('passkey')
   }, [setup])
 
-  const localV5Descriptor = useCallback(() => {
-    if (!setup.hardwarePub || !setup.recoveryPub) return null
-    try {
-      return previewV5Descriptor({
-        vaultId: status?.vaultId || enrollment?.vaultId,
-        network: status?.network === 'regtest' ? 'regtest' : 'mutinynet',
-        hardwarePub: setup.hardwarePub,
-        recoveryPub: setup.recoveryPub,
-        phonePub: enrollment?.phoneRoutineBip340Pub,
-        phoneDirectP256: enrollment?.phoneDirectP256,
-      })
-    } catch {
-      return null
-    }
-  }, [enrollment, setup.hardwarePub, setup.recoveryPub, status?.network, status?.vaultId])
-
   const sealPlan = useCallback(() => {
     const next = persist({ ...setup, complete: true })
-    const descriptor = localV5Descriptor()
-    if (descriptor) saveLocalKit(buildRecoveryKit(descriptor))
-    setPreview(!status?.enrolled)
     return next
-  }, [localV5Descriptor, persist, setup, status?.enrolled])
+  }, [persist, setup])
 
   const resolveKit = useCallback(() => {
     const id = status?.vaultId || enrollment?.vaultId || ''
@@ -531,17 +322,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         recoveryPub: setup.recoveryPub || status?.recoveryPub,
       })
     }
-    if (stored && stored.descriptor.vaultId === id) return stored
-    const fromFacts = kitFromFacts({
+    return kitFromFacts({
       enrollment,
       status,
       hardwarePub: setup.hardwarePub,
       recoveryPub: setup.recoveryPub || status?.recoveryPub,
     })
-    if (fromFacts) return fromFacts
-    const descriptor = localV5Descriptor()
-    return descriptor ? buildRecoveryKit(descriptor) : null
-  }, [enrollment, localV5Descriptor, setup.hardwarePub, setup.recoveryPub, status])
+  }, [enrollment, setup.hardwarePub, setup.recoveryPub, status])
 
   const downloadRecoveryKit = useCallback(() => {
     const kit = resolveKit()
@@ -554,9 +341,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (enrollment && status?.enrolled) await unlockLocalEnrollment(enrollment)
     const kit = resolveKit()
     if (!kit) throw new Error('This vault has no recovery map. Add recovery on a new vault.')
-    if (isPreviewDescriptor(kit.descriptor)) {
-      throw new Error('preview map cannot be uploaded as a live Recovery Kit')
-    }
     saveLocalKit(kit)
     const id = kit.descriptor.vaultId
     const hardwarePub = setup.hardwarePub || status?.externalOwnerWalletPub || ''
@@ -578,9 +362,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         recoveryPub: setup.recoveryPub || status?.recoveryPub,
       })
     if (!kit) throw new Error('Could not rebuild the map. Save it while this app is open.')
-    if (status?.enrolled && isPreviewDescriptor(kit.descriptor)) {
-      throw new Error('preview map cannot replace a live Recovery Kit')
-    }
     if (id && kit.descriptor.vaultId !== id) throw new Error('Recovery Kit does not match this vault')
     if (status?.enrolled && status.templateVersion && kit.descriptor.templateVersion !== status.templateVersion) {
       throw new Error('Recovery Kit does not match this vault')
@@ -613,16 +394,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     },
     [enrollment, status],
   )
-
-  const enterWithoutPasskey = useCallback(() => {
-    setError('')
-    if (!planReady(setup)) {
-      setError('Finish setup first.')
-      return
-    }
-    sealPlan()
-    setScreen('home')
-  }, [sealPlan, setup])
 
   const refreshBalance = useCallback(
     async (vaultId?: string) => {
@@ -799,7 +570,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('This vault expects a different hardware key.')
         return
       }
-      if (status?.network === 'mutinynet' && status.enrollmentMode === 'token' && token.trim().length < 32) {
+      if (status?.enrollmentMode === 'token' && token.trim().length < 32) {
         setError('Paste your invite.')
         return
       }
@@ -816,10 +587,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setStatus(out.status)
         setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
         sealPlan()
-        setPreview(false)
         if (setup.recoveryPub) {
           try {
-            const kit = resolveKit()
+            const kit = kitFromFacts({
+              enrollment: out.enrollment,
+              status: out.status,
+              hardwarePub: setup.hardwarePub,
+              recoveryPub: setup.recoveryPub || out.status.recoveryPub,
+            })
             if (kit) {
               saveLocalKit(kit)
               const hardwarePub = setup.hardwarePub || out.status.externalOwnerWalletPub || ''
@@ -843,7 +618,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [refreshBalance, resolveKit, sealPlan, setup, status],
+    [refreshBalance, sealPlan, setup, status],
   )
 
   const enableOtherDevices = useCallback(async () => {
@@ -877,7 +652,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const live = unlocked.vaultId ? await fetchVaultStatus(undefined, unlocked.vaultId) : await fetchVaultStatus()
         setStatus(live)
         if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
-        setPreview(false)
         try {
           const pulled = live.vaultId ? await pullMapBackup(live.vaultId) : null
           const kit =
@@ -906,7 +680,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setLocked(false)
       setStatus(out.status)
       setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
-      setPreview(false)
       try {
         const pulled = out.status.vaultId ? await pullMapBackup(out.status.vaultId) : null
         const kit =
@@ -930,29 +703,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [enrollment, refreshBalance, setup.hardwarePub, setup.recoveryPub])
 
-  const addTestCoins = useCallback(async () => {
-    setBusy(true)
-    setError('')
-    try {
-      if (demoAvailable && status?.enrolled) {
-        await vaultPost('/v1/demo/fund', { amount: setup.dailyLimitSats })
-        const funded = enrollment?.vaultId
-          ? await fetchVaultStatus(undefined, enrollment.vaultId)
-          : await fetchVaultStatus()
-        setStatus(funded)
-        if (funded.vaultId) setAddressPin(loadAddressPin(localStorage, funded.vaultId))
-      } else {
-        setDemoCredit(setup.dailyLimitSats)
-        setPreviewSpent(0)
-        setPreview(true)
-      }
-    } catch (err) {
-      setError(humanizeVaultError(err))
-    } finally {
-      setBusy(false)
-    }
-  }, [demoAvailable, setup.dailyLimitSats, status?.enrolled])
-
   const setSpendDraft = useCallback(
     (draft: Partial<VaultSpend>) => {
       setSpend((prev) => {
@@ -974,7 +724,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const reviewSpend = useCallback(() => {
     setError('')
-    const destNetwork = status?.network || (preview ? 'regtest' : 'mutinynet')
+    if (!status?.enrolled) {
+      setError('Unlock this vault before sending.')
+      return
+    }
+    const destNetwork = status.network
     if (!isVaultSpendAddress(spend.address, destNetwork)) {
       setError('Enter an Arkade or Bitcoin address.')
       return
@@ -1038,7 +792,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [
     account,
     dailyRemaining,
-    preview,
     savingsBalance,
     setup.txCapSats,
     spend,
@@ -1126,39 +879,23 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [finishBroadcast, handoffPsbt, spend, status?.network],
   )
 
-  const approvePreviewSend = useCallback(async () => {
+  const approveSend = useCallback(async () => {
     setBusy(true)
     setError('')
     try {
       if (account === 'savings') {
-        if (status?.enrolled) {
-          await approveSavingsSend()
-          return
-        }
-        if (!preview) {
-          setError('Vault isn’t ready to send.')
-          return
-        }
-        setLastSend(spend)
-        setLastTxid('')
-        setLastTxKind('')
-        setSpend({ address: '', amount: 0, fee: DEFAULT_FEE })
-        setScreen('success')
+        await approveSavingsSend()
         return
       }
-      if (status?.enrolled) {
-        if (!enrollment) {
-          setError('Sign in with the passkey that created this vault.')
-          return
-        }
-        if (!spendingArkAddress) {
-          setError('No spending address yet.')
-          return
-        }
+      if (!status?.enrolled || !enrollment) {
+        setError('Sign in with the passkey that created this vault.')
+        return
+      }
+      if (!spendingArkAddress) {
+        setError('No spending address yet.')
+        return
       }
       if (
-        status?.enrolled &&
-        enrollment &&
         spendingArkAddress &&
         isVaultArkAddress(spend.address, status.network) &&
         vtxoMaxCoin >= spend.amount + DUST_SATS
@@ -1185,18 +922,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           throw err
         }
       }
-      if (status?.enrolled || !preview) {
-        setError('Vault isn’t ready to send.')
-        return
-      }
-      setLastSend(spend)
-      const outflow = spend.amount + spend.fee
-      setDemoCredit((n) => Math.max(0, n - outflow))
-      setPreviewSpent((n) => n + outflow)
-      setLastTxid('')
-      setLastTxKind('')
-      setSpend({ address: '', amount: 0, fee: DEFAULT_FEE })
-      setScreen('success')
+      setError('Vault isn’t ready to send.')
     } catch (err) {
       setError(humanizeVaultError(err))
     } finally {
@@ -1208,7 +934,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     boardingInProgress,
     enrollment,
     finishBroadcast,
-    preview,
     refreshBalance,
     spend,
     spendingArkAddress,
@@ -1219,9 +944,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const reset = useCallback(() => {
     setSessionLocked(true)
     setLocked(true)
-    setPreview(false)
-    setDemoCredit(0)
-    setPreviewSpent(0)
     setError('')
     setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
     setLastSend(null)
@@ -1278,7 +1000,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     () => ({
       acceptDesign,
       account,
-      addTestCoins,
       amountSats,
       applyHardware,
       applyRecovery,
@@ -1293,7 +1014,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       hasRecoveryKit: Boolean(resolveKit()),
       initiateAlert,
       initiateAlerts,
-      approvePreviewSend,
+      approveSend,
       busy,
       canSend: vtxoMaxCoin > DUST_SATS + spend.fee,
       completeSavingsHandoff,
@@ -1302,14 +1023,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       dailyLimit,
       dailyRemaining,
       dailySpent: status?.enrolled ? (status.periodSpent ?? 0) : Math.max(0, dailyLimit - dailyRemaining),
-      demoAvailable,
       enablePasskeyLogin: enableOtherDevices,
-      enterWithoutPasskey,
       enroll,
       enrolled,
       error,
       finishPlan,
-      faucetUrl: 'https://faucet.mutinynet.com/',
       hasLocalEnrollment: Boolean(enrollment),
       locked,
       lastTxid,
@@ -1322,7 +1040,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setScreen('tx')
       },
       liveNetwork,
-      allowDemoKeys,
       navigate: (next) => {
         setError('')
         setScreen(next)
@@ -1339,7 +1056,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       operationalAddress,
       onchainSpendingSats: chainBalance,
       spendingArkAddress,
-      preview: preview || !status?.enrolled,
       refreshBalance,
       reset,
       reviewSpend,
@@ -1367,7 +1083,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [
       acceptDesign,
       account,
-      addTestCoins,
       amountSats,
       chainBalance,
       applyHardware,
@@ -1383,17 +1098,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       resolveKit,
       initiateAlert,
       initiateAlerts,
-      approvePreviewSend,
+      approveSend,
       busy,
       completeSavingsHandoff,
       confirmConditions,
       handoffPsbt,
       dailyLimit,
       dailyRemaining,
-      demoAvailable,
       enableOtherDevices,
       enrollment,
-      enterWithoutPasskey,
       enroll,
       signIn,
       enrolled,
@@ -1405,7 +1118,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       selectedTx,
       liveNetwork,
       locked,
-      allowDemoKeys,
       lastSend,
       recoverEntry,
       recoverExit,
@@ -1413,7 +1125,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       networkLabel,
       operationalAddress,
       spendingArkAddress,
-      preview,
       recoverEntry,
       recoverExit,
       refreshBalance,

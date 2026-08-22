@@ -3,7 +3,7 @@ import SettingsIcon from '../../icons/Settings'
 import VaultIcon from '../../icons/Vault'
 import WalletIcon from '../../icons/Wallet'
 import { hapticLight } from '../../lib/haptics'
-import { VaultContext, type VaultScreen } from '../../providers/vault'
+import { VaultContext, type VaultScreen } from '../../vault/context'
 
 export type VaultTab = 'wallet' | 'vault' | 'settings'
 

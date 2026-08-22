@@ -14,7 +14,7 @@ import BoltOutlineIcon from '../../icons/BoltOutline'
 import SafeIcon from '../../icons/Safe'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import { isCoarsePhone } from '../../lib/vault/webauthn'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 
 function Point({ icon, text }: { icon: JSX.Element; text: string }) {
   return (

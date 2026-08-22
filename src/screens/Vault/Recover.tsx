@@ -24,7 +24,7 @@ import {
 import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/v5/kit'
 import { planClaim, planClawback, planInitiate } from '../../lib/vault/v5/recoverFlow'
 import { buildGuardianExitPsbt } from '../../lib/vault/v5/spend'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import { KeyCard, Reveal } from './ui'
 import { ChoiceCard } from './onboard/Layout'
 

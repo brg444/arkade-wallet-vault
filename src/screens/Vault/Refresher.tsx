@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from 'react'
 import SpinnerIcon from '../../icons/Spinner'
 import { sleep } from '../../lib/sleep'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 
 function atTop() {
   if (window.scrollY > 0) return false

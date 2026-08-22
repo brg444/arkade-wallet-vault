@@ -10,7 +10,7 @@ import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import { isFixturePub, shortKey } from '../../lib/vault/setupPlan'
 import { pingVaultService } from '../../lib/vault/status'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import { HubGroup, HubRow } from './ui'
 
 export default function VaultKeys() {

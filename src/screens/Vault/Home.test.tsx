@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
-import { VaultContext, type VaultContextProps } from '../../providers/vault'
+import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultHome from './Home'
 
 vi.mock('../../lib/vault/update', () => ({ reloadIfNewerWallet: () => Promise.resolve(false) }))
@@ -24,7 +24,6 @@ function renderHome(overrides: Partial<VaultContextProps>) {
     openRecover: vi.fn(),
     openSendScan: vi.fn(),
     operationalAddress: 'tb1poldoperationaladdress',
-    preview: false,
     refreshBalance: vi.fn().mockResolvedValue(undefined),
     savingsAddress: 'tb1psavingsaddress',
     savingsSats: 50_000,

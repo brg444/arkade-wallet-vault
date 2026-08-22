@@ -5,7 +5,7 @@ import SafeIcon from '../../../icons/Safe'
 import ServerIcon from '../../../icons/Server'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import Text from '../../../components/Text'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { KeyCard, Section } from '../ui'
 import { OnboardLayout } from './Layout'
 

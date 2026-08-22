@@ -18,7 +18,7 @@ import { prettyNumber } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
 import { truncateAddress } from '../../lib/vault/policy'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
-import { VaultContext, type VaultAccount } from '../../providers/vault'
+import { VaultContext, type VaultAccount } from '../../vault/context'
 import VaultHistory from './History'
 import { Meter } from './ui'
 
@@ -30,10 +30,8 @@ function fundableAddress(value: string): string {
 export default function VaultHome() {
   const {
     account,
-    addTestCoins,
     amountSats,
     boardingAddress,
-    busy,
     canSend,
     dailyLimit,
     dailyRemaining,
@@ -44,7 +42,6 @@ export default function VaultHome() {
     liveNetwork,
     initiateAlert,
     spendingArkAddress,
-    preview,
     refreshBalance,
     savingsAddress,
     savingsSats,
@@ -118,9 +115,7 @@ export default function VaultHome() {
                     {truncateAddress(address, 6)}
                   </button>
                 ) : (
-                  <p className='vault-account-addr is-empty'>
-                    {liveNetwork ? 'Testnet' : preview ? 'Preview · not funded yet' : 'No address yet'}
-                  </p>
+                  <p className='vault-account-addr is-empty'>{liveNetwork ? 'Testnet' : 'No address yet'}</p>
                 )}
               </div>
               <div className='vault-account-actions'>
@@ -249,11 +244,6 @@ export default function VaultHome() {
           </div>
         </Padded>
       </Content>
-      {liveNetwork || !(preview || amountSats === 0) || !spending ? null : (
-        <div style={{ padding: '0 1rem 1.25rem' }}>
-          <Button onClick={addTestCoins} disabled={busy} label={busy ? 'Adding…' : 'Add demo coins'} secondary />
-        </div>
-      )}
     </>
   )
 }

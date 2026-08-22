@@ -12,7 +12,7 @@ import Text from '../../components/Text'
 import { prettyAmount, prettyNumber } from '../../lib/format'
 import { decodeVaultBip21, isVaultBip21 } from '../../lib/vault/bip21'
 import { isVaultSpendAddress } from '../../lib/vault/bitcoin'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import AddressInput from './AddressInput'
 import { Meter } from './ui'
 
@@ -32,7 +32,7 @@ function payloadFromScan(raw: string): { address: string; amount?: number } {
   return { address: trimmed }
 }
 
-function isVaultSendInput(value: string, network: string): boolean {
+function isVaultSendInput(value: string, network?: string): boolean {
   if (isVaultSpendAddress(value, network)) return true
   if (!isVaultBip21(value)) return false
   const decoded = decodeVaultBip21(value)
@@ -54,12 +54,11 @@ export default function VaultSend() {
     spend,
     setup,
     status,
-    preview,
     savingsSats,
   } = useContext(VaultContext)
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
-  const destNetwork = status?.network || (preview ? 'regtest' : 'mutinynet')
+  const destNetwork = status?.network
   const [scan, setScan] = useState(false)
   const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
   const used = Math.max(0, setup.dailyLimitSats - availableSpend)
