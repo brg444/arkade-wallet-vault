@@ -8,12 +8,14 @@ import {
   buildReservedVtxoSpend,
   clearPersistedVtxoSpend,
   collectPagedVtxos,
+  createVtxoOperationId,
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
   loadPersistedVtxoSpend,
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
   persistVtxoSpend,
+  preReserveVtxoSpend,
   requireMatchingOperatorSubmit,
   requireOperatorSignedCheckpoint,
   VtxoReceiptPendingError,
@@ -23,10 +25,13 @@ import {
   type VtxoReserveResponse,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
+  vtxoReserveRequest,
 } from './spend'
 import { VaultPolicyV1Script } from './script'
 
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
+const OP_1 = '11'.repeat(16)
+const OP_2 = '22'.repeat(16)
 
 function compressed(xonly: string): string {
   return `02${xonly}`
@@ -82,7 +87,7 @@ function reserve(): VtxoReserveResponse {
     pubkeys: [hex.decode(golden.fixtures.arkdServerPub)],
   })
   return {
-    operationId: 'op-1',
+    operationId: OP_1,
     bundleDigest: '11'.repeat(32),
     reservationExpires: '2026-08-20T00:00:00Z',
     inputs: [{ txid: '22'.repeat(32), vout: 3, valueSats: 20_000, scriptHex: current.spendingArkScript! }],
@@ -106,6 +111,43 @@ describe('regular VTXO spend coordinator', () => {
   it('uses the same-origin Arkade gateway in production', () => {
     expect(vaultArkServer(true)).toBe('/arkade')
     expect(vaultArkServer(false)).toBe('https://mutinynet.arkade.sh')
+  })
+
+  it('persists a client-generated operation id before reserving and reuses it exactly', () => {
+    clearPersistedVtxoSpend('vault-a')
+    const operationId = createVtxoOperationId(hex.decode(OP_1))
+    expect(operationId).toBe(OP_1)
+    const pending = preReserveVtxoSpend('vault-a', destination(), 12_000, operationId)
+    expect(loadPersistedVtxoSpend('vault-a')).toEqual(pending)
+    expect(vtxoReserveRequest(loadPersistedVtxoSpend('vault-a')!)).toEqual({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      purpose: 'spend',
+      destAddress: destination(),
+      amountSats: 12_000,
+    })
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('keeps a pre-reservation until the same operation id is retried or aborted', () => {
+    clearPersistedVtxoSpend('vault-a')
+    const pending = preReserveVtxoSpend('vault-a', destination(), 12_000, OP_1)
+    expect(
+      applyVtxoOperationView(pending, {
+        operationId: OP_1,
+        bundleDigest: '11'.repeat(32),
+        state: 'reserved',
+      }),
+    ).toEqual(pending)
+    expect(loadPersistedVtxoSpend('vault-a')).toEqual(pending)
+    expect(
+      applyVtxoOperationView(pending, {
+        operationId: OP_1,
+        bundleDigest: '11'.repeat(32),
+        state: 'aborted',
+      }),
+    ).toBeUndefined()
+    expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
   })
 
   it('reconstructs the pinned policy tree from status', () => {
@@ -169,7 +211,7 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
     persistVtxoSpend({
       vaultId: 'vault-a',
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       destAddress: 'tark1qqold',
       amountSats: 12_000,
@@ -180,8 +222,8 @@ describe('regular VTXO spend coordinator', () => {
     expect(pendingVtxoSpendBlocksNewSend(pending)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqold', 12_000)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqnew', 12_000)).toBe(false)
-    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), 'op-1'))).toBe(true)
-    expect(new VtxoSpendInFlightError('aa'.repeat(32), 'op-1').message).toMatch(/still with the operator/)
+    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), OP_1))).toBe(true)
+    expect(new VtxoSpendInFlightError('aa'.repeat(32), OP_1).message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
     expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(false)
   })
@@ -190,7 +232,7 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
     const reserved: PersistedVtxoSpend = {
       vaultId: 'vault-a',
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       destAddress: destination(),
       amountSats: 12_000,
@@ -210,7 +252,7 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
     const reserved: PersistedVtxoSpend = {
       vaultId: 'vault-a',
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       destAddress: destination(),
       amountSats: 12_000,
@@ -221,7 +263,7 @@ describe('regular VTXO spend coordinator', () => {
     }
     persistVtxoSpend(reserved)
     const signed = applyVtxoOperationView(reserved, {
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       state: 'signed',
       arkTxid: 'aa'.repeat(32),
@@ -232,7 +274,7 @@ describe('regular VTXO spend coordinator', () => {
     expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('authorized')
 
     const submitted = applyVtxoOperationView(signed!, {
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       state: 'submitted',
       arkTxid: 'aa'.repeat(32),
@@ -243,7 +285,7 @@ describe('regular VTXO spend coordinator', () => {
     expect(submitted?.checkpointPsbts).toEqual(['cHNidP9final'])
 
     const finalized = applyVtxoOperationView(submitted!, {
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       state: 'finalized',
       arkTxid: 'aa'.repeat(32),
@@ -252,7 +294,7 @@ describe('regular VTXO spend coordinator', () => {
 
     expect(
       applyVtxoOperationView(finalized!, {
-        operationId: 'op-1',
+        operationId: OP_1,
         bundleDigest: '11'.repeat(32),
         state: 'aborted',
       }),
@@ -263,7 +305,7 @@ describe('regular VTXO spend coordinator', () => {
   it('fails closed on an unresolved operation', () => {
     const pending: PersistedVtxoSpend = {
       vaultId: 'vault-a',
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       destAddress: destination(),
       amountSats: 12_000,
@@ -274,7 +316,7 @@ describe('regular VTXO spend coordinator', () => {
     }
     expect(() =>
       applyVtxoOperationView(pending, {
-        operationId: 'op-1',
+        operationId: OP_1,
         bundleDigest: '11'.repeat(32),
         state: 'unresolved',
         arkTxid: 'aa'.repeat(32),
@@ -290,7 +332,7 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
     const submitted: PersistedVtxoSpend = {
       vaultId: 'vault-a',
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       destAddress: destination(),
       amountSats: 12_000,
@@ -301,7 +343,7 @@ describe('regular VTXO spend coordinator', () => {
       operatorCheckpointPsbts: ['cHNidP9op'],
     }
     const afterSigned = applyVtxoOperationView(submitted, {
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       state: 'signed',
       arkTxid: 'aa'.repeat(32),
@@ -317,7 +359,7 @@ describe('regular VTXO spend coordinator', () => {
       checkpointPsbts: ['cHNidP9local-final'],
     }
     const afterSubmitted = applyVtxoOperationView(finalized, {
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       state: 'submitted',
       arkTxid: 'aa'.repeat(32),
@@ -332,7 +374,7 @@ describe('regular VTXO spend coordinator', () => {
   it('rejects an operation view for a different id or digest', () => {
     const pending: PersistedVtxoSpend = {
       vaultId: 'vault-a',
-      operationId: 'op-1',
+      operationId: OP_1,
       bundleDigest: '11'.repeat(32),
       destAddress: destination(),
       amountSats: 12_000,
@@ -342,14 +384,14 @@ describe('regular VTXO spend coordinator', () => {
     }
     expect(() =>
       applyVtxoOperationView(pending, {
-        operationId: 'op-2',
+        operationId: OP_2,
         bundleDigest: '11'.repeat(32),
         state: 'signed',
       }),
     ).toThrow(/operation id mismatch/)
     expect(() =>
       applyVtxoOperationView(pending, {
-        operationId: 'op-1',
+        operationId: OP_1,
         bundleDigest: '22'.repeat(32),
         state: 'signed',
       }),
