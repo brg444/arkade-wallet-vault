@@ -17,6 +17,7 @@ import {
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
   persistVtxoSpend,
+  persistVtxoReserveSignature,
   preReserveVtxoSpend,
   requireMatchingOperatorSubmit,
   requireOperatorSignedCheckpoint,
@@ -112,19 +113,53 @@ describe('regular VTXO spend coordinator', () => {
     expect(vaultArkServer(false)).toBe('https://mutinynet.arkade.sh')
   })
 
-  it('persists a client-generated operation id before reserving and reuses it exactly', () => {
+  it('persists a client-generated operation id and signature before reserving and reuses them exactly', () => {
     clearPersistedVtxoSpend('vault-a')
     const operationId = createVtxoOperationId(hex.decode(OP_1))
     expect(operationId).toBe(OP_1)
     const pending = preReserveVtxoSpend('vault-a', destination(), 12_000, operationId)
     expect(loadPersistedVtxoSpend('vault-a')).toEqual(pending)
-    expect(vtxoReserveRequest(loadPersistedVtxoSpend('vault-a')!)).toEqual({
+    const signed = persistVtxoReserveSignature(
+      pending,
+      status(),
+      hex.decode('01'.padStart(64, '0')),
+      new Uint8Array(32),
+    )
+    const firstRequest = vtxoReserveRequest(signed, status())
+    expect(firstRequest).toEqual({
       vaultId: 'vault-a',
       operationId: OP_1,
       purpose: 'spend',
       destAddress: destination(),
       amountSats: 12_000,
+      phoneSignature: signed.reservePhoneSignature,
     })
+    expect(firstRequest.phoneSignature).toMatch(/^[0-9a-f]{128}$/)
+    expect(vtxoReserveRequest(loadPersistedVtxoSpend('vault-a')!, status())).toEqual(firstRequest)
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('keeps the pre-reserve record recoverable across unlock/sign and POST interruption', () => {
+    clearPersistedVtxoSpend('vault-a')
+    const pending = preReserveVtxoSpend('vault-a', destination(), 12_000, OP_1)
+    expect(() =>
+      persistVtxoReserveSignature(pending, status(), hex.decode('02'.padStart(64, '0')), new Uint8Array(32)),
+    ).toThrow(/phone key/)
+    expect(loadPersistedVtxoSpend('vault-a')).toEqual(pending)
+
+    const signed = persistVtxoReserveSignature(
+      pending,
+      status(),
+      hex.decode('01'.padStart(64, '0')),
+      new Uint8Array(32),
+    )
+    const requestBeforeLostResponse = vtxoReserveRequest(signed, status())
+    const recovered = loadPersistedVtxoSpend('vault-a')!
+    expect(recovered).toEqual(signed)
+    expect(vtxoReserveRequest(recovered, status())).toEqual(requestBeforeLostResponse)
+    expect(() => vtxoReserveRequest({ ...recovered, amountSats: recovered.amountSats + 1 }, status())).toThrow(
+      /device signature/,
+    )
     clearPersistedVtxoSpend('vault-a')
   })
 

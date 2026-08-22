@@ -13,9 +13,11 @@ import { base64, hex } from '@scure/base'
 import { vaultGet, vaultPost } from '../api'
 import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth'
 import { historyFromVtxos, type VaultHistoryItem } from '../history'
+import { unlockPhoneBip340 } from '../savingsSpend'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
 import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
+import { signVtxoReserveDigest, verifyVtxoReserveSignature, type VtxoReserveDigestInput } from './reserveAuth'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
   VAULT_POLICY_V1_EXIT_DELAY_UNIT,
@@ -152,6 +154,7 @@ export interface PersistedVtxoSpend {
   unsignedCheckpointPsbts?: string[]
   operatorCheckpointPsbts?: string[]
   checkpointPsbts?: string[]
+  reservePhoneSignature?: string
 }
 
 export function vtxoSpendStorageKey(vaultId: string): string {
@@ -171,6 +174,7 @@ export function loadPersistedVtxoSpend(vaultId: string): PersistedVtxoSpend | un
       parsed.stage &&
       parsed.destAddress &&
       typeof parsed.amountSats === 'number' &&
+      (parsed.reservePhoneSignature === undefined || /^[0-9a-f]{128}$/.test(parsed.reservePhoneSignature)) &&
       (parsed.stage === 'pre-reserve' || (parsed.bundleDigest && (parsed.stage === 'reserved' || parsed.arkTxid)))
     ) {
       return parsed as PersistedVtxoSpend
@@ -212,9 +216,12 @@ export function preReserveVtxoSpend(
   return record
 }
 
-export function vtxoReserveRequest(pending: PersistedVtxoSpend) {
+export function vtxoReserveRequest(pending: PersistedVtxoSpend, status: VaultStatus) {
   if (pending.stage !== 'pre-reserve' || !isVtxoOperationId(pending.operationId)) {
     throw new Error('VTXO pre-reservation required')
+  }
+  if (!pending.reservePhoneSignature || !reserveSignatureMatches(pending, status)) {
+    throw new Error('VTXO reservation requires this device signature')
   }
   return {
     vaultId: pending.vaultId,
@@ -222,6 +229,7 @@ export function vtxoReserveRequest(pending: PersistedVtxoSpend) {
     purpose: 'spend',
     destAddress: pending.destAddress,
     amountSats: pending.amountSats,
+    phoneSignature: pending.reservePhoneSignature,
   }
 }
 
@@ -372,7 +380,7 @@ async function authorizeWithPasskey(
   }
 }
 
-function scriptForDestination(status: VaultStatus, destAddress: string): Uint8Array {
+export function vtxoDestinationScript(status: VaultStatus, destAddress: string): Uint8Array {
   const spendingAddress = ArkAddress.decode(String(status.spendingArkAddress || ''))
   let destination: ArkAddress
   try {
@@ -385,6 +393,47 @@ function scriptForDestination(status: VaultStatus, destAddress: string): Uint8Ar
     throw new Error('destination belongs to another Arkade Operator')
   }
   return destination.pkScript
+}
+
+function reserveDigestInput(pending: PersistedVtxoSpend, status: VaultStatus): VtxoReserveDigestInput {
+  if (pending.vaultId !== status.vaultId) throw new Error('VTXO reservation vault does not match status')
+  return {
+    operationId: pending.operationId,
+    vaultId: pending.vaultId,
+    destScript: vtxoDestinationScript(status, pending.destAddress),
+    amountSats: pending.amountSats,
+  }
+}
+
+function reserveSignatureMatches(pending: PersistedVtxoSpend, status: VaultStatus): boolean {
+  if (!pending.reservePhoneSignature) return false
+  return verifyVtxoReserveSignature(
+    reserveDigestInput(pending, status),
+    pending.reservePhoneSignature,
+    xOnly(status.phoneBip340Pub, 'phone pubkey'),
+  )
+}
+
+/** Persist the signature before the reservation request can leave this process. */
+export function persistVtxoReserveSignature(
+  pending: PersistedVtxoSpend,
+  status: VaultStatus,
+  phoneSecret: Uint8Array,
+  auxRand?: Uint8Array,
+): PersistedVtxoSpend {
+  if (pending.stage !== 'pre-reserve') throw new Error('VTXO pre-reservation required')
+  if (pending.reservePhoneSignature) {
+    if (!reserveSignatureMatches(pending, status)) throw new Error('persisted VTXO reserve signature is invalid')
+    return pending
+  }
+  const expectedPhone = xOnly(status.phoneBip340Pub, 'phone pubkey')
+  const signature = hex.encode(signVtxoReserveDigest(reserveDigestInput(pending, status), phoneSecret, auxRand))
+  if (!verifyVtxoReserveSignature(reserveDigestInput(pending, status), signature, expectedPhone)) {
+    throw new Error('phone key does not match this vault')
+  }
+  const next = { ...pending, reservePhoneSignature: signature }
+  persistVtxoSpend(next)
+  return next
 }
 
 export function buildReservedVtxoSpend(
@@ -401,7 +450,7 @@ export function buildReservedVtxoSpend(
   if (reserve.changeScript.toLowerCase() !== hex.encode(script.pkScript))
     throw new Error('change is not vault-policy-v1')
   if (reserve.changeAddress !== status.spendingArkAddress) throw new Error('change address is not vault-policy-v1')
-  if (reserve.destScript.toLowerCase() !== hex.encode(scriptForDestination(status, destAddress))) {
+  if (reserve.destScript.toLowerCase() !== hex.encode(vtxoDestinationScript(status, destAddress))) {
     throw new Error('reserved destination does not match the requested address')
   }
   if (reserve.feeSats !== 0) throw new Error('regular VTXO slice only permits zero virtual fee')
@@ -606,10 +655,27 @@ async function syncPersistedSpendWithOperation(pending: PersistedVtxoSpend): Pro
 }
 
 async function reservePersistedVtxoSpend(
+  enrollment: EnrollmentSecrets,
   status: VaultStatus,
   pending: PersistedVtxoSpend,
 ): Promise<PersistedVtxoSpend> {
-  const reserve = await vaultPost<VtxoReserveResponse>('/v1/vtxo/reserve', vtxoReserveRequest(pending))
+  if (!pending.reservePhoneSignature) {
+    if (
+      !sameBytes(
+        xOnly(enrollment.phoneBip340Pub, 'enrollment phone pubkey'),
+        xOnly(status.phoneBip340Pub, 'phone pubkey'),
+      )
+    ) {
+      throw new Error('enrollment phone key does not match this vault')
+    }
+    const phoneSecret = await unlockPhoneBip340(enrollment, status)
+    try {
+      pending = persistVtxoReserveSignature(pending, status, phoneSecret)
+    } finally {
+      zeroBytes(phoneSecret)
+    }
+  }
+  const reserve = await vaultPost<VtxoReserveResponse>('/v1/vtxo/reserve', vtxoReserveRequest(pending, status))
   if (reserve.operationId !== pending.operationId) throw new Error('VTXO reservation returned a different operation id')
   const offchain = buildReservedVtxoSpend(status, reserve, pending.amountSats, pending.destAddress)
   const next: PersistedVtxoSpend = {
@@ -750,7 +816,7 @@ async function continueSameVtxoSpend(
   status: VaultStatus,
   pending: PersistedVtxoSpend,
 ): Promise<VaultVtxoSpendResult> {
-  if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(status, pending)
+  if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(enrollment, status, pending)
   const operator = new RestArkProvider(vaultArkServer())
   if (pending.stage === 'operator-finalized') return finishOperatorFinalized(pending)
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
@@ -829,7 +895,7 @@ export async function sendVaultVtxo(
       throw new VtxoSpendInFlightError(pending!.arkTxid, pending!.operationId)
     }
     pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
-    pending = await reservePersistedVtxoSpend(status, pending)
+    pending = await reservePersistedVtxoSpend(enrollment, status, pending)
     const reserve = {
       operationId: pending.operationId,
       bundleDigest: pending.bundleDigest,
