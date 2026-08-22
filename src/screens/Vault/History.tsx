@@ -4,7 +4,7 @@ import ReceivedIcon from '../../icons/Received'
 import SentIcon from '../../icons/Sent'
 import { prettyDate, prettyNumber } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 
 export default function VaultHistory() {
   const { history, openTx } = useContext(VaultContext)

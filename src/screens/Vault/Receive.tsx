@@ -11,11 +11,11 @@ import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { encodeVaultBip21 } from '../../lib/vault/bip21'
 import { truncateAddress } from '../../lib/vault/policy'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import { HubGroup, HubRow } from './ui'
 
 export default function VaultReceive() {
-  const { account, boardingAddress, faucetUrl, liveNetwork, navigate, savingsAddress, spendingArkAddress } =
+  const { account, boardingAddress, liveNetwork, navigate, savingsAddress, spendingArkAddress } =
     useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState('')
@@ -28,7 +28,6 @@ export default function VaultReceive() {
     [boardingAddress, spendingArkAddress],
   )
   const request = spending ? unified : savingsAddress
-  const faucetAddress = spending ? boardingAddress : savingsAddress
 
   const copy = async (value: string, label: string) => {
     if (!value) return
@@ -91,13 +90,6 @@ export default function VaultReceive() {
           disabled={!request}
           label={copied === request ? 'Copied' : spending ? 'Copy request' : 'Copy address'}
         />
-        {liveNetwork && faucetAddress ? (
-          <Button
-            onClick={() => window.open(`${faucetUrl}?address=${faucetAddress}`, '_blank')}
-            label='Get test coins'
-            secondary
-          />
-        ) : null}
       </ButtonsOnBottom>
     </>
   )

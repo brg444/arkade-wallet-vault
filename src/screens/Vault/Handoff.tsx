@@ -15,7 +15,7 @@ import { prettyAmount } from '../../lib/format'
 import { canBrowserShareData, shareData } from '../../lib/share'
 import { encodePsbtFrames, parsePsbtFrame } from '../../lib/vault/savingsQr'
 import { psbtFile, psbtHexToBase64 } from '../../lib/vault/savingsSpend'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import PsbtQr from './PsbtQr'
 
 async function sharePsbt(psbtHex: string) {

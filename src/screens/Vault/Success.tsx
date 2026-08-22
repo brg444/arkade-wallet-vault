@@ -8,7 +8,7 @@ import Padded from '../../components/Padded'
 import Success from '../../components/Success'
 import { prettyAmount } from '../../lib/format'
 import { truncateAddress } from '../../lib/vault/policy'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import { Detail } from './ui'
 
 export default function VaultSuccess() {

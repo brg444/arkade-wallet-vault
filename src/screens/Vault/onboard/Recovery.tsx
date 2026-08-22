@@ -3,14 +3,13 @@ import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
 import { pasteFromClipboard } from '../../../lib/clipboard'
-import { DEMO_RECOVERY_PUB } from '../../../lib/vault/setupPlan'
 import SafeIcon from '../../../icons/Safe'
-import { VaultContext } from '../../../providers/vault'
+import { VaultContext } from '../../../vault/context'
 import { KeyCard } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultRecovery() {
-  const { allowDemoKeys, applyRecovery, error, navigate, setup, skipRecovery } = useContext(VaultContext)
+  const { applyRecovery, error, navigate, setup, skipRecovery } = useContext(VaultContext)
   const [value, setValue] = useState(setup.recoveryPub)
   const hasKey = value.trim().length > 0
 
@@ -28,12 +27,7 @@ export default function VaultRecovery() {
             <Button onClick={skipRecovery} label='Skip for now' secondary />
           </>
         ) : (
-          <>
-            <Button onClick={skipRecovery} label='Skip for now' />
-            {allowDemoKeys ? (
-              <Button onClick={() => applyRecovery(DEMO_RECOVERY_PUB, true)} label='Use a demo key' secondary />
-            ) : null}
-          </>
+          <Button onClick={skipRecovery} label='Skip for now' />
         )
       }
     >

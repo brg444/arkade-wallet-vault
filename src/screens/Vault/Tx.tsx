@@ -6,7 +6,7 @@ import FlexCol from '../../components/FlexCol'
 import Header from './Header'
 import Padded from '../../components/Padded'
 import { prettyAmount, prettyDate } from '../../lib/format'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 import { Detail } from './ui'
 
 export default function VaultTx() {

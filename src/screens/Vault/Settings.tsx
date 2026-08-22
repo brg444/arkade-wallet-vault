@@ -31,7 +31,7 @@ import {
   systemTheme,
 } from '../../lib/vault/prefs'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
-import { VaultContext } from '../../providers/vault'
+import { VaultContext } from '../../vault/context'
 
 type View = 'menu' | 'theme' | 'about' | 'haptics' | 'logs' | 'reset'
 
@@ -141,8 +141,7 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const { boardingAddress, busy, faucetUrl, liveNetwork, navigate, refreshBalance, reset, status } =
-    useContext(VaultContext)
+  const { busy, liveNetwork, navigate, refreshBalance, reset, status } = useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<View>('menu')
   const [theme, setTheme] = useState(loadVaultTheme)
@@ -202,7 +201,7 @@ export default function VaultSettings() {
 
   if (view === 'about') {
     const data = [
-      ['Network', status?.network || (liveNetwork ? 'mutinynet' : 'preview')],
+      ['Network', status?.network || (liveNetwork ? 'mutinynet' : 'unavailable')],
       ['Vault', status?.vaultId],
       ['Template', status?.templateVersion],
       ['Policy', status?.policyVersion],
@@ -274,15 +273,6 @@ export default function VaultSettings() {
                   void refreshBalance().finally(() => setRefreshing(false))
                 }}
               />
-              {liveNetwork ? (
-                <Row
-                  label='Get test coins'
-                  testId='settings-faucet'
-                  onClick={() =>
-                    window.open(boardingAddress ? `${faucetUrl}?address=${boardingAddress}` : faucetUrl, '_blank')
-                  }
-                />
-              ) : null}
               <Row label='Logs' testId='settings-logs' onClick={() => setView('logs')} />
             </FlexCol>
             <FlexCol gap='0'>

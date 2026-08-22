@@ -18,7 +18,7 @@ function renderVault() {
 }
 
 describe('VaultApp onboarding', () => {
-  it('requires hardware and rules before the wallet home', async () => {
+  it('requires hardware, rules, and a passkey enrollment before the wallet home', async () => {
     const user = userEvent.setup()
     renderVault()
 
@@ -51,58 +51,8 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText(/This is this device/)).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Skip for now' }))
-
-    expect(screen.getByTestId('vault-balance').textContent).toMatch(/^0/)
-    expect(screen.getByTestId('vault-history').textContent).toMatch(/No transactions yet/)
-    expect(screen.getByTestId('account-scan')).toBeTruthy()
-    expect(screen.getByTestId('account-receive')).toBeTruthy()
-    expect(screen.getByTestId('account-switcher').textContent).toMatch(/Spending/)
-    expect(screen.getByText(/not funded yet/i)).toBeTruthy()
-    expect(screen.getByText(/50,000 \/ 50,000 remaining/)).toBeTruthy()
-
-    await user.click(screen.getByTestId('account-switcher'))
-    expect(await screen.findByTestId('account-savings')).toBeTruthy()
-    await user.click(screen.getByTestId('account-savings'))
-    expect(screen.getByTestId('account-switcher').textContent).toMatch(/Savings/)
-    expect(screen.queryByText(/50,000 \/ 50,000 remaining/)).toBeNull()
-    expect(screen.getByText(/Hardware signs too/)).toBeTruthy()
-
-    await user.click(screen.getByTestId('account-switcher'))
-    await user.click(await screen.findByTestId('account-spend'))
-    expect(screen.getByText(/50,000 \/ 50,000 remaining/)).toBeTruthy()
-    expect(screen.queryByText(/Phone may spend/)).toBeNull()
-    expect(screen.queryByText(/Open Mutinynet faucet/)).toBeNull()
-    expect(screen.queryByText(/Daily path ready/)).toBeNull()
-
-    await user.click(screen.getByTestId('tab-vault'))
-    expect(await screen.findByRole('tab', { name: 'Security' })).toBeTruthy()
-    expect(screen.getByText('Vault service')).toBeTruthy()
-    expect(screen.getByText('Recovery Kit')).toBeTruthy()
-    expect(screen.getByText('I lost a key')).toBeTruthy()
-    expect(screen.queryByText('Recovery')).toBeNull()
-    expect(screen.queryByText(/Daily spend/)).toBeNull()
-    expect(screen.queryByText(/If you lose one/i)).toBeNull()
-
-    await user.click(screen.getByTestId('tab-settings'))
-    expect(await screen.findByText('Theme')).toBeTruthy()
-    expect(screen.getByText('Haptics')).toBeTruthy()
-    expect(screen.getByText('About')).toBeTruthy()
-    expect(screen.queryByText('Recover')).toBeNull()
-    expect(screen.queryByText('Recovery Kit')).toBeNull()
-    expect(screen.getByText('Check for update')).toBeTruthy()
-    expect(screen.getByText('Logs')).toBeTruthy()
-    expect(screen.getByText('Sign out')).toBeTruthy()
-    expect(screen.queryByText('Backup')).toBeNull()
-    expect(screen.queryByText('Fiat')).toBeNull()
-
-    await user.click(screen.getByTestId('settings-about'))
-    expect(await screen.findByText('Site')).toBeTruthy()
-    await user.click(screen.getByLabelText('Go back'))
-
-    await user.click(await screen.findByTestId('settings-signout'))
-    expect(await screen.findByText('Sign out of this browser')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Sign out' })).toHaveProperty('disabled', true)
-    expect(screen.queryByText('Your vault')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Create this device' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
+    expect(screen.queryByTestId('vault-balance')).toBeNull()
   }, 20_000)
 })
