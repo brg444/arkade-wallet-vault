@@ -1,28 +1,28 @@
 import { useContext, useEffect, useState } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import Content from '../../components/Content'
+import Content from './Content'
 import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
-import Header from '../../components/Header'
+import Header from './Header'
 import Input from '../../components/Input'
-import InputAddress from '../../components/InputAddress'
 import Padded from '../../components/Padded'
-import Scanner from '../../components/Scanner'
+import Scanner from './Scanner'
 import Text from '../../components/Text'
-import { decodeBip21, isBip21 } from '../../lib/bip21'
 import { prettyAmount, prettyNumber } from '../../lib/format'
+import { decodeVaultBip21, isVaultBip21 } from '../../lib/vault/bip21'
 import { isVaultSpendAddress } from '../../lib/vault/bitcoin'
 import { VaultContext } from '../../providers/vault'
+import AddressInput from './AddressInput'
 import { Meter } from './ui'
 
 function payloadFromScan(raw: string): { address: string; amount?: number } {
   const trimmed = raw.trim()
-  if (isBip21(trimmed)) {
+  if (isVaultBip21(trimmed)) {
     try {
-      const decoded = decodeBip21(trimmed)
+      const decoded = decodeVaultBip21(trimmed)
       return {
-        address: (decoded.arkAddress || decoded.address || '').trim(),
+        address: (decoded.arkadeAddress || decoded.bitcoinAddress || '').trim(),
         amount: decoded.satoshis,
       }
     } catch {
@@ -30,6 +30,13 @@ function payloadFromScan(raw: string): { address: string; amount?: number } {
     }
   }
   return { address: trimmed }
+}
+
+function isVaultSendInput(value: string, network: string): boolean {
+  if (isVaultSpendAddress(value, network)) return true
+  if (!isVaultBip21(value)) return false
+  const decoded = decodeVaultBip21(value)
+  return isVaultSpendAddress(decoded.arkadeAddress || decoded.bitcoinAddress, network)
 }
 
 export default function VaultSend() {
@@ -100,13 +107,19 @@ export default function VaultSend() {
               placeholder='20000'
               testId='vault-send-amount'
             />
-            <InputAddress
+            <AddressInput
               label='To'
               placeholder={fromSavings ? 'Bitcoin address' : 'Arkade address'}
               value={spend.address}
-              onChange={(value: string) => setSpendDraft({ address: value.trim() })}
+              onChange={(value: string) => {
+                const next = payloadFromScan(value)
+                setSpendDraft({
+                  address: next.address,
+                  ...(next.amount === undefined ? {} : { amount: next.amount }),
+                })
+              }}
               openScan={() => setScan(true)}
-              validator={(value) => isVaultSpendAddress(value, destNetwork)}
+              validator={(value) => isVaultSendInput(value, destNetwork)}
             />
             <Text color='neutral-600' tiny wrap>
               {fromSavings

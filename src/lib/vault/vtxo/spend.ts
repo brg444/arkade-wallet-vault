@@ -10,7 +10,6 @@ import {
   verifyTapscriptSignatures,
 } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
-import { testServer } from '../../constants'
 import { vaultGet, vaultPost } from '../api'
 import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth.js'
 import { historyFromVtxos, type VaultHistoryItem } from '../history'
@@ -26,9 +25,10 @@ import {
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
+const MUTINYNET_OPERATOR_ORIGIN = 'https://mutinynet.arkade.sh'
 
 export function vaultArkServer(production = import.meta.env.PROD): string {
-  return production ? '/arkade' : testServer
+  return production ? '/arkade' : MUTINYNET_OPERATOR_ORIGIN
 }
 
 export interface VtxoReserveResponse {

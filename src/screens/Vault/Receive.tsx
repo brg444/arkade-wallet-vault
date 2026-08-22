@@ -1,15 +1,15 @@
 import { useContext, useMemo, useState } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import Content from '../../components/Content'
+import Content from './Content'
 import FlexCol from '../../components/FlexCol'
-import Header from '../../components/Header'
+import Header from './Header'
 import Padded from '../../components/Padded'
 import QrCode from '../../components/QrCode'
 import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
-import { encodeBip21 } from '../../lib/bip21'
 import { copyToClipboard } from '../../lib/clipboard'
+import { encodeVaultBip21 } from '../../lib/vault/bip21'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../providers/vault'
 import { HubGroup, HubRow } from './ui'
@@ -21,7 +21,10 @@ export default function VaultReceive() {
   const [copied, setCopied] = useState('')
   const spending = account === 'spend'
   const unified = useMemo(
-    () => (boardingAddress && spendingArkAddress ? encodeBip21(boardingAddress, spendingArkAddress, '', 0) : ''),
+    () =>
+      boardingAddress && spendingArkAddress
+        ? encodeVaultBip21({ bitcoinAddress: boardingAddress, arkadeAddress: spendingArkAddress })
+        : '',
     [boardingAddress, spendingArkAddress],
   )
   const request = spending ? unified : savingsAddress

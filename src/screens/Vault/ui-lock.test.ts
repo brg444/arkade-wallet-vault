@@ -108,7 +108,7 @@ describe('vault UI lock', () => {
     expect(home).not.toMatch(/Converting confirmed Bitcoin to VTXOs automatically/)
     expect(home).not.toMatch(/Waiting for confirmation\. Boarding will resume automatically/)
     const receive = read('src/screens/Vault/Receive.tsx')
-    expect(receive).toMatch(/encodeBip21\(boardingAddress, spendingArkAddress/)
+    expect(receive).toMatch(/encodeVaultBip21/)
     expect(receive).not.toMatch(/operationalAddress/)
   })
 })
