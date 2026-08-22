@@ -17,7 +17,7 @@ export default defineConfig({
     contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: {
-    command: 'pnpm start:vault',
+    command: 'pnpm start',
     port: 3003,
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

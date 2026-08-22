@@ -2,104 +2,19 @@ import ReactDOM from 'react-dom/client'
 import './tokens.css'
 import './app.css'
 import './index.css'
-import App from './App'
-import { AspProvider } from './providers/asp'
-import { ConfigProvider } from './providers/config'
-import { FiatProvider } from './providers/fiat'
-import { FlowProvider } from './providers/flow'
-import { NavigationProvider } from './providers/navigation'
-import { NotificationsProvider } from './providers/notifications'
-import { WalletProvider } from './providers/wallet'
-import { OptionsProvider } from './providers/options'
-import { LimitsProvider } from './providers/limits'
-import { NudgeProvider } from './providers/nudge'
-import * as Sentry from '@sentry/react'
-import { SwapsProvider } from './providers/swaps'
-import { LnurlProvider } from './providers/lnurl'
-import { shouldInitializeSentry } from './lib/sentry'
-import { FeesProvider } from './providers/fees'
-import { AnnouncementProvider } from './providers/announcements'
 import { ToastProvider } from './components/Toast'
-import ErrorBoundary from './components/ErrorBoundary'
-import { DevModeProvider } from './providers/devMode'
-
-// Initialize Sentry only in production and when DSN is provided
-const sentryDsn = import.meta.env.VITE_SENTRY_DSN
-if (shouldInitializeSentry(sentryDsn)) {
-  Sentry.init({
-    dsn: sentryDsn,
-    sendDefaultPii: false,
-    enableLogs: true,
-    ignoreErrors: [/null is not an object.*a\[je\]/i, /translate\.googleapis\.com.*translate_http/],
-    denyUrls: [/translate\.google\.com\/translate_a\/element\.js/, /translate\.googleapis\.com/],
-    beforeSend(event, hint) {
-      const error = hint.originalException
-      const isTranslateOrigin =
-        (error instanceof Error && error.stack?.includes('translate.google.com')) ||
-        event.exception?.values?.some((v) =>
-          v.stacktrace?.frames?.some((f) => f.filename?.includes('translate.googleapis.com')),
-        )
-      if (isTranslateOrigin) {
-        return null
-      }
-      return event
-    },
-  })
-}
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/wallet-service-worker.mjs').catch(() => {})
-
-  // check if there's a service worker controlling the page
-  const previousSW = navigator.serviceWorker.controller
-
-  // This fires when the service worker controlling this page changes,
-  // eg a new worker has skipped waiting and become the new active worker.
-  // We reload the page to have the new service worker properly initialized.
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // don't reload on fresh install, only when the service worker changes (eg update)
-    if (previousSW) window.location.reload()
-  })
-}
+import { VaultProvider } from './providers/vault'
+import VaultApp from './VaultApp'
+import ErrorBoundary from './screens/Vault/ErrorBoundary'
 
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement)
 
 root.render(
-  // <React.StrictMode>
-  <DevModeProvider>
-    <NavigationProvider>
-      <ConfigProvider>
-        <AspProvider>
-          <NotificationsProvider>
-            <FiatProvider>
-              <FlowProvider>
-                <WalletProvider>
-                  <SwapsProvider>
-                    <LnurlProvider>
-                      <LimitsProvider>
-                        <FeesProvider>
-                          <OptionsProvider>
-                            <NudgeProvider>
-                              <AnnouncementProvider>
-                                <ToastProvider>
-                                  <ErrorBoundary>
-                                    <App />
-                                  </ErrorBoundary>
-                                </ToastProvider>
-                              </AnnouncementProvider>
-                            </NudgeProvider>
-                          </OptionsProvider>
-                        </FeesProvider>
-                      </LimitsProvider>
-                    </LnurlProvider>
-                  </SwapsProvider>
-                </WalletProvider>
-              </FlowProvider>
-            </FiatProvider>
-          </NotificationsProvider>
-        </AspProvider>
-      </ConfigProvider>
-    </NavigationProvider>
-  </DevModeProvider>,
-  // </React.StrictMode>,
+  <ErrorBoundary>
+    <ToastProvider>
+      <VaultProvider>
+        <VaultApp />
+      </VaultProvider>
+    </ToastProvider>
+  </ErrorBoundary>,
 )

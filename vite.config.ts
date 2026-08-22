@@ -44,32 +44,6 @@ export default defineConfig({
   },
   plugins: [
     basicAuth(),
-    process.env.VITE_VAULT_MODE === '1' && {
-      name: 'vault-dev-index',
-      configureServer(server) {
-        server.middlewares.use((req, _res, next) => {
-          if (req.url === '/' || req.url === '/index.html') req.url = '/vault.html'
-          next()
-        })
-      },
-    },
-    process.env.VITE_VAULT_MODE === '1' && {
-      name: 'vault-html-identity',
-      transformIndexHtml(html: string) {
-        return html
-          .replaceAll('Arkade Wallet', 'Arkade Vault')
-          .replaceAll('https://arkade.money', 'https://arkade-vault-demo.vercel.app')
-          .replaceAll('arkade.money', 'arkade-vault-demo.vercel.app')
-          .replace(
-            'Your Bitcoin, supercharged. Send payments, swap assets, and lend without giving up your keys.',
-            'Mutinynet spending vault. Do not send real bitcoin.',
-          )
-          .replace(
-            '<script defer data-domain="arkade-vault-demo.vercel.app" src="https://plausible.io/js/script.js"></script>',
-            '',
-          )
-      },
-    },
     react(),
     tailwindcss(),
     !process.env.VERCEL &&
@@ -81,36 +55,32 @@ export default defineConfig({
     process.env.HTTPS === 'true' && basicSsl(),
   ].filter(Boolean),
   server: {
-    port: 3002,
+    port: 3003,
     host: true,
     allowedHosts: ['.trycloudflare.com'],
-    proxy:
-      process.env.VITE_VAULT_MODE === '1'
-        ? {
-            '/v1': vaultAuthorizerProxy(),
-            '/health': vaultAuthorizerProxy(),
-            '/esplora': {
-              target: 'https://mempool.mutinynet.arkade.sh',
-              changeOrigin: true,
-              rewrite: (path) => path.replace(/^\/esplora/, '/api'),
-            },
-            '/arkade': {
-              target: 'https://mutinynet.arkade.sh',
-              changeOrigin: true,
-              rewrite: (path) => path.replace(/^\/arkade/, ''),
-            },
-          }
-        : undefined,
+    proxy: {
+      '/v1': vaultAuthorizerProxy(),
+      '/health': vaultAuthorizerProxy(),
+      '/esplora': {
+        target: 'https://mempool.mutinynet.arkade.sh',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/esplora/, '/api'),
+      },
+      '/arkade': {
+        target: 'https://mutinynet.arkade.sh',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/arkade/, ''),
+      },
+    },
   },
   define: {
     'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(gitCommitShort()),
   },
   build: {
     emptyOutDir: true,
-    sourcemap: process.env.VITE_VAULT_MODE !== '1',
+    sourcemap: false,
     rollupOptions: {
       external: ['fs'],
-      input: process.env.VITE_VAULT_MODE === '1' ? path.resolve(__dirname, 'vault.html') : undefined,
     },
   },
   worker: {
