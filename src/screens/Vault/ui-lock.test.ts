@@ -24,7 +24,7 @@ describe('vault UI lock', () => {
     expect(app).toContain('VaultPillNav')
     expect(app).toContain('VaultSettings')
     expect(app).toContain('has-pill-navbar')
-    const content = read('src/components/Content.tsx')
+    const content = read('src/screens/Vault/Content.tsx')
     expect(content).toContain('VaultRefresher')
     expect(app).toContain("navigate('settings')")
     const nav = read('src/screens/Vault/PillNav.tsx')
