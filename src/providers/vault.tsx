@@ -1,38 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { DUST_SATS } from '../lib/vault/constants'
-import { enrollWithPasskey, reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
-import {
-  discoverVaultIdFromPasskey,
-  enablePasskeyLogin,
-  signInWithPasskey,
-  unlockLocalEnrollment,
-} from '../lib/vault/signIn'
+import { reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import {
   findStoredEnrollment,
   loadEnrollment,
   loadSelectedVaultId,
   loadSessionLocked,
-  saveEnrollment,
   saveSelectedVaultId,
   setSessionLocked,
 } from '../lib/vault/enrollmentStore'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
-import {
-  broadcastTx,
-  confirmedSpendable,
-  fetchAddressStats,
-  fetchAddressTxs,
-  fetchAddressUtxos,
-  fetchTipHeight,
-} from '../lib/vault/esplora'
-import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
-import { consoleError } from '../lib/logs'
+import { broadcastTx, confirmedSpendable, fetchAddressUtxos, fetchTipHeight } from '../lib/vault/esplora'
+import type { VaultHistoryItem } from '../lib/vault/history'
 import {
   buildSavingsPsbt,
   chooseSavingsLeafForStatus,
   finalizeSavingsPsbt,
-  parseHardwareSecret,
   parseIncomingPsbt,
   requireSameSavingsIntent,
   signSavingsPsbt,
@@ -40,24 +24,8 @@ import {
 } from '../lib/vault/savingsSpend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
-import {
-  fetchVaultVtxoFunds,
-  fetchVaultVtxoHistory,
-  isVtxoReceiptPendingError,
-  isVtxoSpendInFlightError,
-  reconcilePersistedVtxoSpend,
-  sendVaultVtxo,
-} from '../lib/vault/vtxo/spend'
-import {
-  boardingAttemptKeyAfterLock,
-  boardingFailureHold,
-  fetchVaultBoardingFunds,
-  nextVaultBoardingAction,
-  settleVaultBoarding,
-  verifyVaultBoarding,
-  withVaultBoardingLock,
-  withVaultBoardingSecret,
-} from '../lib/vault/vtxo/board'
+import { isVtxoReceiptPendingError, isVtxoSpendInFlightError, sendVaultVtxo } from '../lib/vault/vtxo/spend'
+import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
 import { fetchVaultStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -70,25 +38,6 @@ import {
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
 
-import {
-  kitFromFacts,
-  pullMapBackup,
-  pushMapBackup,
-  unwrapMapWithHardware,
-  wrapMapForHardware,
-  type HardwareMapWrap,
-} from '../lib/vault/v5/kitBackup'
-
-import { signGuardianExitPsbt } from '../lib/vault/v5/guardianExit'
-import { loadLocalKit, saveLocalKit } from '../lib/vault/v5/kitStore'
-import { kitMatchesLiveVault, selectLiveKit } from '../lib/vault/v5/liveKit'
-import {
-  alertCopy,
-  loadSeenOutpoints,
-  pollPendingInitiates,
-  saveSeenOutpoints,
-  type InitiateAlert,
-} from '../lib/vault/v5/watch'
 import type { VaultStatus } from '../lib/vault/types'
 import {
   DEFAULT_SPEND_FEE_SATS,
@@ -98,6 +47,9 @@ import {
   type VaultScreen,
   type VaultSpend,
 } from '../vault/context'
+import { useRecoveryKit } from '../vault/useRecoveryKit'
+import { useVaultBalances } from '../vault/useVaultBalances'
+import { useVaultSession } from '../vault/useVaultSession'
 
 export { VaultContext } from '../vault/context'
 export type { VaultAccount, VaultContextProps, VaultScreen, VaultSpend } from '../vault/context'
@@ -112,34 +64,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [setup, setSetup] = useState<VaultSetupPlan>(emptySetupPlan)
   const [status, setStatus] = useState<VaultStatus | null>(null)
   const [enrollment, setEnrollment] = useState<EnrollmentSecrets | null>(null)
-  const [initiateAlert, setInitiateAlert] = useState('')
-  const [initiateAlerts, setInitiateAlerts] = useState<InitiateAlert[]>([])
-
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: DEFAULT_FEE })
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
   const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | ''>('')
-  const [history, setHistory] = useState<VaultHistoryItem[]>([])
   const [selectedTx, setSelectedTx] = useState<VaultHistoryItem | null>(null)
-  const [chainBalance, setChainBalance] = useState(0)
-  const [vtxoBalance, setVtxoBalance] = useState(0)
-  const [vtxoMaxCoin, setVtxoMaxCoin] = useState(0)
-  const [boardingBalance, setBoardingBalance] = useState(0)
-  const [boardingConfirmedBalance, setBoardingConfirmedBalance] = useState(0)
-  const [boardingInProgress, setBoardingInProgress] = useState(false)
-  const [boardingPulse, setBoardingPulse] = useState(0)
-  const [savingsBalance, setSavingsBalance] = useState(0)
   const [loaded, setLoaded] = useState(false)
   const [account, setAccount] = useState<VaultAccount>('spend')
   const [scanOnSend, setScanOnSend] = useState(false)
   const [handoffPsbt, setHandoffPsbt] = useState('')
   const [locked, setLocked] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
-  const boardingRun = useRef(false)
-  const boardingAttempt = useRef('')
-  const boardingRetryAfter = useRef(0)
 
   useEffect(() => {
     let existing: EnrollmentSecrets | null = null
@@ -224,11 +161,52 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = status?.network === 'mutinynet'
+  const reportError = useCallback((message: string) => setError(message), [])
+  const onBoarded = useCallback((txid: string) => {
+    setLastTxid(txid)
+    setLastTxKind('vtxo')
+  }, [])
+  const {
+    boardingInProgress,
+    history,
+    onchainSpendingSats,
+    refreshBalance,
+    savingsSats,
+    vtxoMaxCoin,
+    vtxoSpendingSats,
+  } = useVaultBalances({
+    addressPin,
+    busy,
+    enrollment,
+    liveFeeSats: LIVE_FEE,
+    locked,
+    onBoarded,
+    reportError,
+    setSpend,
+    status,
+  })
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
-  const amountSats = status?.enrolled ? vtxoBalance : 0
+  const amountSats = status?.enrolled ? vtxoSpendingSats : 0
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
+  const clearError = useCallback(() => reportError(''), [reportError])
+  const {
+    backupRecoveryKit,
+    downloadRecoveryKit,
+    hasRecoveryKit,
+    initiateAlert,
+    initiateAlerts,
+    restoreRecoveryKit,
+    signGuardianExitWithDevice,
+    unlockMapWithHardware,
+  } = useRecoveryKit({
+    enrollment,
+    status,
+    hardwarePub: setup.hardwarePub,
+    recoveryPub: setup.recoveryPub,
+    clearError,
+  })
 
   const acceptDesign = useCallback(() => {
     persist({ ...setup, acceptedDesign: true })
@@ -309,399 +287,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return next
   }, [persist, setup])
 
-  const resolveKit = useCallback(() => {
-    const id = status?.vaultId || enrollment?.vaultId || ''
-    const template = String(status?.templateVersion || '')
-    const stored = id ? loadLocalKit(id) : null
-    if (status?.enrolled) {
-      if (stored && kitMatchesLiveVault(stored, id, template)) return stored
-      return kitFromFacts({
-        enrollment,
-        status,
-        hardwarePub: setup.hardwarePub,
-        recoveryPub: setup.recoveryPub || status?.recoveryPub,
-      })
-    }
-    return kitFromFacts({
-      enrollment,
-      status,
-      hardwarePub: setup.hardwarePub,
-      recoveryPub: setup.recoveryPub || status?.recoveryPub,
-    })
-  }, [enrollment, setup.hardwarePub, setup.recoveryPub, status])
-
-  const downloadRecoveryKit = useCallback(() => {
-    const kit = resolveKit()
-    if (!kit) throw new Error('No Recovery Kit yet. Add recovery, or get the map with Face ID.')
-    return JSON.stringify(kit, null, 2)
-  }, [resolveKit])
-
-  const backupRecoveryKit = useCallback(async () => {
-    setError('')
-    if (enrollment && status?.enrolled) await unlockLocalEnrollment(enrollment)
-    const kit = resolveKit()
-    if (!kit) throw new Error('This vault has no recovery map. Add recovery on a new vault.')
-    saveLocalKit(kit)
-    const id = kit.descriptor.vaultId
-    const hardwarePub = setup.hardwarePub || status?.externalOwnerWalletPub || ''
-    const wrap = hardwarePub ? await wrapMapForHardware(kit, hardwarePub) : undefined
-    return id ? pushMapBackup(id, kit, wrap) : false
-  }, [enrollment, resolveKit, setup.hardwarePub, status?.enrolled, status?.externalOwnerWalletPub])
-
-  const restoreRecoveryKit = useCallback(async () => {
-    setError('')
-    if (enrollment && status?.enrolled) await unlockLocalEnrollment(enrollment)
-    const id = status?.vaultId || enrollment?.vaultId || ''
-    const pulled = id ? await pullMapBackup(id) : null
-    const kit =
-      pulled?.kit ||
-      kitFromFacts({
-        enrollment,
-        status,
-        hardwarePub: setup.hardwarePub,
-        recoveryPub: setup.recoveryPub || status?.recoveryPub,
-      })
-    if (!kit) throw new Error('Could not rebuild the map. Save it while this app is open.')
-    if (id && kit.descriptor.vaultId !== id) throw new Error('Recovery Kit does not match this vault')
-    if (status?.enrolled && status.templateVersion && kit.descriptor.templateVersion !== status.templateVersion) {
-      throw new Error('Recovery Kit does not match this vault')
-    }
-    saveLocalKit(kit)
-  }, [enrollment, setup.hardwarePub, setup.recoveryPub, status])
-
-  const unlockMapWithHardware = useCallback(async (wrapRaw: string, hardwareSecret: string) => {
-    setError('')
-    let priv: Uint8Array | undefined
-    try {
-      priv = parseHardwareSecret(hardwareSecret)
-      const wrap = JSON.parse(wrapRaw) as HardwareMapWrap
-      const kit = await unwrapMapWithHardware(wrap, priv)
-      saveLocalKit(kit)
-    } finally {
-      priv?.fill(0)
-    }
-  }, [])
-
-  const signGuardianExitWithDevice = useCallback(
-    async (psbtHex: string) => {
-      if (!enrollment || !status?.enrolled) throw new Error('Unlock this device on this vault first')
-      const priv = await unlockPhoneRoutine(enrollment, status)
-      try {
-        return signGuardianExitPsbt(psbtHex, priv)
-      } finally {
-        zeroBytes(priv)
-      }
-    },
-    [enrollment, status],
-  )
-
-  const refreshBalance = useCallback(
-    async (vaultId?: string) => {
-      const id = String(vaultId || status?.vaultId || addressPin?.vaultId || '').trim()
-      const pin = id ? loadAddressPin(localStorage, id) : null
-      const address = pin?.operationalAddress || ''
-      const savings = pin?.savingsAddress || ''
-      try {
-        const liveStatus = id && status?.vaultId !== id ? await fetchVaultStatus(undefined, id) : status
-        const arkAddress = liveStatus?.spendingArkAddress || ''
-        const boardAddress = liveStatus?.vtxoBoardingAddress || ''
-        if (!address && !savings && !arkAddress && !boardAddress) {
-          setChainBalance(0)
-          setVtxoBalance(0)
-          setVtxoMaxCoin(0)
-          setBoardingBalance(0)
-          setBoardingConfirmedBalance(0)
-          setSavingsBalance(0)
-          setHistory([])
-          return
-        }
-        if (address) {
-          const stats = await fetchAddressStats(address)
-          setChainBalance(Math.max(0, stats.funded - stats.spent))
-        } else {
-          setChainBalance(0)
-        }
-        if (savings) {
-          const stats = await fetchAddressStats(savings)
-          setSavingsBalance(Math.max(0, stats.funded - stats.spent))
-        } else {
-          setSavingsBalance(0)
-        }
-        if (arkAddress && liveStatus?.enrolled) {
-          const funds = await fetchVaultVtxoFunds(liveStatus)
-          setVtxoBalance(funds.balance)
-          setVtxoMaxCoin(funds.maxCoin)
-          setSpend((prev) => ({
-            ...prev,
-            fee:
-              isVaultArkAddress(prev.address, liveStatus.network) && funds.maxCoin >= prev.amount + DUST_SATS
-                ? 0
-                : liveStatus.network === 'mutinynet'
-                  ? LIVE_FEE
-                  : prev.fee,
-          }))
-        } else {
-          setVtxoBalance(0)
-          setVtxoMaxCoin(0)
-        }
-        if (boardAddress && liveStatus?.enrolled && liveStatus.vtxoBoardingActive) {
-          const funds = await fetchVaultBoardingFunds(liveStatus)
-          setBoardingBalance(funds.total)
-          setBoardingConfirmedBalance(funds.confirmed)
-        } else {
-          setBoardingBalance(0)
-          setBoardingConfirmedBalance(0)
-        }
-        const savTxs = savings ? await fetchAddressTxs(savings).catch(() => []) : []
-        const vtxoHistory =
-          arkAddress && liveStatus?.enrolled ? await fetchVaultVtxoHistory(liveStatus).catch(() => []) : []
-        setHistory([...historyFromTxs(savTxs, savings, 'savings'), ...vtxoHistory])
-      } catch (err) {
-        setError(humanizeVaultError(err))
-      }
-    },
-    [addressPin, status],
-  )
-
-  const reconcileSpendingToVtxos = useCallback(async () => {
-    if (boardingRun.current || !status?.enrolled || !enrollment) return
-    if (!status.vtxoBoardingActive || !status.vtxoBoardingAddress) return
-    const action = nextVaultBoardingAction({
-      confirmed: boardingConfirmedBalance,
-      total: boardingBalance,
-    })
-    if (action !== 'settle') return
-    boardingRun.current = true
-    setError('')
-    try {
-      const settled = await withVaultBoardingLock(status.vaultId, async () => {
-        setBoardingInProgress(true)
-        const phoneSecret = await unlockPhoneRoutine(enrollment, status)
-        return withVaultBoardingSecret(phoneSecret, (liveSecret) => settleVaultBoarding(liveSecret, status))
-      })
-      if (!settled.held) {
-        boardingAttempt.current = boardingAttemptKeyAfterLock(false, '')
-        return
-      }
-      boardingAttempt.current = `${status.vaultId}:settle:${boardingConfirmedBalance}:${boardingBalance}`
-      setLastTxid(settled.value.txid)
-      setLastTxKind('vtxo')
-      boardingRetryAfter.current = 0
-      await refreshBalance(status.vaultId)
-    } catch (err) {
-      consoleError(err, 'automatic Spending transfer')
-      setError('')
-      const hold = boardingFailureHold(err, `${status.vaultId}:settle:${boardingConfirmedBalance}:${boardingBalance}`)
-      boardingAttempt.current = hold.attemptKey
-      boardingRetryAfter.current = Date.now() + hold.retryDelayMs
-      await refreshBalance(status.vaultId)
-    } finally {
-      boardingRun.current = false
-      setBoardingInProgress(false)
-    }
-  }, [boardingBalance, boardingConfirmedBalance, enrollment, refreshBalance, status])
-
-  useEffect(() => {
-    if (busy || boardingInProgress || locked || !enrollment || !status?.enrolled || !status.vtxoBoardingActive) return
-    const action = nextVaultBoardingAction({
-      confirmed: boardingConfirmedBalance,
-      total: boardingBalance,
-    })
-    if (action === 'idle' || action === 'wait') {
-      boardingAttempt.current = ''
-      return
-    }
-    if (Date.now() < boardingRetryAfter.current) return
-    const key = `${status.vaultId}:${action}:${boardingConfirmedBalance}:${boardingBalance}`
-    if (boardingAttempt.current === key) return
-    void reconcileSpendingToVtxos()
-  }, [
-    boardingBalance,
-    boardingConfirmedBalance,
-    boardingInProgress,
-    boardingPulse,
-    busy,
+  const { enableOtherDevices, enroll, signIn } = useVaultSession({
     enrollment,
-    locked,
-    reconcileSpendingToVtxos,
+    refreshBalance,
+    reportError,
+    sealPlan,
+    setAddressPin,
+    setBusy,
+    setEnrollment,
+    setLocked,
+    setScreen,
+    setStatus,
+    setup,
     status,
-  ])
-
-  const recoverVtxoSpend = useCallback(async () => {
-    if (!status?.enrolled || !status.vaultId) return
-    try {
-      const result = await reconcilePersistedVtxoSpend(status)
-      if (result.kind === 'receipt-finalized') await refreshBalance(status.vaultId)
-    } catch (err) {
-      consoleError(err, 'VTXO spend recovery')
-    }
-  }, [refreshBalance, status])
-
-  useEffect(() => {
-    if (locked || !status?.enrolled) return
-    void recoverVtxoSpend()
-    const pulse = () => {
-      if (!status.vtxoBoardingActive) return
-      if (document.visibilityState !== 'hidden') {
-        void refreshBalance(status.vaultId)
-        setBoardingPulse((value) => value + 1)
-      }
-    }
-    const onFocus = () => {
-      boardingAttempt.current = ''
-      void recoverVtxoSpend()
-      pulse()
-    }
-    const timer = status.vtxoBoardingActive ? window.setInterval(pulse, 15_000) : 0
-    window.addEventListener('focus', onFocus)
-    return () => {
-      if (timer) window.clearInterval(timer)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [locked, recoverVtxoSpend, refreshBalance, status])
-
-  const enroll = useCallback(
-    async (token = '') => {
-      if (!planReady(setup)) {
-        setError('Finish setup first.')
-        return
-      }
-      if (status?.externalOwnerWalletPub && setup.hardwarePub !== status.externalOwnerWalletPub) {
-        setError('This vault expects a different hardware key.')
-        return
-      }
-      if (status?.enrollmentMode === 'token' && token.trim().length < 32) {
-        setError('Paste your invite.')
-        return
-      }
-      setBusy(true)
-      setError('')
-      try {
-        const out = await enrollWithPasskey(token, {
-          hardwarePub: setup.hardwarePub,
-          ...(setup.recoveryPub ? { recoveryPub: setup.recoveryPub } : {}),
-        })
-        setEnrollment(out.enrollment)
-        saveEnrollment(out.enrollment)
-        if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
-        setStatus(out.status)
-        setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
-        sealPlan()
-        if (setup.recoveryPub) {
-          try {
-            const kit = kitFromFacts({
-              enrollment: out.enrollment,
-              status: out.status,
-              hardwarePub: setup.hardwarePub,
-              recoveryPub: setup.recoveryPub || out.status.recoveryPub,
-            })
-            if (kit) {
-              saveLocalKit(kit)
-              const hardwarePub = setup.hardwarePub || out.status.externalOwnerWalletPub || ''
-              const wrap = hardwarePub ? await wrapMapForHardware(kit, hardwarePub) : undefined
-              await pushMapBackup(kit.descriptor.vaultId, kit, wrap)
-            }
-          } catch {
-            // Map stays on this device if the service cannot store it yet.
-          }
-        }
-        try {
-          setStatus(await enablePasskeyLogin(out.enrollment))
-        } catch {
-          setError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
-        }
-        await refreshBalance(out.status.vaultId)
-        setScreen('home')
-      } catch (err) {
-        setError(humanizeVaultError(err))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [refreshBalance, sealPlan, setup, status],
-  )
-
-  const enableOtherDevices = useCallback(async () => {
-    if (!enrollment) {
-      setError('Finish setup first.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      setStatus(await enablePasskeyLogin(enrollment))
-    } catch (err) {
-      setError(humanizeVaultError(err))
-    } finally {
-      setBusy(false)
-    }
-  }, [enrollment])
-
-  const signIn = useCallback(async () => {
-    setBusy(true)
-    setError('')
-    try {
-      const local = enrollment || findStoredEnrollment()
-      if (local) {
-        const unlocked = await unlockLocalEnrollment(local)
-        setEnrollment(unlocked)
-        saveEnrollment(unlocked)
-        if (unlocked.vaultId) saveSelectedVaultId(unlocked.vaultId)
-        setSessionLocked(false)
-        setLocked(false)
-        const live = unlocked.vaultId ? await fetchVaultStatus(undefined, unlocked.vaultId) : await fetchVaultStatus()
-        setStatus(live)
-        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
-        try {
-          const pulled = live.vaultId ? await pullMapBackup(live.vaultId) : null
-          const kit =
-            pulled?.kit ||
-            kitFromFacts({
-              enrollment: unlocked,
-              status: live,
-              hardwarePub: setup.hardwarePub,
-              recoveryPub: setup.recoveryPub || live.recoveryPub,
-            })
-          if (kit) saveLocalKit(kit)
-        } catch {
-          // Sign-in still succeeds if the map cannot be rebuilt yet.
-        }
-        await refreshBalance(live.vaultId)
-        setScreen('home')
-        return
-      }
-      const selected = loadSelectedVaultId()
-      const vaultId = selected || (await discoverVaultIdFromPasskey())
-      const out = await signInWithPasskey(vaultId)
-      setEnrollment(out.enrollment)
-      saveEnrollment(out.enrollment)
-      if (out.enrollment.vaultId) saveSelectedVaultId(out.enrollment.vaultId)
-      setSessionLocked(false)
-      setLocked(false)
-      setStatus(out.status)
-      setAddressPin(loadAddressPin(localStorage, out.status.vaultId))
-      try {
-        const pulled = out.status.vaultId ? await pullMapBackup(out.status.vaultId) : null
-        const kit =
-          pulled?.kit ||
-          kitFromFacts({
-            enrollment: out.enrollment,
-            status: out.status,
-            hardwarePub: setup.hardwarePub,
-            recoveryPub: setup.recoveryPub || out.status.recoveryPub,
-          })
-        if (kit) saveLocalKit(kit)
-      } catch {
-        // Sign-in still succeeds if the map cannot be rebuilt yet.
-      }
-      await refreshBalance(out.status.vaultId)
-      setScreen('home')
-    } catch (err) {
-      setError(humanizeVaultError(err))
-    } finally {
-      setBusy(false)
-    }
-  }, [enrollment, refreshBalance, setup.hardwarePub, setup.recoveryPub])
+  })
 
   const setSpendDraft = useCallback(
     (draft: Partial<VaultSpend>) => {
@@ -750,7 +349,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('An Arkade destination requires one VTXO large enough for the payment and change.')
       return
     }
-    const source = account === 'savings' ? savingsBalance : vtxoMaxCoin
+    const source = account === 'savings' ? savingsSats : vtxoMaxCoin
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -765,7 +364,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (
         account !== 'savings' &&
         arkDestination &&
-        spend.amount + spend.fee <= vtxoBalance &&
+        spend.amount + spend.fee <= vtxoSpendingSats &&
         vtxoMaxCoin < spend.amount + DUST_SATS
       ) {
         setError('This first VTXO release spends one VTXO at a time. Choose a smaller amount.')
@@ -792,12 +391,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [
     account,
     dailyRemaining,
-    savingsBalance,
+    savingsSats,
     setup.txCapSats,
     spend,
     status?.network,
     status?.enrolled,
-    vtxoBalance,
+    vtxoSpendingSats,
     vtxoMaxCoin,
   ])
 
@@ -955,47 +554,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScreen('welcome')
   }, [liveNetwork])
 
-  useEffect(() => {
-    const id = status?.vaultId || enrollment?.vaultId || ''
-    const template = String(status?.templateVersion || '')
-    setInitiateAlerts([])
-    setInitiateAlert('')
-    const kit = selectLiveKit({
-      vaultId: id,
-      templateVersion: template,
-      stored: id ? loadLocalKit(id) : null,
-    })
-    if (!kit) return
-    let cancelled = false
-    const tick = async () => {
-      try {
-        const seen = loadSeenOutpoints(kit.descriptor.vaultId)
-        const next = await pollPendingInitiates({
-          descriptor: kit.descriptor,
-          fetchUtxos: fetchAddressUtxos,
-          seen,
-        })
-        if (cancelled) return
-        saveSeenOutpoints(kit.descriptor.vaultId, next.seen)
-        if (next.alerts.length) {
-          setInitiateAlerts((prev) => [...next.alerts, ...prev].slice(0, 12))
-          setInitiateAlert(alertCopy(next.alerts[0]))
-        }
-      } catch {
-        // Best-effort local poll. This is not a watchtower.
-      }
-    }
-    void tick()
-    const timer = window.setInterval(() => void tick(), 20_000)
-    const onFocus = () => void tick()
-    window.addEventListener('focus', onFocus)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [enrollment?.vaultId, status?.templateVersion, status?.vaultId])
-
   const value = useMemo<VaultContextProps>(
     () => ({
       acceptDesign,
@@ -1011,7 +569,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       restoreRecoveryKit,
       unlockMapWithHardware,
       signGuardianExitWithDevice,
-      hasRecoveryKit: Boolean(resolveKit()),
+      hasRecoveryKit,
       initiateAlert,
       initiateAlerts,
       approveSend,
@@ -1054,7 +612,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverExit,
       networkLabel,
       operationalAddress,
-      onchainSpendingSats: chainBalance,
+      onchainSpendingSats,
       spendingArkAddress,
       refreshBalance,
       reset,
@@ -1068,7 +626,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       scanOnSend,
       clearSendScan: () => setScanOnSend(false),
       savingsAddress,
-      savingsSats: savingsBalance,
+      savingsSats,
       screen: loaded ? screen : 'welcome',
       setAccount,
       setCondition,
@@ -1078,13 +636,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       spend,
       status,
       lastSend,
-      vtxoSpendingSats: vtxoBalance,
+      vtxoSpendingSats,
     }),
     [
       acceptDesign,
       account,
       amountSats,
-      chainBalance,
+      onchainSpendingSats,
       applyHardware,
       applyRecovery,
       skipRecovery,
@@ -1095,7 +653,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       restoreRecoveryKit,
       unlockMapWithHardware,
       signGuardianExitWithDevice,
-      resolveKit,
+      hasRecoveryKit,
       initiateAlert,
       initiateAlerts,
       approveSend,
@@ -1132,7 +690,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       reviewSpend,
       scanOnSend,
       savingsAddress,
-      savingsBalance,
+      savingsSats,
       screen,
       setCondition,
       setSpendDraft,
@@ -1140,7 +698,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       spend,
       status?.enrolled,
       status?.periodSpent,
-      vtxoBalance,
+      vtxoSpendingSats,
       vtxoMaxCoin,
     ],
   )
