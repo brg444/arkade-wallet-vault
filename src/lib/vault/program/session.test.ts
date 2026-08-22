@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { deriveSession, pendingAge, remainingCsv } from './session'
 
-describe('staged recovery session', () => {
+describe('Savings recovery session', () => {
   it('starts CSV on the confirmed pending height, not the Normal UTXO age', () => {
     expect(pendingAge(100, 105)).toBe(6)
     expect(remainingCsv(6, 100, 104)).toBe(1)

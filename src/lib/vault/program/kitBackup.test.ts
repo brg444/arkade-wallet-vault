@@ -1,60 +1,52 @@
 import { describe, expect, it } from 'vitest'
 import type { VaultStatus } from '../types'
-import { xOnly } from '../setupPlan'
 import { buildVaultProgramDescriptor } from './descriptor'
 import { PROGRAM_FIXTURE } from './fixtures'
 import { buildRecoveryKit } from './kit'
-import { buildMapBackup, evenYCompressed, kitFromFacts, parseMapBackup } from './kitBackup'
-
-function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDescriptor>): VaultStatus {
-  return {
-    enrolled: true,
-    network: descriptor.network,
-    clientOrigin: 'https://vault.example',
-    rpId: 'vault.example',
-    vaultId: descriptor.vaultId,
-    templateVersion: descriptor.templateVersion,
-    policyVersion: descriptor.policyVersion,
-    operationalCsvBlocks: descriptor.csv.phone,
-    savingsCsvBlocks: descriptor.csv.hardware,
-    externalOwnerWalletPub: descriptor.keys.hardware,
-    vaultCosignerBasePub: descriptor.keys.vaultCosignerBase,
-    arkadeCosignerBasePub: descriptor.keys.arkadeCosignerBase,
-    arkadeCosignerOrigin: descriptor.arkadeCosigner.origin,
-    arkadeCosignerVersion: descriptor.arkadeCosigner.version,
-    operationalAddress: descriptor.daily.address,
-    savingsAddress: descriptor.savings.address,
-    savingsExcludesRoutineCosigners: true,
-    periodAllowance: descriptor.policy.periodAllowanceSats,
-    periodSpent: 0,
-    periodRemaining: descriptor.policy.periodAllowanceSats,
-    txCap: descriptor.policy.recipientCapSats,
-    absoluteFeeCap: descriptor.policy.absoluteFeeCapSats,
-    feerateCapSatVb: descriptor.policy.feerateCapSatVb,
-    phoneRoutineBip340Pub: descriptor.keys.phoneRoutineBip340,
-    phoneDirectP256: descriptor.keys.phoneDirectP256,
-    tweakedVaultCosignerXOnly: xOnly(descriptor.tweaks.routine.vault),
-    tweakedArkadeCosignerXOnly: xOnly(descriptor.tweaks.routine.arkade),
-    recoveryPub: descriptor.keys.recovery,
-  }
-}
+import { buildMapBackup, kitFromFacts, parseMapBackup } from './kitBackup'
 
 function descriptor(recovery = true) {
   return buildVaultProgramDescriptor({
     ...PROGRAM_FIXTURE,
     recoveryPub: recovery ? PROGRAM_FIXTURE.recoveryPub : undefined,
-    routineVault: evenYCompressed(xOnly(PROGRAM_FIXTURE.routineVault)),
-    routineArkade: evenYCompressed(xOnly(PROGRAM_FIXTURE.routineArkade)),
   })
 }
 
-describe('vault map backup', () => {
-  it('stores only the public committed kit', () => {
+function statusFromDescriptor(committed: ReturnType<typeof descriptor>): VaultStatus {
+  return {
+    enrolled: true,
+    network: committed.network,
+    clientOrigin: 'https://vault.example',
+    rpId: 'vault.example',
+    vaultId: committed.vaultId,
+    templateVersion: committed.templateVersion,
+    policyVersion: committed.policyVersion,
+    externalOwnerWalletPub: committed.keys.hardware,
+    vaultCosignerBasePub: committed.keys.vaultCosignerBase,
+    arkadeCosignerBasePub: committed.keys.arkadeCosignerBase,
+    arkadeCosignerOrigin: committed.arkadeCosigner.origin,
+    arkadeCosignerVersion: committed.arkadeCosigner.version,
+    savingsAddress: committed.savings.address,
+    savingsScript: committed.savings.script,
+    periodAllowance: committed.policy.periodAllowanceSats,
+    periodSpent: 0,
+    periodRemaining: committed.policy.periodAllowanceSats,
+    txCap: committed.policy.recipientCapSats,
+    absoluteFeeCap: committed.policy.absoluteFeeCapSats,
+    feerateCapSatVb: committed.policy.feerateCapSatVb,
+    phoneBip340Pub: committed.keys.phoneBip340,
+    phoneDirectP256: committed.keys.phoneDirectP256,
+    recoveryPub: committed.keys.recovery,
+  }
+}
+
+describe('Savings map backup', () => {
+  it('stores only the public committed Recovery Kit', () => {
     const kit = buildRecoveryKit(descriptor())
     const backup = buildMapBackup(kit, '2026-08-18T00:00:00.000Z')
     expect(backup.name).toBe('arkade-vault-map')
-    expect(backup.kit).not.toHaveProperty('secret')
-    expect(JSON.stringify(Object.keys(backup))).not.toMatch(/secret|mnemonic|seed/)
+    expect(backup.version).toBe(2)
+    expect(JSON.stringify(backup)).not.toMatch(/mnemonic|privateKey|secret/)
     expect(parseMapBackup(backup).kit.descriptorHash).toBe(kit.descriptorHash)
   })
 
@@ -64,16 +56,13 @@ describe('vault map backup', () => {
     expect(kitFromFacts({ status })?.descriptorHash).toBe(buildRecoveryKit(committed).descriptorHash)
     expect(kitFromFacts({ status: { ...status, arkadeCosignerOrigin: undefined } })).toBeNull()
     expect(kitFromFacts({ status: { ...status, savingsAddress: 'tb1pstale' } })).toBeNull()
+    expect(kitFromFacts({ status: { ...status, savingsScript: '5120' + '00'.repeat(32) } })).toBeNull()
   })
 
-  it('rebuilds a no-recovery kit for Savings', () => {
+  it('persists a usable no-recovery Savings kit', () => {
     const committed = descriptor(false)
     const rebuilt = kitFromFacts({ status: statusFromDescriptor(committed) })
     expect(rebuilt?.descriptor.keys.recovery).toBeUndefined()
     expect(rebuilt?.descriptor.savings.address).toBe(committed.savings.address)
-  })
-
-  it('lifts an x-only tweak to even-Y compressed', () => {
-    expect(evenYCompressed(xOnly(PROGRAM_FIXTURE.routineVault))).toMatch(/^02[0-9a-f]{64}$/)
   })
 })

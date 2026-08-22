@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from './constants'
-import { STAGED_TEMPLATE } from './program/constants'
+import { SAVINGS_TEMPLATE } from './program/constants'
 import { parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
 import type { VaultStatus } from './types'
 
@@ -13,13 +13,10 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     clientOrigin: 'https://vault.example',
     rpId: 'vault.example',
     vaultId: VAULT_ID,
-    templateVersion: STAGED_TEMPLATE,
+    templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
-    operationalCsvBlocks: 144,
-    savingsCsvBlocks: 6,
-    operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
     savingsAddress: 'tb1ptest',
-    savingsExcludesRoutineCosigners: true,
+    savingsScript: '5120' + 'aa'.repeat(32),
     periodAllowance: 100_000,
     periodSpent: 0,
     periodRemaining: 100_000,
@@ -45,11 +42,16 @@ describe('status identity binding', () => {
     expect(() => vaultStatusPath('')).toThrow(/vault id required/)
   })
 
-  it('accepts only the current staged template', () => {
+  it('accepts only the current Savings template', () => {
     expect(() =>
       requireStatusIdentity(sampleStatus({ templateVersion: 'phone-hww-recovery-staged-v5' }), VAULT_ID),
     ).toThrow(/template version/)
-    expect(requireStatusIdentity(sampleStatus(), VAULT_ID).templateVersion).toBe(STAGED_TEMPLATE)
+    expect(requireStatusIdentity(sampleStatus(), VAULT_ID).templateVersion).toBe(SAVINGS_TEMPLATE)
+  })
+
+  it('requires the Savings descriptor but no retired Daily account', () => {
+    expect(() => requireStatusIdentity(sampleStatus({ savingsScript: '' }), VAULT_ID)).toThrow(/Savings descriptor/)
+    expect(requireStatusIdentity(sampleStatus(), VAULT_ID)).not.toHaveProperty('operationalAddress')
   })
 })
 
@@ -66,10 +68,8 @@ describe('pingVaultService', () => {
               network: 'mutinynet',
               clientOrigin: 'https://vault.example',
               rpId: 'vault.example',
-              templateVersion: STAGED_TEMPLATE,
+              templateVersion: SAVINGS_TEMPLATE,
               policyVersion: POLICY_VERSION,
-              operationalCsvBlocks: 144,
-              savingsCsvBlocks: 6,
               enrollmentMode: 'invite',
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },

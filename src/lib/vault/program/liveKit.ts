@@ -1,20 +1,20 @@
-import { STAGED_TEMPLATE } from './constants'
+import { SAVINGS_TEMPLATE } from './constants'
 import type { VaultStatus } from '../types'
 import type { RecoveryKit } from './kit'
 
 export function watcherEnabledForTemplate(templateVersion?: string): boolean {
-  return String(templateVersion || '') === STAGED_TEMPLATE
+  return String(templateVersion || '') === SAVINGS_TEMPLATE
 }
 
 export function kitMatchesLiveVault(kit: RecoveryKit, status: VaultStatus): boolean {
   const descriptor = kit.descriptor
-  if (!status.enrolled || status.templateVersion !== STAGED_TEMPLATE) return false
+  if (!status.enrolled || status.templateVersion !== SAVINGS_TEMPLATE) return false
   return (
     descriptor.vaultId === status.vaultId &&
     descriptor.templateVersion === status.templateVersion &&
-    descriptor.daily.address === status.operationalAddress &&
     descriptor.savings.address === status.savingsAddress &&
-    descriptor.keys.phoneRoutineBip340 === status.phoneRoutineBip340Pub &&
+    descriptor.savings.script === status.savingsScript &&
+    descriptor.keys.phoneBip340 === status.phoneBip340Pub &&
     descriptor.keys.hardware === status.externalOwnerWalletPub &&
     descriptor.keys.recovery === status.recoveryPub &&
     descriptor.keys.vaultCosignerBase === status.vaultCosignerBasePub &&

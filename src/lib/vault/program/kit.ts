@@ -1,8 +1,8 @@
-import { FAMILY_KEYS, PROGRAM_CSV, PROGRAM_SCHEMA, isStagedTemplate } from './constants'
+import { FAMILY_KEYS, PROGRAM_CSV, PROGRAM_SCHEMA, isSavingsTemplate } from './constants'
 import { hashVaultProgramDescriptor, validateVaultProgramDescriptor, type VaultProgramDescriptor } from './descriptor'
 
 export const RECOVERY_KIT_NAME = 'arkade-recovery-kit'
-export const RECOVERY_KIT_VERSION = 1
+export const RECOVERY_KIT_VERSION = 2
 
 export interface RecoveryKit {
   name: typeof RECOVERY_KIT_NAME
@@ -43,7 +43,6 @@ export function inspectRecoveryKit(kit: RecoveryKit): RecoveryKitReport {
   const parsed = parseRecoveryKit(kit)
   const d = parsed.descriptor
   const trees = [
-    { role: 'daily', address: d.daily.address },
     { role: 'savings', address: d.savings.address },
     ...FAMILY_KEYS.map((key) => ({
       role: `pending-${key}`,
@@ -70,7 +69,7 @@ export function inspectRecoveryKit(kit: RecoveryKit): RecoveryKitReport {
 }
 
 export function assertKitTemplate(d: VaultProgramDescriptor) {
-  if (d.schema !== PROGRAM_SCHEMA || !isStagedTemplate(d.templateVersion)) {
+  if (d.schema !== PROGRAM_SCHEMA || !isSavingsTemplate(d.templateVersion)) {
     throw new Error('Recovery Kit does not match the current Vault Program')
   }
 }

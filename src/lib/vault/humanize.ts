@@ -31,7 +31,7 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('already bound to a different exact request')) {
     return 'This send is already in progress. Refresh your balance before trying again.'
   }
-  if (msg.includes('mutated') && msg.includes('phoneroutine')) {
+  if (msg.includes('mutated') && msg.includes('phone')) {
     return 'The vault rejected a changed signature. Refresh your balance before trying again.'
   }
   if (msg.includes('invalid scalar') || msg.includes('scalar: out of range')) {
@@ -52,7 +52,7 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('passkey does not belong') ||
     msg.includes('selected passkey does not belong') ||
     msg.includes('passkey direct key does not match') ||
-    msg.includes('phone routine key does not match') ||
+    msg.includes('phone bip340 key does not match') ||
     msg.includes('does not have the passkey')
   ) {
     return 'Wrong passkey. Use the device that created this vault. On a new device, scan the QR with that original device.'

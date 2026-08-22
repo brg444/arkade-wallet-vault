@@ -38,7 +38,7 @@ const sample = {
   credId: 'aa',
   webauthnP256: '02' + 'bb'.repeat(32),
   phoneDirectP256: '03' + 'cc'.repeat(32),
-  phoneRoutineBip340Pub: '02' + 'dd'.repeat(32),
+  phoneBip340Pub: '02' + 'dd'.repeat(32),
   nonce: 'ee'.repeat(12),
   ciphertext: 'ff'.repeat(48),
 }

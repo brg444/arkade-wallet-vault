@@ -12,7 +12,7 @@ import {
 import { hex } from '@scure/base'
 import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
-import { zeroBytes } from '../ceremony/directauth.js'
+import { zeroBytes } from '../ceremony/directauth'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
 import { intentRepositoryBoardingCache, VaultArkProvider } from './provider'
@@ -102,7 +102,7 @@ function requireBoardingStatus(status: VaultStatus) {
 export function vaultBoardScriptFromStatus(status: VaultStatus, operatorPub: Uint8Array) {
   requireBoardingStatus(status)
   const script = new DefaultVtxo.Script({
-    pubKey: xOnly(status.phoneRoutineBip340Pub, 'phone routine pubkey'),
+    pubKey: xOnly(status.phoneBip340Pub, 'phone pubkey'),
     serverPubKey: operatorPub,
     csvTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
   })

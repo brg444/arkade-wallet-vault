@@ -28,12 +28,11 @@ function signPsbt(psbtHex: string, ...secrets: Uint8Array[]) {
   return { txHex: hex.encode(raw), txid: tx.id, raw }
 }
 
-describe('staged initiate / clawback / claim PSBTs', () => {
+describe('Savings initiate / clawback / claim PSBTs', () => {
   it('initiates to the matching Pending with dest, funded P2A, and packet', () => {
     const built = family()
     const psbt = buildInitiatePsbt({
       family: built,
-      kind: 'savings',
       claimant: 'hardware',
       coin: COIN,
       feeSats: 500,
@@ -52,7 +51,6 @@ describe('staged initiate / clawback / claim PSBTs', () => {
     const built = family()
     const psbt = buildClawbackPsbt({
       family: built,
-      kind: 'savings',
       claimant: 'hardware',
       guardian: 'phone',
       coin: COIN,
@@ -64,7 +62,6 @@ describe('staged initiate / clawback / claim PSBTs', () => {
     expect(() =>
       buildClawbackPsbt({
         family: built,
-        kind: 'savings',
         claimant: 'hardware',
         guardian: 'hardware',
         coin: COIN,
@@ -75,10 +72,9 @@ describe('staged initiate / clawback / claim PSBTs', () => {
 
   it('claims serverlessly with the pending CSV and an unpinned dest', () => {
     const built = family()
-    const dest = built.daily.address
+    const dest = built.quarantine['savings-recovery'].address
     const psbt = buildClaimPsbt({
       family: built,
-      kind: 'savings',
       claimant: 'recovery',
       coin: COIN,
       destAddress: dest,
@@ -96,7 +92,6 @@ describe('staged initiate / clawback / claim PSBTs', () => {
     const auth = built.initiateAuth['savings-hardware']
     const psbt = buildInitiatePsbt({
       family: built,
-      kind: 'savings',
       claimant: 'hardware',
       coin: COIN,
       feeSats: 500,
@@ -120,7 +115,6 @@ describe('staged initiate / clawback / claim PSBTs', () => {
     const clawAuth = built.clawbackAuth['savings-hardware']
     const claw = buildClawbackPsbt({
       family: built,
-      kind: 'savings',
       claimant: 'hardware',
       guardian: 'phone',
       coin: COIN,
@@ -137,10 +131,9 @@ describe('staged initiate / clawback / claim PSBTs', () => {
     )
     const claim = buildClaimPsbt({
       family: built,
-      kind: 'savings',
       claimant: 'recovery',
       coin: COIN,
-      destAddress: built.daily.address,
+      destAddress: built.quarantine['savings-recovery'].address,
       feeSats: 400,
       network: PROGRAM_FIXTURE.network,
     })
@@ -154,7 +147,6 @@ describe('staged initiate / clawback / claim PSBTs', () => {
     expect(() =>
       buildInitiatePsbt({
         family: built,
-        kind: 'daily',
         claimant: 'phone',
         coin: { ...COIN, value: 400 },
         feeSats: 100,

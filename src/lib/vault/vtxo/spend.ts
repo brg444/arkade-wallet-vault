@@ -11,7 +11,7 @@ import {
 } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
 import { vaultGet, vaultPost } from '../api'
-import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth.js'
+import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth'
 import { historyFromVtxos, type VaultHistoryItem } from '../history'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
@@ -269,13 +269,13 @@ export function vaultPolicyV1ScriptFromStatus(status: VaultStatus): VaultPolicyV
   const address = ArkAddress.decode(String(status.spendingArkAddress || ''))
   if (address.hrp !== 'tark') throw new Error('spending Ark address is not a test-network address')
   const params: VaultPolicyV1Params = {
-    userPub: xOnly(status.phoneRoutineBip340Pub, 'phone routine pubkey'),
+    userPub: xOnly(status.phoneBip340Pub, 'phone pubkey'),
     vtxoVaultCosignerPub: xOnly(status.vtxoVaultCosignerPub, 'VTXO VaultCosigner pubkey'),
     arkdServerPub: address.serverPubKey,
     delegatePub: xOnly(status.vtxoDelegatePub, 'delegate pubkey'),
     exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
     exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
-    exitDevicePub: xOnly(status.phoneRoutineBip340Pub, 'phone routine pubkey'),
+    exitDevicePub: xOnly(status.phoneBip340Pub, 'phone pubkey'),
     exitHardwarePub: xOnly(status.externalOwnerWalletPub, 'hardware pubkey'),
     ...(status.recoveryKeyPub || status.recoveryPub
       ? { exitRecoveryPub: xOnly(status.recoveryKeyPub || status.recoveryPub, 'recovery pubkey') }
@@ -352,9 +352,9 @@ async function authorizeWithPasskey(
       ),
     )
     const identity = SingleKey.fromPrivateKey(phoneSecret)
-    if (hex.encode(await identity.compressedPublicKey()) !== enrollment.phoneRoutineBip340Pub) {
+    if (hex.encode(await identity.compressedPublicKey()) !== enrollment.phoneBip340Pub) {
       zeroBytes(phoneSecret)
-      throw new Error('phone routine key does not match this vault')
+      throw new Error('phone key does not match this vault')
     }
     const response = credential.response as AuthenticatorAssertionResponse
     return {

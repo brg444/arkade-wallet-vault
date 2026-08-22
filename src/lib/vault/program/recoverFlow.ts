@@ -10,21 +10,19 @@ import {
   type VaultProgramFamily,
 } from './spend'
 import { pendingDelay, pendingGuardians } from './trees'
-import type { Claimant, VaultKind } from './constants'
+import type { Claimant } from './constants'
 
 export function planInitiate(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   coin: VaultProgramCoin
   feeSats: number
   vaultId: string
   storage?: Storage
 }) {
-  selectRoute({ role: 'normal', kind: input.kind }, { type: 'initiate', claimant: input.claimant })
+  selectRoute({ role: 'normal' }, { type: 'initiate', claimant: input.claimant })
   const built = buildInitiatePsbt({
     family: input.family,
-    kind: input.kind,
     claimant: input.claimant,
     coin: input.coin,
     feeSats: input.feeSats,
@@ -36,7 +34,7 @@ export function planInitiate(input: {
       purpose: 'initiate',
       inputTxid: input.coin.txid,
       inputVout: input.coin.vout,
-      destScriptHex: scriptHex(input.family.pending[`${input.kind}-${input.claimant}`].script),
+      destScriptHex: scriptHex(input.family.pending[`savings-${input.claimant}`].script),
     },
     input.storage,
   )
@@ -49,7 +47,6 @@ function scriptHex(script: Uint8Array | string): string {
 
 export function planClawback(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   guardian?: Claimant
   coin: VaultProgramCoin
@@ -58,10 +55,9 @@ export function planClawback(input: {
   storage?: Storage
 }) {
   const guardian = input.guardian || pendingGuardians(input.claimant)[0]
-  selectRoute({ role: 'pending', kind: input.kind, claimant: input.claimant }, { type: 'clawback', guardian })
+  selectRoute({ role: 'pending', claimant: input.claimant }, { type: 'clawback', guardian })
   const built = buildClawbackPsbt({
     family: input.family,
-    kind: input.kind,
     claimant: input.claimant,
     guardian,
     coin: input.coin,
@@ -74,7 +70,7 @@ export function planClawback(input: {
       purpose: 'clawback',
       inputTxid: input.coin.txid,
       inputVout: input.coin.vout,
-      destScriptHex: scriptHex(input.family.quarantine[`${input.kind}-${input.claimant}`].script),
+      destScriptHex: scriptHex(input.family.quarantine[`savings-${input.claimant}`].script),
     },
     input.storage,
   )
@@ -83,7 +79,6 @@ export function planClawback(input: {
 
 export function planClaim(input: {
   family: VaultProgramFamily
-  kind: VaultKind
   claimant: Claimant
   coin: VaultProgramCoin
   destAddress: string
@@ -93,13 +88,12 @@ export function planClaim(input: {
   confirmedHeight?: number
 }) {
   selectRoute(
-    { role: 'pending', kind: input.kind, claimant: input.claimant },
+    { role: 'pending', claimant: input.claimant },
     { type: 'claim' },
     { tipHeight: input.tipHeight, confirmedHeight: input.confirmedHeight },
   )
   return buildClaimPsbt({
     family: input.family,
-    kind: input.kind,
     claimant: input.claimant,
     coin: input.coin,
     destAddress: input.destAddress,

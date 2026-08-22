@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION } from './constants'
-import { STAGED_TEMPLATE } from './program/constants'
+import { SAVINGS_TEMPLATE } from './program/constants'
 import {
   addressPinHash,
   addressPinStoreKey,
@@ -38,14 +38,10 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     clientOrigin: 'https://vault.example',
     rpId: 'vault.example',
     vaultId: VAULT_ID,
-    templateVersion: STAGED_TEMPLATE,
+    templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
-    operationalCsvBlocks: 144,
-    savingsCsvBlocks: 6,
-    operationalAddress: 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l',
-    operationalScript: '5120' + 'aa'.repeat(32),
     savingsAddress: 'tb1ptest',
-    savingsExcludesRoutineCosigners: true,
+    savingsScript: '5120' + 'aa'.repeat(32),
     periodAllowance: 100000,
     periodSpent: 0,
     periodRemaining: 100000,
@@ -59,7 +55,7 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
 function tenantStatus(over: Partial<VaultStatus> = {}): VaultStatus {
   return sampleStatus({
     vaultId: 'tenant-b',
-    operationalAddress: 'tb1potheroperationaladdress0000000000000000000000000000000000',
+    savingsAddress: 'tb1pothersavingsaddress00000000000000000000000000000000000000',
     ...over,
   })
 }
@@ -71,14 +67,14 @@ describe('local address pin', () => {
     expect(loadStoredAddressPin(storage, 'tenant-b')).toBeNull()
     const first = pinEnrolledStatus(tenantStatus(), storage)
     expect(loadStoredAddressPin(storage, 'tenant-b')?.pinHash).toBe(addressPinHash(first))
-    expect(() => pinEnrolledStatus(tenantStatus({ operationalAddress: 'tb1pattacker' }), storage)).toThrow(/local pin/)
+    expect(() => pinEnrolledStatus(tenantStatus({ savingsAddress: 'tb1pattacker' }), storage)).toThrow(/local pin/)
   })
 
   it('does not synthesize a pin before enrollment commits one', () => {
     const storage = memoryStorage()
     expect(loadAddressPin(storage, VAULT_ID)).toBeNull()
     expect(loadStoredAddressPin(storage, VAULT_ID)).toBeNull()
-    expect(bindStatusToLocalPin(sampleStatus({ operationalAddress: 'tb1pattacker' }), storage).operationalAddress).toBe(
+    expect(bindStatusToLocalPin(sampleStatus({ savingsAddress: 'tb1pattacker' }), storage).savingsAddress).toBe(
       'tb1pattacker',
     )
   })
@@ -86,7 +82,7 @@ describe('local address pin', () => {
   it('does not treat an unenrolled status as a pin', () => {
     const storage = memoryStorage()
     expect(
-      bindStatusToLocalPin(tenantStatus({ enrolled: false, operationalAddress: 'tb1pattacker' }), storage),
+      bindStatusToLocalPin(tenantStatus({ enrolled: false, savingsAddress: 'tb1pattacker' }), storage),
     ).toMatchObject({
       enrolled: false,
     })
@@ -116,10 +112,12 @@ describe('local address pin', () => {
     expect(loadAddressPin(storage, 'tenant-b')).toBeNull()
   })
 
-  it('hashes operational script into the pin', () => {
+  it('hashes the Savings address and script into the pin', () => {
     const a = pinFromEnrolledStatus(tenantStatus())
-    const b = pinFromEnrolledStatus(tenantStatus({ operationalScript: '5120' + 'bb'.repeat(32) }))
+    const b = pinFromEnrolledStatus(tenantStatus({ savingsAddress: 'tb1pdifferent' }))
     expect(a.pinHash).not.toBe(b.pinHash)
+    const c = pinFromEnrolledStatus(tenantStatus({ savingsScript: '5120' + 'bb'.repeat(32) }))
+    expect(a.pinHash).not.toBe(c.pinHash)
   })
 })
 const VAULT_ID = 'vault-test-current'

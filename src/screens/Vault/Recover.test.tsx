@@ -10,7 +10,7 @@ import type { InitiateAlert } from '../../lib/vault/program/watch'
 import type { FamilyKey } from '../../lib/vault/program/constants'
 
 const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
-const dest = kit.descriptor.daily.address
+const dest = kit.descriptor.savings.address
 
 function alert(familyKey: FamilyKey): InitiateAlert {
   return {
@@ -38,7 +38,6 @@ function renderLost(familyKey: FamilyKey, extra: Partial<VaultContextProps> = {}
     openRecover: () => {},
     recoverEntry: 'lost',
     recoverExit: 'keys',
-    operationalAddress: kit.descriptor.daily.address,
     savingsAddress: kit.descriptor.savings.address,
     ...extra,
   } as VaultContextProps
@@ -59,7 +58,7 @@ function startCancel(familyKey: FamilyKey) {
 
 describe('claimant-aware cancel without services', () => {
   it('asks hardware and recovery after this device starts recovery', { timeout: 15_000 }, () => {
-    startCancel('daily-phone')
+    startCancel('savings-phone')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/Hardware and Recovery/)
     expect(screen.queryByTestId('recover-guardian-device')).toBeNull()
     expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)
@@ -74,7 +73,7 @@ describe('claimant-aware cancel without services', () => {
   })
 
   it('asks this device and hardware after recovery starts recovery', () => {
-    startCancel('daily-recovery')
+    startCancel('savings-recovery')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/This device and Hardware/)
     expect(screen.getByTestId('recover-guardian-device')).toBeTruthy()
     expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)

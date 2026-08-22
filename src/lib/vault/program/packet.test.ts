@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { encodeEmulatorPacket, encodeExtensionScript } from '../ceremony/psbtcheck.js'
-import { EMULATOR_PACKET_TYPE, exactPacketOutputPrefix, packetWitnessShape } from './packet'
+import {
+  EMULATOR_PACKET_TYPE,
+  encodeEmulatorPacket,
+  encodeEmulatorPacketMasked,
+  encodeExtensionScript,
+  exactPacketOutputPrefix,
+  packetWitnessShape,
+  parseEmulatorPacket,
+} from './packet'
 
-describe('staged packet envelope', () => {
+function hex(bytes: Uint8Array): string {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+describe('Savings transition packet envelope', () => {
   it('prefix plus content reconstructs the extension script', () => {
     const scriptLen = 180
     const prefix = exactPacketOutputPrefix(scriptLen, packetWitnessShape(false))
@@ -23,5 +34,17 @@ describe('staged packet envelope', () => {
     const a = exactPacketOutputPrefix(180, packetWitnessShape(false))
     const b = exactPacketOutputPrefix(180, packetWitnessShape(true))
     expect(Array.from(a)).not.toEqual(Array.from(b))
+  })
+
+  it('round-trips empty and direct-signature witnesses using the Operator wire format', () => {
+    const script = Uint8Array.from([0xaa, 0xbb])
+    const empty = encodeEmulatorPacket({ vin: 0, script, witness: [] })
+    expect(hex(empty)).toBe('01000002aabb0100')
+    expect(parseEmulatorPacket(empty)).toEqual({ vin: 0, script, witness: [] })
+    expect(hex(encodeEmulatorPacketMasked({ vin: 0, script }))).toBe('01000002aabb00')
+
+    const signature = new Uint8Array(64).fill(0x11)
+    const signed = encodeEmulatorPacket({ vin: 0, script, witness: [signature] })
+    expect(parseEmulatorPacket(signed)).toEqual({ vin: 0, script, witness: [signature] })
   })
 })

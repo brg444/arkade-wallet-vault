@@ -3,7 +3,7 @@ import { buildVaultProgramDescriptor } from './descriptor'
 import { PROGRAM_FIXTURE } from './fixtures'
 import { alertCopy, outpointId, pollPendingInitiates } from './watch'
 
-describe('staged pending watcher', () => {
+describe('Savings pending watcher', () => {
   it('alerts the first time a pending coin appears and does not repeat', async () => {
     const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
     const coin = { txid: 'aa'.repeat(32), vout: 0, value: 20_000, status: { confirmed: true, block_height: 10 } }
@@ -24,21 +24,21 @@ describe('staged pending watcher', () => {
     expect(outpointId(coin.txid, coin.vout)).toBe(`${coin.txid}:0`)
   })
 
-  it('announces a pending v6 output once and does not repeat', async () => {
+  it('announces a phone-initiated Savings output once and does not repeat', async () => {
     const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
     const coin = { txid: 'bb'.repeat(32), vout: 1, value: 18_000, status: { confirmed: true, block_height: 12 } }
     const first = await pollPendingInitiates({
       descriptor,
       seen: new Set(),
-      fetchUtxos: async (address) => (address === descriptor.pending['daily-phone'].address ? [coin] : []),
+      fetchUtxos: async (address) => (address === descriptor.pending['savings-phone'].address ? [coin] : []),
     })
     expect(first.alerts).toHaveLength(1)
-    expect(first.alerts[0].familyKey).toBe('daily-phone')
-    expect(alertCopy(first.alerts[0])).toMatch(/started recovery on Spending with this device/i)
+    expect(first.alerts[0].familyKey).toBe('savings-phone')
+    expect(alertCopy(first.alerts[0])).toMatch(/started recovery on Savings with this device/i)
     const second = await pollPendingInitiates({
       descriptor,
       seen: first.seen,
-      fetchUtxos: async (address) => (address === descriptor.pending['daily-phone'].address ? [coin] : []),
+      fetchUtxos: async (address) => (address === descriptor.pending['savings-phone'].address ? [coin] : []),
     })
     expect(second.alerts).toHaveLength(0)
   })

@@ -1,6 +1,6 @@
 import { applyReplay, sessionKey, type ReplayRecord, type ReplayRequest, type ReplayStore } from './replay'
 
-export const REPLAY_STORE_KEY = 'arkade-vault-v5-replay-v1'
+export const REPLAY_STORE_KEY = 'arkade-vault-savings-v1-replay-v1'
 
 function replayVaultKey(vaultId: string): string {
   const id = vaultId.trim()

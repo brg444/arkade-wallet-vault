@@ -11,17 +11,33 @@ import {
   requireSameSavingsIntent,
   signSavingsPsbt,
 } from './savingsSpend'
-import { buildSavingsTree } from './savingsTree'
 import type { VaultStatus } from './types'
-import { buildVaultProgramDescriptor } from './program/descriptor'
+import { buildVaultProgramDescriptor, familyFromDescriptor } from './program/descriptor'
 import { PROGRAM_FIXTURE, scalarSecret } from './program/fixtures'
 import { buildRecoveryKit } from './program/kit'
 import { saveLocalKit } from './program/kitStore'
 
-const PHONE = '02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9'
-const HARDWARE = '02e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13'
 const PHONE_PRIV = hex.decode('00'.repeat(31) + '03')
 const HW_PRIV = hex.decode('00'.repeat(31) + '04')
+const BOARDING_DEST = 'tb1p9llcrjjkzr57py6vffwveztm0hn0hezj7wzrq5mat6nh07j37g4qh8jl0l'
+
+function currentAdminPsbt(): string {
+  const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
+  const savings = familyFromDescriptor(descriptor).savings
+  const leaf = savings.tapLeafScript?.find((entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(savings.admin))
+  if (!leaf) throw new Error('Savings admin leaf missing')
+  const tx = new Transaction({ version: 2, allowUnknownInputs: true, allowUnknownOutputs: true })
+  tx.addInput({
+    txid: new Uint8Array(32),
+    index: 0,
+    witnessUtxo: { script: savings.script, amount: 100_000n },
+    tapInternalKey: savings.tapInternalKey,
+    tapLeafScript: [leaf],
+    sequence: 0xffffffff,
+  })
+  tx.addOutput({ script: savings.script, amount: 98_500n })
+  return hex.encode(tx.toPSBT())
+}
 
 function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDescriptor>): VaultStatus {
   return {
@@ -32,20 +48,15 @@ function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDes
     vaultId: descriptor.vaultId,
     templateVersion: descriptor.templateVersion,
     policyVersion: descriptor.policyVersion,
-    operationalCsvBlocks: descriptor.csv.phone,
-    savingsCsvBlocks: descriptor.csv.hardware,
-    operationalAddress: descriptor.daily.address,
-    operationalScript: descriptor.daily.script,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
-    savingsExcludesRoutineCosigners: true,
     periodAllowance: descriptor.policy.periodAllowanceSats,
     periodSpent: 0,
     periodRemaining: descriptor.policy.periodAllowanceSats,
     txCap: descriptor.policy.recipientCapSats,
     absoluteFeeCap: descriptor.policy.absoluteFeeCapSats,
     feerateCapSatVb: descriptor.policy.feerateCapSatVb,
-    phoneRoutineBip340Pub: descriptor.keys.phoneRoutineBip340,
+    phoneBip340Pub: descriptor.keys.phoneBip340,
     externalOwnerWalletPub: descriptor.keys.hardware,
     recoveryPub: descriptor.keys.recovery,
     vaultCosignerBasePub: descriptor.keys.vaultCosignerBase,
@@ -59,28 +70,7 @@ describe('savings admin PSBT', () => {
   beforeEach(() => localStorage.clear())
 
   it('phone then hardware can finalize the admin leaf', () => {
-    const tree = buildSavingsTree({
-      phonePub: PHONE,
-      hardwarePub: HARDWARE,
-      phoneCsvBlocks: 144,
-      hardwareCsvBlocks: 6,
-      network: 'mutinynet',
-    })
-    const leaf = tree.tapLeafScript?.find(
-      (entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(tree.admin.script),
-    )
-    expect(leaf).toBeTruthy()
-    const tx = new Transaction({ version: 2, allowUnknownInputs: true, allowUnknownOutputs: true })
-    tx.addInput({
-      txid: new Uint8Array(32),
-      index: 0,
-      witnessUtxo: { script: tree.script, amount: 100_000n },
-      tapInternalKey: tree.tapInternalKey,
-      tapLeafScript: [leaf!],
-      sequence: 0xffffffff,
-    })
-    tx.addOutput({ script: tree.script, amount: 98_500n })
-    const phoneSigned = signSavingsPsbt(hex.encode(tx.toPSBT()), PHONE_PRIV)
+    const phoneSigned = signSavingsPsbt(currentAdminPsbt(), PHONE_PRIV)
     const both = signSavingsPsbt(phoneSigned, HW_PRIV)
     const final = finalizeSavingsPsbt(both)
     expect(final.txHex.length).toBeGreaterThan(100)
@@ -88,27 +78,7 @@ describe('savings admin PSBT', () => {
   })
 
   it('exports a .psbt file wallets can share', () => {
-    const tree = buildSavingsTree({
-      phonePub: PHONE,
-      hardwarePub: HARDWARE,
-      phoneCsvBlocks: 144,
-      hardwareCsvBlocks: 6,
-      network: 'mutinynet',
-    })
-    const leaf = tree.tapLeafScript?.find(
-      (entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(tree.admin.script),
-    )
-    const tx = new Transaction({ version: 2, allowUnknownInputs: true, allowUnknownOutputs: true })
-    tx.addInput({
-      txid: new Uint8Array(32),
-      index: 0,
-      witnessUtxo: { script: tree.script, amount: 100_000n },
-      tapInternalKey: tree.tapInternalKey,
-      tapLeafScript: [leaf!],
-      sequence: 0xffffffff,
-    })
-    tx.addOutput({ script: tree.script, amount: 98_500n })
-    const hexPsbt = hex.encode(tx.toPSBT())
+    const hexPsbt = currentAdminPsbt()
     const file = psbtFile(hexPsbt)
     expect(file.name).toBe('arkade-savings.psbt')
     expect(file.size).toBeGreaterThan(20)
@@ -129,8 +99,8 @@ describe('savings admin PSBT', () => {
     pinEnrolledStatus(status)
     const unsigned = buildSavingsPsbt({
       status,
-      phonePub: descriptor.keys.phoneRoutineBip340,
-      destAddress: descriptor.daily.address,
+      phonePub: descriptor.keys.phoneBip340,
+      destAddress: BOARDING_DEST,
       amountSats: 50_000,
       feeSats: 1_500,
       coins: [{ txid: '11'.repeat(32), vout: 0, value: 100_000, confirmedHeight: 1 }],
@@ -154,8 +124,8 @@ describe('savings admin PSBT', () => {
     pinEnrolledStatus(status)
     const unsigned = buildSavingsPsbt({
       status,
-      phonePub: descriptor.keys.phoneRoutineBip340,
-      destAddress: descriptor.daily.address,
+      phonePub: descriptor.keys.phoneBip340,
+      destAddress: BOARDING_DEST,
       amountSats: 50_000,
       feeSats: 1_500,
       coins: [
@@ -165,12 +135,12 @@ describe('savings admin PSBT', () => {
       leaf: 'admin',
     })
     const phoneSigned = signSavingsPsbt(unsigned, scalarSecret(3))
-    expect(() =>
-      requireSameSavingsIntent(phoneSigned, phoneSigned, descriptor.daily.address, 50_000, descriptor.network),
-    ).toThrow(/hardware did not sign every/)
+    expect(() => requireSameSavingsIntent(phoneSigned, phoneSigned, BOARDING_DEST, 50_000, descriptor.network)).toThrow(
+      /hardware did not sign every/,
+    )
 
     const hardwareSigned = signSavingsPsbt(phoneSigned, scalarSecret(4))
-    requireSameSavingsIntent(phoneSigned, hardwareSigned, descriptor.daily.address, 50_000, descriptor.network)
+    requireSameSavingsIntent(phoneSigned, hardwareSigned, BOARDING_DEST, 50_000, descriptor.network)
     const inspected = inspectSavingsPsbt(hardwareSigned)
     expect(inspected.inputs.map((input) => `${input.txid}:${input.vout}`)).toEqual([
       `${'11'.repeat(32)}:0`,

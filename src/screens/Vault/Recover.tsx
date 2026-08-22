@@ -13,13 +13,7 @@ import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { broadcastTx, fetchAddressUtxos } from '../../lib/vault/esplora'
 import { parseIncomingPsbt, psbtFile } from '../../lib/vault/savingsSpend'
-import {
-  CLAIMANTS,
-  STAGED_TEMPLATE,
-  VAULT_KINDS,
-  type Claimant,
-  type VaultKind,
-} from '../../lib/vault/program/constants'
+import { CLAIMANTS, SAVINGS_TEMPLATE, type Claimant } from '../../lib/vault/program/constants'
 import { familyFromDescriptor } from '../../lib/vault/program/descriptor'
 import {
   acceptGuardianExitSignature,
@@ -53,11 +47,6 @@ function downloadPsbt(name: string, psbtHex: string) {
   hidden.remove()
 }
 
-const ACCOUNT_LABEL: Record<VaultKind, string> = {
-  daily: 'Legacy onchain',
-  savings: 'Savings',
-}
-
 const KEY_LABEL: Record<Claimant, string> = {
   phone: 'This device',
   hardware: 'Hardware',
@@ -74,7 +63,6 @@ export default function VaultRecover() {
     initiateAlert,
     initiateAlerts,
     navigate,
-    operationalAddress,
     recoverEntry,
     recoverExit,
     restoreRecoveryKit,
@@ -91,7 +79,6 @@ export default function VaultRecover() {
   }, [recoverEntry])
   const [pasted, setPasted] = useState('')
   const [localError, setLocalError] = useState('')
-  const [kind, setKind] = useState<VaultKind>('daily')
   const [claimant, setClaimant] = useState<Claimant>('hardware')
   const [claimDest, setClaimDest] = useState('')
   const [psbtOut, setPsbtOut] = useState('')
@@ -110,7 +97,7 @@ export default function VaultRecover() {
 
   const canCancelWithoutServices = useMemo(() => {
     try {
-      return parseRecoveryKit(JSON.parse(downloadRecoveryKit())).descriptor.templateVersion === STAGED_TEMPLATE
+      return parseRecoveryKit(JSON.parse(downloadRecoveryKit())).descriptor.templateVersion === SAVINGS_TEMPLATE
     } catch {
       return false
     }
@@ -155,25 +142,8 @@ export default function VaultRecover() {
                 much faster than a 10-minute chain.
               </Text>
               {inProcess ? (
-                <KeyCard
-                  title='Recovery in process'
-                  role={initiateAlert || `${ACCOUNT_LABEL[inProcess.familyKey.split('-')[0] as VaultKind]} waiting`}
-                  status='Alert'
-                />
+                <KeyCard title='Recovery in process' role={initiateAlert || 'Savings waiting'} status='Alert' />
               ) : null}
-              <Text color='neutral-600' tiny>
-                Which account
-              </Text>
-              {VAULT_KINDS.map((item) => (
-                <ChoiceCard
-                  key={item}
-                  title={ACCOUNT_LABEL[item]}
-                  detail={item === 'daily' ? 'This device, up to today’s limit' : 'This device and hardware'}
-                  selected={kind === item}
-                  onClick={() => setKind(item)}
-                  testId={`recover-kind-${item}`}
-                />
-              ))}
               <Text color='neutral-600' tiny>
                 Which key is gone
               </Text>
@@ -333,11 +303,10 @@ export default function VaultRecover() {
                 onClick={() => {
                   setLocalError('')
                   try {
-                    const [k, c] = inProcess.familyKey.split('-') as [VaultKind, Claimant]
+                    const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
                     const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
                     const built = planClawback({
                       family: familyFromDescriptor(kit.descriptor),
-                      kind: k,
                       claimant: c,
                       coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
                       feeSats: 500,
@@ -360,9 +329,9 @@ export default function VaultRecover() {
                   onClick={() => {
                     setLocalError('')
                     try {
-                      const [k, c] = inProcess.familyKey.split('-') as [VaultKind, Claimant]
+                      const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
                       const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-                      if (kit.descriptor.templateVersion !== STAGED_TEMPLATE) {
+                      if (kit.descriptor.templateVersion !== SAVINGS_TEMPLATE) {
                         throw new Error('this vault cannot cancel pending recovery without the services')
                       }
                       const hasRecovery = Boolean(kit.descriptor.keys.recovery)
@@ -370,7 +339,6 @@ export default function VaultRecover() {
                       assertGuardianExitSigners(c, signers)
                       const built = buildGuardianExitPsbt({
                         family: familyFromDescriptor(kit.descriptor),
-                        kind: k,
                         claimant: c,
                         coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
                         destAddress: claimDest.trim(),
@@ -397,11 +365,10 @@ export default function VaultRecover() {
                 onClick={() => {
                   setLocalError('')
                   try {
-                    const [k, c] = inProcess.familyKey.split('-') as [VaultKind, Claimant]
+                    const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
                     const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
                     const built = planClaim({
                       family: familyFromDescriptor(kit.descriptor),
-                      kind: k,
                       claimant: c,
                       coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
                       destAddress: claimDest.trim(),
@@ -427,15 +394,13 @@ export default function VaultRecover() {
                   try {
                     const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
                     const family = familyFromDescriptor(kit.descriptor)
-                    const source = kind === 'daily' ? operationalAddress : savingsAddress
-                    if (!source) throw new Error('No coins on that account yet')
-                    const coin = (await fetchAddressUtxos(source)).find(
+                    if (!savingsAddress) throw new Error('No Savings address yet')
+                    const coin = (await fetchAddressUtxos(savingsAddress)).find(
                       (item) => item.status.confirmed && item.value > 1000,
                     )
                     if (!coin) throw new Error('No confirmed coin on that account')
                     const built = planInitiate({
                       family,
-                      kind,
                       claimant,
                       coin: { txid: coin.txid, vout: coin.vout, value: coin.value },
                       feeSats: 500,

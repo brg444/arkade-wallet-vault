@@ -2,7 +2,7 @@ import type { EsploraUtxo } from '../esplora'
 import { FAMILY_KEYS, type FamilyKey } from './constants'
 import type { VaultProgramDescriptor } from './descriptor'
 
-export const WATCH_SEEN_STORE = 'arkade-vault-v5-watch-seen-v1'
+export const WATCH_SEEN_STORE = 'arkade-vault-savings-v1-watch-seen-v1'
 
 export interface InitiateAlert {
   familyKey: FamilyKey
@@ -65,8 +65,7 @@ export async function pollPendingInitiates(input: {
 }
 
 export function alertCopy(alert: InitiateAlert): string {
-  const [kind, claimant] = alert.familyKey.split('-')
-  const account = kind === 'savings' ? 'Savings' : 'Spending'
+  const [, claimant] = alert.familyKey.split('-')
   const key = claimant === 'phone' ? 'this device' : claimant === 'hardware' ? 'hardware' : 'recovery'
-  return `Someone started recovery on ${account} with ${key}. If this wasn’t you, cancel it.`
+  return `Someone started recovery on Savings with ${key}. If this wasn’t you, cancel it.`
 }

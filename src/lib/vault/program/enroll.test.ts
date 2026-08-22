@@ -3,7 +3,7 @@ import { buildVaultProgramDescriptor, hashVaultProgramDescriptor } from './descr
 import { requireProposedProgramDescriptor } from './enroll'
 import { PROGRAM_FIXTURE } from './fixtures'
 
-describe('staged enrollment descriptor', () => {
+describe('Savings enrollment descriptor', () => {
   it('accepts the exact proposed descriptor and rejects leftovers or a wrong hash', () => {
     expect(() => requireProposedProgramDescriptor({ schema: 'retired' }, 'aa'.repeat(32))).toThrow(
       /current Vault Program descriptor/,

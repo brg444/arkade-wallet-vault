@@ -1,7 +1,7 @@
 import { hex } from '@scure/base'
 import { Transaction } from '@scure/btc-signer'
 import { scriptHexFromAddress } from './bitcoin'
-import { zeroBytes } from './ceremony/directauth.js'
+import { zeroBytes } from './ceremony/directauth'
 import { DUST_SATS } from './constants'
 import type { EnrollmentSecrets } from './tenantEnrollment'
 import { hexToBytes } from './hex'
@@ -65,7 +65,7 @@ export function buildSavingsPsbt(input: {
   if (kit.descriptor.savings.address !== pin.savingsAddress) {
     throw new Error('Savings map does not match the pinned address')
   }
-  if (kit.descriptor.keys.phoneRoutineBip340 !== input.phonePub) {
+  if (kit.descriptor.keys.phoneBip340 !== input.phonePub) {
     throw new Error('Savings map does not match this device key')
   }
   if (input.status.externalOwnerWalletPub && kit.descriptor.keys.hardware !== input.status.externalOwnerWalletPub) {
@@ -95,7 +95,7 @@ export function buildSavingsPsbt(input: {
   return hex.encode(tx.toPSBT())
 }
 
-export async function unlockPhoneRoutine(rec: EnrollmentSecrets, status: VaultStatus): Promise<Uint8Array> {
+export async function unlockPhoneBip340(rec: EnrollmentSecrets, status: VaultStatus): Promise<Uint8Array> {
   const rpId = String(status.rpId || '').toLowerCase()
   if (!rpId || rpId !== location.hostname.toLowerCase()) {
     throw new Error('deployment RP ID does not match this signing client host')

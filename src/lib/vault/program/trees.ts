@@ -4,7 +4,7 @@ import { vaultAddressNetwork } from '../bitcoin'
 import { hexToBytes } from '../hex'
 import { TAPROOT_NUMS_XONLY, checksigScript, csvChecksigScript, xOnlyFromCompressed } from '../savingsTree'
 import { FORBIDDEN_PUBLIC_KEY_2G, FORBIDDEN_PUBLIC_KEY_G } from '../setupPlan'
-import { type Claimant, type VaultKind, PROGRAM_CSV } from './constants'
+import { SAVINGS_TEMPLATE, type Claimant, type FamilyKey, PROGRAM_CSV } from './constants'
 import { contextInternalKey } from './context'
 import { buildTransitionScript, clawbackWitnessBytes, collaborativeWitnessBytes, initiateWitnessBytes } from './script'
 import { tweakPair } from './tweak'
@@ -87,7 +87,6 @@ function controlOf(
 
 export function buildQuarantine(input: {
   vaultId: string
-  kind: VaultKind
   claimant: Claimant
   phonePub: string
   hardwarePub: string
@@ -105,7 +104,6 @@ export function buildQuarantine(input: {
   const script = checksigScript(names.map((name) => pubs[name]))
   const internal = contextInternalKey({
     vaultId: input.vaultId,
-    kind: input.kind,
     claimant: input.claimant,
     templateVersion: input.templateVersion,
   })
@@ -124,7 +122,6 @@ export function buildQuarantine(input: {
 
 export function buildPending(input: {
   vaultId: string
-  kind: VaultKind
   claimant: Claimant
   phonePub: string
   hardwarePub: string
@@ -155,7 +152,6 @@ export function buildPending(input: {
   scripts.push(UNSPENDABLE_PADDING)
   const internal = contextInternalKey({
     vaultId: input.vaultId,
-    kind: input.kind,
     claimant: input.claimant,
     templateVersion: input.templateVersion,
   })
@@ -185,12 +181,9 @@ export type InitiateTweaks = {
 
 export function buildNormal(input: {
   vaultId: string
-  kind: VaultKind
   phonePub: string
   hardwarePub: string
   recoveryPub?: string
-  routineVault?: string
-  routineArkade?: string
   initiate: InitiateTweaks
   network: string
   templateVersion?: string
@@ -205,12 +198,6 @@ export function buildNormal(input: {
     if (!pair) throw new Error(`missing ${claimant} initiate tweaks`)
     tweaks.push(xOnlyFromCompressed(pair.vault), xOnlyFromCompressed(pair.arkade))
   }
-  if (input.kind === 'daily') {
-    if (!input.routineVault || !input.routineArkade) throw new Error('daily routine tweaks required')
-    tweaks.push(xOnlyFromCompressed(input.routineVault), xOnlyFromCompressed(input.routineArkade))
-  } else if (input.routineVault || input.routineArkade) {
-    throw new Error('savings must not include routine tweaks')
-  }
   requireDistinct([phone, hardware, ...(recovery ? [recovery] : []), ...tweaks], 'normal')
 
   const admin = checksigScript([phone, hardware])
@@ -221,18 +208,10 @@ export function buildNormal(input: {
     if (!pub) throw new Error(`missing ${claimant}`)
     return checksigScript([pub, xOnlyFromCompressed(pair.vault), xOnlyFromCompressed(pair.arkade)])
   })
-  const scripts =
-    input.kind === 'daily'
-      ? [
-          checksigScript([phone, xOnlyFromCompressed(input.routineVault!), xOnlyFromCompressed(input.routineArkade!)]),
-          admin,
-          ...initiate,
-        ]
-      : [admin, ...initiate]
+  const scripts = [admin, ...initiate]
 
   const internal = contextInternalKey({
     vaultId: input.vaultId,
-    kind: input.kind,
     claimant: '',
     templateVersion: input.templateVersion,
   })
@@ -240,7 +219,6 @@ export function buildNormal(input: {
   if (!payment.address) throw new Error('normal address required')
   return {
     role: 'normal' as const,
-    kind: input.kind,
     address: payment.address,
     script: payment.script,
     tapInternalKey: payment.tapInternalKey,
@@ -248,7 +226,6 @@ export function buildNormal(input: {
     leaves: payment.leaves,
     admin,
     initiate,
-    routine: input.kind === 'daily' ? scripts[0] : undefined,
   }
 }
 
@@ -260,65 +237,44 @@ export function buildVaultProgramFamily(input: {
   phoneDirectP256: string
   vaultCosignerBase: string
   arkadeCosignerBase: string
-  routineVault: string
-  routineArkade: string
   network: string
   templateVersion?: string
 }) {
   const phoneDirect = hexToBytes(input.phoneDirectP256)
-  const bases = [
-    input.phonePub,
-    input.hardwarePub,
-    input.vaultCosignerBase,
-    input.arkadeCosignerBase,
-    input.routineVault,
-    input.routineArkade,
-  ]
+  const bases = [input.phonePub, input.hardwarePub, input.vaultCosignerBase, input.arkadeCosignerBase]
   if (input.recoveryPub) bases.splice(2, 0, input.recoveryPub)
   assertRoleSet(bases, 'family bases')
-  const kinds = ['daily', 'savings'] as const
   const claimants = (input.recoveryPub ? ['phone', 'hardware', 'recovery'] : ['phone', 'hardware']) as Claimant[]
   const hasRecovery = Boolean(input.recoveryPub)
-  const quarantine = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildQuarantine>>
-  const pending = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof buildPending>>
-  const initiateAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
-  const clawbackAuth = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, Uint8Array>
-  const pendingTweaks = {} as Record<`${(typeof kinds)[number]}-${Claimant}`, ReturnType<typeof tweakPair>>
+  const quarantine = {} as Record<FamilyKey, ReturnType<typeof buildQuarantine>>
+  const pending = {} as Record<FamilyKey, ReturnType<typeof buildPending>>
+  const initiateAuth = {} as Record<FamilyKey, Uint8Array>
+  const clawbackAuth = {} as Record<FamilyKey, Uint8Array>
+  const pendingTweaks = {} as Record<FamilyKey, ReturnType<typeof tweakPair>>
   const templateVersion = input.templateVersion
-  const serverFreeClawback = templateVersion === 'phone-hww-recovery-staged-v6'
-  let expectedClawbackWitness = clawbackWitnessBytes(serverFreeClawback, hasRecovery)
-  for (const kind of kinds) {
-    for (const claimant of claimants) {
-      const key = `${kind}-${claimant}` as const
-      quarantine[key] = buildQuarantine({ ...input, kind, claimant, templateVersion })
-      clawbackAuth[key] = buildTransitionScript({
-        destScriptHex: hex.encode(quarantine[key].script),
-        witnessBytes: expectedClawbackWitness,
-      })
-      pendingTweaks[key] = tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, clawbackAuth[key])
-      pending[key] = buildPending({
-        ...input,
-        kind,
-        templateVersion,
-        serverFreeClawback,
-        claimant,
-        vaultTweak: pendingTweaks[key].vault,
-        arkadeTweak: pendingTweaks[key].arkade,
-      })
-      const expectedInitiate = initiateWitnessBytes(kind, claimant, hasRecovery)
-      initiateAuth[key] = buildTransitionScript({
-        destScriptHex: hex.encode(pending[key].script),
-        bindPhoneDirect: claimant === 'phone' ? phoneDirect : undefined,
-        witnessBytes: expectedInitiate,
-      })
-    }
-  }
-  const dailyInitiate: InitiateTweaks = {
-    phone: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-phone']),
-    hardware: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-hardware']),
-    ...(hasRecovery
-      ? { recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['daily-recovery']) }
-      : {}),
+  const serverFreeClawback = templateVersion === SAVINGS_TEMPLATE
+  const expectedClawbackWitness = clawbackWitnessBytes(serverFreeClawback, hasRecovery)
+  for (const claimant of claimants) {
+    const key = `savings-${claimant}` as FamilyKey
+    quarantine[key] = buildQuarantine({ ...input, claimant, templateVersion })
+    clawbackAuth[key] = buildTransitionScript({
+      destScriptHex: hex.encode(quarantine[key].script),
+      witnessBytes: expectedClawbackWitness,
+    })
+    pendingTweaks[key] = tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, clawbackAuth[key])
+    pending[key] = buildPending({
+      ...input,
+      templateVersion,
+      serverFreeClawback,
+      claimant,
+      vaultTweak: pendingTweaks[key].vault,
+      arkadeTweak: pendingTweaks[key].arkade,
+    })
+    initiateAuth[key] = buildTransitionScript({
+      destScriptHex: hex.encode(pending[key].script),
+      bindPhoneDirect: claimant === 'phone' ? phoneDirect : undefined,
+      witnessBytes: initiateWitnessBytes(claimant, hasRecovery),
+    })
   }
   const savingsInitiate: InitiateTweaks = {
     phone: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-phone']),
@@ -327,28 +283,14 @@ export function buildVaultProgramFamily(input: {
       ? { recovery: tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, initiateAuth['savings-recovery']) }
       : {}),
   }
-  const daily = buildNormal({
-    ...input,
-    kind: 'daily',
-    initiate: dailyInitiate,
-  })
   const savings = buildNormal({
     ...input,
-    kind: 'savings',
-    routineVault: undefined,
-    routineArkade: undefined,
     initiate: savingsInitiate,
-  })
-  daily.initiate.forEach((script, i) => {
-    const claimant = claimants[i]
-    const got = collaborativeWitnessBytes(script, controlOf(daily, script))
-    const want = initiateWitnessBytes('daily', claimant, hasRecovery)
-    if (got !== want) throw new Error(`daily ${claimant} initiate witness ${got} != ${want}`)
   })
   savings.initiate.forEach((script, i) => {
     const claimant = claimants[i]
     const got = collaborativeWitnessBytes(script, controlOf(savings, script))
-    const want = initiateWitnessBytes('savings', claimant, hasRecovery)
+    const want = initiateWitnessBytes(claimant, hasRecovery)
     if (got !== want) throw new Error(`savings ${claimant} initiate witness ${got} != ${want}`)
   })
   assertRoleSet(
@@ -358,22 +300,18 @@ export function buildVaultProgramFamily(input: {
       ...(input.recoveryPub ? [input.recoveryPub] : []),
       input.vaultCosignerBase,
       input.arkadeCosignerBase,
-      input.routineVault,
-      input.routineArkade,
-      ...claimants.flatMap((claimant) => [dailyInitiate[claimant].vault, dailyInitiate[claimant].arkade]),
       ...claimants.flatMap((claimant) => [savingsInitiate[claimant].vault, savingsInitiate[claimant].arkade]),
       ...Object.values(pendingTweaks).flatMap((pair) => [pair.vault, pair.arkade]),
     ],
     'family',
   )
   return {
-    daily,
     savings,
     quarantine,
     pending,
     initiateAuth,
     clawbackAuth,
-    initiateTweaks: { daily: dailyInitiate, savings: savingsInitiate },
+    initiateTweaks: savingsInitiate,
     pendingTweaks,
   }
 }

@@ -1,13 +1,8 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js'
-import {
-  DEFAULT_OPERATIONAL_CSV_BLOCKS,
-  DEFAULT_SAVINGS_CSV_BLOCKS,
-  PERIOD_ALLOWANCE_SATS,
-  TX_RECIPIENT_CAP_SATS,
-} from './constants'
+import { PERIOD_ALLOWANCE_SATS, TX_RECIPIENT_CAP_SATS } from './constants'
 import { fingerprint, hexToBytes } from './hex'
 
-export const SETUP_STORE_KEY = 'arkade-vault-setup-v2'
+export const SETUP_STORE_KEY = 'arkade-vault-setup-v3'
 
 // Scalars 1 and 2 are public knowledge and must never be accepted as user keys.
 export const FORBIDDEN_PUBLIC_KEY_G = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'
@@ -18,8 +13,6 @@ export interface VaultSetupPlan {
   recoveryPub: string
   txCapSats: number
   dailyLimitSats: number
-  operationalCsvBlocks: number
-  savingsCsvBlocks: number
   acceptedDesign: boolean
   complete: boolean
 }
@@ -30,8 +23,6 @@ export function emptySetupPlan(): VaultSetupPlan {
     recoveryPub: '',
     txCapSats: TX_RECIPIENT_CAP_SATS,
     dailyLimitSats: PERIOD_ALLOWANCE_SATS,
-    operationalCsvBlocks: DEFAULT_OPERATIONAL_CSV_BLOCKS,
-    savingsCsvBlocks: DEFAULT_SAVINGS_CSV_BLOCKS,
     acceptedDesign: false,
     complete: false,
   }
@@ -66,11 +57,6 @@ export function planReady(plan: VaultSetupPlan): boolean {
   if (!plan.hardwarePub) return false
   if (plan.recoveryPub && sameRole(plan.hardwarePub, plan.recoveryPub)) return false
   if (plan.txCapSats !== TX_RECIPIENT_CAP_SATS || plan.dailyLimitSats !== PERIOD_ALLOWANCE_SATS) return false
-  if (
-    plan.operationalCsvBlocks !== DEFAULT_OPERATIONAL_CSV_BLOCKS ||
-    plan.savingsCsvBlocks !== DEFAULT_SAVINGS_CSV_BLOCKS
-  )
-    return false
   return true
 }
 
@@ -83,8 +69,6 @@ export function loadSetupPlan(storage: Storage = localStorage): VaultSetupPlan |
     recoveryPub: String(parsed.recoveryPub || ''),
     txCapSats: Number(parsed.txCapSats),
     dailyLimitSats: Number(parsed.dailyLimitSats),
-    operationalCsvBlocks: Number(parsed.operationalCsvBlocks),
-    savingsCsvBlocks: Number(parsed.savingsCsvBlocks),
     acceptedDesign: parsed.acceptedDesign === true,
     complete: parsed.complete === true,
   }

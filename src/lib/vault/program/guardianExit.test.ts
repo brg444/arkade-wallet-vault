@@ -30,7 +30,7 @@ const CASES: { claimant: Claimant; hasRecovery: boolean; want: Claimant[] }[] = 
   { claimant: 'hardware', hasRecovery: false, want: ['phone'] },
 ]
 
-describe('v6 guardian-exit signers', () => {
+describe('Savings guardian-exit signers', () => {
   it.each(CASES)(
     'requires $want when $claimant started and recovery=$hasRecovery',
     ({ claimant, hasRecovery, want }) => {
@@ -53,10 +53,9 @@ describe('v6 guardian-exit signers', () => {
         ...PROGRAM_FIXTURE_FAMILY,
         recoveryPub: hasRecovery ? PROGRAM_FIXTURE.recoveryPub : undefined,
       })
-      const dest = family.daily.address
+      const dest = family.quarantine[`savings-${claimant}`].address
       const built = buildGuardianExitPsbt({
         family,
-        kind: 'daily',
         claimant,
         coin: COIN,
         destAddress: dest,

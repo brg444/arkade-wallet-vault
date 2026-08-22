@@ -4,12 +4,13 @@ import { PROGRAM_FIXTURE } from './fixtures'
 import { buildRecoveryKit, inspectRecoveryKit, parseRecoveryKit } from './kit'
 
 describe('Recovery Kit', () => {
-  it('rebuilds the descriptor and lists all 14 trees', () => {
+  it('rebuilds the descriptor and lists the seven Savings trees', () => {
     const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
     const report = inspectRecoveryKit(kit)
     expect(report.hash).toBe(kit.descriptorHash)
-    expect(report.trees).toHaveLength(14)
-    expect(report.trees.some((tree) => tree.role === 'daily')).toBe(true)
+    expect(report.trees).toHaveLength(7)
+    expect(report.trees.some((tree) => tree.role === 'savings')).toBe(true)
+    expect(report.trees.some((tree) => tree.role.includes('daily'))).toBe(false)
     expect(report.trees.some((tree) => tree.delay === 288)).toBe(true)
     expect(report.warnings.some((line) => /cannot exit a Normal/.test(line))).toBe(true)
     expect(parseRecoveryKit(JSON.parse(JSON.stringify(kit))).descriptorHash).toBe(kit.descriptorHash)

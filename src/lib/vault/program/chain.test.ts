@@ -9,7 +9,7 @@ function json(url: string, body: unknown, ok = true) {
   })
 }
 
-describe('staged chain session view', () => {
+describe('Savings chain session view', () => {
   it('classifies dest 0 as quarantine and skips P2A/packet', () => {
     expect(classifySpendDest('5120aa', '5120aa')).toBe('quarantine')
     expect(classifySpendDest('5120bb', '5120aa')).toBe('other')

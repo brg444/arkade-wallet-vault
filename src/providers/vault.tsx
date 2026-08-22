@@ -10,7 +10,7 @@ import {
   setSessionLocked,
 } from '../lib/vault/enrollmentStore'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
-import { zeroBytes } from '../lib/vault/ceremony/directauth.js'
+import { zeroBytes } from '../lib/vault/ceremony/directauth'
 import { broadcastTx, confirmedSpendables, fetchAddressUtxos } from '../lib/vault/esplora'
 import type { VaultHistoryItem } from '../lib/vault/history'
 import {
@@ -19,7 +19,7 @@ import {
   parseIncomingPsbt,
   requireSameSavingsIntent,
   signSavingsPsbt,
-  unlockPhoneRoutine,
+  unlockPhoneBip340,
 } from '../lib/vault/savingsSpend'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
@@ -138,15 +138,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         ...prev,
         txCapSats: status.txCap || prev.txCapSats,
         dailyLimitSats: status.periodAllowance || prev.dailyLimitSats,
-        operationalCsvBlocks: status.operationalCsvBlocks || prev.operationalCsvBlocks,
-        savingsCsvBlocks: status.savingsCsvBlocks || prev.savingsCsvBlocks,
       }
-      if (
-        next.txCapSats === prev.txCapSats &&
-        next.dailyLimitSats === prev.dailyLimitSats &&
-        next.operationalCsvBlocks === prev.operationalCsvBlocks &&
-        next.savingsCsvBlocks === prev.savingsCsvBlocks
-      ) {
+      if (next.txCapSats === prev.txCapSats && next.dailyLimitSats === prev.dailyLimitSats) {
         return prev
       }
       saveSetupPlan(next)
@@ -160,7 +153,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     return next
   }, [])
 
-  const operationalAddress = addressPin?.operationalAddress || ''
   const spendingArkAddress = status?.spendingArkAddress || ''
   const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
@@ -170,15 +162,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setLastTxid(txid)
     setLastTxKind('vtxo')
   }, [])
-  const {
-    boardingInProgress,
-    history,
-    onchainSpendingSats,
-    refreshBalance,
-    savingsSats,
-    vtxoMaxCoin,
-    vtxoSpendingSats,
-  } = useVaultBalances({
+  const { boardingInProgress, history, refreshBalance, savingsSats, vtxoMaxCoin, vtxoSpendingSats } = useVaultBalances({
     addressPin,
     busy,
     enrollment,
@@ -418,7 +402,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (spend.address === status.vtxoBoardingAddress) await verifyVaultBoarding(status)
     const unsigned = buildSavingsPsbt({
       status,
-      phonePub: enrollment.phoneRoutineBip340Pub,
+      phonePub: enrollment.phoneBip340Pub,
       destAddress: spend.address,
       amountSats: spend.amount,
       feeSats: spend.fee,
@@ -430,7 +414,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       })),
       leaf,
     })
-    const secret = await unlockPhoneRoutine(enrollment, status)
+    const secret = await unlockPhoneBip340(enrollment, status)
     try {
       const signed = signSavingsPsbt(unsigned, secret)
       setHandoffPsbt(signed)
@@ -592,8 +576,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverEntry,
       recoverExit,
       networkLabel,
-      operationalAddress,
-      onchainSpendingSats,
       spendingArkAddress,
       refreshBalance,
       reset,
@@ -622,7 +604,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       acceptDesign,
       account,
       amountSats,
-      onchainSpendingSats,
       applyHardware,
       applyRecovery,
       skipRecovery,
@@ -660,7 +641,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverExit,
       loaded,
       networkLabel,
-      operationalAddress,
       spendingArkAddress,
       recoverEntry,
       recoverExit,

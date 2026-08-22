@@ -1,35 +1,28 @@
 import { hex } from '@scure/base'
-import { CLAIMANTS, FAMILY_KEYS, type Claimant, type FamilyKey, type VaultKind } from './constants'
+import { CLAIMANTS, FAMILY_KEYS, type Claimant, type FamilyKey } from './constants'
 import { remainingCsv } from './session'
 import { pendingDelay, pendingGuardians, type VaultProgramFamily } from './trees'
 
 export type CoinRole = 'normal' | 'pending' | 'quarantine'
 
 export type CoinClass =
-  | { role: 'normal'; kind: VaultKind }
-  | { role: 'pending'; kind: VaultKind; claimant: Claimant }
-  | { role: 'quarantine'; kind: VaultKind; claimant: Claimant }
+  | { role: 'normal' }
+  | { role: 'pending'; claimant: Claimant }
+  | { role: 'quarantine'; claimant: Claimant }
   | { role: 'unknown' }
 
 export type Intent =
-  | { type: 'pay' }
   | { type: 'admin' }
   | { type: 'initiate'; claimant: Claimant }
   | { type: 'clawback'; guardian: Claimant }
   | { type: 'claim' }
   | { type: 'quarantine-rotate' }
 
-export type RouteExecutor =
-  | 'l1RoutineCeremony'
-  | 'l1AdminPsbt'
-  | 'l1Initiate'
-  | 'l1Clawback'
-  | 'l1Claim'
-  | 'l1QuarantineAdmin'
+export type RouteExecutor = 'l1AdminPsbt' | 'l1Initiate' | 'l1Clawback' | 'l1Claim' | 'l1QuarantineAdmin'
 
-export type RoutePurpose = 'spend' | 'admin' | 'exit' | 'recover'
+export type RoutePurpose = 'admin' | 'exit' | 'recover'
 
-export type RouteLeaf = 'routine' | 'admin' | 'initiate' | 'clawback' | 'claim' | 'quarantine-admin'
+export type RouteLeaf = 'admin' | 'initiate' | 'clawback' | 'claim' | 'quarantine-admin'
 
 export interface Route {
   class: Exclude<CoinClass, { role: 'unknown' }>
@@ -61,15 +54,14 @@ function scriptHex(script: Uint8Array | string): string {
   return (typeof script === 'string' ? script : hex.encode(script)).toLowerCase()
 }
 
-function parseFamilyKey(key: FamilyKey): { kind: VaultKind; claimant: Claimant } {
-  const [kind, claimant] = key.split('-') as [VaultKind, Claimant]
-  return { kind, claimant }
+function parseFamilyKey(key: FamilyKey): { claimant: Claimant } {
+  const [, claimant] = key.split('-') as ['savings', Claimant]
+  return { claimant }
 }
 
 export function classifyScript(family: VaultProgramFamily, script: Uint8Array | string): CoinClass {
   const needle = scriptHex(script)
-  if (scriptHex(family.daily.script) === needle) return { role: 'normal', kind: 'daily' }
-  if (scriptHex(family.savings.script) === needle) return { role: 'normal', kind: 'savings' }
+  if (scriptHex(family.savings.script) === needle) return { role: 'normal' }
   for (const key of FAMILY_KEYS) {
     if (scriptHex(family.pending[key].script) === needle) {
       return { role: 'pending', ...parseFamilyKey(key) }
@@ -99,13 +91,6 @@ function requireKey(ctx: RouteContext | undefined, role: Claimant | 'cosigners',
 
 export function selectRoute(coin: CoinClass, intent: Intent, ctx?: RouteContext): Route {
   if (coin.role === 'unknown') throw new RouteError('unknown script is not a current Vault Program coin')
-
-  if (intent.type === 'pay') {
-    if (coin.role !== 'normal' || coin.kind !== 'daily') {
-      throw new RouteError('pay is only allowed from Daily Normal')
-    }
-    return { class: coin, intent, executor: 'l1RoutineCeremony', purpose: 'spend', leaf: 'routine' }
-  }
 
   if (intent.type === 'admin') {
     if (coin.role !== 'normal') throw new RouteError('admin is only allowed from Normal')

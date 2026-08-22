@@ -22,8 +22,8 @@ import {
   TRANSITION_SEQUENCE,
   PROGRAM_CSV,
   PROGRAM_SCHEMA,
-  isStagedTemplate,
-  STAGED_TEMPLATE,
+  isSavingsTemplate,
+  SAVINGS_TEMPLATE,
   type Claimant,
   type FamilyKey,
 } from './constants'
@@ -43,7 +43,7 @@ export interface VaultProgramDescriptor {
   templateVersion: string
   policyVersion: string
   keys: {
-    phoneRoutineBip340: string
+    phoneBip340: string
     phoneDirectP256: string
     hardware: string
     recovery?: string
@@ -51,8 +51,7 @@ export interface VaultProgramDescriptor {
     arkadeCosignerBase: string
   }
   tweaks: {
-    routine: { vault: string; arkade: string }
-    initiate: { daily: InitiateTweaks; savings: InitiateTweaks }
+    initiate: InitiateTweaks
     pending: Record<FamilyKey, { vault: string; arkade: string }>
   }
   arkadeCosigner: {
@@ -77,7 +76,6 @@ export interface VaultProgramDescriptor {
     outputIndex: number
   }
   transitionSequence: number
-  daily: ProgramTreeRef
   savings: ProgramTreeRef
   pending: Record<FamilyKey, ProgramTreeRef & { delay: number }>
   quarantine: Record<FamilyKey, ProgramTreeRef & { guardians: readonly string[] }>
@@ -92,8 +90,6 @@ export interface VaultProgramDescriptorInput {
   phoneDirectP256: string
   vaultCosignerBase: string
   arkadeCosignerBase: string
-  routineVault: string
-  routineArkade: string
   arkadeCosigner: {
     origin: string
     version: string
@@ -183,7 +179,7 @@ function treeRef(script: Uint8Array, address: string): ProgramTreeRef {
 
 export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput): VaultProgramDescriptor {
   const keys = {
-    phoneRoutineBip340: requireSecp(input.phonePub, 'phone'),
+    phoneBip340: requireSecp(input.phonePub, 'phone'),
     phoneDirectP256: requireP256(input.phoneDirectP256, 'phoneDirectP256'),
     hardware: requireSecp(input.hardwarePub, 'hardware'),
     ...(input.recoveryPub ? { recovery: requireSecp(input.recoveryPub, 'recovery') } : {}),
@@ -195,19 +191,16 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
   }
   const family = buildVaultProgramFamily({
     vaultId: input.vaultId,
-    phonePub: keys.phoneRoutineBip340,
+    phonePub: keys.phoneBip340,
     hardwarePub: keys.hardware,
     recoveryPub: keys.recovery,
     phoneDirectP256: keys.phoneDirectP256,
     vaultCosignerBase: keys.vaultCosignerBase,
     arkadeCosignerBase: keys.arkadeCosignerBase,
-    routineVault: input.routineVault,
-    routineArkade: input.routineArkade,
     network: input.network,
-    templateVersion: input.templateVersion || STAGED_TEMPLATE,
+    templateVersion: input.templateVersion || SAVINGS_TEMPLATE,
   })
   const tweaks = {
-    routine: requirePair({ vault: input.routineVault, arkade: input.routineArkade }, 'routine'),
     initiate: family.initiateTweaks,
     pending: family.pendingTweaks,
   }
@@ -227,7 +220,7 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
     schema: PROGRAM_SCHEMA,
     network: input.network,
     vaultId: input.vaultId,
-    templateVersion: input.templateVersion || STAGED_TEMPLATE,
+    templateVersion: input.templateVersion || SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
     keys,
     tweaks,
@@ -249,7 +242,6 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
       outputIndex: P2A_OUTPUT_INDEX,
     },
     transitionSequence: TRANSITION_SEQUENCE,
-    daily: treeRef(family.daily.script, family.daily.address),
     savings: treeRef(family.savings.script, family.savings.address),
     pending,
     quarantine,
@@ -260,7 +252,7 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
   if (d.schema !== PROGRAM_SCHEMA) throw new Error('unsupported vault schema')
   if (!SUPPORTED_NETWORKS.includes(d.network)) throw new Error(`unsupported network ${d.network}`)
   if (!d.vaultId || String(d.vaultId).trim() === '') throw new Error('vault id required')
-  if (!isStagedTemplate(d.templateVersion)) throw new Error('template version is not this release')
+  if (!isSavingsTemplate(d.templateVersion)) throw new Error('template version is not this release')
   if (d.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   if (
     d.csv.hardware !== PROGRAM_CSV.hardware ||
@@ -279,42 +271,36 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
     throw new Error('period allowance does not match this release')
   if (d.policy.absoluteFeeCapSats !== ABSOLUTE_FEE_CEILING_SATS) throw new Error('fee cap does not match this release')
   if (d.policy.feerateCapSatVb !== FEERATE_CEILING_SAT_PER_V) throw new Error('feerate cap does not match this release')
-  requireSecp(d.keys.phoneRoutineBip340, 'phone')
+  requireSecp(d.keys.phoneBip340, 'phone')
   requireP256(d.keys.phoneDirectP256, 'phoneDirectP256')
   requireSecp(d.keys.hardware, 'hardware')
   if (d.keys.recovery) requireSecp(d.keys.recovery, 'recovery')
   requireSecp(d.keys.vaultCosignerBase, 'vaultCosignerBase')
   requireSecp(d.keys.arkadeCosignerBase, 'arkadeCosignerBase')
-  requirePair(d.tweaks.routine, 'routine')
   const hasRecovery = Boolean(d.keys.recovery)
   const claimants = familyClaimants(hasRecovery)
   const keys = familyKeysFor(hasRecovery)
   for (const claimant of claimants) {
-    requirePair(d.tweaks.initiate.daily[claimant]!, `initiate.daily.${claimant}`)
-    requirePair(d.tweaks.initiate.savings[claimant]!, `initiate.savings.${claimant}`)
+    requirePair(d.tweaks.initiate[claimant]!, `initiate.${claimant}`)
   }
   for (const key of keys) {
     requirePair(d.tweaks.pending[key], `pending.${key}`)
   }
   const rebuilt = buildVaultProgramFamily({
     vaultId: d.vaultId,
-    phonePub: d.keys.phoneRoutineBip340,
+    phonePub: d.keys.phoneBip340,
     hardwarePub: d.keys.hardware,
     recoveryPub: d.keys.recovery,
     phoneDirectP256: d.keys.phoneDirectP256,
     vaultCosignerBase: d.keys.vaultCosignerBase,
     arkadeCosignerBase: d.keys.arkadeCosignerBase,
-    routineVault: d.tweaks.routine.vault,
-    routineArkade: d.tweaks.routine.arkade,
     network: d.network,
     templateVersion: d.templateVersion,
   })
   for (const claimant of claimants) {
     if (
-      d.tweaks.initiate.daily[claimant]!.vault !== rebuilt.initiateTweaks.daily[claimant]!.vault ||
-      d.tweaks.initiate.daily[claimant]!.arkade !== rebuilt.initiateTweaks.daily[claimant]!.arkade ||
-      d.tweaks.initiate.savings[claimant]!.vault !== rebuilt.initiateTweaks.savings[claimant]!.vault ||
-      d.tweaks.initiate.savings[claimant]!.arkade !== rebuilt.initiateTweaks.savings[claimant]!.arkade
+      d.tweaks.initiate[claimant]!.vault !== rebuilt.initiateTweaks[claimant]!.vault ||
+      d.tweaks.initiate[claimant]!.arkade !== rebuilt.initiateTweaks[claimant]!.arkade
     ) {
       throw new Error('initiate tweaks do not match derived authorization scripts')
     }
@@ -326,9 +312,6 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
     ) {
       throw new Error('pending tweaks do not match derived authorization scripts')
     }
-  }
-  if (d.daily.address !== rebuilt.daily.address || d.daily.script !== hex.encode(rebuilt.daily.script)) {
-    throw new Error('daily tree does not match rebuilt descriptor')
   }
   if (d.savings.address !== rebuilt.savings.address || d.savings.script !== hex.encode(rebuilt.savings.script)) {
     throw new Error('savings tree does not match rebuilt descriptor')
@@ -366,20 +349,16 @@ export function encodeVaultProgramDescriptor(input: VaultProgramDescriptor): Uin
   appendText(parts, d.vaultId, 'vaultId')
   appendBytes(parts, encodeUtf8(d.templateVersion))
   appendBytes(parts, encodeUtf8(d.policyVersion))
-  appendHex(parts, d.keys.phoneRoutineBip340, 'phone', COMPRESSED)
+  appendHex(parts, d.keys.phoneBip340, 'phone', COMPRESSED)
   appendHex(parts, d.keys.phoneDirectP256, 'phoneDirectP256', COMPRESSED)
   appendHex(parts, d.keys.hardware, 'hardware', COMPRESSED)
   if (d.keys.recovery) appendHex(parts, d.keys.recovery, 'recovery', COMPRESSED)
   appendHex(parts, d.keys.vaultCosignerBase, 'vaultCosignerBase', COMPRESSED)
   appendHex(parts, d.keys.arkadeCosignerBase, 'arkadeCosignerBase', COMPRESSED)
-  appendHex(parts, d.tweaks.routine.vault, 'routine.vault', COMPRESSED)
-  appendHex(parts, d.tweaks.routine.arkade, 'routine.arkade', COMPRESSED)
   const hasRecovery = Boolean(d.keys.recovery)
-  for (const kind of ['daily', 'savings'] as const) {
-    for (const claimant of familyClaimants(hasRecovery)) {
-      appendHex(parts, d.tweaks.initiate[kind][claimant]!.vault, `initiate.${kind}.${claimant}.vault`, COMPRESSED)
-      appendHex(parts, d.tweaks.initiate[kind][claimant]!.arkade, `initiate.${kind}.${claimant}.arkade`, COMPRESSED)
-    }
+  for (const claimant of familyClaimants(hasRecovery)) {
+    appendHex(parts, d.tweaks.initiate[claimant]!.vault, `initiate.${claimant}.vault`, COMPRESSED)
+    appendHex(parts, d.tweaks.initiate[claimant]!.arkade, `initiate.${claimant}.arkade`, COMPRESSED)
   }
   for (const key of familyKeysFor(hasRecovery)) {
     appendHex(parts, d.tweaks.pending[key].vault, `pending.${key}.vault`, COMPRESSED)
@@ -399,8 +378,6 @@ export function encodeVaultProgramDescriptor(input: VaultProgramDescriptor): Uin
   appendI64(parts, d.p2a.valueSats, 'p2a.value')
   appendU32(parts, d.p2a.outputIndex, 'p2a.index')
   appendU32(parts, d.transitionSequence, 'sequence')
-  appendHex(parts, d.daily.script, 'daily.script', d.daily.script.length / 2)
-  appendText(parts, d.daily.address, 'daily.address')
   appendHex(parts, d.savings.script, 'savings.script', d.savings.script.length / 2)
   appendText(parts, d.savings.address, 'savings.address')
   for (const key of familyKeysFor(hasRecovery)) {
@@ -427,14 +404,12 @@ export function familyFromDescriptor(d: VaultProgramDescriptor) {
   const valid = validateVaultProgramDescriptor(d)
   return buildVaultProgramFamily({
     vaultId: valid.vaultId,
-    phonePub: valid.keys.phoneRoutineBip340,
+    phonePub: valid.keys.phoneBip340,
     hardwarePub: valid.keys.hardware,
     recoveryPub: valid.keys.recovery,
     phoneDirectP256: valid.keys.phoneDirectP256,
     vaultCosignerBase: valid.keys.vaultCosignerBase,
     arkadeCosignerBase: valid.keys.arkadeCosignerBase,
-    routineVault: valid.tweaks.routine.vault,
-    routineArkade: valid.tweaks.routine.arkade,
     network: valid.network,
     templateVersion: valid.templateVersion,
   })

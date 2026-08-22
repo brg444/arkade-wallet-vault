@@ -1,8 +1,8 @@
 import type { EnrollmentSecrets } from './tenantEnrollment'
 
-export const ENROLL_STORE = 'arkade-vault-enroll-secrets-v3'
+export const ENROLL_STORE = 'arkade-vault-enroll-secrets-v4'
 export const SELECTED_VAULT_STORE = 'arkade-vault-selected-v1'
-export const ENROLL_STAGE_STORE = 'arkade-vault-enroll-staged-v1'
+export const ENROLL_STAGE_STORE = 'arkade-vault-enroll-staged-v2'
 export const SESSION_LOCK_STORE = 'arkade-vault-session-lock-v1'
 
 function requestedEnrollmentId(vaultId: string): string {
@@ -18,7 +18,7 @@ export function enrollmentStoreKey(vaultId: string): string {
 function parseEnrollment(raw: string | null): EnrollmentSecrets | null {
   if (!raw) return null
   const rec = JSON.parse(raw) as EnrollmentSecrets
-  if (!rec.credId || !rec.ciphertext || !rec.phoneRoutineBip340Pub) return null
+  if (!rec.credId || !rec.ciphertext || !rec.phoneBip340Pub) return null
   return rec
 }
 
@@ -98,9 +98,8 @@ export type StagedEnrollment = EnrollmentSecrets & {
   recoveryXOnly?: string
   inviteToken?: string
   descriptorHash?: string
-  operationalAddress?: string
-  operationalScript?: string
   savingsAddress?: string
+  savingsScript?: string
 }
 
 export function loadStagedEnrollment(storage: Storage = localStorage): StagedEnrollment | null {

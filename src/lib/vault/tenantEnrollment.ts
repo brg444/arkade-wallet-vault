@@ -24,11 +24,11 @@ const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 const DIRECT_INFO = new TextEncoder().encode('arkade-2fa-vault/direct-p256/v1')
 
 export interface EnrollmentSecrets {
-  vaultId?: string
+  vaultId: string
   credId: string
   webauthnP256: string
   phoneDirectP256: string
-  phoneRoutineBip340Pub: string
+  phoneBip340Pub: string
   nonce: string
   ciphertext: string
 }
@@ -149,8 +149,8 @@ export async function beginTenantEnrollment(
   const att = cred.response as AuthenticatorAttestationResponse
   const webauthnP256 = await compressedES256(att)
   const direct = await deriveDirectP256(prf)
-  const phoneRoutineSecret = crypto.getRandomValues(new Uint8Array(32))
-  const phoneRoutineBip340Pub = secp256k1.getPublicKey(phoneRoutineSecret, true)
+  const phoneSecret = crypto.getRandomValues(new Uint8Array(32))
+  const phoneBip340Pub = secp256k1.getPublicKey(phoneSecret, true)
   const kek = await crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
     await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
@@ -159,20 +159,18 @@ export async function beginTenantEnrollment(
     ['encrypt'],
   )
   const nonce = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneRoutineSecret),
-  )
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneSecret))
   const enrollment: EnrollmentSecrets = {
     vaultId: start.vaultId,
     credId: bytesToHex(new Uint8Array(cred.rawId)),
     webauthnP256: bytesToHex(webauthnP256),
     phoneDirectP256: bytesToHex(direct.pub),
-    phoneRoutineBip340Pub: bytesToHex(phoneRoutineBip340Pub),
+    phoneBip340Pub: bytesToHex(phoneBip340Pub),
     nonce: bytesToHex(nonce),
     ciphertext: bytesToHex(ciphertext),
   }
   prf.fill(0)
-  phoneRoutineSecret.fill(0)
+  phoneSecret.fill(0)
   const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
   const proposed = await vaultPost<{
     vaultId: string
@@ -189,42 +187,21 @@ export async function beginTenantEnrollment(
       credentialId: enrollment.credId,
       webauthnP256: enrollment.webauthnP256,
       phoneDirectP256: enrollment.phoneDirectP256,
-      phoneRoutineBip340Pub: enrollment.phoneRoutineBip340Pub,
+      phoneBip340Pub: enrollment.phoneBip340Pub,
       vaultId: start.vaultId,
       externalOwnerWalletXOnly: hardwareXOnly,
       ...(recoveryXOnly ? { recoveryXOnly } : {}),
     },
     { 'X-Vault-Enrollment-Token': token },
   )
+  const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
   if (wantRecovery) {
-    const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
     if (xOnly(descriptor.keys.recovery || '') !== recoveryXOnly) {
       throw new Error('proposed recovery key does not match this client')
     }
-    if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
-      throw new Error('proposed hardware key does not match this client')
-    }
-    const staged: StagedEnrollment = {
-      ...enrollment,
-      handle: start.handle,
-      userHandle: start.userId,
-      clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
-      authenticatorData: bytesToHex(authData),
-      attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
-      hardwareXOnly,
-      recoveryXOnly,
-      inviteToken: token,
-      descriptorHash: proposed.descriptorHash,
-      operationalAddress: descriptor.daily.address,
-      operationalScript: descriptor.daily.script,
-      savingsAddress: descriptor.savings.address,
-    }
-    saveStagedEnrollment(staged)
-    saveLocalKit(buildRecoveryKit(descriptor))
-    return { enrollment, descriptor }
+  } else if (descriptor.keys.recovery) {
+    throw new Error('this setup skipped recovery')
   }
-  const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
-  if (descriptor.keys.recovery) throw new Error('this setup skipped recovery')
   if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
     throw new Error('proposed hardware key does not match this client')
   }
@@ -236,11 +213,11 @@ export async function beginTenantEnrollment(
     authenticatorData: bytesToHex(authData),
     attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
     hardwareXOnly,
+    ...(recoveryXOnly ? { recoveryXOnly } : {}),
     inviteToken: token,
     descriptorHash: proposed.descriptorHash,
-    operationalAddress: descriptor.daily.address,
-    operationalScript: descriptor.daily.script,
     savingsAddress: descriptor.savings.address,
+    savingsScript: descriptor.savings.script,
   }
   saveStagedEnrollment(staged)
   saveLocalKit(buildRecoveryKit(descriptor))
@@ -266,7 +243,7 @@ export async function finishTenantEnrollment(
       credentialId: staged.credId,
       webauthnP256: staged.webauthnP256,
       phoneDirectP256: staged.phoneDirectP256,
-      phoneRoutineBip340Pub: staged.phoneRoutineBip340Pub,
+      phoneBip340Pub: staged.phoneBip340Pub,
       vaultId: staged.vaultId,
       externalOwnerWalletXOnly: staged.hardwareXOnly,
       ...(staged.recoveryXOnly ? { recoveryXOnly: staged.recoveryXOnly } : {}),
@@ -277,9 +254,8 @@ export async function finishTenantEnrollment(
   const live = await fetchVaultStatus(undefined, staged.vaultId)
   const pin = pinFromEnrolledStatus({
     ...live,
-    operationalAddress: staged.operationalAddress || live.operationalAddress,
-    operationalScript: staged.operationalScript || live.operationalScript,
     savingsAddress: staged.savingsAddress || live.savingsAddress,
+    savingsScript: staged.savingsScript || live.savingsScript,
   })
   saveAddressPin(pin, storage)
   requireStatusMatchesPin(live, pin)
@@ -295,12 +271,11 @@ export async function reconcileStagedEnrollment(
   if (!staged?.vaultId) return null
   const live = await fetchVaultStatus(undefined, staged.vaultId)
   if (!live.enrolled) return null
-  if (staged.operationalAddress && staged.operationalScript && staged.savingsAddress) {
+  if (staged.savingsAddress) {
     const pin = pinFromEnrolledStatus({
       ...live,
-      operationalAddress: staged.operationalAddress,
-      operationalScript: staged.operationalScript,
       savingsAddress: staged.savingsAddress,
+      savingsScript: staged.savingsScript || live.savingsScript,
     })
     saveAddressPin(pin, storage)
     requireStatusMatchesPin(live, pin)

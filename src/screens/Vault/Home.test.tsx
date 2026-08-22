@@ -23,7 +23,6 @@ function renderHome(overrides: Partial<VaultContextProps>) {
     navigate: vi.fn(),
     openRecover: vi.fn(),
     openSendScan: vi.fn(),
-    operationalAddress: 'tb1poldoperationaladdress',
     refreshBalance: vi.fn().mockResolvedValue(undefined),
     savingsAddress: 'tb1psavingsaddress',
     savingsSats: 50_000,
@@ -43,10 +42,9 @@ function renderHome(overrides: Partial<VaultContextProps>) {
 }
 
 describe('Vault home account boundaries', () => {
-  it('uses the Arkade address for Spending instead of the retired operational address', () => {
+  it('uses the Arkade address for Spending', () => {
     renderHome({ account: 'spend' })
     expect(screen.getByTestId('account-address').textContent).toContain('tark1s')
-    expect(screen.getByTestId('account-address').textContent).not.toContain('tb1pol')
   })
 
   it('starts Savings to Spending at the pinned boarding address', async () => {
