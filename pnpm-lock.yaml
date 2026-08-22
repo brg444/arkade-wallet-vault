@@ -12,8 +12,8 @@ importers:
         specifier: 0.3.33
         version: 0.3.33
       '@arkade-os/sdk':
-        specifier: 0.4.64
-        version: 0.4.64
+        specifier: 0.4.65
+        version: 0.4.65
       '@base-ui/react':
         specifier: ^1.4.1
         version: 1.4.1(@date-fns/tz@1.4.1)(@types/react@18.3.26)(date-fns@4.1.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -272,8 +272,8 @@ packages:
       expo-task-manager:
         optional: true
 
-  '@arkade-os/sdk@0.4.64':
-    resolution: {integrity: sha512-3R8ewgLzMiq/PGmImUhvINji2w4FkBz4GE1ohHzIFb6m1FiGbFBZUAin9EsRSm2OtBV2uciKWnXdjiQZv3CBEg==}
+  '@arkade-os/sdk@0.4.65':
+    resolution: {integrity: sha512-VZ0wZcM0ZQqplUxwse/ZLG/8RZRE3YWbmqKLJ9f1s9MV3T/ToTin+zhMcaW4HnomtnaPk/q7M27c3KTMUiZ2KA==}
     engines: {node: '>=22.12.0 <27'}
     peerDependencies:
       '@react-native-async-storage/async-storage': '>=1.0.0'
@@ -4354,7 +4354,7 @@ snapshots:
       - ecpair
       - utf-8-validate
 
-  '@arkade-os/sdk@0.4.64':
+  '@arkade-os/sdk@0.4.65':
     dependencies:
       '@bitcoinerlab/descriptors-scure': 3.1.7
       '@marcbachmann/cel-js': 8.0.0

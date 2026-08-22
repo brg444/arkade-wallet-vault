@@ -1,8 +1,9 @@
-import { Intent, RestArkProvider, type SettlementEvent } from '@arkade-os/sdk'
+import { Intent, RestArkProvider, type IntentRepository, type SettlementEvent } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { sha256 } from '@noble/hashes/sha2.js'
 
 const STREAM_RECONNECT_MS = 500
+const LIVE_INTENT_STATES = ['waiting_to_submit', 'waiting_for_batch', 'batch_in_progress'] as const
 
 export interface QueuedBoardingIntent {
   intentId: string
@@ -13,6 +14,7 @@ export interface BoardingIntentCache {
   get(): QueuedBoardingIntent | undefined
   set(record: QueuedBoardingIntent): void
   clear(): void
+  lookup?(fingerprint: string): Promise<QueuedBoardingIntent | undefined>
 }
 
 export function memoryBoardingIntentCache(): BoardingIntentCache {
@@ -28,34 +30,25 @@ export function memoryBoardingIntentCache(): BoardingIntentCache {
   }
 }
 
-export function localBoardingIntentCache(vaultId: string): BoardingIntentCache {
-  const key = `arkade-vault-boarding-intent:${vaultId}`
-  const storage = typeof localStorage === 'undefined' ? undefined : localStorage
-  if (!storage) return memoryBoardingIntentCache()
+/** Session memory plus the SDK intent repository. Reload reads the repo; the same tab uses memory. */
+export function intentRepositoryBoardingCache(repo: Pick<IntentRepository, 'getIntents'>): BoardingIntentCache {
+  const memory = memoryBoardingIntentCache()
   return {
-    get() {
-      try {
-        const raw = storage.getItem(key)
-        if (!raw) return undefined
-        const parsed = JSON.parse(raw) as Partial<QueuedBoardingIntent>
-        if (
-          typeof parsed.intentId === 'string' &&
-          typeof parsed.fingerprint === 'string' &&
-          parsed.intentId &&
-          parsed.fingerprint
-        ) {
-          return { intentId: parsed.intentId, fingerprint: parsed.fingerprint }
-        }
-      } catch {
-        return undefined
+    get: () => memory.get(),
+    set: (record) => memory.set(record),
+    clear: () => memory.clear(),
+    async lookup(fingerprint) {
+      const cached = memory.get()
+      if (cached) return cached
+      const live = await repo.getIntents({ states: [...LIVE_INTENT_STATES] })
+      for (const intent of live) {
+        if (!intent.intentId || !intent.registerProof || !intent.registerProofMessage) continue
+        const stored = hex.encode(
+          sha256(new TextEncoder().encode(`${intent.registerProof}\n${intent.registerProofMessage}`)),
+        )
+        if (stored === fingerprint) return { intentId: intent.intentId, fingerprint }
       }
       return undefined
-    },
-    set(record) {
-      storage.setItem(key, JSON.stringify(record))
-    },
-    clear() {
-      storage.removeItem(key)
     },
   }
 }
@@ -129,8 +122,11 @@ export class VaultArkProvider extends RestArkProvider {
       this.intentCache.set({ intentId, fingerprint })
       return intentId
     } catch (error) {
+      if (!isDuplicatedInput(error)) throw error
       const queued = queuedIntentIdForDuplicate(this.intentCache.get(), fingerprint)
-      if (queued && isDuplicatedInput(error)) return queued
+      if (queued) return queued
+      const stored = queuedIntentIdForDuplicate(await this.intentCache.lookup?.(fingerprint), fingerprint)
+      if (stored) return stored
       throw error
     }
   }

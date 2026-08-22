@@ -1,11 +1,21 @@
-import { DefaultVtxo, Estimator, RestIndexerProvider, SingleKey, Wallet, type ExtendedCoin } from '@arkade-os/sdk'
+import {
+  DefaultVtxo,
+  Estimator,
+  IndexedDBContractRepository,
+  IndexedDBIntentRepository,
+  IndexedDBWalletRepository,
+  RestIndexerProvider,
+  SingleKey,
+  Wallet,
+  type ExtendedCoin,
+} from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
 import { zeroBytes } from '../ceremony/directauth.js'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
-import { localBoardingIntentCache, VaultArkProvider } from './provider'
+import { intentRepositoryBoardingCache, VaultArkProvider } from './provider'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
@@ -125,11 +135,16 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
   return { confirmed, unconfirmed, total: confirmed + unconfirmed }
 }
 
-async function liveBoardingOperator(status: VaultStatus) {
+function vaultIntentRepository(vaultId: string) {
+  return new IndexedDBIntentRepository(`arkade-vault-intents:${vaultId || 'unknown'}`)
+}
+
+async function liveBoardingOperator(
+  status: VaultStatus,
+  intentCache = intentRepositoryBoardingCache(vaultIntentRepository(status.vaultId || 'unknown')),
+) {
   requireBoardingStatus(status)
-  const operator = new VaultArkProvider(vaultArkServer(), {
-    intentCache: localBoardingIntentCache(status.vaultId || 'unknown'),
-  })
+  const operator = new VaultArkProvider(vaultArkServer(), { intentCache })
   const info = await operator.getInfo()
   if (info.network !== 'mutinynet') throw new Error('Operator network is not Mutinynet')
   if (BigInt(info.boardingExitDelay) !== VAULT_BOARD_V1_EXIT_DELAY) {
@@ -146,7 +161,8 @@ export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
 
 async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
   const identity = SingleKey.fromPrivateKey(phoneSecret)
-  const { operator, info } = await liveBoardingOperator(status)
+  const intentRepository = vaultIntentRepository(status.vaultId || 'unknown')
+  const { operator, info } = await liveBoardingOperator(status, intentRepositoryBoardingCache(intentRepository))
   const wallet = await Wallet.create({
     identity,
     arkServerUrl: vaultArkServer(),
@@ -155,6 +171,11 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
     esploraUrl: '/esplora',
     boardingTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
     settlementConfig: false,
+    storage: {
+      walletRepository: new IndexedDBWalletRepository(),
+      contractRepository: new IndexedDBContractRepository(),
+      intentRepository,
+    },
   })
   if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
     throw new Error('SDK derived a different vault-board-v1 address')
