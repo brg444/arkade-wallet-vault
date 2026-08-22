@@ -34,9 +34,10 @@ server compare-and-swap transitions.
 
 ## Open mainnet gates
 
-- Ordinary VTXO send must support fragmented multi-input balances, exact-value
-  sends without mandatory dust change, and the reviewed nonzero Operator fee
-  model.
+- Ordinary VTXO send supports fragmented multi-input balances, exact
+  no-change sends, and bounded Operator fees. Live Mutinynet qualification must
+  cover those shapes, reloads, dropped responses, checkpoint reordering, and
+  concurrent retries before the mainnet pins are frozen.
 - The phone-plus-Operator boarding intermediate needs a reviewed threat bound or
   a design that applies Vault policy before settlement.
 - The Mutinynet 4,608-second VTXO exit pin has no mainnet approval. Mainnet

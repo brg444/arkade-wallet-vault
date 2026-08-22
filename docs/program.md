@@ -23,9 +23,11 @@ then authorizes the transaction-bound digest. The two ceremonies are separate:
 the first prevents an unauthenticated caller from locking the vault's VTXO,
 while the second approves the exact transaction built from the reservation.
 
-The current Mutinynet spend shape is one input, one destination, mandatory dust
-change, P2A, and zero Operator fee. Those are implementation limits, not
-general properties of the Vault Program.
+The current Mutinynet spend shape uses between one and 50 canonical inputs, one
+destination, optional `vault-policy-v1` change, and P2A. The wallet reserves
+the operation before Review so the user sees the exact Operator fee. It binds
+the fee-policy digest and rejects drift before every remaining signing or
+submission stage.
 
 ## Savings
 

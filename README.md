@@ -2,7 +2,7 @@
 
 > [!WARNING]
 > This branch is a Mutinynet release candidate. Mainnet identities, delays,
-> fees, hardware integrations, and upstream intent handling remain under
+> hardware integrations and upstream intent handling remain under
 > review. Real-fund use is blocked.
 
 Arkade Vault Wallet separates funds into two programs:
@@ -61,8 +61,9 @@ pnpm build
 
 This repository no longer carries the inherited general wallet application,
 old Vault templates, demo funding, raw private-key screens, or legacy onchain
-Spending account. Remaining mainnet gates include ordinary multi-input VTXO
-spends, exact-value sends, nonzero Operator fees, the boarding trust window,
+Spending account. Ordinary VTXO Spending now supports fragmented inputs,
+exact no-change sends, and the Operator's bounded intent fee policy. Remaining
+mainnet gates include live lifecycle qualification, the boarding trust window,
 durable intent recovery, browser concurrency, production key isolation, and
 mainnet-specific program pins. The complete list is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
