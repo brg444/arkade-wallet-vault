@@ -17,6 +17,7 @@ import { unlockPhoneBip340 } from '../savingsSpend'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
 import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
+import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { signVtxoReserveDigest, verifyVtxoReserveSignature, type VtxoReserveDigestInput } from './reserveAuth'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
@@ -28,6 +29,8 @@ import {
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 const MUTINYNET_OPERATOR_ORIGIN = 'https://mutinynet.arkade.sh'
+const VTXO_DUST_SATS = 330
+const MAX_VTXO_INPUTS = 50
 
 export function vaultArkServer(production = import.meta.env.PROD): string {
   return production ? '/arkade' : MUTINYNET_OPERATOR_ORIGIN
@@ -40,8 +43,11 @@ export interface VtxoReserveResponse {
   inputs: { txid: string; vout: number; valueSats: number; scriptHex: string }[]
   changeAddress: string
   changeScript: string
+  changeSats: number
+  changeVout?: number
   destScript: string
   feeSats: number
+  feePolicyDigest: string
   checkpointTapscript: string
 }
 
@@ -69,6 +75,15 @@ interface VtxoFinalizeResponse {
 export interface VaultVtxoSpendResult {
   txid: string
   operationId: string
+  feeSats: number
+}
+
+export interface VaultVtxoSpendQuote {
+  operationId: string
+  feeSats: number
+  feePolicyDigest: string
+  changeSats: number
+  changeVout?: number
 }
 
 export class VtxoReceiptPendingError extends Error {
@@ -155,10 +170,28 @@ export interface PersistedVtxoSpend {
   operatorCheckpointPsbts?: string[]
   checkpointPsbts?: string[]
   reservePhoneSignature?: string
+  feePolicyDigest?: string
+  feeSats?: number
+  changeSats?: number
+  changeVout?: number
 }
 
 export function vtxoSpendStorageKey(vaultId: string): string {
   return `arkade-vault-vtxo-spend:${vaultId}`
+}
+
+function persistedReservationFactsAreValid(record: Partial<PersistedVtxoSpend>): boolean {
+  if (record.stage === 'pre-reserve') return true
+  return Boolean(
+    /^[0-9a-f]{64}$/.test(String(record.feePolicyDigest || '')) &&
+      typeof record.feeSats === 'number' &&
+      Number.isSafeInteger(record.feeSats) &&
+      record.feeSats >= 0 &&
+      typeof record.changeSats === 'number' &&
+      Number.isSafeInteger(record.changeSats) &&
+      record.changeSats >= 0 &&
+      (record.changeSats === 0 ? record.changeVout === undefined : record.changeVout === 1),
+  )
 }
 
 export function loadPersistedVtxoSpend(vaultId: string): PersistedVtxoSpend | undefined {
@@ -175,6 +208,7 @@ export function loadPersistedVtxoSpend(vaultId: string): PersistedVtxoSpend | un
       parsed.destAddress &&
       typeof parsed.amountSats === 'number' &&
       (parsed.reservePhoneSignature === undefined || /^[0-9a-f]{128}$/.test(parsed.reservePhoneSignature)) &&
+      persistedReservationFactsAreValid(parsed) &&
       (parsed.stage === 'pre-reserve' || (parsed.bundleDigest && (parsed.stage === 'reserved' || parsed.arkTxid)))
     ) {
       return parsed as PersistedVtxoSpend
@@ -310,6 +344,19 @@ async function requirePinnedOperator(provider: ArkProvider, status: VaultStatus,
   return info
 }
 
+async function requireCurrentReservationPolicy(
+  provider: ArkProvider,
+  status: VaultStatus,
+  pending: PersistedVtxoSpend,
+) {
+  const info = await requirePinnedOperator(provider, status, pending.checkpointTapscript)
+  const currentFeePolicyDigest = arkadeIntentFeePolicyDigest(info.fees.intentFee)
+  if (!pending.feePolicyDigest || currentFeePolicyDigest !== pending.feePolicyDigest) {
+    throw new Error('Operator fee policy changed after reservation')
+  }
+  return info
+}
+
 async function authorizeWithPasskey(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
@@ -441,50 +488,85 @@ export function buildReservedVtxoSpend(
   reserve: VtxoReserveResponse,
   amountSats: number,
   destAddress: string,
+  expectedFeePolicyDigest: string,
 ) {
   const script = vaultPolicyV1ScriptFromStatus(status)
-  if (reserve.inputs.length !== 1) throw new Error('regular VTXO spend requires exactly one input')
-  const input = reserve.inputs[0]
-  if (input.scriptHex.toLowerCase() !== hex.encode(script.pkScript))
-    throw new Error('reserved input is not vault-policy-v1')
-  if (reserve.changeScript.toLowerCase() !== hex.encode(script.pkScript))
-    throw new Error('change is not vault-policy-v1')
-  if (reserve.changeAddress !== status.spendingArkAddress) throw new Error('change address is not vault-policy-v1')
+  if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) {
+    throw new Error('VTXO amount is below dust')
+  }
+  if (amountSats > status.txCap) throw new Error('VTXO amount exceeds the transaction cap')
+  if (!/^[0-9a-f]{64}$/.test(reserve.feePolicyDigest)) throw new Error('fee policy digest is malformed')
+  if (reserve.feePolicyDigest !== expectedFeePolicyDigest) throw new Error('Operator fee policy changed')
+  if (!Number.isSafeInteger(reserve.feeSats) || reserve.feeSats < 0) throw new Error('reserved fee is invalid')
+  if (reserve.feeSats > status.absoluteFeeCap) throw new Error('reserved fee exceeds the vault cap')
+  if (amountSats + reserve.feeSats > status.periodRemaining) throw new Error('reserved total exceeds the allowance')
+  if (!Number.isSafeInteger(reserve.changeSats) || reserve.changeSats < 0) {
+    throw new Error('reserved change is invalid')
+  }
+  if (reserve.inputs.length < 1 || reserve.inputs.length > MAX_VTXO_INPUTS) {
+    throw new Error(`reservation must contain 1 to ${MAX_VTXO_INPUTS} inputs`)
+  }
+
+  const policyScriptHex = hex.encode(script.pkScript)
+  let previousOutpoint = ''
+  let inputTotal = 0n
+  for (const input of reserve.inputs) {
+    if (!/^[0-9a-f]{64}$/.test(input.txid)) throw new Error('reserved input txid is malformed')
+    if (!Number.isSafeInteger(input.vout) || input.vout < 0 || input.vout > 0xffffffff) {
+      throw new Error('reserved input vout is malformed')
+    }
+    if (!Number.isSafeInteger(input.valueSats) || input.valueSats <= 0) {
+      throw new Error('reserved input value is malformed')
+    }
+    if (input.scriptHex !== policyScriptHex) throw new Error('reserved input is not vault-policy-v1')
+    const outpoint = `${input.txid}:${input.vout.toString(16).padStart(8, '0')}`
+    if (previousOutpoint && outpoint <= previousOutpoint) {
+      throw new Error(outpoint === previousOutpoint ? 'duplicate reserved input' : 'reserved inputs are not canonical')
+    }
+    previousOutpoint = outpoint
+    inputTotal += BigInt(input.valueSats)
+    if (inputTotal > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('reserved input total overflows safe sats')
+  }
+
+  const requiredTotal = BigInt(amountSats) + BigInt(reserve.feeSats) + BigInt(reserve.changeSats)
+  if (inputTotal !== requiredTotal) throw new Error('reserved input total does not conserve value')
   if (reserve.destScript.toLowerCase() !== hex.encode(vtxoDestinationScript(status, destAddress))) {
     throw new Error('reserved destination does not match the requested address')
   }
-  if (reserve.feeSats !== 0) throw new Error('regular VTXO slice only permits zero virtual fee')
-  const change = input.valueSats - amountSats - reserve.feeSats
-  if (!Number.isSafeInteger(change) || change < 330) throw new Error('VTXO change is below dust')
+  const outputs = [
+    {
+      script: requireHex(reserve.destScript, reserve.destScript.length / 2, 'destination script'),
+      amount: BigInt(amountSats),
+    },
+  ]
+  if (reserve.changeSats === 0) {
+    if (reserve.changeVout !== undefined || reserve.changeAddress !== '' || reserve.changeScript !== '') {
+      throw new Error('zero change must omit all change output facts')
+    }
+  } else {
+    if (reserve.changeSats < VTXO_DUST_SATS) throw new Error('VTXO change is below dust')
+    if (reserve.changeVout !== 1) throw new Error('change output index is not canonical')
+    if (reserve.changeScript !== policyScriptHex) throw new Error('change is not vault-policy-v1')
+    if (reserve.changeAddress !== status.spendingArkAddress) throw new Error('change address is not vault-policy-v1')
+    outputs.push({ script: requireHex(reserve.changeScript, 34, 'change script'), amount: BigInt(reserve.changeSats) })
+  }
   const unroll = CSVMultisigTapscript.decode(
     requireHex(reserve.checkpointTapscript, reserve.checkpointTapscript.length / 2, 'checkpoint tapscript'),
   )
   return buildOffchainTx(
-    [
-      {
-        txid: input.txid,
-        vout: input.vout,
-        value: input.valueSats,
-        tapLeafScript: script.forfeit(),
-        tapTree: script.encode(),
-      },
-    ],
-    [
-      {
-        script: requireHex(reserve.destScript, reserve.destScript.length / 2, 'destination script'),
-        amount: BigInt(amountSats),
-      },
-      { script: requireHex(reserve.changeScript, 34, 'change script'), amount: BigInt(change) },
-    ],
+    reserve.inputs.map((input) => ({
+      txid: input.txid,
+      vout: input.vout,
+      value: input.valueSats,
+      tapLeafScript: script.forfeit(),
+      tapTree: script.encode(),
+    })),
+    outputs,
     unroll,
   )
 }
 
-export function requireOperatorSignedCheckpoint(
-  original: Transaction,
-  candidate: Transaction,
-  operatorPub: Uint8Array,
-) {
+function requireCheckpointShapeMatches(original: Transaction, candidate: Transaction) {
   if (original.id !== candidate.id || original.inputsLength !== 1 || candidate.inputsLength !== 1) {
     throw new Error('Operator changed the checkpoint transaction')
   }
@@ -505,11 +587,79 @@ export function requireOperatorSignedCheckpoint(
   ) {
     throw new Error('Operator changed the checkpoint tapleaf')
   }
+}
+
+export function requireOperatorSignedCheckpoint(
+  original: Transaction,
+  candidate: Transaction,
+  operatorPub: Uint8Array,
+) {
+  requireCheckpointShapeMatches(original, candidate)
+  const submitted = candidate.getInput(0)
   const signatures = submitted.tapScriptSig
   if (signatures?.length !== 1 || !sameBytes(signatures[0][0].pubKey, operatorPub)) {
     throw new Error('checkpoint requires exactly the Operator signature')
   }
   verifyTapscriptSignatures(candidate, 0, [hex.encode(operatorPub)])
+}
+
+function checkpointPairsInCanonicalOrder(
+  expectedCheckpointPsbts: string[],
+  candidateCheckpointPsbts: string[],
+  context: string,
+): { original: Transaction; candidate: Transaction }[] {
+  if (candidateCheckpointPsbts.length !== expectedCheckpointPsbts.length) {
+    throw new Error(`${context} returned the wrong checkpoint count`)
+  }
+  const candidates = new Map<string, Transaction>()
+  for (const raw of candidateCheckpointPsbts) {
+    const candidate = Transaction.fromPSBT(base64.decode(raw))
+    if (candidates.has(candidate.id)) throw new Error(`${context} returned a duplicate checkpoint`)
+    candidates.set(candidate.id, candidate)
+  }
+  const expectedIds = new Set<string>()
+  const ordered = expectedCheckpointPsbts.map((raw) => {
+    const original = Transaction.fromPSBT(base64.decode(raw))
+    if (expectedIds.has(original.id)) throw new Error('local checkpoint identity is duplicated')
+    expectedIds.add(original.id)
+    const candidate = candidates.get(original.id)
+    if (!candidate) throw new Error(`${context} returned an unknown or missing checkpoint`)
+    requireCheckpointShapeMatches(original, candidate)
+    candidates.delete(original.id)
+    return { original, candidate }
+  })
+  if (candidates.size !== 0) throw new Error(`${context} returned an unknown checkpoint`)
+  return ordered
+}
+
+/** Match by witness-independent checkpoint txid and restore reserved input order. */
+export function matchOperatorSignedCheckpoints(
+  expectedCheckpointPsbts: string[],
+  candidateCheckpointPsbts: string[],
+  operatorPub: Uint8Array,
+): string[] {
+  return checkpointPairsInCanonicalOrder(expectedCheckpointPsbts, candidateCheckpointPsbts, 'Operator').map(
+    ({ original, candidate }) => {
+      requireOperatorSignedCheckpoint(original, candidate, operatorPub)
+      return base64.encode(candidate.toPSBT())
+    },
+  )
+}
+
+/** Restore canonical checkpoint order after the VaultCosigner adds signatures. */
+export function orderAuthorizedCheckpoints(
+  expectedCheckpointPsbts: string[],
+  candidateCheckpointPsbts: string[],
+): string[] {
+  return checkpointPairsInCanonicalOrder(expectedCheckpointPsbts, candidateCheckpointPsbts, 'Vault service').map(
+    ({ candidate }) => base64.encode(candidate.toPSBT()),
+  )
+}
+
+export function requireUserSignedArkInputs(arkTx: Transaction, userPub: Uint8Array) {
+  for (let index = 0; index < arkTx.inputsLength; index++) {
+    verifyTapscriptSignatures(arkTx, index, [hex.encode(userPub)])
+  }
 }
 
 async function finalizeVaultOperation(vaultId: string, operationId: string, bundleDigest: string, arkTxid: string) {
@@ -628,11 +778,14 @@ export function applyVtxoOperationView(
     default: {
       const floor = stageFloorFromOperationView(view.state)
       if (!floor) return pending
+      const checkpointPsbts = view.checkpointPsbts?.length
+        ? orderAuthorizedCheckpoints(pending.unsignedCheckpointPsbts || [], view.checkpointPsbts)
+        : pending.checkpointPsbts
       const next: PersistedVtxoSpend = {
         ...pending,
         arkTxid,
         authorizedPsbt: view.authorizedPsbt || pending.authorizedPsbt,
-        checkpointPsbts: view.checkpointPsbts?.length ? view.checkpointPsbts : pending.checkpointPsbts,
+        checkpointPsbts,
         stage: laterVtxoSpendStage(pending.stage, floor),
       }
       persistVtxoSpend(next)
@@ -677,7 +830,16 @@ async function reservePersistedVtxoSpend(
   }
   const reserve = await vaultPost<VtxoReserveResponse>('/v1/vtxo/reserve', vtxoReserveRequest(pending, status))
   if (reserve.operationId !== pending.operationId) throw new Error('VTXO reservation returned a different operation id')
-  const offchain = buildReservedVtxoSpend(status, reserve, pending.amountSats, pending.destAddress)
+  const operator = new RestArkProvider(vaultArkServer())
+  const info = await requirePinnedOperator(operator, status, reserve.checkpointTapscript)
+  const expectedFeePolicyDigest = arkadeIntentFeePolicyDigest(info.fees.intentFee)
+  const offchain = buildReservedVtxoSpend(
+    status,
+    reserve,
+    pending.amountSats,
+    pending.destAddress,
+    expectedFeePolicyDigest,
+  )
   const next: PersistedVtxoSpend = {
     ...pending,
     bundleDigest: reserve.bundleDigest,
@@ -687,9 +849,61 @@ async function reservePersistedVtxoSpend(
     stage: 'reserved',
     unsignedArkPsbt: base64.encode(offchain.arkTx.toPSBT()),
     unsignedCheckpointPsbts: offchain.checkpoints.map((checkpoint) => base64.encode(checkpoint.toPSBT())),
+    feePolicyDigest: reserve.feePolicyDigest,
+    feeSats: reserve.feeSats,
+    changeSats: reserve.changeSats,
+    ...(reserve.changeVout === undefined ? {} : { changeVout: reserve.changeVout }),
   }
   persistVtxoSpend(next)
   return next
+}
+
+function quoteFromPersistedVtxoSpend(pending: PersistedVtxoSpend): VaultVtxoSpendQuote {
+  if (
+    !pending.feePolicyDigest ||
+    pending.feeSats === undefined ||
+    pending.changeSats === undefined ||
+    !persistedReservationFactsAreValid(pending)
+  ) {
+    throw new Error('persisted VTXO reservation is missing fee or change facts')
+  }
+  return {
+    operationId: pending.operationId,
+    feeSats: pending.feeSats,
+    feePolicyDigest: pending.feePolicyDigest,
+    changeSats: pending.changeSats,
+    ...(pending.changeVout === undefined ? {} : { changeVout: pending.changeVout }),
+  }
+}
+
+async function prepareVtxoSpendLocked(
+  enrollment: EnrollmentSecrets,
+  status: VaultStatus,
+  destAddress: string,
+  amountSats: number,
+): Promise<PersistedVtxoSpend> {
+  let pending = loadPersistedVtxoSpend(status.vaultId)
+  if (pending) pending = await syncPersistedSpendWithOperation(pending)
+  if (pending && !isSameVtxoPayment(pending, destAddress, amountSats)) {
+    throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
+  }
+  if (!pending) pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
+  if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(enrollment, status, pending)
+  return pending
+}
+
+/** Reserve and validate the authoritative fee before the wallet presents Review. */
+export async function reserveVaultVtxo(
+  enrollment: EnrollmentSecrets,
+  status: VaultStatus,
+  destAddress: string,
+  amountSats: number,
+): Promise<VaultVtxoSpendQuote> {
+  requireMutinynetStatus(status)
+  if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
+  return withVtxoSendLock(status.vaultId, async () =>
+    quoteFromPersistedVtxoSpend(await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats)),
+  )
 }
 
 export type VtxoSpendReconcile =
@@ -728,6 +942,7 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
     try {
       const operator = new RestArkProvider(vaultArkServer())
+      await requireCurrentReservationPolicy(operator, status, pending)
       await operator.finalizeTx(pending.arkTxid, pending.checkpointPsbts)
       persistVtxoSpend({ ...pending, stage: 'operator-finalized' })
       await finalizeVaultOperation(pending.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
@@ -740,13 +955,19 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
   if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
     try {
       const operator = new RestArkProvider(vaultArkServer())
+      const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
       const submitted = await operator.submitTx(pending.authorizedPsbt, pending.unsignedCheckpointPsbts)
       requireMatchingOperatorSubmit(submitted, pending.arkTxid, pending.unsignedCheckpointPsbts.length)
+      const operatorCheckpointPsbts = matchOperatorSignedCheckpoints(
+        pending.unsignedCheckpointPsbts,
+        submitted.signedCheckpointTxs,
+        xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey'),
+      )
       persistVtxoSpend({
         ...pending,
         arkTxid: submitted.arkTxid,
         stage: 'operator-submitted',
-        operatorCheckpointPsbts: submitted.signedCheckpointTxs,
+        operatorCheckpointPsbts,
       })
       return { kind: 'pending', operationId: pending.operationId, stage: 'operator-submitted' }
     } catch {
@@ -757,9 +978,10 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
 }
 
 async function finishOperatorFinalized(pending: PersistedVtxoSpend): Promise<VaultVtxoSpendResult> {
+  const { feeSats } = quoteFromPersistedVtxoSpend(pending)
   await finalizeVaultOperation(pending.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
   clearPersistedVtxoSpend(pending.vaultId)
-  return { txid: pending.arkTxid, operationId: pending.operationId }
+  return { txid: pending.arkTxid, operationId: pending.operationId, feeSats }
 }
 
 async function authorizeReservedVtxoSpend(
@@ -770,11 +992,13 @@ async function authorizeReservedVtxoSpend(
   if (!pending.unsignedArkPsbt || !pending.unsignedCheckpointPsbts?.length) {
     throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
   }
+  await requireCurrentReservationPolicy(new RestArkProvider(vaultArkServer()), status, pending)
   const auth = await authorizeWithPasskey(enrollment, status, pending.bundleDigest)
   try {
     const identity = SingleKey.fromPrivateKey(auth.phoneSecret)
     const arkTx = Transaction.fromPSBT(base64.decode(pending.unsignedArkPsbt))
-    const userSignedArk = arkTx.getInput(0).tapScriptSig?.length ? arkTx : await identity.sign(arkTx)
+    const userSignedArk = await identity.sign(arkTx)
+    requireUserSignedArkInputs(userSignedArk, xOnly(status.phoneBip340Pub, 'phone pubkey'))
     const unsignedArkPsbt = base64.encode(userSignedArk.toPSBT())
     persistVtxoSpend({ ...pending, unsignedArkPsbt })
     const authorized = await vaultPost<VtxoAuthorizeResponse>('/v1/vtxo/authorize', {
@@ -820,6 +1044,7 @@ async function continueSameVtxoSpend(
   const operator = new RestArkProvider(vaultArkServer())
   if (pending.stage === 'operator-finalized') return finishOperatorFinalized(pending)
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
+    await requireCurrentReservationPolicy(operator, status, pending)
     await operator.finalizeTx(pending.arkTxid, pending.checkpointPsbts)
     persistVtxoSpend({ ...pending, stage: 'operator-finalized' })
     return finishOperatorFinalized({ ...pending, stage: 'operator-finalized' })
@@ -828,20 +1053,26 @@ async function continueSameVtxoSpend(
     pending = await authorizeReservedVtxoSpend(enrollment, status, pending)
   }
   if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
+    const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
     const submitted = await operator.submitTx(pending.authorizedPsbt, pending.unsignedCheckpointPsbts)
     requireMatchingOperatorSubmit(submitted, pending.arkTxid, pending.unsignedCheckpointPsbts.length)
+    const operatorCheckpointPsbts = matchOperatorSignedCheckpoints(
+      pending.unsignedCheckpointPsbts,
+      submitted.signedCheckpointTxs,
+      xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey'),
+    )
     pending = {
       ...pending,
       arkTxid: submitted.arkTxid,
       stage: 'operator-submitted',
-      operatorCheckpointPsbts: submitted.signedCheckpointTxs,
+      operatorCheckpointPsbts,
     }
     persistVtxoSpend(pending)
   }
   if (pending.stage !== 'operator-submitted' || !pending.operatorCheckpointPsbts?.length) {
     throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
   }
-  const operatorInfo = await requirePinnedOperator(operator, status, pending.checkpointTapscript)
+  const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
   const auth = await authorizeWithPasskey(enrollment, status, pending.bundleDigest)
   try {
     const identity = SingleKey.fromPrivateKey(auth.phoneSecret)
@@ -860,16 +1091,29 @@ async function continueSameVtxoSpend(
       bundleDigest: pending.bundleDigest,
       checkpointPsbts: userAndOperatorCheckpoints,
     })
-    persistVtxoSpend({ ...pending, stage: 'checkpoints-authorized', checkpointPsbts: checkpoints.checkpointPsbts })
-    await operator.finalizeTx(pending.arkTxid, checkpoints.checkpointPsbts)
-    persistVtxoSpend({ ...pending, stage: 'operator-finalized', checkpointPsbts: checkpoints.checkpointPsbts })
+    if (
+      checkpoints.operationId !== pending.operationId ||
+      checkpoints.bundleDigest !== pending.bundleDigest ||
+      checkpoints.arkTxid !== pending.arkTxid
+    ) {
+      throw new Error('invalid checkpoint authorization response')
+    }
+    const checkpointPsbts = orderAuthorizedCheckpoints(userAndOperatorCheckpoints, checkpoints.checkpointPsbts)
+    persistVtxoSpend({ ...pending, stage: 'checkpoints-authorized', checkpointPsbts })
+    await requireCurrentReservationPolicy(operator, status, pending)
+    await operator.finalizeTx(pending.arkTxid, checkpointPsbts)
+    persistVtxoSpend({ ...pending, stage: 'operator-finalized', checkpointPsbts })
     try {
       await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
     } catch {
       throw new VtxoReceiptPendingError(pending.arkTxid, pending.operationId)
     }
     clearPersistedVtxoSpend(status.vaultId)
-    return { txid: pending.arkTxid, operationId: pending.operationId }
+    return {
+      txid: pending.arkTxid,
+      operationId: pending.operationId,
+      feeSats: quoteFromPersistedVtxoSpend(pending).feeSats,
+    }
   } finally {
     zeroBytes(auth.phoneSecret)
   }
@@ -882,135 +1126,10 @@ export async function sendVaultVtxo(
   amountSats: number,
 ): Promise<VaultVtxoSpendResult> {
   requireMutinynetStatus(status)
-  if (!Number.isSafeInteger(amountSats) || amountSats < 330) throw new Error('VTXO amount is below dust')
+  if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
   return withVtxoSendLock(status.vaultId, async () => {
-    let pending = loadPersistedVtxoSpend(status.vaultId)
-    if (pending) {
-      pending = await syncPersistedSpendWithOperation(pending)
-    }
-    if (pending && isSameVtxoPayment(pending, destAddress, amountSats)) {
-      return continueSameVtxoSpend(enrollment, status, pending)
-    }
-    if (pendingVtxoSpendBlocksNewSend(pending)) {
-      throw new VtxoSpendInFlightError(pending!.arkTxid, pending!.operationId)
-    }
-    pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
-    pending = await reservePersistedVtxoSpend(enrollment, status, pending)
-    const reserve = {
-      operationId: pending.operationId,
-      bundleDigest: pending.bundleDigest,
-      reservationExpires: pending.reservationExpires || '',
-    }
-    const unsignedCheckpointPsbts = pending.unsignedCheckpointPsbts!
-    const unsignedArkPsbt = pending.unsignedArkPsbt!
-    const offchain = {
-      arkTx: Transaction.fromPSBT(base64.decode(unsignedArkPsbt)),
-      checkpoints: unsignedCheckpointPsbts.map((raw) => Transaction.fromPSBT(base64.decode(raw))),
-    }
-    const operator = new RestArkProvider(vaultArkServer())
-    const operatorInfo = await requirePinnedOperator(operator, status, pending.checkpointTapscript)
-    const auth = await authorizeWithPasskey(enrollment, status, reserve.bundleDigest)
-    try {
-      const identity = SingleKey.fromPrivateKey(auth.phoneSecret)
-      const userSignedArk = await identity.sign(offchain.arkTx)
-      const userSignedArkPsbt = base64.encode(userSignedArk.toPSBT())
-      persistVtxoSpend({
-        ...pending,
-        arkTxid: offchain.arkTx.id,
-        stage: 'reserved',
-        unsignedArkPsbt: userSignedArkPsbt,
-        unsignedCheckpointPsbts,
-      })
-      const authorized = await vaultPost<VtxoAuthorizeResponse>('/v1/vtxo/authorize', {
-        vaultId: status.vaultId,
-        operationId: reserve.operationId,
-        bundleDigest: reserve.bundleDigest,
-        unsignedArkPsbt: userSignedArkPsbt,
-        unsignedCheckpointPsbts,
-        ...auth.assertion,
-        directSig: auth.directSig,
-      })
-      if (
-        authorized.operationId !== reserve.operationId ||
-        authorized.bundleDigest !== reserve.bundleDigest ||
-        !authorized.authorizedPsbt ||
-        !authorized.arkTxid
-      ) {
-        throw new Error('invalid VTXO authorization response')
-      }
-      if (authorized.arkTxid !== offchain.arkTx.id) throw new Error('Vault authorization changed the Ark transaction')
-      persistVtxoSpend({
-        ...pending,
-        arkTxid: authorized.arkTxid,
-        stage: 'authorized',
-        unsignedArkPsbt: userSignedArkPsbt,
-        authorizedPsbt: authorized.authorizedPsbt,
-        unsignedCheckpointPsbts,
-      })
-      const submitted = await operator.submitTx(authorized.authorizedPsbt, unsignedCheckpointPsbts)
-      requireMatchingOperatorSubmit(submitted, authorized.arkTxid, unsignedCheckpointPsbts.length)
-      persistVtxoSpend({
-        ...pending,
-        arkTxid: submitted.arkTxid,
-        stage: 'operator-submitted',
-        unsignedArkPsbt: userSignedArkPsbt,
-        authorizedPsbt: authorized.authorizedPsbt,
-        unsignedCheckpointPsbts,
-        operatorCheckpointPsbts: submitted.signedCheckpointTxs,
-      })
-      try {
-        const userAndOperatorCheckpoints: string[] = []
-        for (const [index, raw] of submitted.signedCheckpointTxs.entries()) {
-          const checkpoint = Transaction.fromPSBT(base64.decode(raw))
-          requireOperatorSignedCheckpoint(
-            offchain.checkpoints[index],
-            checkpoint,
-            xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey'),
-          )
-          const signed = await identity.sign(checkpoint)
-          userAndOperatorCheckpoints.push(base64.encode(signed.toPSBT()))
-        }
-        const checkpoints = await vaultPost<VtxoCheckpointAuthorizeResponse>('/v1/vtxo/checkpoints/authorize', {
-          vaultId: status.vaultId,
-          operationId: reserve.operationId,
-          bundleDigest: reserve.bundleDigest,
-          checkpointPsbts: userAndOperatorCheckpoints,
-        })
-        if (
-          checkpoints.operationId !== reserve.operationId ||
-          checkpoints.bundleDigest !== reserve.bundleDigest ||
-          checkpoints.arkTxid !== submitted.arkTxid ||
-          checkpoints.checkpointPsbts.length !== 1
-        ) {
-          throw new Error('invalid checkpoint authorization response')
-        }
-        persistVtxoSpend({
-          ...pending,
-          arkTxid: submitted.arkTxid,
-          stage: 'checkpoints-authorized',
-          checkpointPsbts: checkpoints.checkpointPsbts,
-        })
-        await operator.finalizeTx(submitted.arkTxid, checkpoints.checkpointPsbts)
-        persistVtxoSpend({
-          ...pending,
-          arkTxid: submitted.arkTxid,
-          stage: 'operator-finalized',
-          checkpointPsbts: checkpoints.checkpointPsbts,
-        })
-        try {
-          await finalizeVaultOperation(status.vaultId, reserve.operationId, reserve.bundleDigest, submitted.arkTxid)
-        } catch {
-          throw new VtxoReceiptPendingError(submitted.arkTxid, reserve.operationId)
-        }
-        clearPersistedVtxoSpend(status.vaultId)
-        return { txid: submitted.arkTxid, operationId: reserve.operationId }
-      } catch (err) {
-        if (err instanceof VtxoReceiptPendingError) throw err
-        throw new VtxoSpendInFlightError(submitted.arkTxid, reserve.operationId)
-      }
-    } finally {
-      zeroBytes(auth.phoneSecret)
-    }
+    const pending = await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats)
+    return continueSameVtxoSpend(enrollment, status, pending)
   })
 }
 

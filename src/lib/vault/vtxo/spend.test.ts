@@ -1,5 +1,5 @@
-import { ArkAddress, CSVMultisigTapscript, SingleKey } from '@arkade-os/sdk'
-import { hex } from '@scure/base'
+import { ArkAddress, CSVMultisigTapscript, SingleKey, Transaction } from '@arkade-os/sdk'
+import { base64, hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION } from '../constants'
 import { SAVINGS_TEMPLATE } from '../program/constants'
@@ -14,6 +14,8 @@ import {
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
   loadPersistedVtxoSpend,
+  matchOperatorSignedCheckpoints,
+  orderAuthorizedCheckpoints,
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
   persistVtxoSpend,
@@ -21,6 +23,7 @@ import {
   preReserveVtxoSpend,
   requireMatchingOperatorSubmit,
   requireOperatorSignedCheckpoint,
+  requireUserSignedArkInputs,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
   VtxoSpendUnresolvedError,
@@ -35,6 +38,13 @@ import { VaultPolicyV1Script } from './script'
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 const OP_1 = '11'.repeat(16)
 const OP_2 = '22'.repeat(16)
+const FEE_POLICY_DIGEST = 'aa'.repeat(32)
+const RESERVATION_FACTS = {
+  feePolicyDigest: FEE_POLICY_DIGEST,
+  feeSats: 500,
+  changeSats: 7_500,
+  changeVout: 1,
+} as const
 
 function compressed(xonly: string): string {
   return `02${xonly}`
@@ -93,10 +103,22 @@ function reserve(): VtxoReserveResponse {
     inputs: [{ txid: '22'.repeat(32), vout: 3, valueSats: 20_000, scriptHex: current.spendingArkScript! }],
     changeAddress: current.spendingArkAddress!,
     changeScript: current.spendingArkScript!,
+    changeSats: 7_500,
+    changeVout: 1,
     destScript: `5120${golden.fixtures.exitHardwarePub}`,
-    feeSats: 0,
+    feeSats: 500,
+    feePolicyDigest: FEE_POLICY_DIGEST,
     checkpointTapscript: hex.encode(unroll.script),
   }
+}
+
+function fragmentedReserve(): VtxoReserveResponse {
+  const current = reserve()
+  current.inputs = [
+    { ...current.inputs[0], txid: '11'.repeat(32), vout: 1, valueSats: 7_000 },
+    { ...current.inputs[0], txid: '22'.repeat(32), vout: 3, valueSats: 13_000 },
+  ]
+  return current
 }
 
 function destination(): string {
@@ -105,6 +127,12 @@ function destination(): string {
     hex.decode(golden.fixtures.exitHardwarePub),
     'tark',
   ).encode()
+}
+
+function validCheckpointPsbt(): string {
+  const checkpoint = buildReservedVtxoSpend(status(), reserve(), 12_000, destination(), FEE_POLICY_DIGEST)
+    .checkpoints[0]
+  return base64.encode(checkpoint.toPSBT())
 }
 
 describe('regular VTXO spend coordinator', () => {
@@ -190,7 +218,7 @@ describe('regular VTXO spend coordinator', () => {
   })
 
   it('builds the SDK-native one-input checkpoint and Ark transaction', () => {
-    const built = buildReservedVtxoSpend(status(), reserve(), 12_000, destination())
+    const built = buildReservedVtxoSpend(status(), reserve(), 12_000, destination(), FEE_POLICY_DIGEST)
     expect(built.checkpoints).toHaveLength(1)
     expect(built.checkpoints[0].inputsLength).toBe(1)
     expect(built.checkpoints[0].outputsLength).toBe(2)
@@ -198,11 +226,152 @@ describe('regular VTXO spend coordinator', () => {
     expect(built.arkTx.inputsLength).toBe(1)
     expect(built.arkTx.outputsLength).toBe(3)
     expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
-    expect(built.arkTx.getOutput(1).amount).toBe(8_000n)
+    expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
+  })
+
+  it('preserves canonical fragmented inputs through checkpoints and Ark inputs', () => {
+    const response = fragmentedReserve()
+    const built = buildReservedVtxoSpend(status(), response, 12_000, destination(), FEE_POLICY_DIGEST)
+    expect(built.checkpoints).toHaveLength(2)
+    expect(built.arkTx.inputsLength).toBe(2)
+    expect(built.arkTx.outputsLength).toBe(3)
+    expect(response.inputs.map(({ txid, vout }) => `${txid}:${vout}`)).toEqual([
+      `${'11'.repeat(32)}:1`,
+      `${'22'.repeat(32)}:3`,
+    ])
+    expect(built.checkpoints.map((checkpoint) => hex.encode(checkpoint.getInput(0).txid!))).toEqual(
+      response.inputs.map((input) => input.txid),
+    )
+    expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
+    expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
+  })
+
+  it('supports an exact spend with no change and P2A last', () => {
+    const response = reserve()
+    response.inputs[0].valueSats = 12_500
+    response.changeSats = 0
+    response.changeAddress = ''
+    response.changeScript = ''
+    delete response.changeVout
+    const built = buildReservedVtxoSpend(status(), response, 12_000, destination(), FEE_POLICY_DIGEST)
+    expect(built.arkTx.outputsLength).toBe(2)
+    expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
+    expect(built.arkTx.getOutput(1).amount).toBe(0n)
+  })
+
+  it('rejects duplicate, shuffled, and malformed reservation inputs', () => {
+    const duplicate = fragmentedReserve()
+    duplicate.inputs[1] = { ...duplicate.inputs[0] }
+    expect(() => buildReservedVtxoSpend(status(), duplicate, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /duplicate reserved input/,
+    )
+
+    const shuffled = fragmentedReserve()
+    shuffled.inputs.reverse()
+    expect(() => buildReservedVtxoSpend(status(), shuffled, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /not canonical/,
+    )
+
+    const malformed = fragmentedReserve()
+    malformed.inputs[0].txid = 'AA'.repeat(32)
+    expect(() => buildReservedVtxoSpend(status(), malformed, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /txid is malformed/,
+    )
+  })
+
+  it('enforces authoritative fee, change shape, conservation, caps, and safe totals', () => {
+    const wrongPolicy = reserve()
+    expect(() => buildReservedVtxoSpend(status(), wrongPolicy, 12_000, destination(), 'bb'.repeat(32))).toThrow(
+      /fee policy changed/,
+    )
+
+    const unconserved = reserve()
+    unconserved.changeSats--
+    expect(() => buildReservedVtxoSpend(status(), unconserved, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /does not conserve value/,
+    )
+
+    const excessiveFee = reserve()
+    excessiveFee.feeSats = 1_501
+    excessiveFee.changeSats = 6_499
+    expect(() => buildReservedVtxoSpend(status(), excessiveFee, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /fee exceeds the vault cap/,
+    )
+
+    const subdust = reserve()
+    subdust.inputs[0].valueSats = 12_600
+    subdust.changeSats = 100
+    expect(() => buildReservedVtxoSpend(status(), subdust, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /change is below dust/,
+    )
+
+    const mixedNoChange = reserve()
+    mixedNoChange.inputs[0].valueSats = 12_500
+    mixedNoChange.changeSats = 0
+    expect(() => buildReservedVtxoSpend(status(), mixedNoChange, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /omit all change output facts/,
+    )
+
+    const missingChangeFacts = reserve()
+    delete missingChangeFacts.changeVout
+    expect(() =>
+      buildReservedVtxoSpend(status(), missingChangeFacts, 12_000, destination(), FEE_POLICY_DIGEST),
+    ).toThrow(/change output index is not canonical/)
+
+    const overflow = fragmentedReserve()
+    overflow.inputs[0].valueSats = Number.MAX_SAFE_INTEGER
+    overflow.inputs[1].valueSats = Number.MAX_SAFE_INTEGER
+    expect(() => buildReservedVtxoSpend(status(), overflow, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /overflows safe sats/,
+    )
+
+    const tooMany = reserve()
+    tooMany.inputs = Array.from({ length: 51 }, (_, index) => ({
+      ...tooMany.inputs[0],
+      txid: index.toString(16).padStart(64, '0'),
+      vout: 0,
+      valueSats: 1,
+    }))
+    expect(() => buildReservedVtxoSpend(status(), tooMany, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /1 to 50 inputs/,
+    )
+  })
+
+  it('signs every Ark input in a fragmented spend', async () => {
+    const built = buildReservedVtxoSpend(status(), fragmentedReserve(), 12_000, destination(), FEE_POLICY_DIGEST)
+    const user = SingleKey.fromPrivateKey(hex.decode('01'.padStart(64, '0')))
+    const signed = await user.sign(built.arkTx)
+    expect(() => requireUserSignedArkInputs(signed, hex.decode(golden.fixtures.userPub))).not.toThrow()
+    expect(
+      Array.from({ length: signed.inputsLength }, (_, index) => signed.getInput(index).tapScriptSig?.length),
+    ).toEqual([1, 1])
+  })
+
+  it('matches shuffled Operator checkpoints by identity and restores canonical order', async () => {
+    const built = buildReservedVtxoSpend(status(), fragmentedReserve(), 12_000, destination(), FEE_POLICY_DIGEST)
+    const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+    const expected = built.checkpoints.map((checkpoint) => base64.encode(checkpoint.toPSBT()))
+    const signed = await Promise.all(
+      built.checkpoints.map(async (checkpoint) => base64.encode((await operator.sign(checkpoint)).toPSBT())),
+    )
+    const shuffled = [...signed].reverse()
+    const ordered = matchOperatorSignedCheckpoints(expected, shuffled, hex.decode(golden.fixtures.arkdServerPub))
+    expect(ordered.map((raw) => Transaction.fromPSBT(base64.decode(raw)).id)).toEqual(
+      built.checkpoints.map((checkpoint) => checkpoint.id),
+    )
+    expect(
+      orderAuthorizedCheckpoints(expected, shuffled).map((raw) => Transaction.fromPSBT(base64.decode(raw)).id),
+    ).toEqual(built.checkpoints.map((checkpoint) => checkpoint.id))
+    expect(() =>
+      matchOperatorSignedCheckpoints(expected, signed.slice(0, 1), hex.decode(golden.fixtures.arkdServerPub)),
+    ).toThrow(/wrong checkpoint count/)
+    expect(() =>
+      matchOperatorSignedCheckpoints(expected, [signed[0], signed[0]], hex.decode(golden.fixtures.arkdServerPub)),
+    ).toThrow(/duplicate checkpoint/)
   })
 
   it('preserves the Operator checkpoint signature when the user signs after submit', async () => {
-    const built = buildReservedVtxoSpend(status(), reserve(), 12_000, destination())
+    const built = buildReservedVtxoSpend(status(), reserve(), 12_000, destination(), FEE_POLICY_DIGEST)
     // The frozen fixture's Arkade Operator key is private scalar 4.
     const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
     const user = SingleKey.fromPrivateKey(hex.decode('01'.padStart(64, '0')))
@@ -218,7 +387,7 @@ describe('regular VTXO spend coordinator', () => {
   it('fails closed if status and reservation do not name the same policy script', () => {
     const changed = reserve()
     changed.changeScript = `5120${'44'.repeat(32)}`
-    expect(() => buildReservedVtxoSpend(status(), changed, 12_000, destination())).toThrow(
+    expect(() => buildReservedVtxoSpend(status(), changed, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
       /change is not vault-policy-v1/,
     )
   })
@@ -226,17 +395,21 @@ describe('regular VTXO spend coordinator', () => {
   it('rejects a reservation for another destination or Operator', () => {
     const changed = reserve()
     changed.destScript = `5120${golden.fixtures.delegatePub}`
-    expect(() => buildReservedVtxoSpend(status(), changed, 12_000, destination())).toThrow(/reserved destination/)
+    expect(() => buildReservedVtxoSpend(status(), changed, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /reserved destination/,
+    )
     const otherOperator = new ArkAddress(
       hex.decode(golden.fixtures.userPub),
       hex.decode(golden.fixtures.exitHardwarePub),
       'tark',
     ).encode()
-    expect(() => buildReservedVtxoSpend(status(), reserve(), 12_000, otherOperator)).toThrow(/another Arkade Operator/)
+    expect(() => buildReservedVtxoSpend(status(), reserve(), 12_000, otherOperator, FEE_POLICY_DIGEST)).toThrow(
+      /another Arkade Operator/,
+    )
   })
 
   it('keeps Bitcoin destinations on the onchain spend path', () => {
-    expect(() => buildReservedVtxoSpend(status(), reserve(), 12_000, TB1Q)).toThrow(
+    expect(() => buildReservedVtxoSpend(status(), reserve(), 12_000, TB1Q, FEE_POLICY_DIGEST)).toThrow(
       /VTXO destination must be an Arkade address/,
     )
   })
@@ -250,6 +423,7 @@ describe('regular VTXO spend coordinator', () => {
       destAddress: 'tark1qqold',
       amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
       stage: 'operator-finalized',
     })
     const pending = loadPersistedVtxoSpend('vault-a')
@@ -272,6 +446,7 @@ describe('regular VTXO spend coordinator', () => {
       amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
       reservationExpires: '2026-08-20T00:02:00Z',
+      ...RESERVATION_FACTS,
       stage: 'reserved',
       unsignedArkPsbt: 'cHNidP9ark',
       unsignedCheckpointPsbts: ['cHNidP9cp'],
@@ -284,6 +459,7 @@ describe('regular VTXO spend coordinator', () => {
 
   it('uses the operation view to resume a lost authorize response', () => {
     clearPersistedVtxoSpend('vault-a')
+    const checkpointPsbt = validCheckpointPsbt()
     const reserved: PersistedVtxoSpend = {
       vaultId: 'vault-a',
       operationId: OP_1,
@@ -291,9 +467,10 @@ describe('regular VTXO spend coordinator', () => {
       destAddress: destination(),
       amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
       stage: 'reserved',
       unsignedArkPsbt: 'cHNidP9ark',
-      unsignedCheckpointPsbts: ['cHNidP9cp'],
+      unsignedCheckpointPsbts: [checkpointPsbt],
     }
     persistVtxoSpend(reserved)
     const signed = applyVtxoOperationView(reserved, {
@@ -313,10 +490,10 @@ describe('regular VTXO spend coordinator', () => {
       state: 'submitted',
       arkTxid: 'aa'.repeat(32),
       authorizedPsbt: 'cHNidP9signed',
-      checkpointPsbts: ['cHNidP9final'],
+      checkpointPsbts: [checkpointPsbt],
     })
     expect(submitted?.stage).toBe('checkpoints-authorized')
-    expect(submitted?.checkpointPsbts).toEqual(['cHNidP9final'])
+    expect(submitted?.checkpointPsbts).toEqual([checkpointPsbt])
 
     const finalized = applyVtxoOperationView(submitted!, {
       operationId: OP_1,
@@ -344,6 +521,7 @@ describe('regular VTXO spend coordinator', () => {
       destAddress: destination(),
       amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
       stage: 'authorized',
       authorizedPsbt: 'cHNidP9signed',
       unsignedCheckpointPsbts: ['cHNidP9cp'],
@@ -364,6 +542,7 @@ describe('regular VTXO spend coordinator', () => {
     expect(laterVtxoSpendStage('reserved', 'authorized')).toBe('authorized')
 
     clearPersistedVtxoSpend('vault-a')
+    const checkpointPsbt = validCheckpointPsbt()
     const submitted: PersistedVtxoSpend = {
       vaultId: 'vault-a',
       operationId: OP_1,
@@ -371,9 +550,10 @@ describe('regular VTXO spend coordinator', () => {
       destAddress: destination(),
       amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
       stage: 'operator-submitted',
       authorizedPsbt: 'cHNidP9local',
-      unsignedCheckpointPsbts: ['cHNidP9cp'],
+      unsignedCheckpointPsbts: [checkpointPsbt],
       operatorCheckpointPsbts: ['cHNidP9op'],
     }
     const afterSigned = applyVtxoOperationView(submitted, {
@@ -390,7 +570,7 @@ describe('regular VTXO spend coordinator', () => {
     const finalized: PersistedVtxoSpend = {
       ...submitted,
       stage: 'operator-finalized',
-      checkpointPsbts: ['cHNidP9local-final'],
+      checkpointPsbts: [checkpointPsbt],
     }
     const afterSubmitted = applyVtxoOperationView(finalized, {
       operationId: OP_1,
@@ -398,10 +578,10 @@ describe('regular VTXO spend coordinator', () => {
       state: 'submitted',
       arkTxid: 'aa'.repeat(32),
       authorizedPsbt: 'cHNidP9signed',
-      checkpointPsbts: ['cHNidP9final'],
+      checkpointPsbts: [checkpointPsbt],
     })
     expect(afterSubmitted?.stage).toBe('operator-finalized')
-    expect(afterSubmitted?.checkpointPsbts).toEqual(['cHNidP9final'])
+    expect(afterSubmitted?.checkpointPsbts).toEqual([checkpointPsbt])
     clearPersistedVtxoSpend('vault-a')
   })
 
@@ -413,6 +593,7 @@ describe('regular VTXO spend coordinator', () => {
       destAddress: destination(),
       amountSats: 12_000,
       arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
       stage: 'authorized',
       authorizedPsbt: 'cHNidP9signed',
     }
