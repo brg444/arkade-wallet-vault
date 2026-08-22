@@ -62,11 +62,12 @@ principal is debited once, when a later VTXO payment leaves Spending.
   fetch-streaming `RestArkProvider` subclass instead. It sends the required
   `Accept: text/event-stream` header explicitly and preserves non-200 Operator
   diagnostics without changing the SDK settlement state machine.
-- A settlement intent survives a page reload in the Operator queue. arkd gives
-  each registration a random UUID; the proof transaction id is not the intent
-  id and cannot be used to reattach a new listener. SDK 0.4.64 deletes a queued
-  duplicate before registering again, but deletion reports `no matching
-intents` while the old entry is temporarily inside a confirmation round. The
-  provider retries the signed deletion only for this duplicate-registration
-  recovery until the unconfirmed entry is returned to the queue, then lets the
-  SDK register a fresh intent and use the real UUID returned by arkd.
+- A settlement intent survives a page reload in the SDK `intentRepository` and
+  in the Operator queue. arkd gives each registration a random UUID; the proof
+  transaction id is not the intent id and cannot be used to reattach a new
+  listener. On a duplicated-input register, the provider first returns the
+  session UUID, then the durable repository UUID for the same proof. It does
+  not keep a second localStorage lifecycle cache. Deletion still cannot match a
+  boarding-only intent until arkd `DeleteIntentsByProof` includes
+  `BoardingInputs`, and an intent popped into a confirmation round is invisible
+  until arkd restores it atomically.

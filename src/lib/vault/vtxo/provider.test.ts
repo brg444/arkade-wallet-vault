@@ -1,6 +1,8 @@
+import { Intent } from '@arkade-os/sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   boardingIntentFingerprint,
+  intentRepositoryBoardingCache,
   memoryBoardingIntentCache,
   queuedIntentIdForDuplicate,
   VaultArkProvider,
@@ -56,6 +58,43 @@ describe('VaultArkProvider event stream', () => {
         headers: expect.objectContaining({ Accept: 'text/event-stream' }),
       }),
     )
+  })
+
+  it('reconnects after a clean stream EOF so a later batch event is not dropped', async () => {
+    const bytes = new TextEncoder()
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.close()
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                bytes.encode('data: {"batchStarted":{"id":"round-2","intentIdHashes":["abc"],"batchExpiry":100}}\n\n'),
+              )
+            },
+          }),
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      )
+    const abort = new AbortController()
+    const stream = new VaultArkProvider('/arkade', { streamReconnectMs: 1 }).getEventStream(abort.signal, [])
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: { type: 'batch_started', id: 'round-2', intentIdHashes: ['abc'], batchExpiry: 100n },
+    })
+    abort.abort()
+    await stream.return()
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('preserves the Operator status and body instead of throwing EventSource error', async () => {
@@ -119,5 +158,51 @@ describe('VaultArkProvider event stream', () => {
     const stored = { intentId: 'old-uuid', fingerprint: boardingIntentFingerprint(base) }
     expect(queuedIntentIdForDuplicate(stored, boardingIntentFingerprint(base))).toBe('old-uuid')
     expect(queuedIntentIdForDuplicate(stored, boardingIntentFingerprint(sameInputsDifferentOutputs))).toBeUndefined()
+  })
+
+  it('rejoins a persisted SDK intent after a reload clears session memory', async () => {
+    const register = {
+      proof: 'proof-a',
+      message: {
+        type: 'register' as const,
+        onchain_output_indexes: [] as number[],
+        valid_at: 0,
+        expire_at: 0,
+        cosigners_public_keys: [] as string[],
+      },
+    }
+    const fingerprint = boardingIntentFingerprint(register)
+    const repo = {
+      getIntents: vi.fn(async () => [
+        {
+          intentTxId: 'proof-txid',
+          intentId: 'persisted-uuid',
+          state: 'waiting_for_batch' as const,
+          createdAt: 1,
+          updatedAt: 1,
+          registerProof: register.proof,
+          registerProofMessage: Intent.encodeMessage(register.message),
+          deleteProof: 'delete',
+          deleteProofMessage: '{}',
+          partialForfeits: [],
+          intentVtxos: [{ txid: '11'.repeat(32), vout: 0 }],
+        },
+      ]),
+    }
+    const cache = intentRepositoryBoardingCache(repo)
+    expect(cache.get()).toBeUndefined()
+    await expect(cache.lookup?.(fingerprint)).resolves.toEqual({
+      intentId: 'persisted-uuid',
+      fingerprint,
+    })
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(arkError(0, 'INTERNAL_ERROR', 'duplicated input, 11:0 already registered by another intent'), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const provider = new VaultArkProvider('/arkade', { intentCache: cache })
+    await expect(provider.registerIntent(register)).resolves.toBe('persisted-uuid')
   })
 })

@@ -145,6 +145,7 @@ describe('VaultPolicyV1Handler', () => {
     const defaultVtxo = new DefaultVtxo.Script({
       pubKey: xonly(golden.fixtures.userPub),
       serverPubKey: xonly(golden.fixtures.arkdServerPub),
+      csvTimelock: DefaultVtxo.Script.DEFAULT_TIMELOCK,
     })
     expect(leafHex(selected!.leaf)).not.toBe(leafHex(defaultVtxo.forfeit()))
     expect(leafHex(selected!.leaf)).not.toBe(leafHex(defaultVtxo.exit()))
