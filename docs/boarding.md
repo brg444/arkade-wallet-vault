@@ -19,11 +19,6 @@ Moving Savings to Spending uses the same path. The Savings PSBT pays the exact
 move after confirmation. External Savings withdrawals may still use another
 Bitcoin address.
 
-The retired operational onchain address is not a Spending receive address, is
-not included in Spending balance, and is never swept automatically. The one
-output created before this boundary changed is a migration exception, not a
-wallet state the steady flow recreates.
-
 The intermediate uses the SDK's standard boarding tree: device + Arkade
 Operator before expiry, and device-only recovery after 604672 seconds. The
 vault service publishes the exact address, script, program name, and delay. The
@@ -55,9 +50,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   database per vault for both repositories and a separate per-vault intent
   database. The old global database is retired preview state and is not
   migrated.
-- The explicit coordinator uses one Web Lock per vault. A second tab observes
-  the same confirmed output but does not register a competing intent or request
-  another device approval.
+- The explicit coordinator uses one Web Lock per vault. A supporting browser
+  prevents a second tab from registering a competing intent or requesting
+  another device approval. Browsers without Web Locks currently execute
+  without equivalent exclusivity; a durable lease or an explicit capability
+  gate is required before mainnet.
 - A boarding settlement can outlive an ordinary HTTP request because it waits
   on the Operator event stream. The Arkade same-origin route must remain a
   direct streaming rewrite. A buffered serverless function breaks the event
@@ -68,12 +65,15 @@ principal is debited once, when a later VTXO payment leaves Spending.
   fetch-streaming `RestArkProvider` subclass instead. It sends the required
   `Accept: text/event-stream` header explicitly and preserves non-200 Operator
   diagnostics without changing the SDK settlement state machine.
-- A settlement intent survives a page reload in the SDK `intentRepository` and
-  in the Operator queue. arkd gives each registration a random UUID; the proof
-  transaction id is not the intent id and cannot be used to reattach a new
-  listener. On a duplicated-input register, the provider first returns the
-  session UUID, then the durable repository UUID for the same proof. It does
-  not keep a second localStorage lifecycle cache. Deletion still cannot match a
-  boarding-only intent until arkd `DeleteIntentsByProof` includes
-  `BoardingInputs`, and an intent popped into a confirmation round is invisible
-  until arkd restores it atomically.
+- arkd gives each registration a random UUID. The proof transaction ID is not
+  the intent ID and cannot reattach a new listener. The SDK writes the returned
+  UUID to its `intentRepository` only after `registerIntent` returns, and treats
+  persistence failures as observational. A crash in that window leaves the
+  Operator intent without a recoverable local ID. The provider must durably
+  commit the ID before reporting success, or the SDK contract must make that
+  persistence mandatory.
+- Deletion cannot match a boarding-only intent until arkd
+  `DeleteIntentsByProof` includes `BoardingInputs`. An intent popped into a
+  confirmation round is also invisible until arkd restores it atomically.
+- A clean event-stream reconnect does not replay a missed `BatchStarted` event.
+  The Operator or SDK needs a read-reconcile path for that lifecycle stage.

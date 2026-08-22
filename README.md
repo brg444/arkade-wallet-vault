@@ -1,67 +1,70 @@
-# Arkade Vault
+# Arkade Vault Wallet
 
-Spend from this device with Face ID. Savings need hardware too. Recovery
-is optional — skip it if you want.
+> [!WARNING]
+> This branch is a Mutinynet release candidate. Mainnet identities, delays,
+> fees, hardware integrations, and upstream intent handling remain under
+> review. Real-fund use is blocked.
 
-**Demo:** [arkade-vault-demo.vercel.app](https://arkade-vault-demo.vercel.app)
+Arkade Vault Wallet separates funds into two programs:
 
-Testnet only (Mutinynet). Don’t send real bitcoin.
+- Spending holds VTXOs governed by `vault-policy-v1`. The device, Vault
+  service, and Arkade Operator collaborate on ordinary sends, while the service
+  enforces the rolling allowance.
+- Savings is the L1 `arkade-vault/savings-v1` program. Ordinary Savings
+  transfers require the device and an external hardware signature. Optional
+  recovery can start a delayed path but cannot spend Savings immediately.
 
-This repo is the vault app. The vault service is a separate program
-([arkade-vault-server](https://github.com/brg444/arkade-vault-server)).
-This is not the Arkade VTXO wallet.
+Spending receive presents one BIP21 request containing an Arkade address and a
+Bitcoin boarding address. Arkade-aware payments arrive as VTXOs. Confirmed
+onchain payments enter `vault-board-v1`, then the wallet settles them into the
+Spending program. Savings-to-Spending uses that same boarding path.
 
-## What you get
+The browser never receives the VaultCosigner key. Hardware and recovery
+private keys are not accepted by production screens; those workflows exchange
+PSBTs with an external signer.
 
-- **Spending** — this device, up to a daily limit
-- **Savings** — this device and a hardware key together
-- **Vault service** — helps daily spend, cannot take Savings
-- **Recovery** — optional. Skip it and the vault is this device plus
-  hardware. Add it and someone can start a waiting period you can cancel.
-  Recovery cannot spend your everyday coins by itself.
+## Components
 
-If someone starts recovery who shouldn’t have, you cancel it. After the
-wait, you move the coins. There is no shortcut where stolen hardware
-sweeps mature Savings after a few blocks.
+| Component                                                            | Responsibility                                                                                                          |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| This wallet                                                          | Enrollment, transaction construction, device authorization, external PSBT handoff, Operator coordination, and recovery. |
+| [Arkade Vault Server](https://github.com/brg444/arkade-vault-server) | Immutable Vault Program records, rolling allowance, VaultCosigner policy, and transaction verification.                 |
+| Arkade Operator                                                      | VTXO index, batch coordination, and the release-pinned Operator signatures.                                             |
 
-## Where the code lives
+The browser calls the Vault service and Arkade Operator through same-origin
+routes. Enrollment requires an invitation created by the service operator.
+See [the documentation index](docs/README.md) for the program and release
+boundaries.
 
-| Repo | What it is |
-| --- | --- |
-| **This one** | The vault app |
-| [arkade-vault-server](https://github.com/brg444/arkade-vault-server) | The vault service (signs daily spend, keeps the books) |
-| [arkade-2fa-vault-poc](https://github.com/brg444/arkade-2fa-vault-poc) | Script engine only. Not the app, not the service |
+## Local development
 
-```text
-vault app  →  /v1 on the same site  →  vault service
-```
-
-You need an invite to enroll. More detail: [docs/](docs/README.md).
-
-## Run it
-
-Bun.
+Use Node.js and pnpm:
 
 ```bash
-bun install
-bun run start:vault
+pnpm install
+pnpm start
 ```
 
-[http://localhost:3003](http://localhost:3003)
+The development server listens on
+[http://localhost:3003](http://localhost:3003).
+
+Run the release checks with:
 
 ```bash
-bun run test
-bun run lint
-bun run build:vault
+pnpm test:unit
+pnpm lint
+pnpm format:check
+pnpm build
 ```
 
-Vercel ships `build:vault` only. The old `bun run start` still builds
-the upstream VTXO wallet.
+## Mainnet status
 
-## Known limits
+This repository no longer carries the inherited general wallet application,
+old Vault templates, demo funding, raw private-key screens, or legacy onchain
+Spending account. Remaining mainnet gates include ordinary multi-input VTXO
+spends, exact-value sends, nonzero Operator fees, the boarding trust window,
+durable intent recovery, browser concurrency, production key isolation, and
+mainnet-specific program pins. The complete list is in
+[docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
-- The key on this device lives in the browser, not in the Secure Enclave
-- The service runs on Railway, not in an HSM
-- If this site is XSS’d while you’re unlocked, that device key can be stolen
-- Limits are the service’s rules, not Bitcoin’s
-- Don’t put real money here
+Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.

@@ -2,6 +2,7 @@ import { DefaultVtxo, SingleKey } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
+import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import {
   VAULT_BOARD_V1,
@@ -35,20 +36,17 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
       clientOrigin: 'https://vault.test',
       rpId: 'vault.test',
       vaultId: 'vault-a',
-      templateVersion: 'phone-hww-recovery-staged-v6',
-      policyVersion: 'mandatory-change-tx50k-day100k-fee5k-feerate10-onchain-v3',
-      operationalCsvBlocks: 144,
-      savingsCsvBlocks: 6,
-      operationalAddress: '',
+      templateVersion: SAVINGS_TEMPLATE,
+      policyVersion: 'vault-spending-policy-v1',
       savingsAddress: '',
-      savingsExcludesRoutineCosigners: true,
+      savingsScript: '5120' + '00'.repeat(32),
       periodAllowance: 100_000,
       periodSpent: 0,
       periodRemaining: 100_000,
       txCap: 50_000,
       absoluteFeeCap: 5_000,
       feerateCapSatVb: 10,
-      phoneRoutineBip340Pub: hex.encode(phonePub),
+      phoneBip340Pub: hex.encode(phonePub),
       spendingArkAddress: 'tark1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq',
       vtxoBoardingActive: true,
       vtxoBoardingProgram: VAULT_BOARD_V1,

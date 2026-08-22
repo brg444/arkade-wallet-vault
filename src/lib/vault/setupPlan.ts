@@ -2,7 +2,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { PERIOD_ALLOWANCE_SATS, TX_RECIPIENT_CAP_SATS } from './constants'
 import { fingerprint, hexToBytes } from './hex'
 
-export const SETUP_STORE_KEY = 'arkade-vault-setup-v3'
+export const SETUP_STORE_KEY = 'arkade-vault-v2:setup'
 
 // Scalars 1 and 2 are public knowledge and must never be accepted as user keys.
 export const FORBIDDEN_PUBLIC_KEY_G = '0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'

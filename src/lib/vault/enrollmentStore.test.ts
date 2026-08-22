@@ -97,6 +97,14 @@ describe('namespaced enrollment store', () => {
     expect(loadSessionLocked(storage)).toBe(false)
   })
 
+  it('does not import preview enrollment namespaces', () => {
+    const storage = memoryStorage()
+    storage.setItem(`arkade-vault-enroll-secrets-v4:${VAULT_ID}`, JSON.stringify(sample))
+    storage.setItem('arkade-vault-selected-v1', VAULT_ID)
+    expect(findStoredEnrollment(storage)).toBeNull()
+    expect(loadSelectedVaultId(storage)).toBeNull()
+  })
+
   it('stages enrollment before finish and promotes it after confirm', () => {
     const storage = memoryStorage()
     saveStagedEnrollment(

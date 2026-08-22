@@ -1,33 +1,28 @@
 # Production dependency advisories
 
-`pnpm audit --prod` after the vault split.
+The August 22, 2026 `pnpm audit --prod` run reports two advisories in the
+`@arkade-os/sdk@0.4.65 -> ws-electrumx-client -> ws@8.18.3` path:
 
-## Resolved
+| Severity | Advisory                                 | Fixed version |
+| -------- | ---------------------------------------- | ------------- |
+| Moderate | `CVE-2026-45736` / `GHSA-58qx-3vcg-4xpx` | `ws` 8.20.1   |
+| High     | `CVE-2026-48779` / `GHSA-96hv-2xvq-fx4p` | `ws` 8.21.0   |
 
-Direct `dompurify` is at `^3.4.14`. Vault mode does not import it.
+The Vault application imports the Arkade SDK for VTXO boarding, index access,
+and Operator coordination, so this dependency is part of the production graph.
+The release must update the transitive `ws` version through a reviewed SDK or
+dependency update. An unqualified package-manager override is insufficient
+because it can change transport behavior outside the SDK's tested dependency
+set.
 
-## Remaining: `ws` via `@arkade-os/sdk`
+The current production build emits a 1,450.40 kB main JavaScript chunk and
+Vite's chunk-size advisory, leaving a performance and supply-chain review item.
+Bundle inspection should confirm that removed general-wallet integrations and
+test-only secret helpers are absent.
 
-`@arkade-os/sdk` 0.4.28 depends on `ws-electrumx-client`, which pulls `ws`.
+Run and record both checks for each release candidate:
 
-Advisories: GHSA for uninitialized memory disclosure (moderate) and fragment memory exhaustion (high).
-
-Vault mode does not import the Arkade SDK, Electrum, Nostr, or swaps. Those sockets are not opened from `vault-index.tsx`.
-
-A jump to SDK 0.4.64 is not a reviewed compatible update for this wallet. No `pnpm.overrides` entry is used, because that would change SDK socket behavior without a review.
-
-The wallet build still vendors `ws` for Electrum. Treat that as an upstream follow-up.
-
-## Vault bundle size
-
-Last mixed entry (Vercel `hc0bwqol1`, vault mode still statically imported the wallet tree):
-
-- JS `1,154.91 kB` (`382.84 kB` gzip)
-- CSS `191.32 kB` (`30.40 kB` gzip)
-
-Dedicated `vault.html` / `vault-index.tsx`:
-
-- JS `1,098.88 kB` (`363.00 kB` gzip)
-- CSS `181.36 kB` (`29.15 kB` gzip)
-
-HTML has no inline scripts, so vault CSP `script-src` is `'self'` only.
+```bash
+pnpm audit --prod
+pnpm build
+```
