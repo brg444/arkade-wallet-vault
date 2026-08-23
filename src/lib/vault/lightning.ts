@@ -20,12 +20,12 @@ import { createVaultBoardingStorage, disposeVaultBoardingResources } from './vtx
 const LIGHTNING_SEND_RELEASE_FLAG = 'true'
 
 /**
- * The signed production card bundled by the official Arkade Wallet at
- * arkade-os/wallet@60cc144. The public registry currently advertises no
- * mainnet Lightning market, so this is deliberately a release pin rather than
- * network discovery pretending to have found one.
+ * Candidate fields copied from the production card bundled by the official
+ * Arkade Wallet at arkade-os/wallet@60cc144. The public registry currently
+ * advertises no mainnet Lightning market. These fields remain disabled until
+ * the card and its rotation procedure are approved as release pins.
  */
-export const MAINNET_LIGHTNING_SOLVER = {
+export const MAINNET_LIGHTNING_SOLVER_CANDIDATE = {
   pubkey: '66422c952f8dcb96e4d0c3f049cd1e265b8461b916d9913c65c2494b64b4e3ce',
   relays: ['wss://nostr.arkade.sh'],
   minSats: 500,
@@ -221,9 +221,12 @@ export async function requestVaultLightningQuote({
   if (!enabled) throw new Error('Lightning send is not enabled in this release.')
   if (network !== 'bitcoin') throw new Error('Lightning send is enabled for mainnet only.')
   const facts = decodeVaultLightningInvoice(invoice, network, nowSeconds)
-  if (facts.amountSats < MAINNET_LIGHTNING_SOLVER.minSats || facts.amountSats > MAINNET_LIGHTNING_SOLVER.maxSats) {
+  if (
+    facts.amountSats < MAINNET_LIGHTNING_SOLVER_CANDIDATE.minSats ||
+    facts.amountSats > MAINNET_LIGHTNING_SOLVER_CANDIDATE.maxSats
+  ) {
     throw new Error(
-      `Lightning amount must be ${MAINNET_LIGHTNING_SOLVER.minSats.toLocaleString()}–${MAINNET_LIGHTNING_SOLVER.maxSats.toLocaleString()} sats.`,
+      `Lightning amount must be ${MAINNET_LIGHTNING_SOLVER_CANDIDATE.minSats.toLocaleString()}–${MAINNET_LIGHTNING_SOLVER_CANDIDATE.maxSats.toLocaleString()} sats.`,
     )
   }
   const result = await requester(wallet, arkServerUrl, transport, { invoice: facts })
@@ -265,8 +268,8 @@ export function assertVaultLightningQuoteCurrent(
 
 export function mainnetLightningTransport(): RfqTransport {
   return nostrRfqTransport({
-    relays: [...MAINNET_LIGHTNING_SOLVER.relays],
-    solverPubkey: MAINNET_LIGHTNING_SOLVER.pubkey,
+    relays: [...MAINNET_LIGHTNING_SOLVER_CANDIDATE.relays],
+    solverPubkey: MAINNET_LIGHTNING_SOLVER_CANDIDATE.pubkey,
     timeoutMs: 30_000,
   })
 }
