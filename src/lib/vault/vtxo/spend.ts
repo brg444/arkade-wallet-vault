@@ -1408,7 +1408,10 @@ export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balanc
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
   const provider = new RestIndexerProvider(vaultArkServer())
-  const { vtxos } = await provider.getVtxos({ scripts: [hex.encode(script.pkScript)], spendableOnly: true })
+  const scripts = [hex.encode(script.pkScript)]
+  const vtxos = await collectPagedVtxos((pageIndex) =>
+    provider.getVtxos({ scripts, spendableOnly: true, ...vaultVtxoPage(pageIndex) }),
+  )
   return {
     balance: vtxos.reduce((sum, vtxo) => sum + vtxo.value, 0),
     maxCoin: vtxos.reduce((largest, vtxo) => Math.max(largest, vtxo.value), 0),
@@ -1418,6 +1421,11 @@ export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balanc
 export type VtxoIndexerPage = { current: number; next: number; total: number }
 
 const MAX_VTXO_HISTORY_PAGES = 256
+export const VAULT_VTXO_PAGE_SIZE = 100
+
+export function vaultVtxoPage(pageIndex: number): { pageIndex: number; pageSize: number } {
+  return { pageIndex, pageSize: VAULT_VTXO_PAGE_SIZE }
+}
 
 export async function collectPagedVtxos<T>(
   fetchPage: (pageIndex: number) => Promise<{ vtxos: T[]; page?: VtxoIndexerPage }>,
@@ -1441,7 +1449,7 @@ export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultH
   const script = vaultPolicyV1ScriptFromStatus(status)
   const provider = new RestIndexerProvider(vaultArkServer())
   const scripts = [hex.encode(script.pkScript)]
-  const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, pageIndex }))
+  const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) }))
   return historyFromVtxos(
     vtxos.map((vtxo) => ({
       txid: vtxo.txid,
