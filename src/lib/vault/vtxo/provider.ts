@@ -184,11 +184,19 @@ function isDuplicatedInput(error: unknown): boolean {
   return message.includes('duplicated input') && message.includes('already registered by another intent')
 }
 
+/** Runtime bridge for the candidate SDK export while this wallet remains pinned to 0.4.65. */
+function isDefinitiveIntentRegistrationRejection(error: unknown): boolean {
+  if ((typeof error !== 'object' && typeof error !== 'function') || error === null) return false
+  const candidate = error as { name?: unknown; httpStatus?: unknown; retryable?: unknown }
+  return (
+    candidate.name === 'IntentRegistrationRejectedError' && candidate.httpStatus === 429 && candidate.retryable === true
+  )
+}
+
 function isAmbiguousRegisterFailure(error: unknown): boolean {
+  if (isDefinitiveIntentRegistrationRejection(error)) return false
   if (error instanceof AmbiguousIntentRegistrationResponseError || error instanceof SyntaxError) return true
-  if (!isRetryableProviderError(error)) return false
-  const message = error instanceof Error ? error.message : ''
-  return !/^arkade unavailable:\s*429\b/i.test(message)
+  return isRetryableProviderError(error)
 }
 
 /**

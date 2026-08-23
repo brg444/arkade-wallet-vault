@@ -1,4 +1,4 @@
-import { Intent, type ArkIntent, type IntentFilter } from '@arkade-os/sdk'
+import { Intent, RestArkProvider, type ArkIntent, type IntentFilter } from '@arkade-os/sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   boardingIntentFingerprint,
@@ -65,6 +65,15 @@ function ambiguousIntentRow(): ArkIntent {
   return row
 }
 
+/** Structural fixture for the candidate SDK class without changing this wallet's package pin. */
+function definitiveRegistrationRejection(): Error {
+  return Object.assign(new Error('Operator rejected intent registration'), {
+    name: 'IntentRegistrationRejectedError',
+    httpStatus: 429,
+    retryable: true,
+  })
+}
+
 class FakeIntentRepository {
   readonly rows = new Map<string, ArkIntent>()
   readonly saveIntent = vi.fn(async (intent: ArkIntent) => {
@@ -85,6 +94,7 @@ class FakeIntentRepository {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
   globalThis.fetch = originalFetch
 })
 
@@ -259,7 +269,19 @@ describe('VaultArkProvider event stream', () => {
     expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
   })
 
-  it('does not retry an explicit rate-limit response', async () => {
+  it('does not retry the future typed proven registration rejection', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    const rejection = definitiveRegistrationRejection()
+    const register = vi.spyOn(RestArkProvider.prototype, 'registerIntent').mockRejectedValue(rejection)
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toBe(rejection)
+    expect(register).toHaveBeenCalledTimes(1)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
+  })
+
+  it('keeps an untyped rate-limit provider failure ambiguous and bounded', async () => {
     const repo = new FakeIntentRepository(ambiguousIntentRow())
     globalThis.fetch = vi
       .fn()
@@ -267,8 +289,25 @@ describe('VaultArkProvider event stream', () => {
     const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
 
     await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/429/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
+  })
+
+  it('keeps a structured 429 ArkError ambiguous and locked without retrying it', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(arkError(0, 'INTERNAL_ERROR', 'registration result unavailable'), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/registration result unavailable/)
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
     expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
   })
 
   it('retries malformed 2xx JSON once and persists the retained intent ID', async () => {
