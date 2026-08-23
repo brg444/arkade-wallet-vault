@@ -1,4 +1,4 @@
-import { ArkAddress, CSVMultisigTapscript, SingleKey, Transaction } from '@arkade-os/sdk'
+import { ArkAddress, CSVMultisigTapscript, SingleKey, Transaction, type ArkProvider } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION } from '../constants'
@@ -7,13 +7,16 @@ import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
 import {
   applyVtxoOperationView,
+  advanceAuthorizedVtxoSpend,
   buildReservedVtxoSpend,
   clearPersistedVtxoSpend,
   collectPagedVtxos,
   createVtxoOperationId,
+  createPhoneSignedPendingProof,
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
   loadPersistedVtxoSpend,
+  matchPendingOperatorSubmission,
   matchOperatorSignedCheckpoints,
   orderAuthorizedCheckpoints,
   isSameVtxoPayment,
@@ -21,12 +24,13 @@ import {
   persistVtxoSpend,
   persistVtxoReserveSignature,
   preReserveVtxoSpend,
-  requireMatchingOperatorSubmit,
+  requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
   VtxoSpendUnresolvedError,
+  VTXO_GET_PENDING_MESSAGE,
   type PersistedVtxoSpend,
   type VtxoReserveResponse,
   vaultArkServer,
@@ -133,6 +137,54 @@ function validCheckpointPsbt(): string {
   const checkpoint = buildReservedVtxoSpend(status(), reserve(), 12_000, destination(), FEE_POLICY_DIGEST)
     .checkpoints[0]
   return base64.encode(checkpoint.toPSBT())
+}
+
+async function authorizedPendingFixture() {
+  const current = status()
+  const built = buildReservedVtxoSpend(current, fragmentedReserve(), 12_000, destination(), FEE_POLICY_DIGEST)
+  const phone = SingleKey.fromPrivateKey(hex.decode('01'.padStart(64, '0')))
+  const vault = SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0')))
+  const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+  const unsignedCheckpointPsbts = built.checkpoints.map((checkpoint) => base64.encode(checkpoint.toPSBT()))
+  const phoneProof = await createPhoneSignedPendingProof(
+    unsignedCheckpointPsbts,
+    phone,
+    hex.decode(golden.fixtures.userPub),
+  )
+  const authorizedPendingProof = base64.encode(
+    (await vault.sign(Transaction.fromPSBT(base64.decode(phoneProof)))).toPSBT(),
+  )
+  const phoneArk = await phone.sign(built.arkTx)
+  const authorizedArk = await vault.sign(phoneArk)
+  const finalArk = await operator.sign(authorizedArk)
+  const operatorCheckpoints = await Promise.all(built.checkpoints.map((checkpoint) => operator.sign(checkpoint)))
+  const pending: PersistedVtxoSpend = {
+    vaultId: 'vault-a',
+    operationId: OP_1,
+    bundleDigest: '11'.repeat(32),
+    destAddress: destination(),
+    amountSats: 12_000,
+    arkTxid: built.arkTx.id,
+    ...RESERVATION_FACTS,
+    stage: 'authorized',
+    unsignedArkPsbt: base64.encode(phoneArk.toPSBT()),
+    authorizedPsbt: base64.encode(authorizedArk.toPSBT()),
+    authorizedPendingProof,
+    unsignedCheckpointPsbts,
+  }
+  return {
+    current,
+    pending,
+    phoneProof,
+    authorizedPendingProof,
+    operator,
+    operatorPub: hex.decode(golden.fixtures.arkdServerPub),
+    candidate: {
+      arkTxid: built.arkTx.id,
+      finalArkTx: base64.encode(finalArk.toPSBT()),
+      signedCheckpointTxs: operatorCheckpoints.map((checkpoint) => base64.encode(checkpoint.toPSBT())),
+    },
+  }
 }
 
 describe('regular VTXO spend coordinator', () => {
@@ -384,6 +436,200 @@ describe('regular VTXO spend coordinator', () => {
     ])
   })
 
+  it('binds pending lookup to the exact checkpoints and requires phone plus VaultCosigner', async () => {
+    const fixture = await authorizedPendingFixture()
+    expect(
+      requireAuthorizedPendingProof(
+        fixture.pending.unsignedCheckpointPsbts!,
+        fixture.authorizedPendingProof,
+        fixture.current,
+      ),
+    ).toBe(fixture.authorizedPendingProof)
+    expect(() =>
+      requireAuthorizedPendingProof(fixture.pending.unsignedCheckpointPsbts!, fixture.phoneProof, fixture.current),
+    ).toThrow(/wrong signer set/)
+
+    const oversigned = base64.encode(
+      (await fixture.operator.sign(Transaction.fromPSBT(base64.decode(fixture.authorizedPendingProof)))).toPSBT(),
+    )
+    expect(() =>
+      requireAuthorizedPendingProof(fixture.pending.unsignedCheckpointPsbts!, oversigned, fixture.current),
+    ).toThrow(/wrong signer set/)
+
+    const missingSyntheticSignature = base64.encode(
+      (
+        await SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))).sign(
+          Transaction.fromPSBT(base64.decode(fixture.phoneProof)),
+          [1, 2],
+        )
+      ).toPSBT(),
+    )
+    expect(() =>
+      requireAuthorizedPendingProof(
+        fixture.pending.unsignedCheckpointPsbts!,
+        missingSyntheticSignature,
+        fixture.current,
+      ),
+    ).toThrow(/wrong signer set/)
+
+    const authorizedProof = Transaction.fromPSBT(base64.decode(fixture.authorizedPendingProof))
+    const signature = authorizedProof.getInput(0).tapScriptSig![0][1]
+    const mutatedSyntheticSignature = base64.decode(fixture.authorizedPendingProof)
+    let signatureOffset = -1
+    for (let index = 0; index <= mutatedSyntheticSignature.length - signature.length; index++) {
+      if (signature.every((byte, byteIndex) => byte === mutatedSyntheticSignature[index + byteIndex])) {
+        signatureOffset = index
+        break
+      }
+    }
+    expect(signatureOffset).toBeGreaterThanOrEqual(0)
+    mutatedSyntheticSignature[signatureOffset + 10] ^= 1
+    expect(() =>
+      requireAuthorizedPendingProof(
+        fixture.pending.unsignedCheckpointPsbts!,
+        base64.encode(mutatedSyntheticSignature),
+        fixture.current,
+      ),
+    ).toThrow()
+
+    const other = [...fixture.pending.unsignedCheckpointPsbts!]
+    other[0] = validCheckpointPsbt()
+    expect(() => requireAuthorizedPendingProof(other, fixture.authorizedPendingProof, fixture.current)).toThrow(
+      /changed the pending proof/,
+    )
+  })
+
+  it('accepts only the exact retained Ark transaction and Operator checkpoint bundle', async () => {
+    const fixture = await authorizedPendingFixture()
+    const matched = matchPendingOperatorSubmission(
+      fixture.pending,
+      [fixture.candidate],
+      fixture.current,
+      fixture.operatorPub,
+    )
+    expect(matched.arkTxid).toBe(fixture.pending.arkTxid)
+    expect(matched.operatorCheckpointPsbts).toHaveLength(2)
+    expect(() => matchPendingOperatorSubmission(fixture.pending, [], fixture.current, fixture.operatorPub)).toThrow(
+      /exactly one/,
+    )
+    expect(() =>
+      matchPendingOperatorSubmission(
+        fixture.pending,
+        [{ ...fixture.candidate, arkTxid: 'ff'.repeat(32) }],
+        fixture.current,
+        fixture.operatorPub,
+      ),
+    ).toThrow(/another transaction/)
+    expect(() =>
+      matchPendingOperatorSubmission(
+        fixture.pending,
+        [{ ...fixture.candidate, signedCheckpointTxs: fixture.candidate.signedCheckpointTxs.slice(0, 1) }],
+        fixture.current,
+        fixture.operatorPub,
+      ),
+    ).toThrow(/wrong checkpoint count/)
+    expect(() =>
+      matchPendingOperatorSubmission(
+        fixture.pending,
+        [{ ...fixture.candidate, finalArkTx: fixture.pending.authorizedPsbt! }],
+        fixture.current,
+        fixture.operatorPub,
+      ),
+    ).toThrow(/wrong signer set/)
+  })
+
+  it('uses a successful first submit directly without querying pending transactions', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    const calls: string[] = []
+    const operator = {
+      async submitTx() {
+        calls.push('submit')
+        return fixture.candidate
+      },
+      async getPendingTxs() {
+        calls.push('pending')
+        return []
+      },
+    } as unknown as ArkProvider
+
+    const submitted = await advanceAuthorizedVtxoSpend(
+      operator,
+      fixture.pending,
+      fixture.current,
+      fixture.operatorPub,
+      true,
+    )
+    expect(calls).toEqual(['submit'])
+    expect(submitted.stage).toBe('operator-submitted')
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('recovers a lost submit response once through getPendingTxs without resubmitting', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    persistVtxoSpend(fixture.pending)
+    const calls: string[] = []
+    let recoveredProof = ''
+    const operator = {
+      async submitTx() {
+        calls.push('submit')
+        throw new TypeError('network response lost')
+      },
+      async getPendingTxs(intent: { proof: string; message: typeof VTXO_GET_PENDING_MESSAGE }) {
+        calls.push('pending')
+        recoveredProof = intent.proof
+        expect(intent.message).toEqual(VTXO_GET_PENDING_MESSAGE)
+        return [fixture.candidate]
+      },
+    } as unknown as ArkProvider
+
+    const recovered = await advanceAuthorizedVtxoSpend(
+      operator,
+      fixture.pending,
+      fixture.current,
+      fixture.operatorPub,
+      true,
+    )
+    expect(calls).toEqual(['submit', 'pending'])
+    expect(recoveredProof).toBe(fixture.authorizedPendingProof)
+    expect(recovered.stage).toBe('operator-submitted')
+    expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('resumes an authorized operation by lookup only and keeps an empty result locked', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    persistVtxoSpend(fixture.pending)
+    let submitCalls = 0
+    let pendingCalls = 0
+    const operator = {
+      async submitTx() {
+        submitCalls++
+        throw new Error('must not submit')
+      },
+      async getPendingTxs() {
+        pendingCalls++
+        return []
+      },
+    } as unknown as ArkProvider
+
+    await expect(
+      advanceAuthorizedVtxoSpend(operator, fixture.pending, fixture.current, fixture.operatorPub, false),
+    ).rejects.toThrow(/exactly one/)
+    expect(submitCalls).toBe(0)
+    expect(pendingCalls).toBe(1)
+    expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('authorized')
+
+    const legacy = { ...fixture.pending, authorizedPendingProof: undefined }
+    await expect(
+      advanceAuthorizedVtxoSpend(operator, legacy, fixture.current, fixture.operatorPub, true),
+    ).rejects.toBeInstanceOf(VtxoSpendInFlightError)
+    expect(submitCalls).toBe(0)
+    clearPersistedVtxoSpend('vault-a')
+  })
+
   it('fails closed if status and reservation do not name the same policy script', () => {
     const changed = reserve()
     changed.changeScript = `5120${'44'.repeat(32)}`
@@ -479,9 +725,11 @@ describe('regular VTXO spend coordinator', () => {
       state: 'signed',
       arkTxid: 'aa'.repeat(32),
       authorizedPsbt: 'cHNidP9signed',
+      authorizedPendingProof: 'cHNidP9pending',
     })
     expect(signed?.stage).toBe('authorized')
     expect(signed?.authorizedPsbt).toBe('cHNidP9signed')
+    expect(signed?.authorizedPendingProof).toBe('cHNidP9pending')
     expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('authorized')
 
     const submitted = applyVtxoOperationView(signed!, {
@@ -625,17 +873,5 @@ describe('regular VTXO spend coordinator', () => {
     })
     expect(requested).toEqual([0, 1])
     expect(vtxos.map((vtxo) => vtxo.txid)).toEqual(['input', 'change'])
-  })
-
-  it('rejects a resumed Operator submission that changed the Ark transaction', () => {
-    expect(() =>
-      requireMatchingOperatorSubmit({ arkTxid: 'bb'.repeat(32), signedCheckpointTxs: ['cHNidP9'] }, 'aa'.repeat(32), 1),
-    ).toThrow(/Operator submission does not match/)
-    expect(() =>
-      requireMatchingOperatorSubmit({ arkTxid: 'aa'.repeat(32), signedCheckpointTxs: [] }, 'aa'.repeat(32), 1),
-    ).toThrow(/Operator submission does not match/)
-    expect(() =>
-      requireMatchingOperatorSubmit({ arkTxid: 'aa'.repeat(32), signedCheckpointTxs: ['cHNidP9'] }, 'aa'.repeat(32), 1),
-    ).not.toThrow()
   })
 })
