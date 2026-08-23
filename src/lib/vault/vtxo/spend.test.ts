@@ -42,8 +42,10 @@ import {
   VTXO_GET_PENDING_MESSAGE,
   type PersistedVtxoSpend,
   type VtxoReserveResponse,
+  VAULT_VTXO_PAGE_SIZE,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
+  vaultVtxoPage,
   vtxoReserveRequest,
 } from './spend'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
@@ -987,5 +989,11 @@ describe('regular VTXO spend coordinator', () => {
     })
     expect(requested).toEqual([0, 1])
     expect(vtxos.map((vtxo) => vtxo.txid)).toEqual(['input', 'change'])
+  })
+
+  it('always supplies the page size required by the deployed indexer', () => {
+    expect(VAULT_VTXO_PAGE_SIZE).toBeGreaterThan(0)
+    expect(vaultVtxoPage(0)).toEqual({ pageIndex: 0, pageSize: VAULT_VTXO_PAGE_SIZE })
+    expect(vaultVtxoPage(7)).toEqual({ pageIndex: 7, pageSize: VAULT_VTXO_PAGE_SIZE })
   })
 })
