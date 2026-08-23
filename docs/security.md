@@ -32,14 +32,15 @@ gates. Real-fund use remains out of scope.
 - Browser concurrency depends on Web Locks. Boarding and ordinary sends fail
   closed when that capability is unavailable.
 - Candidate arkd and SDK intent-lifecycle changes require upstream releases,
-  wallet pins, Redis-backed qualification, automatic exact replay after reload,
-  restoration of the same signing session and settlement handler, and recovery
-  of missed signing-stage events. Candidate SDK selection keeps nonterminal
-  intent inputs locked and fails closed when durable intent state is unreadable.
-- The Operator does not yet retain a complete signing transcript. Mainnet
-  resume requires an exact-intent journal that persists each event before
-  publication, binds it to one batch generation, and provides a gap-free
-  replay-to-live cursor without exposing another intent's data.
+  wallet pins, and Redis-backed qualification. Candidate SDK selection keeps
+  nonterminal intent inputs locked and fails closed when durable intent state
+  is unreadable. Candidate arkd must restore every pre-`PREPARED` failure
+  atomically and complete an exact durable `PREPARED` batch after restart or an
+  ambiguous broadcast response.
+- Mainnet v1 does not resume a lost MuSig2 signing session. The wallet waits for
+  the Operator to restore the exact intent or reconciles the durable batch
+  outcome. Seamless continuation requires protected private-nonce persistence
+  and exact event replay and remains outside this release.
 - The wallet provides a local recovery watcher, not a continuously available
   watchtower.
 - External hardware support must be qualified against the custom tapscript PSBT
