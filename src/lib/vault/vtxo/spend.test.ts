@@ -1,4 +1,4 @@
-import { ArkAddress, CSVMultisigTapscript, SingleKey, Transaction, type ArkProvider } from '@arkade-os/sdk'
+import { ArkAddress, CSVMultisigTapscript, Intent, SingleKey, Transaction, type ArkProvider } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION } from '../constants'
@@ -52,6 +52,13 @@ const RESERVATION_FACTS = {
 
 function compressed(xonly: string): string {
   return `02${xonly}`
+}
+
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  for (let index = 0; index <= haystack.length - needle.length; index++) {
+    if (needle.every((byte, byteIndex) => byte === haystack[index + byteIndex])) return index
+  }
+  return -1
 }
 
 function status(): VaultStatus {
@@ -475,13 +482,7 @@ describe('regular VTXO spend coordinator', () => {
     const authorizedProof = Transaction.fromPSBT(base64.decode(fixture.authorizedPendingProof))
     const signature = authorizedProof.getInput(0).tapScriptSig![0][1]
     const mutatedSyntheticSignature = base64.decode(fixture.authorizedPendingProof)
-    let signatureOffset = -1
-    for (let index = 0; index <= mutatedSyntheticSignature.length - signature.length; index++) {
-      if (signature.every((byte, byteIndex) => byte === mutatedSyntheticSignature[index + byteIndex])) {
-        signatureOffset = index
-        break
-      }
-    }
+    const signatureOffset = indexOfBytes(mutatedSyntheticSignature, signature)
     expect(signatureOffset).toBeGreaterThanOrEqual(0)
     mutatedSyntheticSignature[signatureOffset + 10] ^= 1
     expect(() =>
@@ -491,6 +492,19 @@ describe('regular VTXO spend coordinator', () => {
         fixture.current,
       ),
     ).toThrow()
+
+    const message = new TextEncoder().encode(Intent.encodeMessage(VTXO_GET_PENDING_MESSAGE))
+    const mutatedMessage = base64.decode(fixture.authorizedPendingProof)
+    const messageOffset = indexOfBytes(mutatedMessage, message)
+    expect(messageOffset).toBeGreaterThanOrEqual(0)
+    mutatedMessage[messageOffset + message.length - 2] = '1'.charCodeAt(0)
+    expect(() =>
+      requireAuthorizedPendingProof(
+        fixture.pending.unsignedCheckpointPsbts!,
+        base64.encode(mutatedMessage),
+        fixture.current,
+      ),
+    ).toThrow(/changed the pending proof PSBT/)
 
     const other = [...fixture.pending.unsignedCheckpointPsbts!]
     other[0] = validCheckpointPsbt()
