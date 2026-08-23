@@ -58,7 +58,10 @@ crash-and-reload replay remains a release gate.
   The changes must be upstream, released, pinned by the wallet, and extended
   with a restorable signing session and complete settlement snapshot. A reload
   must replay that exact request, rebuild the same batch handler, and reconcile
-  every signing-stage event that the stream does not replay.
+  every signing-stage event that the stream does not replay. Current arkd live
+  and round stores cannot reconstruct the complete ordered prefix. An
+  append-only, exact-intent replay journal with gap-free cursor handoff is a
+  separate Operator release gate.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.

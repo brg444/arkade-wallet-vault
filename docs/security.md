@@ -36,6 +36,10 @@ gates. Real-fund use remains out of scope.
   restoration of the same signing session and settlement handler, and recovery
   of missed signing-stage events. Candidate SDK selection keeps nonterminal
   intent inputs locked and fails closed when durable intent state is unreadable.
+- The Operator does not yet retain a complete signing transcript. Mainnet
+  resume requires an exact-intent journal that persists each event before
+  publication, binds it to one batch generation, and provides a gap-free
+  replay-to-live cursor without exposing another intent's data.
 - The wallet provides a local recovery watcher, not a continuously available
   watchtower.
 - External hardware support must be qualified against the custom tapscript PSBT
