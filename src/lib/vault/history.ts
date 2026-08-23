@@ -1,4 +1,5 @@
 import type { EsploraTx } from './esplora'
+import { RECENT_HISTORY_LIMIT } from './constants'
 
 export type VaultHistoryKind = 'sent' | 'received'
 
@@ -15,6 +16,17 @@ export interface VaultHistoryGroup {
   key: string
   label: string
   items: VaultHistoryItem[]
+}
+
+export function recentAccountHistory(
+  items: VaultHistoryItem[],
+  account: VaultHistoryItem['account'],
+  limit = RECENT_HISTORY_LIMIT,
+): VaultHistoryItem[] {
+  return items
+    .filter((item) => item.account === account)
+    .sort(sortVaultHistory)
+    .slice(0, Math.max(0, limit))
 }
 
 /** Groups history into the states and dates a wallet user needs to scan. */
@@ -103,7 +115,9 @@ export interface VaultVtxoHistoryCoin {
   createdAtMs: number
   isSpent: boolean
   arkTxId?: string
+  commitmentTxIds?: string[]
   isLeaf?: boolean
+  settledBy?: string
 }
 
 /** Indexer VTXOs for the spending script: receives, sends, and change-aware net amounts. */
@@ -116,7 +130,14 @@ export function historyFromVtxos(
   const spentByArk = new Set<string>()
   for (const coin of unique) {
     const createdAsChange = unique.some((other) => other.arkTxId && other.arkTxId === coin.txid)
-    if (!createdAsChange && coin.value > 0) {
+    const settlementCommitment = coin.isLeaf ? coin.commitmentTxIds?.[0] : undefined
+    // Match the SDK history transition: a batch leaf that replaces VTXOs
+    // forfeited into the same commitment settles the original receive; it is
+    // not a second incoming payment.
+    const settlementReplacement = Boolean(
+      settlementCommitment && unique.some((other) => other.settledBy === settlementCommitment),
+    )
+    if (!createdAsChange && !settlementReplacement && coin.value > 0) {
       rows.push({
         txid: coin.txid,
         type: 'received',
@@ -159,8 +180,10 @@ function uniqueHistoryCoins(coins: VaultVtxoHistoryCoin[]): VaultVtxoHistoryCoin
             ...previous,
             ...coin,
             arkTxId: coin.arkTxId || previous.arkTxId,
+            commitmentTxIds: coin.commitmentTxIds?.length ? coin.commitmentTxIds : previous.commitmentTxIds,
             isLeaf: Boolean(previous.isLeaf || coin.isLeaf),
             isSpent: previous.isSpent || coin.isSpent,
+            settledBy: coin.settledBy || previous.settledBy,
           }
         : coin,
     )

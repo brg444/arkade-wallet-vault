@@ -6,13 +6,20 @@ import FlexCol from '../../components/FlexCol'
 import Header from './Header'
 import Padded from '../../components/Padded'
 import { prettyAmount, prettyDate } from '../../lib/format'
+import { vaultTransactionExplorer } from '../../lib/vault/explorer'
 import { VaultContext } from '../../vault/context'
 import { Detail } from './ui'
 
 export default function VaultTx() {
-  const { liveNetwork, navigate, selectedTx } = useContext(VaultContext)
+  const { navigate, selectedTx, status: vaultStatus } = useContext(VaultContext)
   const sent = selectedTx?.type === 'sent'
-  const explorer = selectedTx?.account === 'savings' ? `https://mempool.mutinynet.arkade.sh/tx/${selectedTx.txid}` : ''
+  const explorer = selectedTx
+    ? vaultTransactionExplorer(
+        selectedTx.txid,
+        selectedTx.account === 'spend' ? 'arkade' : 'onchain',
+        vaultStatus?.network,
+      )
+    : null
   const status = selectedTx
     ? selectedTx.account === 'spend'
       ? selectedTx.confirmed
@@ -45,8 +52,12 @@ export default function VaultTx() {
       </Content>
       <ButtonsOnBottom>
         <Button onClick={() => navigate('home')} label='Done' />
-        {liveNetwork && explorer ? (
-          <Button onClick={() => window.open(explorer, '_blank')} label='View on explorer' secondary />
+        {explorer ? (
+          <Button
+            onClick={() => window.open(explorer.url, '_blank', 'noopener,noreferrer')}
+            label={explorer.label}
+            secondary
+          />
         ) : null}
       </ButtonsOnBottom>
     </>

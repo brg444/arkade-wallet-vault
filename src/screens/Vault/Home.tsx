@@ -77,7 +77,7 @@ export default function VaultHome() {
 
   return (
     <>
-      <Content noRefresh>
+      <Content>
         <Padded>
           <div className='vault-home'>
             <div className='vault-account-bar'>

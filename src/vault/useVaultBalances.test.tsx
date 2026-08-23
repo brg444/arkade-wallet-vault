@@ -1,9 +1,10 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAddressTxs, fetchAddressUtxos } from '../lib/vault/esplora'
 import { pinFromEnrolledStatus, saveAddressPin } from '../lib/vault/pin'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { VaultStatus } from '../lib/vault/types'
+import { fetchVaultBoardingFunds } from '../lib/vault/vtxo/board'
 import { fetchVaultVtxoFunds, fetchVaultVtxoHistory } from '../lib/vault/vtxo/spend'
 import { confirmedUtxoBalance, useVaultBalances } from './useVaultBalances'
 
@@ -47,6 +48,7 @@ const mockedUtxos = vi.mocked(fetchAddressUtxos)
 const mockedTxs = vi.mocked(fetchAddressTxs)
 const mockedFunds = vi.mocked(fetchVaultVtxoFunds)
 const mockedHistory = vi.mocked(fetchVaultVtxoHistory)
+const mockedBoardingFunds = vi.mocked(fetchVaultBoardingFunds)
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -56,24 +58,21 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-function setupHook(locked = true) {
-  const pin = saveAddressPin(pinFromEnrolledStatus(STATUS))
+function setupHook(locked = true, status = STATUS) {
+  const pin = saveAddressPin(pinFromEnrolledStatus(status))
   const setStatus = vi.fn()
   const reportError = vi.fn()
   const onBoarded = vi.fn()
-  const setSpend = vi.fn()
   const hook = renderHook(() =>
     useVaultBalances({
       addressPin: pin,
       busy: false,
       enrollment: null,
-      liveFeeSats: 1_500,
       locked,
       onBoarded,
       reportError,
-      setSpend,
       setStatus,
-      status: STATUS,
+      status,
     }),
   )
   return { ...hook, reportError, setStatus }
@@ -87,7 +86,10 @@ beforeEach(() => {
   mockedTxs.mockResolvedValue([])
   mockedFunds.mockResolvedValue({ balance: 0, maxCoin: 0 })
   mockedHistory.mockResolvedValue([])
+  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0 })
 })
+
+afterEach(() => vi.useRealTimers())
 
 describe('confirmedUtxoBalance', () => {
   it('counts unique confirmed and currently unspent Savings outputs', () => {
@@ -186,5 +188,108 @@ describe('useVaultBalances refresh coordination', () => {
     await waitFor(() => expect(mockedStatus).toHaveBeenCalledTimes(1))
     window.dispatchEvent(new Event('focus'))
     await waitFor(() => expect(mockedStatus).toHaveBeenCalledTimes(2))
+  })
+
+  it('uses the 15-second timer only for boarding funds and preserves the wallet snapshot', async () => {
+    vi.useFakeTimers()
+    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
+    mockedStatus.mockResolvedValue(active)
+    mockedFunds.mockResolvedValue({ balance: 30_000, maxCoin: 30_000 })
+    mockedHistory.mockResolvedValue([
+      {
+        txid: 'spend-history',
+        type: 'received',
+        amount: 30_000,
+        confirmed: true,
+        account: 'spend',
+      },
+    ])
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
+    const { result } = setupHook(false, active)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.balancesLoaded).toBe(true)
+
+    mockedStatus.mockClear()
+    mockedUtxos.mockClear()
+    mockedTxs.mockClear()
+    mockedFunds.mockClear()
+    mockedHistory.mockClear()
+    mockedBoardingFunds.mockClear()
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 1_000 })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+
+    expect(mockedBoardingFunds).toHaveBeenCalledTimes(1)
+    expect(mockedStatus).not.toHaveBeenCalled()
+    expect(mockedUtxos).not.toHaveBeenCalled()
+    expect(mockedTxs).not.toHaveBeenCalled()
+    expect(mockedFunds).not.toHaveBeenCalled()
+    expect(mockedHistory).not.toHaveBeenCalled()
+    expect(result.current.vtxoSpendingSats).toBe(30_000)
+    expect(result.current.history.map((item) => item.txid)).toEqual(['spend-history'])
+    expect(result.current.boardingConfirmedBalance).toBe(1_000)
+  })
+
+  it('ignores a narrow boarding poll superseded by a full refresh', async () => {
+    vi.useFakeTimers()
+    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
+    mockedStatus.mockResolvedValue(active)
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
+    const { result } = setupHook(false, active)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const olderPoll = deferred<{ total: number; confirmed: number }>()
+    mockedBoardingFunds
+      .mockImplementationOnce(() => olderPoll.promise)
+      .mockResolvedValueOnce({ total: 2_000, confirmed: 2_000 })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    await act(async () => {
+      await result.current.refreshBalance()
+    })
+    expect(result.current.boardingConfirmedBalance).toBe(2_000)
+
+    await act(async () => {
+      olderPoll.resolve({ total: 1_000, confirmed: 1_000 })
+      await olderPoll.promise
+    })
+    expect(result.current.boardingConfirmedBalance).toBe(2_000)
+  })
+
+  it('invalidates an in-flight boarding poll and stops its timer on unmount', async () => {
+    vi.useFakeTimers()
+    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
+    mockedStatus.mockResolvedValue(active)
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
+    const { unmount } = setupHook(false, active)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const pendingPoll = deferred<{ total: number; confirmed: number }>()
+    mockedBoardingFunds.mockClear()
+    mockedBoardingFunds.mockImplementationOnce(() => pendingPoll.promise)
+    act(() => vi.advanceTimersByTime(15_000))
+    expect(mockedBoardingFunds).toHaveBeenCalledTimes(1)
+
+    unmount()
+    await act(async () => {
+      pendingPoll.resolve({ total: 1_000, confirmed: 1_000 })
+      await pendingPoll.promise
+      vi.advanceTimersByTime(30_000)
+    })
+    expect(mockedBoardingFunds).toHaveBeenCalledTimes(1)
   })
 })

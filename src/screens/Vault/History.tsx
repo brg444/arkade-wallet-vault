@@ -4,6 +4,7 @@ import ReceivedIcon from '../../icons/Received'
 import SentIcon from '../../icons/Sent'
 import { prettyAmount } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
+import { RECENT_HISTORY_LIMIT } from '../../lib/vault/constants'
 import { groupVaultHistory } from '../../lib/vault/history'
 import { VaultContext } from '../../vault/context'
 
@@ -99,6 +100,11 @@ export default function VaultHistory() {
           })}
         </div>
       ))}
+      {history.length >= RECENT_HISTORY_LIMIT ? (
+        <Text color='neutral-600' tiny wrap>
+          Showing the latest {RECENT_HISTORY_LIMIT} transactions.
+        </Text>
+      ) : null}
     </section>
   )
 }

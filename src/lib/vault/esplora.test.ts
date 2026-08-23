@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RECENT_HISTORY_LIMIT } from './constants'
 import { confirmedSpendables, ESPLORA_TX_PAGE_SIZE, fetchAddressTxs, type EsploraTx, type EsploraUtxo } from './esplora'
 
 function utxo(value: number, confirmed = true, txid = 'aa'): EsploraUtxo {
@@ -31,7 +32,7 @@ function transaction(txid: string, confirmed = true): EsploraTx {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('fetchAddressTxs', () => {
-  it('loads every confirmed page while retaining first-page mempool activity', async () => {
+  it('loads subsequent confirmed pages while retaining first-page mempool activity', async () => {
     const first = [transaction('mempool', false)]
     for (let index = 0; index < ESPLORA_TX_PAGE_SIZE; index += 1) first.push(transaction(`confirmed-${index}`))
     const second = [transaction('older')]
@@ -63,5 +64,20 @@ describe('fetchAddressTxs', () => {
 
     expect(rows.filter((row) => row.txid === first.at(-1)?.txid)).toHaveLength(1)
     expect(rows).toHaveLength(ESPLORA_TX_PAGE_SIZE + 1)
+  })
+
+  it('caps recent history before an unvirtualized wallet screen becomes unbounded', async () => {
+    const pages = Array.from({ length: RECENT_HISTORY_LIMIT / ESPLORA_TX_PAGE_SIZE + 1 }, (_, page) =>
+      Array.from({ length: ESPLORA_TX_PAGE_SIZE }, (_unused, index) => transaction(`page-${page}-tx-${index}`)),
+    )
+    const fetchMock = vi.fn()
+    for (const page of pages) fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(page), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const rows = await fetchAddressTxs('tb1psavings')
+
+    expect(fetchMock).toHaveBeenCalledTimes(RECENT_HISTORY_LIMIT / ESPLORA_TX_PAGE_SIZE)
+    expect(rows).toHaveLength(RECENT_HISTORY_LIMIT)
+    expect(rows.at(-1)?.txid).toBe('page-3-tx-24')
   })
 })

@@ -4,6 +4,7 @@ import {
   groupVaultHistory,
   historyFromTxs,
   historyFromVtxos,
+  recentAccountHistory,
   type VaultHistoryItem,
 } from './history'
 import type { EsploraTx } from './esplora'
@@ -109,6 +110,20 @@ describe('vault history', () => {
     expect(rows.find((row) => row.txid === 'send')?.confirmed).toBe(true)
   })
 
+  it('includes a real fee in the net debit instead of inventing one from coin fragmentation', () => {
+    const rows = historyFromVtxos([
+      { txid: 'coin-a', vout: 0, value: 10_000, createdAtMs: 1_000, isSpent: true, arkTxId: 'send' },
+      { txid: 'coin-b', vout: 0, value: 25_000, createdAtMs: 2_000, isSpent: true, arkTxId: 'send' },
+      { txid: 'send', vout: 1, value: 5_000, createdAtMs: 3_000, isSpent: false, isLeaf: false },
+    ])
+
+    expect(rows.find((row) => row.txid === 'send')).toMatchObject({
+      type: 'sent',
+      amount: 30_000,
+      confirmed: true,
+    })
+  })
+
   it('keeps a spent offchain receive settled and ignores duplicate outpoints', () => {
     const duplicate = {
       txid: 'receive',
@@ -129,6 +144,33 @@ describe('vault history', () => {
       expect.objectContaining({ amount: 20_000, confirmed: true, type: 'received' }),
     ])
     expect(rows.find((row) => row.txid === 'send')).toMatchObject({ amount: 12_000, type: 'sent' })
+  })
+
+  it('settles the original receive without duplicating its batch replacement', () => {
+    const rows = historyFromVtxos([
+      {
+        txid: 'receive',
+        vout: 0,
+        value: 20_000,
+        createdAtMs: 2_000,
+        isSpent: true,
+        settledBy: 'commitment',
+        isLeaf: false,
+      },
+      {
+        txid: 'settled-replacement',
+        vout: 0,
+        value: 20_000,
+        createdAtMs: 4_000,
+        isSpent: false,
+        commitmentTxIds: ['commitment'],
+        isLeaf: true,
+      },
+    ])
+
+    expect(rows).toEqual([
+      expect.objectContaining({ txid: 'receive', amount: 20_000, confirmed: true, type: 'received' }),
+    ])
   })
 
   it('combines multiple wallet outputs from one receive into one activity row', () => {
@@ -177,5 +219,30 @@ describe('vault history', () => {
     ]
 
     expect(groupVaultHistory(rows, 20)[0].items.map((row) => row.txid)).toEqual(['a', 'b'])
+  })
+
+  it('bounds one account to its newest activity before Home renders it', () => {
+    const rows: VaultHistoryItem[] = Array.from({ length: 105 }, (_, index) => ({
+      txid: `spend-${index}`,
+      type: 'received',
+      amount: 1,
+      confirmed: true,
+      blockTime: index + 1,
+      account: 'spend',
+    }))
+    rows.push({
+      txid: 'savings',
+      type: 'received',
+      amount: 1,
+      confirmed: true,
+      blockTime: 1_000,
+      account: 'savings',
+    })
+
+    const recent = recentAccountHistory(rows, 'spend')
+
+    expect(recent).toHaveLength(100)
+    expect(recent[0].txid).toBe('spend-104')
+    expect(recent.at(-1)?.txid).toBe('spend-5')
   })
 })

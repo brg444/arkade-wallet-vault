@@ -1,4 +1,5 @@
 import { readBounded } from './bounded'
+import { RECENT_HISTORY_LIMIT } from './constants'
 
 export function esploraBase(): string {
   return '/esplora'
@@ -34,7 +35,7 @@ export interface EsploraTx {
 }
 
 export const ESPLORA_TX_PAGE_SIZE = 25
-const MAX_ESPLORA_TX_PAGES = 256
+const MAX_ESPLORA_TX_PAGES = Math.ceil(RECENT_HISTORY_LIMIT / ESPLORA_TX_PAGE_SIZE)
 
 export async function fetchAddressTxs(address: string): Promise<EsploraTx[]> {
   const encodedAddress = encodeURIComponent(address)
@@ -58,7 +59,7 @@ export async function fetchAddressTxs(address: string): Promise<EsploraTx[]> {
     cursors.add(next)
     cursor = next
   }
-  return [...byTxid.values()]
+  return [...byTxid.values()].slice(0, RECENT_HISTORY_LIMIT)
 }
 
 export async function fetchAddressUtxos(address: string): Promise<EsploraUtxo[]> {

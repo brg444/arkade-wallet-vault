@@ -93,12 +93,14 @@ export interface VaultVtxoSpendQuote {
 export class VtxoReceiptPendingError extends Error {
   readonly txid: string
   readonly operationId: string
+  readonly feeSats: number
 
-  constructor(txid: string, operationId: string) {
+  constructor(txid: string, operationId: string, feeSats: number) {
     super('VTXO finalization receipt unavailable')
     this.name = 'VtxoReceiptPendingError'
     this.txid = txid
     this.operationId = operationId
+    this.feeSats = feeSats
   }
 }
 
@@ -1377,7 +1379,11 @@ async function continueSameVtxoSpend(
     try {
       await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
     } catch {
-      throw new VtxoReceiptPendingError(pending.arkTxid, pending.operationId)
+      throw new VtxoReceiptPendingError(
+        pending.arkTxid,
+        pending.operationId,
+        quoteFromPersistedVtxoSpend(pending).feeSats,
+      )
     }
     clearPersistedVtxoSpend(status.vaultId)
     return {
@@ -1466,7 +1472,9 @@ export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultH
       createdAtMs: vtxo.createdAt instanceof Date ? vtxo.createdAt.getTime() : Number(vtxo.createdAt) || 0,
       isSpent: Boolean(vtxo.isSpent || vtxo.spentBy),
       arkTxId: vtxo.arkTxId,
+      commitmentTxIds: vtxo.commitmentTxIds,
       isLeaf: Boolean(vtxo.status?.isLeaf),
+      settledBy: vtxo.settledBy,
     })),
   )
 }

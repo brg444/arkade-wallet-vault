@@ -46,6 +46,7 @@ describe('Vault home account boundaries', () => {
   it('uses the Arkade address for Spending', () => {
     renderHome({ account: 'spend' })
     expect(screen.getByTestId('account-address').textContent).toContain('tark1s')
+    expect(document.querySelector('.vault-refresh')).toBeTruthy()
   })
 
   it('starts Savings to Spending at the pinned boarding address', async () => {

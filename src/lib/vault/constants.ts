@@ -5,6 +5,9 @@ export const PERIOD_ALLOWANCE_SATS = 100_000
 export const ABSOLUTE_FEE_CEILING_SATS = 5_000
 export const FEERATE_CEILING_SAT_PER_V = 10
 export const DUST_SATS = 330
+// Home renders activity as ordinary accessible buttons, so both fetch and
+// presentation stay within a useful recent window instead of growing forever.
+export const RECENT_HISTORY_LIMIT = 100
 
 export const SUPPORTED_NETWORKS = ['mutinynet'] as const
 export type VaultNetwork = (typeof SUPPORTED_NETWORKS)[number]

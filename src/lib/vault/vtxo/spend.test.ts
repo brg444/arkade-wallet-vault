@@ -324,6 +324,24 @@ describe('regular VTXO spend coordinator', () => {
     expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
   })
 
+  it('uses the reserved zero fee when a payment needs more than the largest coin', () => {
+    const response = fragmentedReserve()
+    response.inputs[0].valueSats = 10_000
+    response.inputs[1].valueSats = 25_000
+    response.feeSats = 0
+    response.changeSats = 5_000
+
+    const built = buildReservedVtxoSpend(status(), response, 30_000, destination(), FEE_POLICY_DIGEST)
+    expect(Math.max(...response.inputs.map((input) => input.valueSats))).toBeLessThan(30_000)
+    expect(built.arkTx.getOutput(0).amount).toBe(30_000n)
+    expect(built.arkTx.getOutput(1).amount).toBe(5_000n)
+
+    response.feeSats = 1_500
+    expect(() => buildReservedVtxoSpend(status(), response, 30_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /does not conserve value/,
+    )
+  })
+
   it('supports an exact spend with no change and P2A last', () => {
     const response = reserve()
     response.inputs[0].valueSats = 12_500
@@ -793,7 +811,7 @@ describe('regular VTXO spend coordinator', () => {
     expect(pendingVtxoSpendBlocksNewSend(pending)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqold', 12_000)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqnew', 12_000)).toBe(false)
-    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), OP_1))).toBe(true)
+    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), OP_1, 0))).toBe(true)
     expect(new VtxoSpendInFlightError('aa'.repeat(32), OP_1).message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
     expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(false)
