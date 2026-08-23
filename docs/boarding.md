@@ -77,6 +77,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   the persisted row stays locked pending recovery. Safe reload recovery also
   needs a restorable signing session and the exact inputs and recipients needed
   to reconstruct the settlement handler.
+- The durable snapshot may serialize ordinary VTXOs and boarding inputs in the
+  clear because they contain public transaction data. ArkNote and condition
+  inputs can carry a private witness in `extraWitness`; the SDK must refuse
+  durable registration for those inputs until that witness can be sealed by the
+  signing identity. The intent repository never becomes a preimage store.
 - Candidate SDK input selection treats unreadable intent state as unavailable
   and excludes inputs held by nonterminal intents from ordinary settlement,
   balance selection, and boarding. A fully read, unstructured HTTP 429 is the
