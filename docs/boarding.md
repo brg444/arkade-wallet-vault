@@ -72,23 +72,18 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - Candidate SDK changes write the complete request before submission, mark the
   registration ambiguous before the network call, and durably commit and read
   back the returned UUID before reporting success. The wallet retries an
-  ambiguous response once with the same signed request while the signing
-  session is alive. Automatic replay after a crash or reload is not complete;
-  the persisted row stays locked pending recovery. Safe reload recovery also
-  needs a restorable signing session and the exact inputs and recipients needed
-  to reconstruct the settlement handler.
+  ambiguous response with the same signed request only to recover the retained
+  identifier. After reload, selected and in-progress intents remain locked. A
+  successfully restored `LIVE` intent is deleted before the coordinator starts
+  a fresh standard settlement to the fixed `vault-policy-v1` destination.
 - The SDK intent repository is the sole registration authority after that
   release is pinned. The wallet's temporary `BoardingIntentCache`, accepted-ID
   write, duplicate recovery, and memory mirror are removed during integration.
   `VaultArkProvider` retains only transport behavior that the SDK does not yet
-  provide, including fetch-based event streaming until exact replay replaces
-  it.
-- The durable snapshot may serialize ordinary VTXOs and boarding inputs in the
-  clear because they contain public transaction data. ArkNote and condition
-  inputs can place a private witness in the registration proof through
-  `extraWitness`; the SDK must refuse durable registration for those inputs
-  before it stores or sends the proof until that witness can be sealed by the
-  signing identity. The intent repository never becomes a preimage store.
+  provide, including fetch-based event streaming with preserved HTTP errors.
+- The automatic Vault coordinator accepts confirmed boarding inputs and the
+  fixed `vault-policy-v1` output. It does not accept ArkNote or condition inputs
+  whose registration proof can contain private `extraWitness` material.
 - Candidate SDK input selection treats unreadable intent state as unavailable
   and excludes inputs held by nonterminal intents from ordinary settlement,
   balance selection, and boarding. A fully read, unstructured HTTP 429 is the
@@ -102,14 +97,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   and expiry. Those changes still need an upstream release, deployment, and
   Redis-backed qualification.
 - A selected intent can recover a missed `BatchStarted` event from the exact
-  lifecycle response. In-progress settlement still needs durable replay of
-  every later signing-stage event required by the handler. Terminal-or-unknown
-  never proves completion or permits the wallet to release inputs.
-- Current arkd stores cannot reconstruct that later replay. The unsigned VTXO
-  tree chunks and ordered nonce events are not durable, while live signing and
-  forfeit stores are reset with the round. Mainnet recovery therefore requires
-  a persist-before-publish, exact-intent event journal and a cursor that replays
-  an authorized prefix before handing the same connection to live events.
+  lifecycle response while the original signing session remains alive. A
+  reloaded wallet does not rejoin that batch. It waits for the Operator's
+  pre-`PREPARED` restore or reconciles the durable `PREPARED` batch outcome.
+  Terminal-or-unknown never proves completion or permits the wallet to release
+  inputs.
 
 The protected reload contract and failure-injection requirements are defined in
 [resumable settlement](resumable-settlement.md).

@@ -1,165 +1,111 @@
-# Resumable VTXO settlement
+# Interrupted VTXO settlement
 
-Mainnet boarding requires settlement to survive a browser reload after the
-Operator may have accepted an intent. Persisting the registration proof and
-Operator identifier is necessary but insufficient. The wallet must restore the
-same signing session and transaction context before it can safely rejoin the
-batch.
+Mainnet v1 uses the standard SDK `Wallet.settle` path and treats a lost browser
+process as an interrupted attempt. It does not reconstruct a selected or
+in-progress MuSig2 session. The wallet keeps every input locked until the
+Operator proves that the old intent is live and deletable or the indexer proves
+that the batch consumed it.
 
-## Current safety boundary
+This posture reuses the SDK transaction builder, validation, signing, batch
+handler, and repositories. It adds durable intent transitions and a strict
+Operator abort-or-complete boundary.
 
-The candidate SDK records the exact registration proof and canonical message
-before submission. An ambiguous response leaves the inputs locked. Exact retry
-can recover the retained Operator identifier while the original process and
-signing session remain available.
+## Wallet record
 
-Candidate arkd exposes exact-identifier lifecycle state. A selected or
-in-progress response includes the active batch identifier and expiry. This
-recovers the proposal identity, not the ephemeral signer session or every event
-needed to finish its signing protocol.
-
-The current Operator cannot reconstruct the missing protocol prefix after tree
-signing starts. The unsigned tree exists only in the finalization goroutine
-before publication, and public nonces, topic mappings, and signing progress are
-split across live stores that reset with the round. Persisted round events begin
-again only after finalization data exists. A larger status response cannot fill
-that gap safely.
-
-A reload loses the random MuSig2 `TreeSignerSession`. A replacement session has
-a different public key from the one committed by the registration message. The
-current intent row also lacks the complete VTXO or boarding inputs, recipients,
-assets, and validation context required by the batch handler and database
-finalizer. Registration replay alone would create an intent the wallet cannot
-complete.
-
-## Required snapshot
-
-Before registration can reach the network, one durable record must bind:
+Before registration reaches the network, the SDK persists:
 
 - the intent proof transaction ID, exact proof, and canonical message;
-- the delete proof and message;
-- a minimal input delta for facts the proof PSBT does not contain, including
-  VTXO or boarding kind, forfeit leaves, and normalized recovery state used by
-  the finalizer;
-- the exact recipients, amounts, assets, and onchain output indexes;
-- the expected settlement outputs and relevant program identities;
-- the canonical registration message that commits the signing-session public
-  key; and
-- an adjacent opaque, protected signer-session envelope.
+- the exact delete proof and message;
+- the input outpoints and signer descriptor;
+- the registration state and later Operator intent ID; and
+- a repository-owned revision for atomic state transitions.
 
-The intent identity, request bytes, snapshot digest, and envelope ciphertext are
-immutable after the write-ahead record is created. The envelope is outside the
-snapshot digest and authenticated with the wallet or vault identity, intent
-proof transaction ID, and snapshot digest. A second process may reuse only a
-byte-identical record.
+These economic-identity fields remain fixed after creation. Repository errors
+make VTXO and boarding input selection unavailable. A second tab, worker, or
+reconciliation task cannot overwrite a newer or terminal transition with a
+stale record.
 
-The signer-session envelope belongs to the signing identity, while the SDK
-stores and returns only its opaque representation. A generic raw-session-secret
-export is outside the interface. The identity creates and restores the envelope
-under protection at least as strong as its routine signing key, and an identity
-that cannot restore a session cannot advertise resumable settlement.
+The registration proof already commits the input values, tap trees, outputs,
+output indexes, and cosigner keys. Mainnet v1 does not add another generic
+settlement snapshot or persist a second copy of that transaction context.
 
-The first snapshot version covers ordinary VTXOs and boarding inputs. An
-ArkNote or condition input can carry a preimage or other private witness in
-`extraWitness`, and the registration proof PSBT would contain that witness. The
-plaintext intent repository is limited to public transaction data. Such an
-input remains ineligible for durable settlement until the identity can place
-its witness material inside the protected envelope. Registration stops before
-the proof is persisted or sent when protected storage is unavailable.
+## Recovery procedure
 
-## Resume procedure
-
-Resume acquires the vault's exclusive Web Lock and requires the normal device
-unlock before handling protected state. It then:
-
-1. Reads the complete snapshot and verifies its digest and immutable intent
-   fields.
-2. Restores the signer session through the identity and verifies that its public
-   key matches the cosigner key in the stored registration message.
-3. Reconstructs the inputs, recipients, and batch handler, then reproduces the
-   exact registration request bytes.
-4. Opens the exact-intent replay cursor before any registration retry or
-   acknowledgement. The cursor atomically captures its high-water mark, replays
-   the authorized prefix, and then tails later events on the same stream.
-5. Reads the exact Operator intent status within the same batch generation.
-
-The Operator status drives a conservative transition:
+Recovery acquires the vault's exclusive Web Lock and reads the exact Operator
+status for the retained intent. It follows one conservative transition:
 
 | Operator state | Wallet action |
 | --- | --- |
-| `LIVE` | Keep the inputs locked and retry only the exact retained registration request when the active flow requires its identifier. |
-| `SELECTED` | Recreate the retained `BatchStarted` event from its batch ID and expiry, acknowledge the exact intent ID, and continue with the restored handler. |
-| `IN_PROGRESS` | Keep the operation locked. Resume only when the Operator or SDK can supply every missed signing-stage event required by the handler. |
-| `TERMINAL_OR_UNKNOWN` | Reconcile the exact inputs and expected outputs with the indexer. Never infer settlement or release from status absence. |
+| Registration response ambiguous | Retry only the byte-identical retained registration request to recover its identifier. Keep the inputs locked. |
+| `LIVE` | Submit an identifier-bound delete using the retained proof. Start a fresh `Wallet.settle` only after the Operator confirms deletion. |
+| `SELECTED` or `IN_PROGRESS` | Keep the inputs locked and wait. A new signing session or different batch acknowledgement is ineligible. |
+| `TERMINAL_OR_UNKNOWN` | Reconcile the exact inputs and expected vault output with the indexer. Consumed inputs can prove completion; absence or an unspent result does not release them. |
 
-## Operator replay journal
+Automatic boarding can start a fresh attempt after deletion because its
+destination is always the vault's `vault-policy-v1` address and its amount is
+derived from the retained boarding output. An interrupted arbitrary payment is
+not recreated silently; the user starts a new payment after the old intent is
+resolved.
 
-Each batch generation needs an append-only journal containing exact intent
-membership and ordered event records. The Operator persists an event and its
-authorized topics before publishing it. Every record binds the batch ID,
-generation, monotonic sequence, event payload, and topic capability. A replay
-request authenticates one exact intent and returns only its authorized shared
-or intent-specific records.
+The SDK intent repository is the only registration authority. The wallet's
+temporary accepted-ID cache, duplicate recovery, and memory mirror are removed
+when the new SDK is pinned. A transport adapter may retain HTTP and event-stream
+diagnostics without writing lifecycle state.
 
-The cursor establishes membership and a high-water mark in one snapshot,
-returns the ordered prefix after the requested sequence, and hands the same
-connection to live publication without a gap or duplicate. Restoring an intent
-to the live queue atomically invalidates its selected generation. Terminal and
-reconciliation records survive later rounds; expired, missing, or corrupt
-retention returns replay unavailable, never a synthetic terminal outcome.
+## Operator boundary
 
-For an Operator restart before transaction broadcast, the initial mainnet
-posture is durable batch failure and atomic intent restoration. Once broadcast
-may have occurred, absence is not proof of failure: the record remains unknown
-until chain and indexer reconciliation establishes an outcome. Persisting the
-Operator's own private MuSig2 coordinator state for restart continuation is a
-separate design and review boundary.
+The Operator has two durable phases.
 
-An exact proof-based deletion with an unambiguous response may release an
-unaccepted intent. An indexer result may prove that inputs were consumed or
-remain available under the defined recovery policy. Transport errors, missing
-history, or inconsistent state retain the lock.
+Before `PREPARED`, a confirmation, construction, nonce, signature, or signing
+timeout aborts the attempt. The Operator atomically restores the exact selected
+intents to `LIVE`, retains their VTXO and boarding locks, and removes pending
+unlock entries. A restore failure halts batch scheduling and readiness while
+the original round evidence remains intact.
 
-## Persistence and concurrency
+`PREPARED` begins only after the exact signed commitment transaction, signed
+forfeit transactions, intent membership, and final projection fields are
+durable. From that point the batch is irrevocable. A process restart or
+ambiguous broadcast response re-broadcasts and reconciles the same transaction;
+it never restores the intents or releases their locks. Finalization and cleanup
+follow proof of the exact commitment outcome.
 
-Mainnet configuration requires a durable intent repository. An absent or
-unreadable repository fails closed for VTXO and boarding selection. Raw
-ownership and recovery views may still report the funds, but no automatic send
-or settlement may select them.
+Startup branches on that state:
 
-The snapshot, write-ahead state, and later Operator identifier need atomic
-compare-and-set transitions. A reload, worker, or second tab cannot replace an
-ambiguous, selected, active, or terminal record with a newly constructed
-request. Web Locks provide the live browser exclusion; durable state remains the
-safety boundary after a process disappears.
+1. A provably pre-`PREPARED` round restores its selected intents before
+   ephemeral session cleanup.
+2. A `PREPARED` round resumes exact broadcast and reconciliation.
+3. A finalized round performs ordinary cleanup.
 
-The SDK owns those transitions. A wallet transport adapter may preserve HTTP
-or event-stream diagnostics, but it does not keep another accepted-identifier
-cache or write the intent row. Removing the preview wallet cache is part of the
-SDK pin, so registration has one durable authority.
+The next round cannot start until the applicable transition commits.
 
 ## Qualification
 
-Release tests must inject failure at each boundary:
+Release tests inject failure:
 
-- before and after the write-ahead snapshot;
-- before request transmission, after Operator acceptance, and during response
-  body delivery;
-- before and after durable identifier persistence;
-- before `BatchStarted`, after acknowledgement, and during every signing stage;
-- between journal persistence and publication, during replay high-water capture,
-  and while a new event arrives at the replay-to-live handoff;
-- during snapshot read, session restoration, and repository compare-and-set;
-- across reloads, worker restarts, and two live tabs; and
-- after active Operator status retention expires.
+- before and after the write-ahead registration record;
+- before registration transmission, after Operator acceptance, and during the
+  response body;
+- during confirmation, tree construction, nonce collection, and signature
+  collection;
+- before durable `PREPARED`, between `PREPARED` and broadcast, after node
+  acceptance with a lost response, and before final projection persistence;
+- during restore, exact deletion, indexer reconciliation, and startup; and
+- with two browser contexts and concurrent Operator abort/prepare attempts.
 
-Every test must establish both outcomes: no locked input becomes spendable, and
-a recoverable operation resumes with the same request, session key, inputs,
-recipients, and expected outputs.
+Every pre-`PREPARED` failure must produce one restored intent with both lock
+classes intact. Every `PREPARED` failure must retain the exact batch and resume
+it without reporting `LIVE`. No test may make an input selectable while either
+outcome remains unresolved.
 
-Journal tests must also reject stale batch generations, mixed batch IDs,
-unauthorized intent topics, missing ordered prefixes, and a globally delivered
-failure that does not match the operation's established batch ID.
+## Deferred seamless continuation
 
-This contract applies to ordinary SDK settlement and boarding. Lightning uses a
-separate durable saga after VTXO Spending and boarding are qualified.
+Continuing the same batch after a reload is a later availability feature. It
+requires identity-protected persistence of the actual MuSig2 private nonce
+state before nonce publication, plus an exact-intent event journal with a
+gap-free replay-to-live handoff. A static session snapshot does not provide
+that guarantee because regenerated nonces cannot sign the Operator's retained
+aggregate nonces.
+
+That work remains separate from the first mainnet boarding release. Lightning
+also remains a separate durable saga after ordinary VTXO Spending and boarding
+are qualified.

@@ -20,8 +20,9 @@ One coordinator owns each durable vault-service operation. A reload resumes a
 VTXO send by its client-generated operation ID after an ambiguous HTTP
 response. The phone authenticates the reservation; later stages use server
 compare-and-swap transitions. Boarding registration persists its exact signed
-request and keeps the inputs locked after an ambiguous response, but automatic
-crash-and-reload replay remains a release gate.
+request and keeps the inputs locked after an ambiguous response. The Operator's
+pre-`PREPARED` restore and durable `PREPARED` completion paths remain release
+gates.
 
 ## Release order
 
@@ -49,19 +50,20 @@ crash-and-reload replay remains a release gate.
   exact retained registration retry. An exact-identifier lifecycle endpoint
   also reports active batch identity and expiry for selected and in-progress
   intents. These changes must be upstream, released, deployed, and qualified
-  against Redis before boarding is enabled. Exact registration retry currently
-  lasts only while the intent is live or selected.
+  against Redis before boarding is enabled. The Operator also needs an explicit
+  abort-or-complete lifecycle: every pre-`PREPARED` failure restores the exact
+  selected intents and locks, while a durable `PREPARED` bundle is retried and
+  reconciled without returning those intents to `LIVE`.
 - Candidate SDK changes persist the exact registration request before network
   submission, retain an ambiguous state, and commit the returned Operator
   intent ID before reporting success. Unreadable intent state fails closed, and
   nonterminal intent locks apply to ordinary settlement and boarding inputs.
-  The changes must be upstream, released, pinned by the wallet, and extended
-  with a restorable signing session and complete settlement snapshot. A reload
-  must replay that exact request, rebuild the same batch handler, and reconcile
-  every signing-stage event that the stream does not replay. Current arkd live
-  and round stores cannot reconstruct the complete ordered prefix. An
-  append-only, exact-intent replay journal with gap-free cursor handoff is a
-  separate Operator release gate.
+  Atomic repository revisions prevent stale reconciliation and event handlers
+  from reopening or replacing a newer transition. The changes must be
+  upstream, released, and pinned by the wallet. After reload, the wallet waits
+  through selected or in-progress state, deletes only an exact restored `LIVE`
+  intent, reconciles consumed inputs, and starts a fresh standard SDK
+  settlement. Seamless continuation of the same MuSig2 session is deferred.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.
