@@ -4,6 +4,7 @@ import {
   IndexedDBContractRepository,
   IndexedDBIntentRepository,
   IndexedDBWalletRepository,
+  RestArkProvider,
   RestIndexerProvider,
   SingleKey,
   Wallet,
@@ -15,7 +16,6 @@ import { vaultAddressNetwork } from '../bitcoin'
 import { zeroBytes } from '../ceremony/directauth'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
-import { intentRepositoryBoardingCache, VaultArkProvider } from './provider'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
@@ -190,16 +190,9 @@ export function createVaultBoardingStorage<W, C, I>(
   }
 }
 
-function vaultIntentRepository(vaultId: string) {
-  return new IndexedDBIntentRepository(vaultBoardingStorageNames(vaultId).intents)
-}
-
-async function liveBoardingOperator(
-  status: VaultStatus,
-  intentCache = intentRepositoryBoardingCache(vaultIntentRepository(status.vaultId || 'unknown')),
-) {
+async function liveBoardingOperator(status: VaultStatus) {
   requireBoardingStatus(status)
-  const operator = new VaultArkProvider(vaultArkServer(), { intentCache })
+  const operator = new RestArkProvider(vaultArkServer())
   const info = await operator.getInfo()
   if (info.network !== 'mutinynet') throw new Error('Operator network is not Mutinynet')
   if (BigInt(info.boardingExitDelay) !== VAULT_BOARD_V1_EXIT_DELAY) {
@@ -217,8 +210,7 @@ export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
 async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
   const identity = SingleKey.fromPrivateKey(phoneSecret)
   const storage = createVaultBoardingStorage(status.vaultId)
-  const intentRepository = storage.intentRepository
-  const { operator, info } = await liveBoardingOperator(status, intentRepositoryBoardingCache(intentRepository))
+  const { operator, info } = await liveBoardingOperator(status)
   const wallet = await Wallet.create({
     identity,
     arkServerUrl: vaultArkServer(),
@@ -232,7 +224,7 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
   if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
     throw new Error('SDK derived a different vault-board-v1 address')
   }
-  return { wallet, info, operator }
+  return { wallet, info }
 }
 
 function boardingOutputAmount(
@@ -269,7 +261,7 @@ export async function settleVaultBoarding(
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
-  const { wallet, info, operator } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
   const coins = await findConfirmedBoardingCoins(wallet, txid)
   if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
   const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
@@ -277,7 +269,6 @@ export async function settleVaultBoarding(
     inputs: coins,
     outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
   })
-  operator.clearQueuedIntent()
   return { txid: commitmentTxid, amountSats }
 }
 
@@ -289,7 +280,7 @@ export async function waitForAndSettleVaultBoarding(
   options: { timeoutMs?: number; pollMs?: number } = {},
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
-  const { wallet, info, operator } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
   const deadline = Date.now() + (options.timeoutMs ?? CONFIRMATION_WAIT_MS)
   for (;;) {
     const coins = await findConfirmedBoardingCoins(wallet, txid)
@@ -299,7 +290,6 @@ export async function waitForAndSettleVaultBoarding(
         inputs: coins,
         outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
       })
-      operator.clearQueuedIntent()
       return { txid: commitmentTxid, amountSats }
     }
     if (Date.now() >= deadline) {
