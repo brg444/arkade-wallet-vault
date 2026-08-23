@@ -25,6 +25,10 @@ remains out of scope.
 - Every wallet is bound to the release template, network, Operator, and
   canonical Savings, Spending, and boarding descriptors through the signed
   recovery binding. Any other format is rejected.
+- The browser also records a fresh-release local program pin for the vault
+  identifier, network, Savings descriptor, and immutable Spending and boarding
+  fields. Status drift, record tampering, extra fields, and an enrolled-to-
+  unenrolled downgrade fail closed.
 - The disabled Lightning send seam uses the published swap package, registers
   the VHTLC before funding, and proves its immediate refund returns to the exact
   bound `vault-policy-v1` script. Funding remains subject to the ordinary VTXO
