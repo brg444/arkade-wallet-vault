@@ -31,8 +31,10 @@ boarding, and Operator communication remain inside the official SDK surface.
    vectors.
 4. Deploy with production key isolation, independent rollback-control storage,
    and shared durable edge limits.
-5. Implement outbound BOLT11 as a separate durable saga only after ordinary
-   Spending is stable. Lightning receive remains a separate program and gate.
+5. Enable outbound BOLT11 after ordinary Spending is stable. The published
+   swap package owns invoice, RFQ, VHTLC, and contract-registration semantics;
+   funding uses the existing ordinary VTXO operation. Lightning receive
+   remains a separate program and gate.
 
 Mainnet Vault Program parameters and policy adjustments begin at step 3. They
 are intentionally outside the current Mutinynet reliability and cleanup work.
@@ -68,6 +70,17 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
 - Live Mutinynet qualification must cover reload, two-tab races, dropped
   reserve and authorization responses, missed event acknowledgements, lost
   finalization, and delayed recovery.
+- Outbound BOLT11 is implemented as a disabled package-native seam. Mainnet
+  enablement still requires an approved signed solver card and rotation
+  procedure, quote-to-reservation expiry tests, real invoice and refund tests,
+  and a decision on the package's later local refund backstop. The public
+  mainnet solver registry currently advertises no Lightning market.
+- The signed recovery binding must include every immutable Spending and
+  boarding field. A refund address received only from mutable status is not an
+  acceptable Lightning destination pin.
+- The production dependency graph must pass `pnpm audit --prod`. The reviewed
+  `ws` override stays pinned until the official SDK dependency resolves to the
+  patched release directly.
 
 Mainnet constants require explicit values, with all Mutinynet defaults excluded
 from that configuration.
