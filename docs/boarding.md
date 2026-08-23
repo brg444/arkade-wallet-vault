@@ -59,49 +59,16 @@ principal is debited once, when a later VTXO payment leaves Spending.
   on the Operator event stream. The Arkade same-origin route must remain a
   direct streaming rewrite. A buffered serverless function breaks the event
   stream before settlement completes.
-- SDK 0.4.65 uses native `EventSource` by default for `Wallet.settle()`. Its
-  error handler discards the HTTP status, response body, and browser transport
-  detail, then throws only `EventSource error`. The vault coordinator uses a
-  fetch-streaming `RestArkProvider` subclass instead. It sends the required
-  `Accept: text/event-stream` header explicitly and preserves non-200 Operator
-  diagnostics without changing the SDK settlement state machine.
-- arkd gives each registration a random UUID. The proof transaction ID is not
-  the intent ID. Candidate arkd changes retain a proof-to-identifier mapping
-  for live and selected intents, so an exact canonical registration retry
-  returns the same UUID and a mutated request fails closed.
-- Candidate SDK changes write the complete request before submission, mark the
-  registration ambiguous before the network call, and durably commit and read
-  back the returned UUID before reporting success. The wallet retries an
-  ambiguous response with the same signed request only to recover the retained
-  identifier. After reload, selected and in-progress intents remain locked. A
-  successfully restored `LIVE` intent is deleted before the coordinator starts
-  a fresh standard settlement to the fixed `vault-policy-v1` destination.
-- The SDK intent repository is the sole registration authority after that
-  release is pinned. The wallet's temporary `BoardingIntentCache`, accepted-ID
-  write, duplicate recovery, and memory mirror are removed during integration.
-  `VaultArkProvider` retains only transport behavior that the SDK does not yet
-  provide, including fetch-based event streaming with preserved HTTP errors.
+- Boarding uses the SDK's `RestArkProvider` and `Wallet.settle()` directly.
+  Vault code does not override intent registration, deletion, event streaming,
+  or duplicate handling. The SDK and `arkade.computer` own that protocol
+  lifecycle.
+- `Wallet.settle()` starts SDK managers and indexer watchers. Each automatic
+  attempt owns a temporary wallet and three per-vault repositories, then
+  disposes the wallet before closing those repositories on success or failure.
 - The automatic Vault coordinator accepts confirmed boarding inputs and the
   fixed `vault-policy-v1` output. It does not accept ArkNote or condition inputs
   whose registration proof can contain private `extraWitness` material.
-- Candidate SDK input selection treats unreadable intent state as unavailable
-  and excludes inputs held by nonterminal intents from ordinary settlement,
-  balance selection, and boarding. A fully read, unstructured HTTP 429 is the
-  only registration rejection that releases the prepared record; structured
-  errors, malformed responses, transport failures, and duplicate conflicts
-  remain ambiguous and locked.
-- Candidate arkd changes also match `BoardingInputs` during proof-based deletion
-  and restore a selected confirmation set atomically. An exact-identifier
-  lifecycle endpoint reports live, selected, in-progress, or terminal-or-unknown
-  state. Selected and in-progress responses carry the active batch identifier
-  and expiry. Those changes still need an upstream release, deployment, and
-  Redis-backed qualification.
-- A selected intent can recover a missed `BatchStarted` event from the exact
-  lifecycle response while the original signing session remains alive. A
-  reloaded wallet does not rejoin that batch. It waits for the Operator's
-  pre-`PREPARED` restore or reconciles the durable `PREPARED` batch outcome.
-  Terminal-or-unknown never proves completion or permits the wallet to release
-  inputs.
-
-The protected reload contract and failure-injection requirements are defined in
-[resumable settlement](resumable-settlement.md).
+- The coordinator does not replay registrations, infer Operator state, resume
+  MuSig2 sessions, or implement a second protocol state machine. Interrupted
+  settlement follows the behavior of the pinned SDK and deployed Operator.

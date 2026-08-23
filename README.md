@@ -1,9 +1,9 @@
 # Arkade Vault Wallet
 
 > [!WARNING]
-> This branch is a Mutinynet release candidate. Mainnet identities, delays,
-> hardware integrations and upstream intent handling remain under
-> review. Real-fund use is blocked.
+> This branch is a Mutinynet release candidate. Mainnet uses
+> `https://arkade.computer` and the official Arkade SDK without protocol
+> extensions. The private mainnet Emulator endpoint is not yet available.
 
 Arkade Vault Wallet separates funds into two programs:
 
@@ -62,10 +62,13 @@ pnpm build
 This repository no longer carries the inherited general wallet application,
 old Vault templates, demo funding, raw private-key screens, or legacy onchain
 Spending account. Ordinary VTXO Spending now supports fragmented inputs,
-exact no-change sends, and the Operator's bounded intent fee policy. Remaining
-mainnet gates include live lifecycle qualification, the boarding trust window,
-durable intent recovery, browser concurrency, production key isolation, and
-mainnet-specific program pins. The complete list is in
+exact no-change sends, the Operator's bounded intent fee policy, and recovery
+after an ambiguous Operator submission through the official SDK pending
+transaction interface. Remaining mainnet work includes live qualification,
+browser concurrency, production key isolation, and mainnet-specific program
+pins. Those policy and network adjustments are deliberately deferred until
+the current Mutinynet lifecycle is stable. The unavailable external dependency
+is the private mainnet Emulator endpoint. The complete list is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.

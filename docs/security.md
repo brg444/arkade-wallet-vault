@@ -12,6 +12,11 @@ gates. Real-fund use remains out of scope.
   reserve an outpoint.
 - Transaction authorization is separate from reservation and binds the exact
   Arkade transaction and checkpoint requests.
+- Before the first Operator submission, the wallet persists a phone-and-
+  VaultCosigner proof for the exact reserved inputs. It submits once. An
+  ambiguous response is recovered through the official SDK pending-transaction
+  interface, and the returned transaction and checkpoints must match the
+  persisted operation exactly.
 - Savings ordinary spend requires the phone and an external hardware
   signature. Raw hardware and recovery private keys are not accepted by
   production routes.
@@ -31,16 +36,12 @@ gates. Real-fund use remains out of scope.
   `vault-policy-v1`. Vault policy does not govern that intermediate.
 - Browser concurrency depends on Web Locks. Boarding and ordinary sends fail
   closed when that capability is unavailable.
-- Candidate arkd and SDK intent-lifecycle changes require upstream releases,
-  wallet pins, and Redis-backed qualification. Candidate SDK selection keeps
-  nonterminal intent inputs locked and fails closed when durable intent state
-  is unreadable. Candidate arkd must restore every pre-`PREPARED` failure
-  atomically and complete an exact durable `PREPARED` batch after restart or an
-  ambiguous broadcast response.
-- Mainnet v1 does not resume a lost MuSig2 signing session. The wallet waits for
-  the Operator to restore the exact intent or reconciles the durable batch
-  outcome. Seamless continuation requires protected private-nonce persistence
-  and exact event replay and remains outside this release.
+- Arkade transaction construction, intent handling, boarding, and settlement
+  use the official SDK against `https://arkade.computer`. Vault code does not
+  add Operator lifecycle endpoints or replay a lost MuSig2 signing session.
+- An empty or mismatched pending-transaction lookup stays fail-closed and keeps
+  the operation locked. Operator-side manual resolution is an availability
+  requirement, not a reason to resubmit an ambiguous transaction.
 - The wallet provides a local recovery watcher, not a continuously available
   watchtower.
 - External hardware support must be qualified against the custom tapscript PSBT

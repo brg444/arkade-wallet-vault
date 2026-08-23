@@ -16,54 +16,45 @@ lending integrations, demo funding, regtest fixtures, v4/v5 readers, raw
 private-key screens, and L1 Daily account have been removed. Protocol versions
 remain only where bytes are persisted, signed, or compared with the service.
 
-One coordinator owns each durable vault-service operation. A reload resumes a
-VTXO send by its client-generated operation ID after an ambiguous HTTP
+One coordinator owns each durable Vault-service operation. A reload resumes a
+VTXO send by its client-generated operation ID after an ambiguous Vault-service
 response. The phone authenticates the reservation; later stages use server
-compare-and-swap transitions. Boarding registration persists its exact signed
-request and keeps the inputs locked after an ambiguous response. The Operator's
-pre-`PREPARED` restore and durable `PREPARED` completion paths remain release
-gates.
+compare-and-swap transitions. Before the first Operator submission, the wallet
+persists a dual-signed proof bound to the exact reserved inputs. It submits
+once, then uses the official SDK pending-transaction interface after an
+ambiguous response. The recovered Arkade transaction and checkpoints must
+match the persisted operation exactly. Arkade transaction construction,
+boarding, and Operator communication remain inside the official SDK surface.
 
 ## Release order
 
 1. Qualify ordinary VTXO receive and send, including reloads and lost responses.
 2. Qualify Savings-to-Spending boarding and recovery drills.
-3. Freeze mainnet program identities, Operator policy, delays, and fee bounds,
-   then regenerate both Contract Packs and cross-language vectors.
+3. Configure the private mainnet Emulator endpoint, freeze the program pins for
+   `arkade.computer`, then regenerate both Contract Packs and cross-language
+   vectors.
 4. Deploy with production key isolation, independent rollback-control storage,
    and shared durable edge limits.
 5. Implement outbound BOLT11 as a separate durable saga only after ordinary
    Spending is stable. Lightning receive remains a separate program and gate.
 
+Mainnet Vault Program parameters and policy adjustments begin at step 3. They
+are intentionally outside the current Mutinynet reliability and cleanup work.
+
 ## Open mainnet gates
 
 - Ordinary VTXO send supports fragmented multi-input balances, exact
   no-change sends, and bounded Operator fees. Live Mutinynet qualification must
-  cover those shapes, reloads, dropped responses, checkpoint reordering, and
-  concurrent retries before the mainnet pins are frozen.
-- The phone-plus-Operator boarding intermediate needs a reviewed threat bound or
-  a design that applies Vault policy before settlement.
-- The Mutinynet 4,608-second VTXO exit pin has no mainnet approval. Mainnet
-  Operator, checkpoint, network, delay, and rotation pins remain undefined.
-- Candidate arkd changes delete boarding intents by boarding input, restore
-  Redis confirmation queues atomically, and return the same identifier for an
-  exact retained registration retry. An exact-identifier lifecycle endpoint
-  also reports active batch identity and expiry for selected and in-progress
-  intents. These changes must be upstream, released, deployed, and qualified
-  against Redis before boarding is enabled. The Operator also needs an explicit
-  abort-or-complete lifecycle: every pre-`PREPARED` failure restores the exact
-  selected intents and locks, while a durable `PREPARED` bundle is retried and
-  reconciled without returning those intents to `LIVE`.
-- Candidate SDK changes persist the exact registration request before network
-  submission, retain an ambiguous state, and commit the returned Operator
-  intent ID before reporting success. Unreadable intent state fails closed, and
-  nonterminal intent locks apply to ordinary settlement and boarding inputs.
-  Atomic repository revisions prevent stale reconciliation and event handlers
-  from reopening or replacing a newer transition. The changes must be
-  upstream, released, and pinned by the wallet. After reload, the wallet waits
-  through selected or in-progress state, deletes only an exact restored `LIVE`
-  intent, reconciles consumed inputs, and starts a fresh standard SDK
-  settlement. Seamless continuation of the same MuSig2 session is deferred.
+  cover those shapes, reloads, dropped Vault-service responses, ambiguous
+  Operator submissions, empty and mismatched pending lookups, checkpoint
+  reordering, and concurrent attempts before the mainnet pins are frozen.
+- The phone-plus-Operator boarding intermediate remains an explicit trust
+  assumption until value reaches `vault-policy-v1`.
+- Mainnet pins must match `arkade.computer`, including its network, signer,
+  checkpoint policy, delays, and fee bounds. The private mainnet Emulator
+  endpoint is the remaining unavailable external dependency.
+- The wallet uses the official SDK lifecycle without custom registration,
+  deletion, replay, event-stream, or Operator-status extensions.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.
@@ -74,5 +65,4 @@ gates.
   finalization, and delayed recovery.
 
 Mainnet constants require explicit values, with all Mutinynet defaults excluded
-from that configuration. A blocked gate remains a visible release condition;
-user-facing retry copy never closes it.
+from that configuration.
