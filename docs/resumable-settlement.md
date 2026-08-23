@@ -55,6 +55,14 @@ export is outside the interface. The identity creates and restores the envelope
 under protection at least as strong as its routine signing key, and an identity
 that cannot restore a session cannot advertise resumable settlement.
 
+The first snapshot version covers ordinary VTXOs and boarding inputs. An
+ArkNote or condition input can carry a preimage or other private witness in
+`extraWitness`. The plaintext intent repository is limited to public
+transaction data. Such an input remains ineligible for durable settlement
+until the identity can place its witness material inside the protected
+envelope. Registration stops before the network boundary when protected
+storage is unavailable.
+
 ## Resume procedure
 
 Resume acquires the vault's exclusive Web Lock and requires the normal device
