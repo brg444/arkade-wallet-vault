@@ -77,10 +77,17 @@ principal is debited once, when a later VTXO payment leaves Spending.
   the persisted row stays locked pending recovery. Safe reload recovery also
   needs a restorable signing session and the exact inputs and recipients needed
   to reconstruct the settlement handler.
+- The SDK intent repository is the sole registration authority after that
+  release is pinned. The wallet's temporary `BoardingIntentCache`, accepted-ID
+  write, duplicate recovery, and memory mirror are removed during integration.
+  `VaultArkProvider` retains only transport behavior that the SDK does not yet
+  provide, including fetch-based event streaming until exact replay replaces
+  it.
 - The durable snapshot may serialize ordinary VTXOs and boarding inputs in the
   clear because they contain public transaction data. ArkNote and condition
-  inputs can carry a private witness in `extraWitness`; the SDK must refuse
-  durable registration for those inputs until that witness can be sealed by the
+  inputs can place a private witness in the registration proof through
+  `extraWitness`; the SDK must refuse durable registration for those inputs
+  before it stores or sends the proof until that witness can be sealed by the
   signing identity. The intent repository never becomes a preimage store.
 - Candidate SDK input selection treats unreadable intent state as unavailable
   and excludes inputs held by nonterminal intents from ordinary settlement,
