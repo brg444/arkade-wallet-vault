@@ -141,13 +141,12 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const { busy, liveNetwork, refreshBalance, reset, status } = useContext(VaultContext)
+  const { balanceError, busy, liveNetwork, refreshBalance, refreshingBalance, reset, status } = useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<View>('menu')
   const [theme, setTheme] = useState(loadVaultTheme)
   const [haptics, setHaptics] = useState(loadVaultHaptics)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     if (view !== 'menu') return
@@ -264,12 +263,12 @@ export default function VaultSettings() {
                 }}
               />
               <Row
-                label={refreshing || busy ? 'Checking…' : 'Refresh balance'}
+                label={refreshingBalance || busy ? 'Checking…' : 'Refresh balance'}
                 testId='settings-refresh'
+                value={balanceError ? 'Failed' : undefined}
                 onClick={() => {
-                  if (refreshing) return
-                  setRefreshing(true)
-                  void refreshBalance().finally(() => setRefreshing(false))
+                  if (refreshingBalance) return
+                  void refreshBalance()
                 }}
               />
               <Row label='Logs' testId='settings-logs' onClick={() => setView('logs')} />

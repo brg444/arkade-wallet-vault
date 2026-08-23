@@ -124,9 +124,9 @@ export default function VaultSend() {
             <Text color='neutral-600' tiny wrap>
               {fromSavings
                 ? movingToSpending
-                  ? `To Spending · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
-                  : `From Savings · fee ${prettyAmount(spend.fee)}. This device signs first. Hardware signs next.`
-                : `Fee confirmed on Review · up to ${prettyAmount(setup.txCapSats)} per send`}
+                  ? `Moving to Spending costs ${prettyAmount(spend.fee)} and requires this device to sign before your hardware key.`
+                  : `Sending from Savings costs ${prettyAmount(spend.fee)} and requires this device to sign before your hardware key.`
+                : `Spending allows up to ${prettyAmount(setup.txCapSats)} per send, and the fee appears on the next screen.`}
             </Text>
             {fromSavings ? (
               <Text color='neutral-600' tiny>
@@ -145,7 +145,12 @@ export default function VaultSend() {
         </Padded>
       </Content>
       <ButtonsOnBottom>
-        <Button onClick={reviewSpend} disabled={busy} loading={busy} label={busy ? 'Confirming fee…' : 'Review'} />
+        <Button
+          onClick={reviewSpend}
+          disabled={busy}
+          loading={busy}
+          label={busy ? 'Confirming fee…' : movingToSpending ? 'Review move' : 'Review send'}
+        />
       </ButtonsOnBottom>
     </>
   )

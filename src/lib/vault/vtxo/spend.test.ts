@@ -10,6 +10,7 @@ import {
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
+import { historyFromVtxos } from '../history'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -36,6 +37,7 @@ import {
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
+  uniqueVtxosByOutpoint,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
   VtxoSpendUnresolvedError,
@@ -45,6 +47,7 @@ import {
   VAULT_VTXO_PAGE_SIZE,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
+  vaultVtxoHistoryCoin,
   vaultVtxoPage,
   vtxoReserveRequest,
 } from './spend'
@@ -321,6 +324,48 @@ describe('regular VTXO spend coordinator', () => {
     )
     expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
     expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
+  })
+
+  it('normalizes settledBy as terminal and suppresses its batch replacement', () => {
+    const rows = historyFromVtxos([
+      vaultVtxoHistoryCoin({
+        txid: 'receive',
+        vout: 0,
+        value: 20_000,
+        createdAt: 2_000,
+        settledBy: 'commitment',
+      }),
+      vaultVtxoHistoryCoin({
+        txid: 'settled-replacement',
+        vout: 0,
+        value: 20_000,
+        createdAt: 4_000,
+        commitmentTxIds: ['commitment'],
+        status: { isLeaf: true },
+      }),
+    ])
+
+    expect(rows).toEqual([
+      expect.objectContaining({ txid: 'receive', amount: 20_000, confirmed: true, type: 'received' }),
+    ])
+  })
+
+  it('uses the reserved zero fee when a payment needs more than the largest coin', () => {
+    const response = fragmentedReserve()
+    response.inputs[0].valueSats = 10_000
+    response.inputs[1].valueSats = 25_000
+    response.feeSats = 0
+    response.changeSats = 5_000
+
+    const built = buildReservedVtxoSpend(status(), response, 30_000, destination(), FEE_POLICY_DIGEST)
+    expect(Math.max(...response.inputs.map((input) => input.valueSats))).toBeLessThan(30_000)
+    expect(built.arkTx.getOutput(0).amount).toBe(30_000n)
+    expect(built.arkTx.getOutput(1).amount).toBe(5_000n)
+
+    response.feeSats = 1_500
+    expect(() => buildReservedVtxoSpend(status(), response, 30_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /does not conserve value/,
+    )
   })
 
   it('supports an exact spend with no change and P2A last', () => {
@@ -792,7 +837,7 @@ describe('regular VTXO spend coordinator', () => {
     expect(pendingVtxoSpendBlocksNewSend(pending)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqold', 12_000)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqnew', 12_000)).toBe(false)
-    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), OP_1))).toBe(true)
+    expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), OP_1, 0))).toBe(true)
     expect(new VtxoSpendInFlightError('aa'.repeat(32), OP_1).message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
     expect(pendingVtxoSpendBlocksNewSend(loadPersistedVtxoSpend('vault-a'))).toBe(false)
@@ -995,5 +1040,13 @@ describe('regular VTXO spend coordinator', () => {
     expect(VAULT_VTXO_PAGE_SIZE).toBeGreaterThan(0)
     expect(vaultVtxoPage(0)).toEqual({ pageIndex: 0, pageSize: VAULT_VTXO_PAGE_SIZE })
     expect(vaultVtxoPage(7)).toEqual({ pageIndex: 7, pageSize: VAULT_VTXO_PAGE_SIZE })
+  })
+
+  it('deduplicates an outpoint repeated across moving indexer pages', () => {
+    const repeated = { txid: 'same', vout: 1, value: 12_000 }
+    expect(uniqueVtxosByOutpoint([repeated, repeated, { txid: 'same', vout: 2, value: 8_000 }])).toEqual([
+      repeated,
+      { txid: 'same', vout: 2, value: 8_000 },
+    ])
   })
 })

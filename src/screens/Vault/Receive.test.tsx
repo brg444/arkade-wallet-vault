@@ -29,6 +29,7 @@ function renderReceive(account: VaultAccount) {
 describe('Vault receive', () => {
   it('shows one Spending BIP21 request with Arkade and boarding addresses', () => {
     renderReceive('spend')
+    expect(screen.getByRole('heading', { name: 'Receive to Spending' })).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('bitcoin:tb1qboarding?ark=tark1spending')
     expect(screen.getByTestId('receive-arkade-address')).toBeTruthy()
     expect(screen.getByTestId('receive-bitcoin-address')).toBeTruthy()
@@ -37,8 +38,9 @@ describe('Vault receive', () => {
 
   it('keeps Savings receive separate when entered from Savings', () => {
     renderReceive('savings')
+    expect(screen.getByRole('heading', { name: 'Add to Savings' })).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('tb1qsavings')
-    expect(screen.getByText('Savings')).toBeTruthy()
+    expect(screen.getByText('Savings address')).toBeTruthy()
     expect(screen.queryByTestId('receive-arkade-address')).toBeNull()
     expect(screen.queryByTestId('receive-bitcoin-address')).toBeNull()
   })

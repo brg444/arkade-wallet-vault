@@ -18,20 +18,27 @@ export default function VaultDesign() {
       onBack={() => navigate('welcome')}
       actions={<Button onClick={acceptDesign} label='Continue' />}
     >
-      <Text wrap>Three keys protect this vault. Daily spend uses this device. Savings needs hardware too.</Text>
+      <Text wrap>
+        Three keys protect both accounts: Spending is available for daily payments, while every Savings send requires
+        your hardware key.
+      </Text>
       <Section>
-        <KeyCard icon={<FingerprintIcon />} title='This device' role='Daily spend with Face ID' />
+        <KeyCard icon={<FingerprintIcon />} title='This device' role='Approves every send' />
         <KeyCard
           icon={<ShieldCheckOutlineIcon />}
           title='Hardware'
-          role='This device + hardware moves everything, including Savings'
+          role='Required to send from Savings or move everything without the service'
         />
-        <KeyCard icon={<ServerIcon />} title='Vault service' role='Helps with daily spend. Can’t move Savings.' />
+        <KeyCard
+          icon={<ServerIcon />}
+          title='Vault service'
+          role='Co-signs Spending within your limits. Can’t move Savings.'
+        />
       </Section>
       <KeyCard
         icon={<SafeIcon />}
         title='Recovery'
-        role='Optional. If you lose a key, start a waiting period. Cancel if it wasn’t you.'
+        role='Optional: start a waiting period after losing a key, then cancel it if the request wasn’t yours.'
       />
     </OnboardLayout>
   )

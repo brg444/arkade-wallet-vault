@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   allowPasskey,
   bytesToBase64Url,
   deviceSigningOptions,
   isCoarsePhone,
+  isPlatformPasskeyAvailable,
   passkeyCreateOptions,
   passkeyGetOptions,
   passkeyTransports,
@@ -11,9 +12,13 @@ import {
 } from './webauthn'
 
 const original = navigator.userAgent
+const originalCredentials = Object.getOwnPropertyDescriptor(navigator, 'credentials')
 
 afterEach(() => {
   Object.defineProperty(navigator, 'userAgent', { configurable: true, value: original })
+  if (originalCredentials) Object.defineProperty(navigator, 'credentials', originalCredentials)
+  else delete (navigator as Navigator & { credentials?: CredentialsContainer }).credentials
+  vi.unstubAllGlobals()
 })
 
 function setUA(value: string) {
@@ -21,6 +26,20 @@ function setUA(value: string) {
 }
 
 describe('passkey options', () => {
+  it('checks for a user-verifying authenticator before enrollment', async () => {
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { create: vi.fn() },
+    })
+    vi.stubGlobal('PublicKeyCredential', {
+      isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(true),
+    })
+    expect(await isPlatformPasskeyAvailable()).toBe(true)
+
+    vi.mocked(PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable).mockResolvedValue(false)
+    expect(await isPlatformPasskeyAvailable()).toBe(false)
+  })
+
   it('creates an on-device Face ID passkey on iPhone', () => {
     setUA('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')
     expect(isCoarsePhone()).toBe(true)

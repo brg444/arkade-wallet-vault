@@ -12,7 +12,7 @@ import {
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { zeroBytes } from '../lib/vault/ceremony/directauth'
 import { broadcastTx, confirmedSpendables, fetchAddressUtxos } from '../lib/vault/esplora'
-import type { VaultHistoryItem } from '../lib/vault/history'
+import { recentAccountHistory, type VaultHistoryItem } from '../lib/vault/history'
 import {
   buildSavingsPsbt,
   finalizeSavingsPsbt,
@@ -62,6 +62,10 @@ export type { VaultAccount, VaultContextProps, VaultScreen, VaultSpend } from '.
 const DEFAULT_FEE = DEFAULT_SPEND_FEE_SATS
 const LIVE_FEE = 1500
 
+export function vaultDraftFee(account: VaultAccount, liveNetwork: boolean): number {
+  return account === 'spend' ? 0 : liveNetwork ? LIVE_FEE : DEFAULT_FEE
+}
+
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
@@ -72,7 +76,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [enrollment, setEnrollment] = useState<EnrollmentSecrets | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: DEFAULT_FEE })
+  const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: 0 })
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
   const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | ''>('')
@@ -138,7 +142,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!status || status.network !== 'mutinynet') return
-    setSpend((prev) => (prev.fee === DEFAULT_FEE ? { ...prev, fee: LIVE_FEE } : prev))
+    if (account === 'savings') {
+      setSpend((prev) => (prev.fee === LIVE_FEE ? prev : { ...prev, fee: LIVE_FEE }))
+    }
     setSetup((prev) => {
       const next = {
         ...prev,
@@ -151,7 +157,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       saveSetupPlan(next)
       return next
     })
-  }, [status])
+  }, [account, status])
 
   const persist = useCallback((next: VaultSetupPlan) => {
     setSetup(next)
@@ -163,20 +169,35 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
   const liveNetwork = (status?.network || deployment?.network) === 'mutinynet'
+  const selectAccount = useCallback(
+    (next: VaultAccount) => {
+      setAccount(next)
+      setSpend((previous) => ({ ...previous, fee: vaultDraftFee(next, liveNetwork) }))
+    },
+    [liveNetwork],
+  )
   const reportError = useCallback((message: string) => setError(message), [])
   const onBoarded = useCallback((txid: string) => {
     setLastTxid(txid)
     setLastTxKind('vtxo')
   }, [])
-  const { boardingInProgress, history, refreshBalance, savingsSats, vtxoMaxCoin, vtxoSpendingSats } = useVaultBalances({
+  const {
+    balanceError,
+    balancesLoaded,
+    boardingInProgress,
+    history,
+    refreshBalance,
+    refreshingBalance,
+    savingsSats,
+    vtxoSpendingSats,
+  } = useVaultBalances({
     addressPin,
     busy,
     enrollment,
-    liveFeeSats: LIVE_FEE,
     locked,
     onBoarded,
     reportError,
-    setSpend,
+    setStatus,
     status,
   })
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
@@ -185,6 +206,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
   const clearError = useCallback(() => reportError(''), [reportError])
+
+  useEffect(() => {
+    setSelectedTx((current) => {
+      if (!current) return current
+      return history.find((item) => item.account === current.account && item.txid === current.txid) || current
+    })
+  }, [history])
   const {
     backupRecoveryKit,
     downloadRecoveryKit,
@@ -267,7 +295,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const { enableOtherDevices, enroll, signIn } = useVaultSession({
     enrollment,
-    refreshBalance,
     reportError,
     sealPlan,
     setAddressPin,
@@ -284,19 +311,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     (draft: Partial<VaultSpend>) => {
       setSpend((prev) => {
         const next = { ...prev, ...draft }
-        if (account === 'spend' && status?.enrolled) {
-          next.fee =
-            isVaultArkAddress(next.address, status.network) && vtxoMaxCoin >= next.amount + DUST_SATS
-              ? 0
-              : liveNetwork
-                ? LIVE_FEE
-                : next.fee
-        }
+        next.fee = vaultDraftFee(account, liveNetwork)
         return next
       })
       setError('')
     },
-    [account, liveNetwork, status?.enrolled, status?.network, vtxoMaxCoin],
+    [account, liveNetwork],
   )
 
   const reviewSpend = useCallback(async () => {
@@ -363,21 +383,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [account, enrollment, savingsSats, setup.txCapSats, spend, status, vtxoSpendingSats])
 
   const finishBroadcast = useCallback(
-    async (txid: string, kind: 'onchain' | 'vtxo' = 'onchain') => {
+    async (txid: string, kind: 'onchain' | 'vtxo' = 'onchain', authoritativeFee?: number) => {
       setLastTxid(txid)
       setLastTxKind(kind)
-      setLastSend(spend)
-      setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
+      setLastSend(authoritativeFee === undefined ? spend : { ...spend, fee: authoritativeFee })
+      setSpend({ address: '', amount: 0, fee: vaultDraftFee(account, liveNetwork) })
       setHandoffPsbt('')
       if (status?.vaultId) await refreshBalance(status.vaultId)
-      if (enrollment?.vaultId) {
-        const live = await fetchVaultStatus(undefined, enrollment.vaultId)
-        setStatus(live)
-        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
-      }
       setScreen('success')
     },
-    [enrollment, liveNetwork, refreshBalance, spend, status],
+    [account, liveNetwork, refreshBalance, spend, status],
   )
 
   const approveSavingsSend = useCallback(async () => {
@@ -457,11 +472,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
         try {
           const result = await sendVaultVtxo(enrollment, status, spend.address, spend.amount)
-          await finishBroadcast(result.txid, 'vtxo')
+          await finishBroadcast(result.txid, 'vtxo', result.feeSats)
           return
         } catch (err) {
           if (isVtxoReceiptPendingError(err)) {
-            await finishBroadcast(err.txid, 'vtxo')
+            await finishBroadcast(err.txid, 'vtxo', err.feeSats)
             return
           }
           if (status.vaultId) await refreshBalance(status.vaultId)
@@ -489,14 +504,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     spend,
     spendingArkAddress,
     status,
-    vtxoMaxCoin,
+    vtxoSpendingSats,
   ])
 
   const reset = useCallback(() => {
     setSessionLocked(true)
     setLocked(true)
     setError('')
-    setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
+    setSpend({ address: '', amount: 0, fee: 0 })
     setLastSend(null)
     setLastTxid('')
     setLastTxKind('')
@@ -504,7 +519,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScanOnSend(false)
     setHandoffPsbt('')
     setScreen('welcome')
-  }, [liveNetwork])
+  }, [])
 
   const value = useMemo<VaultContextProps>(
     () => ({
@@ -516,6 +531,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
+      balanceError,
+      balancesLoaded,
       boardingAddress,
       boardingInProgress,
       restoreRecoveryKit,
@@ -541,7 +558,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       locked,
       lastTxid,
       lastTxKind,
-      history: history.filter((item) => item.account === account),
+      history: recentAccountHistory(history, account),
       selectedTx,
       openTx: (tx) => {
         setSelectedTx(tx)
@@ -564,10 +581,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       networkLabel,
       spendingArkAddress,
       refreshBalance,
+      refreshingBalance,
       reset,
       reviewSpend,
       openSendScan: () => {
-        setAccount('spend')
+        selectAccount('spend')
         setScanOnSend(true)
         setError('')
         setScreen('send')
@@ -577,7 +595,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       savingsAddress,
       savingsSats,
       screen: loaded ? screen : 'welcome',
-      setAccount,
+      setAccount: selectAccount,
       setSpendDraft,
       setup,
       signIn,
@@ -595,6 +613,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
+      balanceError,
+      balancesLoaded,
       boardingAddress,
       boardingInProgress,
       restoreRecoveryKit,
@@ -631,19 +651,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverEntry,
       recoverExit,
       refreshBalance,
+      refreshingBalance,
       reset,
       reviewSpend,
       scanOnSend,
       savingsAddress,
       savingsSats,
       screen,
+      selectAccount,
       setSpendDraft,
       setup,
       spend,
       status?.enrolled,
       status?.periodSpent,
       vtxoSpendingSats,
-      vtxoMaxCoin,
     ],
   )
 

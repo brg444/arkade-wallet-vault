@@ -54,6 +54,7 @@ export default function Input({
   return (
     <InputContainer label={label} right={right}>
       <input
+        aria-label={label}
         max={max}
         min={min}
         ref={input}

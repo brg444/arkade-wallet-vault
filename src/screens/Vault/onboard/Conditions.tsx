@@ -19,7 +19,7 @@ export default function VaultConditions() {
       title='Daily limits'
       step={4}
       onBack={() => navigate('recovery')}
-      actions={<Button onClick={confirmConditions} label='Continue' />}
+      actions={<Button onClick={confirmConditions} label='Review setup' />}
     >
       <Text wrap>These limits are set by the Vault Program. This device can’t raise them.</Text>
       <PolicyTimeline
@@ -30,9 +30,9 @@ export default function VaultConditions() {
         network={network}
       />
       <Text color='neutral-600' tiny wrap>
-        {prettyAmount(txCap)} per send · {prettyAmount(daily)} a day. Lose this device and start recovery with hardware:
-        wait {waitLabel(PROGRAM_CSV.hardware, network)}. Lose hardware and start it from this device: wait{' '}
-        {waitLabel(PROGRAM_CSV.phone, network)}. Cancel either one if it wasn’t you.
+        Spending allows {prettyAmount(txCap)} per send and {prettyAmount(daily)} per day. Recovery with hardware waits{' '}
+        {waitLabel(PROGRAM_CSV.hardware, network)} after losing this device. Recovery from this device waits{' '}
+        {waitLabel(PROGRAM_CSV.phone, network)} after losing hardware.
       </Text>
     </OnboardLayout>
   )

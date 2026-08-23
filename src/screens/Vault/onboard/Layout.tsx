@@ -34,9 +34,12 @@ export function OnboardLayout({
         <Padded>
           <FlexCol gap='1.15rem'>
             <StepRail step={step} total={total} />
-            <Text color='neutral-600' tiny>
-              {STEP_LABELS[step - 1] || `Step ${step}`} · {step} of {total}
-            </Text>
+            <p className='vault-step-label' aria-live='polite'>
+              <span>{STEP_LABELS[step - 1] || `Step ${step}`}</span>
+              <span>
+                Step {step} of {total}
+              </span>
+            </p>
             {children}
             <ErrorMessage error={Boolean(error)} text={error || ''} />
           </FlexCol>
