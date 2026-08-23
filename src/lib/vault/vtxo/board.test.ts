@@ -1,6 +1,6 @@
-import { DefaultVtxo, SingleKey } from '@arkade-os/sdk'
+import { DefaultVtxo, IndexedDBIntentRepository, SingleKey, Wallet, type ExtendedCoin } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
@@ -13,12 +13,18 @@ import {
   boardingFailureHold,
   createVaultBoardingStorage,
   disposeVaultBoardingResources,
+  findConfirmedBoardingCoins,
   nextVaultBoardingAction,
+  settleVaultBoarding,
   vaultBoardingStorageNames,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
   withVaultBoardingSecret,
 } from './board'
+
+function boardingCoin(txid: string, vout: number, value: number, confirmed = true): ExtendedCoin {
+  return { txid, vout, value, status: { confirmed } } as ExtendedCoin
+}
 
 async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array }> {
   const phone = SingleKey.fromPrivateKey(hex.decode('01'.padStart(64, '0')))
@@ -171,6 +177,49 @@ describe('vault-board-v1', () => {
     expect(nextVaultBoardingAction({ confirmed: 0, total: 49_000 })).toBe('wait')
     expect(nextVaultBoardingAction({ confirmed: 49_000, total: 49_000 })).toBe('settle')
     expect(nextVaultBoardingAction({ confirmed: 0, total: 0 })).toBe('idle')
+  })
+
+  it('excludes a locked boarding outpoint while retaining another confirmed coin', async () => {
+    const locked = boardingCoin('11'.repeat(32), 0, 20_000)
+    const available = boardingCoin('22'.repeat(32), 1, 30_000)
+    const unconfirmed = boardingCoin('33'.repeat(32), 2, 40_000, false)
+    const wallet = { getBoardingUtxos: async () => [locked, available, unconfirmed] }
+
+    await expect(findConfirmedBoardingCoins(wallet, new Set([`${locked.txid}:${locked.vout}`]))).resolves.toEqual([
+      available,
+    ])
+  })
+
+  it('returns no confirmed boarding coin when the only coin is locked', async () => {
+    const locked = boardingCoin('11'.repeat(32), 0, 20_000)
+    const wallet = { getBoardingUtxos: async () => [locked] }
+
+    await expect(findConfirmedBoardingCoins(wallet, new Set([`${locked.txid}:${locked.vout}`]))).resolves.toEqual([])
+  })
+
+  it('aborts before wallet creation when the intent-lock snapshot fails', async () => {
+    const { current } = await status()
+    const readLocks = vi
+      .spyOn(IndexedDBIntentRepository.prototype, 'getLockedVtxoOutpoints')
+      .mockRejectedValue(new Error('intent lock read failed'))
+    const createWallet = vi.spyOn(Wallet, 'create')
+    const locks: VaultLockManager = {
+      request: async <T>(
+        _name: string,
+        _options: { mode: 'exclusive'; ifAvailable?: boolean },
+        callback: (lock: unknown) => Promise<T>,
+      ) => callback({}),
+    }
+
+    await expect(
+      withVaultBoardingLock(
+        current.vaultId,
+        (lock) => settleVaultBoarding(lock, hex.decode('01'.padStart(64, '0')), current),
+        locks,
+      ),
+    ).rejects.toThrow(/intent lock read failed/)
+    expect(readLocks).toHaveBeenCalledOnce()
+    expect(createWallet).not.toHaveBeenCalled()
   })
 
   it('reconstructs the distinct standard boarding contract pinned by status', async () => {
