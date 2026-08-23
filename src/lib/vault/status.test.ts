@@ -1,10 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from './constants'
+import { pinEnrolledStatus } from './pin'
 import { SAVINGS_TEMPLATE } from './program/constants'
-import { parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
+import { fetchVaultStatus, parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
 import type { VaultStatus } from './types'
 
 const VAULT_ID = 'vault-test-current'
+
+afterEach(() => {
+  localStorage.clear()
+  vi.unstubAllGlobals()
+})
 
 function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
   return {
@@ -23,6 +29,18 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     txCap: 50_000,
     absoluteFeeCap: 5_000,
     feerateCapSatVb: 10,
+    vtxoVaultCosignerPub: '02' + '11'.repeat(32),
+    vtxoExitDelay: 4608,
+    vtxoExitDelayUnit: 'seconds',
+    spendingArkAddress: 'tark1spending',
+    spendingArkScript: '5120' + '22'.repeat(32),
+    vtxoDelegatePub: '02' + '33'.repeat(32),
+    vtxoBoardingActive: true,
+    vtxoBoardingProgram: 'vault-board-v1',
+    vtxoBoardingAddress: 'tb1pboarding',
+    vtxoBoardingScript: '5120' + '44'.repeat(32),
+    vtxoBoardingExitDelay: 604672,
+    vtxoBoardingExitDelayUnit: 'seconds',
     ...over,
   }
 }
@@ -64,11 +82,24 @@ describe('status identity binding', () => {
       requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery, recoveryPub: `03${'cc'.repeat(32)}` }), VAULT_ID),
     ).toThrow(/recovery key fields/)
   })
+
+  it('fails closed when a pinned enrolled vault is reported as unenrolled', async () => {
+    pinEnrolledStatus(sampleStatus())
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(sampleStatus({ enrolled: false })), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
+    )
+    await expect(fetchVaultStatus(undefined, VAULT_ID)).rejects.toThrow(/not enrolled/)
+  })
 })
 
 describe('pingVaultService', () => {
-  afterEach(() => vi.unstubAllGlobals())
-
   it('is online when public status answers this release', async () => {
     vi.stubGlobal(
       'fetch',

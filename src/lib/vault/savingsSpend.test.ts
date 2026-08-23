@@ -63,6 +63,18 @@ function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDes
     arkadeCosignerBasePub: descriptor.keys.arkadeCosignerBase,
     arkadeCosignerOrigin: descriptor.arkadeCosigner.origin,
     arkadeCosignerVersion: descriptor.arkadeCosigner.version,
+    vtxoVaultCosignerPub: '02' + '11'.repeat(32),
+    vtxoExitDelay: 4608,
+    vtxoExitDelayUnit: 'seconds',
+    spendingArkAddress: 'tark1spending',
+    spendingArkScript: '5120' + '22'.repeat(32),
+    vtxoDelegatePub: '02' + '33'.repeat(32),
+    vtxoBoardingActive: true,
+    vtxoBoardingProgram: 'vault-board-v1',
+    vtxoBoardingAddress: BOARDING_DEST,
+    vtxoBoardingScript: '5120' + '44'.repeat(32),
+    vtxoBoardingExitDelay: 604672,
+    vtxoBoardingExitDelayUnit: 'seconds',
   }
 }
 
