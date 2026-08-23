@@ -39,8 +39,18 @@ const STATUS: VaultStatus = {
   txCap: 50_000,
   absoluteFeeCap: 1_500,
   feerateCapSatVb: 10,
+  vtxoVaultCosignerPub: '02' + '11'.repeat(32),
+  vtxoExitDelay: 4608,
+  vtxoExitDelayUnit: 'seconds',
   spendingArkAddress: 'tark1spending',
+  spendingArkScript: '5120' + '22'.repeat(32),
+  vtxoDelegatePub: '02' + '33'.repeat(32),
   vtxoBoardingActive: false,
+  vtxoBoardingProgram: 'vault-board-v1',
+  vtxoBoardingAddress: 'tb1pboarding',
+  vtxoBoardingScript: '5120' + '44'.repeat(32),
+  vtxoBoardingExitDelay: 604672,
+  vtxoBoardingExitDelayUnit: 'seconds',
 }
 
 const mockedStatus = vi.mocked(fetchVaultStatus)
