@@ -296,6 +296,8 @@ export async function settleVaultBoarding(
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
   const { wallet, info, storage } = await createBoardingWallet(phoneSecret, status)
+  let result: { txid: string; amountSats: number } | undefined
+  let primaryError: unknown
   try {
     const coins = await findConfirmedBoardingCoins(wallet, txid)
     if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
@@ -304,8 +306,18 @@ export async function settleVaultBoarding(
       inputs: coins,
       outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
     })
-    return { txid: commitmentTxid, amountSats }
-  } finally {
-    await disposeVaultBoardingResources(wallet, storage)
+    result = { txid: commitmentTxid, amountSats }
+  } catch (error) {
+    primaryError = error
   }
+  try {
+    await disposeVaultBoardingResources(wallet, storage)
+  } catch (cleanupError) {
+    if (primaryError !== undefined) {
+      throw new AggregateError([primaryError, cleanupError], 'Boarding settlement and cleanup failed')
+    }
+    console.error('Boarding settled, but temporary SDK resources did not close cleanly', cleanupError)
+  }
+  if (primaryError !== undefined) throw primaryError
+  return result!
 }
