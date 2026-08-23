@@ -53,6 +53,18 @@ function intentRow(overrides: Partial<ArkIntent> = {}): ArkIntent {
   }
 }
 
+/** Runtime-compatible fixture until the installed SDK type includes the frozen state. */
+function ambiguousIntentRow(): ArkIntent {
+  const row = intentRow()
+  Object.defineProperty(row, 'state', {
+    configurable: true,
+    enumerable: true,
+    value: 'registration_ambiguous',
+    writable: true,
+  })
+  return row
+}
+
 class FakeIntentRepository {
   readonly rows = new Map<string, ArkIntent>()
   readonly saveIntent = vi.fn(async (intent: ArkIntent) => {
@@ -182,14 +194,7 @@ describe('VaultArkProvider event stream', () => {
   })
 
   it('persists an accepted UUID over the SDK registration_ambiguous write-ahead marker', async () => {
-    const ambiguous = intentRow()
-    Object.defineProperty(ambiguous, 'state', {
-      configurable: true,
-      enumerable: true,
-      value: 'registration_ambiguous',
-      writable: true,
-    })
-    const repo = new FakeIntentRepository(ambiguous)
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
     globalThis.fetch = vi
       .fn()
       .mockResolvedValue(new Response(JSON.stringify({ intentId: 'queued-uuid' }), { status: 200 }))
@@ -202,6 +207,82 @@ describe('VaultArkProvider event stream', () => {
       registerProof: registerRequest.proof,
       registerProofMessage: Intent.encodeMessage(registerRequest.message),
     })
+  })
+
+  it('retries one identical request after a lost accepted response, then persists the retained UUID', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Load failed after request delivery'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ intentId: 'retained-uuid' }), { status: 200 }))
+    globalThis.fetch = fetchMock
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).resolves.toBe('retained-uuid')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const firstBody = fetchMock.mock.calls[0][1]?.body
+    const secondBody = fetchMock.mock.calls[1][1]?.body
+    expect(secondBody).toBe(firstBody)
+    expect(repo.rows.get('proof-txid')).toMatchObject({
+      intentId: 'retained-uuid',
+      state: 'waiting_for_batch',
+    })
+  })
+
+  it('makes only two attempts and leaves registration_ambiguous locked when both results are ambiguous', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Load failed after request delivery'))
+      .mockResolvedValueOnce(new Response('Bad Gateway', { status: 502, statusText: 'Bad Gateway' }))
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/unavailable/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
+  })
+
+  it('does not retry an explicit Operator proof rejection', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(arkError(23, 'INVALID_INTENT_PROOF', 'no matching intents found for intent proof'), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/no matching intents/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
+  })
+
+  it('does not retry an explicit rate-limit response', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('rate limited', { status: 429, statusText: 'Too Many Requests' }))
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/429/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+  })
+
+  it('retries one malformed successful response but never persists an empty intent ID', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/no intent ID/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
   })
 
   it('rejoins a committed UUID only when the duplicate has the exact proof and message', async () => {
@@ -288,12 +369,14 @@ describe('VaultArkProvider event stream', () => {
     await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/no unique pre-registered proof and message/)
   })
 
-  it('cannot recover a server-assigned UUID when the transport loses the HTTP response', async () => {
-    const repo = new FakeIntentRepository(intentRow())
+  it('cannot recover a server-assigned UUID when both bounded HTTP responses are lost', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
     globalThis.fetch = vi.fn().mockRejectedValue(new TypeError('Load failed'))
     const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
 
     await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/request failed/)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
     expect(repo.rows.get('proof-txid')?.intentId).toBeUndefined()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
   })
 })
