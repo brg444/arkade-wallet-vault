@@ -209,6 +209,11 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
   const storage = createVaultBoardingStorage(status.vaultId)
   let wallet: Wallet | undefined
   try {
+    const lockedOutpoints = new Set(
+      (await storage.intentRepository.getLockedVtxoOutpoints()).map(({ txid, vout }) =>
+        boardingOutpointKey(txid, vout),
+      ),
+    )
     const { operator, info } = await liveBoardingOperator(status)
     wallet = await Wallet.create({
       identity,
@@ -223,7 +228,7 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
     if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
       throw new Error('SDK derived a different vault-board-v1 address')
     }
-    return { wallet, info, storage }
+    return { wallet, info, storage, lockedOutpoints }
   } catch (error) {
     try {
       await disposeVaultBoardingResources(wallet, storage)
@@ -281,10 +286,27 @@ function boardingOutputAmount(
   return amount
 }
 
-async function findConfirmedBoardingCoins(wallet: Wallet, txid?: string): Promise<ExtendedCoin[]> {
+function boardingOutpointKey(txid: string, vout: number): string {
+  const normalizedTxid = String(txid || '').toLowerCase()
+  if (!/^[0-9a-f]{64}$/.test(normalizedTxid) || !Number.isSafeInteger(vout) || vout < 0 || vout > 0xffffffff) {
+    throw new Error('Invalid locked boarding outpoint')
+  }
+  return `${normalizedTxid}:${vout}`
+}
+
+export async function findConfirmedBoardingCoins(
+  wallet: Pick<Wallet, 'getBoardingUtxos'>,
+  lockedOutpoints: ReadonlySet<string>,
+  txid?: string,
+): Promise<ExtendedCoin[]> {
   const coins = await wallet.getBoardingUtxos()
   return coins
-    .filter((coin) => coin.status.confirmed && (!txid || coin.txid === txid))
+    .filter(
+      (coin) =>
+        coin.status.confirmed &&
+        (!txid || coin.txid === txid) &&
+        !lockedOutpoints.has(boardingOutpointKey(coin.txid, coin.vout)),
+    )
     .sort((a, b) => b.value - a.value)
 }
 
@@ -295,11 +317,11 @@ export async function settleVaultBoarding(
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
-  const { wallet, info, storage } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info, storage, lockedOutpoints } = await createBoardingWallet(phoneSecret, status)
   let result: { txid: string; amountSats: number } | undefined
   let primaryError: unknown
   try {
-    const coins = await findConfirmedBoardingCoins(wallet, txid)
+    const coins = await findConfirmedBoardingCoins(wallet, lockedOutpoints, txid)
     if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
     const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
     const commitmentTxid = await wallet.settle({
