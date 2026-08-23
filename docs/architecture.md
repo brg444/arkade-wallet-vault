@@ -31,14 +31,28 @@ generic Lightning integrations.
 
 Each VTXO send has a client-generated operation ID that is persisted before
 the first mutation. The phone signs the canonical reserve request before the
-wallet contacts the service. Later authorization, checkpoint, submission, and
-finalization stages all reconcile through that server operation after a lost
-response.
+wallet contacts the service. Vault-service authorization, checkpoint, and
+receipt responses reconcile through that server operation after a lost
+response. Before the first Operator submission, the wallet also persists a
+phone-and-VaultCosigner proof for the exact reserved inputs. If the submission
+response is ambiguous, the wallet uses the official SDK pending-transaction
+interface to recover the exact transaction and checkpoints. It never submits
+the operation a second time. An empty or mismatched result remains locked for
+manual resolution.
 
 SDK wallet and contract data use a versioned IndexedDB database per vault.
 Intent state uses a separate per-vault database. Ordinary send recovery uses a
 versioned local record bound to the same vault, destination, amount, and
 operation ID.
+
+Onchain Savings and recovery use `@scure/btc-signer` for Bitcoin addresses,
+Taproot, PSBTs, signing, and finalization. A narrow Esplora adapter discovers
+the fixed program outputs and broadcasts completed transactions. Vault code
+owns only deterministic selection and the versioned Vault-specific transaction
+shapes. The boundary stops before general onchain wallet behavior. Fee estimation,
+descriptor discovery, reorg-aware transaction state, general coin control, or
+address derivation require an established wallet engine such as BDK or the
+corresponding implementation from Arkade Wallet.
 
 ## Trust boundary
 
@@ -48,5 +62,8 @@ complete transaction verification authorize user mutations. The Vault service
 and its ledger remain one protected component so the VaultCosigner cannot sign
 without observing authoritative allowance state.
 
-The current build is Mutinynet-only. It has no mainnet Operator, checkpoint,
-delay, or network defaults.
+The current build is Mutinynet-only. Mainnet uses `https://arkade.computer`
+through the official Arkade SDK. The private mainnet Emulator endpoint and the
+corresponding Contract Pack pins remain to be configured. Mainnet Vault Program
+and policy choices are a later release gate, not part of the current lifecycle
+cleanup.

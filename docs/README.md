@@ -4,8 +4,7 @@
 | ---------------------------------------------------- | --------------------------------------------------------------------------- |
 | [Architecture](architecture.md)                      | Browser, Vault service, Arkade Operator, persistence, and trust boundaries. |
 | [Vault Program](program.md)                          | Savings, Spending, recovery, and the versioned contract.                    |
-| [VTXO boarding](boarding.md)                         | Onchain entry into Spending and observed SDK lifecycle constraints.         |
-| [Interrupted settlement](resumable-settlement.md)    | Fail-closed intent recovery and the Operator abort-or-complete boundary.     |
+| [VTXO boarding](boarding.md)                         | Onchain entry into Spending through the standard SDK settlement flow.       |
 | [Mainnet v2 baseline](mainnet-v2-baseline.md)        | Fresh application boundary, release order, and unresolved gates.            |
 | [Security](security.md)                              | Current guarantees, assumptions, and excluded claims.                       |
 | [Dependency advisories](advisories.md)               | Production audit findings and bundle status.                                |
