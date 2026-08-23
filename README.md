@@ -48,6 +48,17 @@ pnpm start
 The development server listens on
 [http://localhost:3003](http://localhost:3003).
 
+When the local Vault service has a gateway secret, pass the same value only to
+the Vite process:
+
+```bash
+VAULT_GATEWAY_SECRET=<local-gateway-secret> pnpm start
+```
+
+The development proxy adds the private header to `/v1` requests. Never expose
+this value through a `VITE_` variable; variables with that prefix are compiled
+into browser code.
+
 Run the release checks with:
 
 ```bash
