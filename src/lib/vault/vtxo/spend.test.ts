@@ -1036,6 +1036,15 @@ describe('regular VTXO spend coordinator', () => {
     expect(vtxos.map((vtxo) => vtxo.txid)).toEqual(['input', 'change'])
   })
 
+  it('fails instead of returning partial VTXO data beyond the pagination ceiling', async () => {
+    await expect(
+      collectPagedVtxos(async (pageIndex) => ({
+        vtxos: [{ txid: `page-${pageIndex}` }],
+        page: { current: pageIndex, next: pageIndex + 1, total: 257 },
+      })),
+    ).rejects.toThrow(/pagination exceeds the safety limit/)
+  })
+
   it('always supplies the page size required by the deployed indexer', () => {
     expect(VAULT_VTXO_PAGE_SIZE).toBeGreaterThan(0)
     expect(vaultVtxoPage(0)).toEqual({ pageIndex: 0, pageSize: VAULT_VTXO_PAGE_SIZE })
