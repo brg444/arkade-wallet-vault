@@ -41,7 +41,7 @@ describe('frozen wallet protocol domains', () => {
     expect(enroll).toContain('arkade-2fa-vault/kek/v1')
     expect(enroll).toContain('arkade-2fa-vault/direct-p256/v1')
     const binding = readFileSync(resolve(import.meta.dirname, 'passkeyBinding.ts'), 'utf8')
-    expect(binding).toContain('arkade-vault/recovery-binding/v2')
+    expect(binding).toContain('arkade-vault/recovery-binding/v3')
     expect(binding).toContain('arkade-2fa-vault/passkey-proof/v1')
   })
 
