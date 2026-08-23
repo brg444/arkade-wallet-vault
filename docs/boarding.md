@@ -52,9 +52,9 @@ principal is debited once, when a later VTXO payment leaves Spending.
   migrated.
 - The explicit coordinator uses one Web Lock per vault. A supporting browser
   prevents a second tab from registering a competing intent or requesting
-  another device approval. Browsers without Web Locks currently execute
-  without equivalent exclusivity; a durable lease or an explicit capability
-  gate is required before mainnet.
+  another device approval. Boarding and ordinary sends fail closed when Web
+  Locks are unavailable. Mainnet qualification must define the supported
+  browser boundary and cover deterministic two-context races.
 - A boarding settlement can outlive an ordinary HTTP request because it waits
   on the Operator event stream. The Arkade same-origin route must remain a
   direct streaming rewrite. A buffered serverless function breaks the event
@@ -66,14 +66,33 @@ principal is debited once, when a later VTXO payment leaves Spending.
   `Accept: text/event-stream` header explicitly and preserves non-200 Operator
   diagnostics without changing the SDK settlement state machine.
 - arkd gives each registration a random UUID. The proof transaction ID is not
-  the intent ID and cannot reattach a new listener. The SDK writes the returned
-  UUID to its `intentRepository` only after `registerIntent` returns, and treats
-  persistence failures as observational. A crash in that window leaves the
-  Operator intent without a recoverable local ID. The provider must durably
-  commit the ID before reporting success, or the SDK contract must make that
-  persistence mandatory.
-- Deletion cannot match a boarding-only intent until arkd
-  `DeleteIntentsByProof` includes `BoardingInputs`. An intent popped into a
-  confirmation round is also invisible until arkd restores it atomically.
-- A clean event-stream reconnect does not replay a missed `BatchStarted` event.
-  The Operator or SDK needs a read-reconcile path for that lifecycle stage.
+  the intent ID. Candidate arkd changes retain a proof-to-identifier mapping
+  for live and selected intents, so an exact canonical registration retry
+  returns the same UUID and a mutated request fails closed.
+- Candidate SDK changes write the complete request before submission, mark the
+  registration ambiguous before the network call, and durably commit and read
+  back the returned UUID before reporting success. The wallet retries an
+  ambiguous response once with the same signed request while the signing
+  session is alive. Automatic replay after a crash or reload is not complete;
+  the persisted row stays locked pending recovery. Safe reload recovery also
+  needs a restorable signing session and the exact inputs and recipients needed
+  to reconstruct the settlement handler.
+- Candidate SDK input selection treats unreadable intent state as unavailable
+  and excludes inputs held by nonterminal intents from ordinary settlement,
+  balance selection, and boarding. A fully read, unstructured HTTP 429 is the
+  only registration rejection that releases the prepared record; structured
+  errors, malformed responses, transport failures, and duplicate conflicts
+  remain ambiguous and locked.
+- Candidate arkd changes also match `BoardingInputs` during proof-based deletion
+  and restore a selected confirmation set atomically. An exact-identifier
+  lifecycle endpoint reports live, selected, in-progress, or terminal-or-unknown
+  state. Selected and in-progress responses carry the active batch identifier
+  and expiry. Those changes still need an upstream release, deployment, and
+  Redis-backed qualification.
+- A selected intent can recover a missed `BatchStarted` event from the exact
+  lifecycle response. In-progress settlement still needs durable replay of
+  every later signing-stage event required by the handler. Terminal-or-unknown
+  never proves completion or permits the wallet to release inputs.
+
+The protected reload contract and failure-injection requirements are defined in
+[resumable settlement](resumable-settlement.md).

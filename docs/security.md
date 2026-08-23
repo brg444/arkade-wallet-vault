@@ -29,9 +29,13 @@ gates. Real-fund use remains out of scope.
   hardware.
 - Boarding temporarily uses a phone-plus-Operator contract before value reaches
   `vault-policy-v1`. Vault policy does not govern that intermediate.
-- Browser concurrency depends on Web Locks. Unsupported browsers currently run
-  without an equivalent durable lease.
-- Several arkd and SDK intent-recovery cases remain upstream release gates.
+- Browser concurrency depends on Web Locks. Boarding and ordinary sends fail
+  closed when that capability is unavailable.
+- Candidate arkd and SDK intent-lifecycle changes require upstream releases,
+  wallet pins, Redis-backed qualification, automatic exact replay after reload,
+  restoration of the same signing session and settlement handler, and recovery
+  of missed signing-stage events. Candidate SDK selection keeps nonterminal
+  intent inputs locked and fails closed when durable intent state is unreadable.
 - The wallet provides a local recovery watcher, not a continuously available
   watchtower.
 - External hardware support must be qualified against the custom tapscript PSBT
