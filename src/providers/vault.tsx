@@ -38,6 +38,7 @@ import {
   parseCompressedPub,
   planReady,
   saveSetupPlan,
+  sameBip340Key,
   sameRole,
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
@@ -211,7 +212,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('')
       try {
         const hardwarePub = parseCompressedPub(raw, 'hardware key')
-        if (status?.externalOwnerWalletPub && hardwarePub !== status.externalOwnerWalletPub) {
+        if (status?.externalOwnerWalletPub && !sameBip340Key(hardwarePub, status.externalOwnerWalletPub)) {
           throw new Error('This Mutinynet vault requires the hardware key already configured on the service')
         }
         persist({ ...setup, hardwarePub })

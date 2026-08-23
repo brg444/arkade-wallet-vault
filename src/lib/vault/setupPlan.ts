@@ -43,13 +43,17 @@ export function xOnly(pub: string): string {
   return parseCompressedPub(pub).slice(2)
 }
 
-export function sameRole(a: string, b: string): boolean {
+export function sameBip340Key(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false
   try {
     return xOnly(a) === xOnly(b)
   } catch {
     return false
   }
+}
+
+export function sameRole(a: string, b: string): boolean {
+  return sameBip340Key(a, b)
 }
 
 export function planReady(plan: VaultSetupPlan): boolean {
