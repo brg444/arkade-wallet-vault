@@ -181,6 +181,29 @@ describe('VaultArkProvider event stream', () => {
     })
   })
 
+  it('persists an accepted UUID over the SDK registration_ambiguous write-ahead marker', async () => {
+    const ambiguous = intentRow()
+    Object.defineProperty(ambiguous, 'state', {
+      configurable: true,
+      enumerable: true,
+      value: 'registration_ambiguous',
+      writable: true,
+    })
+    const repo = new FakeIntentRepository(ambiguous)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ intentId: 'queued-uuid' }), { status: 200 }))
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).resolves.toBe('queued-uuid')
+    expect(repo.rows.get('proof-txid')).toMatchObject({
+      intentId: 'queued-uuid',
+      state: 'waiting_for_batch',
+      registerProof: registerRequest.proof,
+      registerProofMessage: Intent.encodeMessage(registerRequest.message),
+    })
+  })
+
   it('rejoins a committed UUID only when the duplicate has the exact proof and message', async () => {
     const repo = new FakeIntentRepository(intentRow())
     const cache = intentRepositoryBoardingCache(repo)
