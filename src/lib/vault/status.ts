@@ -103,5 +103,11 @@ export function requireStatusIdentity(status: VaultStatus, expectedVaultId: stri
   if (status.enrolled && (!String(status.savingsAddress || '').trim() || !String(status.savingsScript || '').trim())) {
     throw new Error('enrolled status is missing the Savings descriptor')
   }
-  return status
+  const recoveryPub = String(status.recoveryPub || '').trim()
+  const recoveryKeyPub = String(status.recoveryKeyPub || '').trim()
+  if (recoveryPub && recoveryKeyPub && recoveryPub !== recoveryKeyPub) {
+    throw new Error('status recovery key fields do not match')
+  }
+  const recovery = recoveryKeyPub || recoveryPub
+  return recovery ? { ...status, recoveryPub: recovery, recoveryKeyPub: recovery } : status
 }
