@@ -1,4 +1,11 @@
-import { Intent, RestArkProvider, type ArkIntent, type IntentRepository, type SettlementEvent } from '@arkade-os/sdk'
+import {
+  Intent,
+  RestArkProvider,
+  isRetryableProviderError,
+  type ArkIntent,
+  type IntentRepository,
+  type SettlementEvent,
+} from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { sha256 } from '@noble/hashes/sha2.js'
 
@@ -25,6 +32,13 @@ export class VaultIntentPersistenceError extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
     this.name = 'VaultIntentPersistenceError'
+  }
+}
+
+class AmbiguousIntentRegistrationResponseError extends Error {
+  constructor() {
+    super('Operator returned no intent ID after registration')
+    this.name = 'AmbiguousIntentRegistrationResponseError'
   }
 }
 
@@ -170,6 +184,13 @@ function isDuplicatedInput(error: unknown): boolean {
   return message.includes('duplicated input') && message.includes('already registered by another intent')
 }
 
+function isAmbiguousRegisterFailure(error: unknown): boolean {
+  if (error instanceof AmbiguousIntentRegistrationResponseError || error instanceof SyntaxError) return true
+  if (!isRetryableProviderError(error)) return false
+  const message = error instanceof Error ? error.message : ''
+  return !/^arkade unavailable:\s*429\b/i.test(message)
+}
+
 /**
  * Fetch SSE instead of native EventSource so HTTP failures keep status/body.
  * Reconnect after a clean EOF does not replay a missed BatchStarted; that ack
@@ -194,7 +215,18 @@ export class VaultArkProvider extends RestArkProvider {
   ): ReturnType<RestArkProvider['registerIntent']> {
     const fingerprint = boardingIntentFingerprint(intent)
     try {
-      const intentId = await super.registerIntent(intent)
+      const registerExactly = async (): Promise<string> => {
+        const intentId = await super.registerIntent(intent)
+        if (typeof intentId !== 'string' || !intentId.trim()) throw new AmbiguousIntentRegistrationResponseError()
+        return intentId
+      }
+      let intentId: string
+      try {
+        intentId = await registerExactly()
+      } catch (error) {
+        if (!isAmbiguousRegisterFailure(error)) throw error
+        intentId = await registerExactly()
+      }
       const accepted = { intentId, fingerprint }
       await this.intentCache.persistAccepted(accepted, intent)
       this.intentCache.set(accepted)
