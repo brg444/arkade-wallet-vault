@@ -93,6 +93,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   lifecycle response. In-progress settlement still needs durable replay of
   every later signing-stage event required by the handler. Terminal-or-unknown
   never proves completion or permits the wallet to release inputs.
+- Current arkd stores cannot reconstruct that later replay. The unsigned VTXO
+  tree chunks and ordered nonce events are not durable, while live signing and
+  forfeit stores are reset with the round. Mainnet recovery therefore requires
+  a persist-before-publish, exact-intent event journal and a cursor that replays
+  an authorized prefix before handing the same connection to live events.
 
 The protected reload contract and failure-injection requirements are defined in
 [resumable settlement](resumable-settlement.md).

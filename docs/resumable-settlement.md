@@ -18,6 +18,13 @@ in-progress response includes the active batch identifier and expiry. This
 recovers the proposal identity, not the ephemeral signer session or every event
 needed to finish its signing protocol.
 
+The current Operator cannot reconstruct the missing protocol prefix after tree
+signing starts. The unsigned tree exists only in the finalization goroutine
+before publication, and public nonces, topic mappings, and signing progress are
+split across live stores that reset with the round. Persisted round events begin
+again only after finalization data exists. A larger status response cannot fill
+that gap safely.
+
 A reload loses the random MuSig2 `TreeSignerSession`. A replacement session has
 a different public key from the one committed by the registration message. The
 current intent row also lacks the complete VTXO or boarding inputs, recipients,
@@ -59,8 +66,10 @@ unlock before handling protected state. It then:
    key matches the cosigner key in the stored registration message.
 3. Reconstructs the inputs, recipients, and batch handler, then reproduces the
    exact registration request bytes.
-4. Opens the event stream before any registration retry or acknowledgement.
-5. Reads the exact Operator intent status.
+4. Opens the exact-intent replay cursor before any registration retry or
+   acknowledgement. The cursor atomically captures its high-water mark, replays
+   the authorized prefix, and then tails later events on the same stream.
+5. Reads the exact Operator intent status within the same batch generation.
 
 The Operator status drives a conservative transition:
 
@@ -70,6 +79,29 @@ The Operator status drives a conservative transition:
 | `SELECTED` | Recreate the retained `BatchStarted` event from its batch ID and expiry, acknowledge the exact intent ID, and continue with the restored handler. |
 | `IN_PROGRESS` | Keep the operation locked. Resume only when the Operator or SDK can supply every missed signing-stage event required by the handler. |
 | `TERMINAL_OR_UNKNOWN` | Reconcile the exact inputs and expected outputs with the indexer. Never infer settlement or release from status absence. |
+
+## Operator replay journal
+
+Each batch generation needs an append-only journal containing exact intent
+membership and ordered event records. The Operator persists an event and its
+authorized topics before publishing it. Every record binds the batch ID,
+generation, monotonic sequence, event payload, and topic capability. A replay
+request authenticates one exact intent and returns only its authorized shared
+or intent-specific records.
+
+The cursor establishes membership and a high-water mark in one snapshot,
+returns the ordered prefix after the requested sequence, and hands the same
+connection to live publication without a gap or duplicate. Restoring an intent
+to the live queue atomically invalidates its selected generation. Terminal and
+reconciliation records survive later rounds; expired, missing, or corrupt
+retention returns replay unavailable, never a synthetic terminal outcome.
+
+For an Operator restart before transaction broadcast, the initial mainnet
+posture is durable batch failure and atomic intent restoration. Once broadcast
+may have occurred, absence is not proof of failure: the record remains unknown
+until chain and indexer reconciliation establishes an outcome. Persisting the
+Operator's own private MuSig2 coordinator state for restart continuation is a
+separate design and review boundary.
 
 An exact proof-based deletion with an unambiguous response may release an
 unaccepted intent. An indexer result may prove that inputs were consumed or
@@ -98,6 +130,8 @@ Release tests must inject failure at each boundary:
   body delivery;
 - before and after durable identifier persistence;
 - before `BatchStarted`, after acknowledgement, and during every signing stage;
+- between journal persistence and publication, during replay high-water capture,
+  and while a new event arrives at the replay-to-live handoff;
 - during snapshot read, session restoration, and repository compare-and-set;
 - across reloads, worker restarts, and two live tabs; and
 - after active Operator status retention expires.
@@ -105,6 +139,10 @@ Release tests must inject failure at each boundary:
 Every test must establish both outcomes: no locked input becomes spendable, and
 a recoverable operation resumes with the same request, session key, inputs,
 recipients, and expected outputs.
+
+Journal tests must also reject stale batch generations, mixed batch IDs,
+unauthorized intent topics, missing ordered prefixes, and a globally delivered
+failure that does not match the operation's established batch ID.
 
 This contract applies to ordinary SDK settlement and boarding. Lightning uses a
 separate durable saga after VTXO Spending and boarding are qualified.
