@@ -10,6 +10,7 @@ import type { VaultStatus } from './types'
 import { familyFromDescriptor } from './program/descriptor'
 import { loadLocalKit } from './program/kitStore'
 import { assertLiveKit } from './program/liveKit'
+import { sameBip340Key } from './setupPlan'
 import { deviceSigningOptions, prfExtension, prfFrom } from './webauthn'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
@@ -65,10 +66,13 @@ export function buildSavingsPsbt(input: {
   if (kit.descriptor.savings.address !== pin.savingsAddress) {
     throw new Error('Savings map does not match the pinned address')
   }
-  if (kit.descriptor.keys.phoneBip340 !== input.phonePub) {
+  if (!sameBip340Key(kit.descriptor.keys.phoneBip340, input.phonePub)) {
     throw new Error('Savings map does not match this device key')
   }
-  if (input.status.externalOwnerWalletPub && kit.descriptor.keys.hardware !== input.status.externalOwnerWalletPub) {
+  if (
+    input.status.externalOwnerWalletPub &&
+    !sameBip340Key(kit.descriptor.keys.hardware, input.status.externalOwnerWalletPub)
+  ) {
     throw new Error('Savings map does not match the hardware key')
   }
   const tree = familyFromDescriptor(kit.descriptor).savings
