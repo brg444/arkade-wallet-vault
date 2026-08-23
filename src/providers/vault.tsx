@@ -189,7 +189,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     refreshBalance,
     refreshingBalance,
     savingsSats,
-    vtxoMaxCoin,
     vtxoSpendingSats,
   } = useVaultBalances({
     addressPin,
@@ -505,7 +504,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     spend,
     spendingArkAddress,
     status,
-    vtxoMaxCoin,
+    vtxoSpendingSats,
   ])
 
   const reset = useCallback(() => {
@@ -666,7 +665,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       status?.enrolled,
       status?.periodSpent,
       vtxoSpendingSats,
-      vtxoMaxCoin,
     ],
   )
 

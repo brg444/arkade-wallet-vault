@@ -127,16 +127,27 @@ export function historyFromVtxos(
 ): VaultHistoryItem[] {
   const unique = uniqueHistoryCoins(coins)
   const rows: VaultHistoryItem[] = []
-  const spentByArk = new Set<string>()
+  const arkInputs = new Map<string, VaultVtxoHistoryCoin[]>()
+  const outputs = new Map<string, VaultVtxoHistoryCoin[]>()
+  const terminalArkInputs = new Map<string, VaultVtxoHistoryCoin>()
+  const settledCommitments = new Set<string>()
+
   for (const coin of unique) {
-    const createdAsChange = unique.some((other) => other.arkTxId && other.arkTxId === coin.txid)
+    addHistoryCoin(outputs, coin.txid, coin)
+    if (coin.arkTxId) {
+      addHistoryCoin(arkInputs, coin.arkTxId, coin)
+      if (coin.isSpent && !terminalArkInputs.has(coin.arkTxId)) terminalArkInputs.set(coin.arkTxId, coin)
+    }
+    if (coin.settledBy) settledCommitments.add(coin.settledBy)
+  }
+
+  for (const coin of unique) {
+    const createdAsChange = arkInputs.has(coin.txid)
     const settlementCommitment = coin.isLeaf ? coin.commitmentTxIds?.[0] : undefined
     // Match the SDK history transition: a batch leaf that replaces VTXOs
     // forfeited into the same commitment settles the original receive; it is
     // not a second incoming payment.
-    const settlementReplacement = Boolean(
-      settlementCommitment && unique.some((other) => other.settledBy === settlementCommitment),
-    )
+    const settlementReplacement = Boolean(settlementCommitment && settledCommitments.has(settlementCommitment))
     if (!createdAsChange && !settlementReplacement && coin.value > 0) {
       rows.push({
         txid: coin.txid,
@@ -149,23 +160,30 @@ export function historyFromVtxos(
         account,
       })
     }
-    if (!coin.isSpent || !coin.arkTxId || spentByArk.has(coin.arkTxId)) continue
-    spentByArk.add(coin.arkTxId)
-    const spent = unique.filter((other) => other.arkTxId === coin.arkTxId)
-    const change = unique.filter((other) => other.txid === coin.arkTxId)
+  }
+
+  for (const [arkTxId, terminalInput] of terminalArkInputs) {
+    const spent = arkInputs.get(arkTxId) || []
+    const change = outputs.get(arkTxId) || []
     const amount =
       spent.reduce((sum, other) => sum + other.value, 0) - change.reduce((sum, other) => sum + other.value, 0)
     if (amount <= 0) continue
     rows.push({
-      txid: coin.arkTxId,
+      txid: arkTxId,
       type: 'sent',
       amount,
       confirmed: true,
-      blockTime: unixSeconds(change[0]?.createdAtMs || coin.createdAtMs + 1),
+      blockTime: unixSeconds(change[0]?.createdAtMs || terminalInput.createdAtMs + 1),
       account,
     })
   }
   return mergeHistoryRows(rows).sort(sortVaultHistory)
+}
+
+function addHistoryCoin(index: Map<string, VaultVtxoHistoryCoin[]>, key: string, coin: VaultVtxoHistoryCoin): void {
+  const current = index.get(key)
+  if (current) current.push(coin)
+  else index.set(key, [coin])
 }
 
 function uniqueHistoryCoins(coins: VaultVtxoHistoryCoin[]): VaultVtxoHistoryCoin[] {

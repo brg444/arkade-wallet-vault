@@ -34,7 +34,6 @@ interface VaultBalanceSnapshot {
   boardingConfirmedBalance: number
   history: VaultHistoryItem[]
   savingsSats: number
-  vtxoMaxCoin: number
   vtxoSpendingSats: number
 }
 
@@ -43,7 +42,6 @@ const EMPTY_BALANCES: VaultBalanceSnapshot = {
   boardingConfirmedBalance: 0,
   history: [],
   savingsSats: 0,
-  vtxoMaxCoin: 0,
   vtxoSpendingSats: 0,
 }
 
@@ -87,7 +85,7 @@ export function useVaultBalances({
   statusRef.current = status
   addressPinRef.current = addressPin
 
-  const { boardingBalance, boardingConfirmedBalance, history, savingsSats, vtxoMaxCoin, vtxoSpendingSats } = snapshot
+  const { boardingBalance, boardingConfirmedBalance, history, savingsSats, vtxoSpendingSats } = snapshot
 
   const refreshBalance = useCallback(
     async (vaultId?: string) => {
@@ -129,7 +127,7 @@ export function useVaultBalances({
             ? Promise.all([fetchVaultVtxoFunds(liveStatus), fetchVaultVtxoHistory(liveStatus)]).then(
                 ([funds, spendingHistory]) => ({ ...funds, history: spendingHistory }),
               )
-            : Promise.resolve({ balance: 0, maxCoin: 0, history: [] as VaultHistoryItem[] }),
+            : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
             ? fetchVaultBoardingFunds(liveStatus)
             : Promise.resolve({ total: 0, confirmed: 0 }),
@@ -142,7 +140,6 @@ export function useVaultBalances({
             boardingVersion === boardingFetchVersion.current ? boarding.confirmed : previous.boardingConfirmedBalance,
           history: [...savings.history, ...spending.history],
           savingsSats: savings.balance,
-          vtxoMaxCoin: spending.maxCoin,
           vtxoSpendingSats: spending.balance,
         }))
         setBalancesLoaded(true)
@@ -309,7 +306,6 @@ export function useVaultBalances({
     refreshBalance,
     refreshingBalance,
     savingsSats,
-    vtxoMaxCoin,
     vtxoSpendingSats,
   }
 }

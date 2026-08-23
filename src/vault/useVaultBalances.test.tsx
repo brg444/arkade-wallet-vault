@@ -84,7 +84,7 @@ beforeEach(() => {
   mockedStatus.mockResolvedValue(STATUS)
   mockedUtxos.mockResolvedValue([])
   mockedTxs.mockResolvedValue([])
-  mockedFunds.mockResolvedValue({ balance: 0, maxCoin: 0 })
+  mockedFunds.mockResolvedValue({ balance: 0 })
   mockedHistory.mockResolvedValue([])
   mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0 })
 })
@@ -106,9 +106,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedUtxos
       .mockImplementationOnce(() => older.promise)
       .mockResolvedValueOnce([{ txid: 'new', vout: 0, value: 25_000, status: { confirmed: true } }])
-    mockedFunds
-      .mockResolvedValueOnce({ balance: 10_000, maxCoin: 10_000 })
-      .mockResolvedValueOnce({ balance: 30_000, maxCoin: 30_000 })
+    mockedFunds.mockResolvedValueOnce({ balance: 10_000 }).mockResolvedValueOnce({ balance: 30_000 })
 
     const { result } = setupHook()
     let first!: Promise<void>
@@ -131,7 +129,7 @@ describe('useVaultBalances refresh coordination', () => {
 
   it('keeps the previous account snapshot when any balance or history read fails', async () => {
     mockedUtxos.mockResolvedValueOnce([{ txid: 'old', vout: 0, value: 20_000, status: { confirmed: true } }])
-    mockedFunds.mockResolvedValueOnce({ balance: 15_000, maxCoin: 15_000 })
+    mockedFunds.mockResolvedValueOnce({ balance: 15_000 })
     mockedHistory.mockResolvedValueOnce([
       {
         txid: 'old-spend',
@@ -148,7 +146,7 @@ describe('useVaultBalances refresh coordination', () => {
     })
 
     mockedUtxos.mockResolvedValueOnce([{ txid: 'new', vout: 0, value: 40_000, status: { confirmed: true } }])
-    mockedFunds.mockResolvedValueOnce({ balance: 35_000, maxCoin: 35_000 })
+    mockedFunds.mockResolvedValueOnce({ balance: 35_000 })
     mockedHistory.mockRejectedValueOnce(new Error('activity unavailable'))
     await act(async () => {
       await result.current.refreshBalance()
@@ -194,7 +192,7 @@ describe('useVaultBalances refresh coordination', () => {
     vi.useFakeTimers()
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     mockedStatus.mockResolvedValue(active)
-    mockedFunds.mockResolvedValue({ balance: 30_000, maxCoin: 30_000 })
+    mockedFunds.mockResolvedValue({ balance: 30_000 })
     mockedHistory.mockResolvedValue([
       {
         txid: 'spend-history',

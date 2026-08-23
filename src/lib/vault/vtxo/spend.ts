@@ -1410,7 +1410,7 @@ export async function sendVaultVtxo(
   })
 }
 
-export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number; maxCoin: number }> {
+export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number }> {
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
   const provider = new RestIndexerProvider(vaultArkServer())
@@ -1422,7 +1422,6 @@ export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balanc
   )
   return {
     balance: vtxos.reduce((sum, vtxo) => sum + vtxo.value, 0),
-    maxCoin: vtxos.reduce((largest, vtxo) => Math.max(largest, vtxo.value), 0),
   }
 }
 
@@ -1464,17 +1463,30 @@ export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultH
   const provider = new RestIndexerProvider(vaultArkServer())
   const scripts = [hex.encode(script.pkScript)]
   const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) }))
-  return historyFromVtxos(
-    vtxos.map((vtxo) => ({
-      txid: vtxo.txid,
-      vout: vtxo.vout,
-      value: vtxo.value,
-      createdAtMs: vtxo.createdAt instanceof Date ? vtxo.createdAt.getTime() : Number(vtxo.createdAt) || 0,
-      isSpent: Boolean(vtxo.isSpent || vtxo.spentBy),
-      arkTxId: vtxo.arkTxId,
-      commitmentTxIds: vtxo.commitmentTxIds,
-      isLeaf: Boolean(vtxo.status?.isLeaf),
-      settledBy: vtxo.settledBy,
-    })),
-  )
+  return historyFromVtxos(vtxos.map(vaultVtxoHistoryCoin))
+}
+
+export function vaultVtxoHistoryCoin(vtxo: {
+  txid: string
+  vout: number
+  value: number
+  createdAt: Date | string | number
+  isSpent?: boolean
+  spentBy?: string
+  arkTxId?: string
+  commitmentTxIds?: string[]
+  status?: { isLeaf?: boolean }
+  settledBy?: string
+}): Parameters<typeof historyFromVtxos>[0][number] {
+  return {
+    txid: vtxo.txid,
+    vout: vtxo.vout,
+    value: vtxo.value,
+    createdAtMs: vtxo.createdAt instanceof Date ? vtxo.createdAt.getTime() : Number(vtxo.createdAt) || 0,
+    isSpent: Boolean(vtxo.isSpent || vtxo.spentBy || vtxo.settledBy),
+    arkTxId: vtxo.arkTxId,
+    commitmentTxIds: vtxo.commitmentTxIds,
+    isLeaf: Boolean(vtxo.status?.isLeaf),
+    settledBy: vtxo.settledBy,
+  }
 }

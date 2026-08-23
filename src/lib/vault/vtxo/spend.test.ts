@@ -10,6 +10,7 @@ import {
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
+import { historyFromVtxos } from '../history'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -46,6 +47,7 @@ import {
   VAULT_VTXO_PAGE_SIZE,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
+  vaultVtxoHistoryCoin,
   vaultVtxoPage,
   vtxoReserveRequest,
 } from './spend'
@@ -322,6 +324,30 @@ describe('regular VTXO spend coordinator', () => {
     )
     expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
     expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
+  })
+
+  it('normalizes settledBy as terminal and suppresses its batch replacement', () => {
+    const rows = historyFromVtxos([
+      vaultVtxoHistoryCoin({
+        txid: 'receive',
+        vout: 0,
+        value: 20_000,
+        createdAt: 2_000,
+        settledBy: 'commitment',
+      }),
+      vaultVtxoHistoryCoin({
+        txid: 'settled-replacement',
+        vout: 0,
+        value: 20_000,
+        createdAt: 4_000,
+        commitmentTxIds: ['commitment'],
+        status: { isLeaf: true },
+      }),
+    ])
+
+    expect(rows).toEqual([
+      expect.objectContaining({ txid: 'receive', amount: 20_000, confirmed: true, type: 'received' }),
+    ])
   })
 
   it('uses the reserved zero fee when a payment needs more than the largest coin', () => {
