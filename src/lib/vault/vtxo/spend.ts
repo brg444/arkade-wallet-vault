@@ -172,6 +172,7 @@ export interface PersistedVtxoSpend {
   unsignedArkPsbt?: string
   authorizedPsbt?: string
   authorizedPendingProof?: string
+  operatorSubmitAttempted?: boolean
   unsignedCheckpointPsbts?: string[]
   operatorCheckpointPsbts?: string[]
   checkpointPsbts?: string[]
@@ -1151,7 +1152,6 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
         pending,
         status,
         xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey'),
-        false,
       )
       return { kind: 'pending', operationId: pending.operationId, stage: 'operator-submitted' }
     } catch {
@@ -1259,15 +1259,8 @@ async function recoverAuthorizedVtxoSpend(
   pending: PersistedVtxoSpend,
   status: VaultStatus,
   operatorPub: Uint8Array,
+  proof: string,
 ): Promise<PersistedVtxoSpend> {
-  if (!pending.authorizedPendingProof) {
-    throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
-  }
-  const proof = requireAuthorizedPendingProof(
-    pending.unsignedCheckpointPsbts || [],
-    pending.authorizedPendingProof,
-    status,
-  )
   const candidates = await operator.getPendingTxs({ proof, message: VTXO_GET_PENDING_MESSAGE })
   return persistOperatorSubmission(pending, matchPendingOperatorSubmission(pending, candidates, status, operatorPub))
 }
@@ -1285,22 +1278,42 @@ async function submitAuthorizedVtxoSpendOnce(
   return persistOperatorSubmission(pending, matchPendingOperatorSubmission(pending, [submitted], status, operatorPub))
 }
 
+function persistOperatorSubmitAttempt(pending: PersistedVtxoSpend): PersistedVtxoSpend {
+  const next = { ...pending, operatorSubmitAttempted: true }
+  persistVtxoSpend(next)
+  const persisted = loadPersistedVtxoSpend(next.vaultId)
+  if (
+    persisted?.operationId !== next.operationId ||
+    persisted.stage !== 'authorized' ||
+    persisted.operatorSubmitAttempted !== true
+  ) {
+    throw new Error('Operator submission attempt was not durably persisted')
+  }
+  return persisted
+}
+
 export async function advanceAuthorizedVtxoSpend(
   operator: ArkProvider,
   pending: PersistedVtxoSpend,
   status: VaultStatus,
   operatorPub: Uint8Array,
-  maySubmit: boolean,
 ): Promise<PersistedVtxoSpend> {
   if (!pending.authorizedPendingProof) {
     throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
   }
-  requireAuthorizedPendingProof(pending.unsignedCheckpointPsbts || [], pending.authorizedPendingProof, status)
-  if (!maySubmit) return recoverAuthorizedVtxoSpend(operator, pending, status, operatorPub)
+  const proof = requireAuthorizedPendingProof(
+    pending.unsignedCheckpointPsbts || [],
+    pending.authorizedPendingProof,
+    status,
+  )
+  if (pending.operatorSubmitAttempted) {
+    return recoverAuthorizedVtxoSpend(operator, pending, status, operatorPub, proof)
+  }
+  const attempted = persistOperatorSubmitAttempt(pending)
   try {
-    return await submitAuthorizedVtxoSpendOnce(operator, pending, status, operatorPub)
+    return await submitAuthorizedVtxoSpendOnce(operator, attempted, status, operatorPub)
   } catch {
-    return recoverAuthorizedVtxoSpend(operator, pending, status, operatorPub)
+    return recoverAuthorizedVtxoSpend(operator, attempted, status, operatorPub, proof)
   }
 }
 
@@ -1319,15 +1332,13 @@ async function continueSameVtxoSpend(
     persistVtxoSpend({ ...pending, stage: 'operator-finalized' })
     return finishOperatorFinalized({ ...pending, stage: 'operator-finalized' })
   }
-  let maySubmit = false
   if (pending.stage === 'reserved') {
     pending = await authorizeReservedVtxoSpend(enrollment, status, pending)
-    maySubmit = true
   }
   if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
     const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
     const operatorPub = xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey')
-    pending = await advanceAuthorizedVtxoSpend(operator, pending, status, operatorPub, maySubmit)
+    pending = await advanceAuthorizedVtxoSpend(operator, pending, status, operatorPub)
   }
   if (pending.stage !== 'operator-submitted' || !pending.operatorCheckpointPsbts?.length) {
     throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
