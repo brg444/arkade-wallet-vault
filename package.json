@@ -93,6 +93,9 @@
     "pnpm": ">=8"
   },
   "pnpm": {
+    "overrides": {
+      "ws": "8.21.0"
+    },
     "ignoredBuiltDependencies": [
       "esbuild"
     ],
