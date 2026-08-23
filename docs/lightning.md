@@ -9,8 +9,10 @@ The Vault adapter opens a standard SDK wallet with the enrolled phone identity
 and the existing per-vault SDK repositories. It changes only `getAddress()` so
 the package commits every refund to the exact `vault-policy-v1` Spending
 address. The adapter verifies that address against the signed enrollment
-binding, advertised Spending script, network, and Operator signer. It closes
-the temporary SDK wallet and repositories after the quote is persisted.
+binding, advertised Spending script, network, and Operator signer. A standard
+swap repository and `RfqSwapManager` own restart, resolution, and refund state.
+The adapter closes the temporary manager, wallet, and repositories after each
+bounded wallet operation.
 
 Funding remains an ordinary Vault VTXO send to the package-verified lockup
 address. The Vault service applies the same per-transaction cap, rolling
@@ -18,22 +20,28 @@ allowance, fee bounds, input reservation, transaction verification, and
 ambiguous-submission recovery used for every other Spending transfer. It does
 not expose Lightning-specific routes or reinterpret the VHTLC.
 
-## Durable client record
+## Durable send lifecycle
 
-The wallet must persist these package-returned facts before funding:
+The wallet stores the package RFQ record and complete recovery profile before
+it reveals a funding target. The record includes:
 
 - invoice and locally decoded amount, payment hash, network, and expiry;
 - RFQ identifier, solver identity, and signed solver card identity;
 - quote validity, refund locktime, funding amount, and corridor fee;
 - lockup address, VHTLC script, and exact `vault-policy-v1` refund address;
-- SDK contract-registration identity and the ordinary VTXO operation ID after
-  reservation.
+- SDK contract-registration identity, sender signing descriptor, and funding
+  transaction identity when one exists.
 
 The invoice and quote are checked again immediately before funding. A quote
 that expires before the user authorizes the ordinary VTXO reservation must be
 discarded without creating a second operation. An ambiguous funding response
 resumes through the existing VTXO operation and the official SDK
 pending-transaction interface.
+
+The package manager restores nonterminal records at startup. An unfunded quote
+can be cancelled or retired after expiry. Once the funding target is exposed,
+the record remains until the payment resolves or refunds because an absent
+broadcast response does not prove that no funds moved.
 
 ## Refunds
 
@@ -43,10 +51,24 @@ Emulator to return value directly to `vault-policy-v1`. Package-level tests
 rebuild the persisted contract and verify that this leaf contains the exact
 Spending script.
 
-The package also supports a later timelocked local refund through
-`refundIfUnresolved`. That phone-key recovery is a separate resilience option.
-Mainnet enablement must either wire and test it or record the accepted
-server-assisted refund posture and its operational response.
+The package manager uses the published Arkade refunder for unresolved funded
+records. Mainnet enablement still requires real immediate-failure and delayed
+refund tests against the approved service and solver configuration.
+
+## Lightning receive
+
+Lightning receive is not part of this release. The published package contains
+the client primitives, but the production solver registry currently exposes no
+mainnet market for the route. The production covenant claim service is not
+available through `arkade.computer`, and the online phone-plus-Operator claim
+does not itself constrain the destination to `vault-policy-v1`. The official
+wallet flow also does not provide the reload-safe receive lifecycle required by
+a vault.
+
+Receive remains disabled until a published package contains the current
+receive fixes, the solver route and covenant claim service are deployed, and a
+low-value proof confirms payment to the exact Spending script through reload,
+underfunding, Operator outage, claim, solver refund, and unilateral recovery.
 
 ## Release gate
 
@@ -63,6 +85,3 @@ following:
    reload and lost-response tests;
 5. a real invoice exercises pay, immediate failure refund, delayed status, and
    ambiguous funding recovery with bounded value.
-
-Lightning receive remains a different product flow. It requires online
-invoice and claim handling and is outside this release slice.
