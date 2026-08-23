@@ -4,6 +4,7 @@ import { sha256 } from '@noble/hashes/sha2.js'
 
 const STREAM_RECONNECT_MS = 500
 const LIVE_INTENT_STATES = ['waiting_to_submit', 'waiting_for_batch', 'batch_in_progress'] as const
+const REGISTRATION_AMBIGUOUS_STATE = 'registration_ambiguous'
 
 export interface QueuedBoardingIntent {
   intentId: string
@@ -60,6 +61,10 @@ function persistenceFailure(message: string, cause?: unknown): VaultIntentPersis
   return new VaultIntentPersistenceError(message, cause === undefined ? undefined : { cause })
 }
 
+function isPersistablePreAcceptState(state: string): boolean {
+  return state === 'waiting_to_submit' || state === 'waiting_for_batch' || state === REGISTRATION_AMBIGUOUS_STATE
+}
+
 /** Session memory plus the SDK intent repository. Accepted IDs are committed and read back before return. */
 export function intentRepositoryBoardingCache(
   repo: Pick<IntentRepository, 'getIntents' | 'saveIntent'>,
@@ -95,7 +100,7 @@ export function intentRepositoryBoardingCache(
       if (existing.intentId && existing.intentId !== record.intentId) {
         throw persistenceFailure('Accepted Operator intent conflicts with the persisted intent ID')
       }
-      if (existing.state !== 'waiting_to_submit' && existing.state !== 'waiting_for_batch') {
+      if (!isPersistablePreAcceptState(existing.state)) {
         throw persistenceFailure('Accepted Operator intent is not in a persistable state')
       }
       const accepted: ArkIntent = {
