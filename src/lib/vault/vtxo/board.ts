@@ -24,9 +24,6 @@ export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
 
 const VAULT_SDK_STORAGE_PREFIX = 'arkade-vault-v2'
 
-const POLL_INTERVAL_MS = 3_000
-const CONFIRMATION_WAIT_MS = 180_000
-
 const BOARDING_LOCK_BRAND: unique symbol = Symbol('vault-boarding-lock')
 const activeBoardingLocks = new WeakSet<object>()
 
@@ -210,21 +207,58 @@ export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
 async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
   const identity = SingleKey.fromPrivateKey(phoneSecret)
   const storage = createVaultBoardingStorage(status.vaultId)
-  const { operator, info } = await liveBoardingOperator(status)
-  const wallet = await Wallet.create({
-    identity,
-    arkServerUrl: vaultArkServer(),
-    arkProvider: operator,
-    indexerProvider: new RestIndexerProvider(vaultArkServer()),
-    esploraUrl: '/esplora',
-    boardingTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
-    settlementConfig: false,
-    storage,
-  })
-  if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
-    throw new Error('SDK derived a different vault-board-v1 address')
+  let wallet: Wallet | undefined
+  try {
+    const { operator, info } = await liveBoardingOperator(status)
+    wallet = await Wallet.create({
+      identity,
+      arkServerUrl: vaultArkServer(),
+      arkProvider: operator,
+      indexerProvider: new RestIndexerProvider(vaultArkServer()),
+      esploraUrl: '/esplora',
+      boardingTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
+      settlementConfig: false,
+      storage,
+    })
+    if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
+      throw new Error('SDK derived a different vault-board-v1 address')
+    }
+    return { wallet, info, storage }
+  } catch (error) {
+    try {
+      await disposeVaultBoardingResources(wallet, storage)
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Failed to create and dispose the boarding wallet')
+    }
+    throw error
   }
-  return { wallet, info }
+}
+
+type BoardingStorageResources = {
+  walletRepository: { [Symbol.asyncDispose](): Promise<void> }
+  contractRepository: { [Symbol.asyncDispose](): Promise<void> }
+  intentRepository: { [Symbol.asyncDispose](): Promise<void> }
+}
+
+export async function disposeVaultBoardingResources(
+  wallet: Pick<Wallet, 'dispose'> | undefined,
+  storage: BoardingStorageResources,
+) {
+  let failure: unknown
+  try {
+    await wallet?.dispose()
+  } catch (error) {
+    failure = error
+  }
+  const repositories = await Promise.allSettled([
+    storage.walletRepository[Symbol.asyncDispose](),
+    storage.contractRepository[Symbol.asyncDispose](),
+    storage.intentRepository[Symbol.asyncDispose](),
+  ])
+  for (const result of repositories) {
+    if (result.status === 'rejected' && failure === undefined) failure = result.reason
+  }
+  if (failure !== undefined) throw failure
 }
 
 function boardingOutputAmount(
@@ -261,40 +295,17 @@ export async function settleVaultBoarding(
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
-  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
-  const coins = await findConfirmedBoardingCoins(wallet, txid)
-  if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
-  const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
-  const commitmentTxid = await wallet.settle({
-    inputs: coins,
-    outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
-  })
-  return { txid: commitmentTxid, amountSats }
-}
-
-export async function waitForAndSettleVaultBoarding(
-  lock: VaultBoardingLock,
-  phoneSecret: Uint8Array,
-  status: VaultStatus,
-  txid: string,
-  options: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<{ txid: string; amountSats: number }> {
-  requireActiveBoardingLock(lock)
-  const { wallet, info } = await createBoardingWallet(phoneSecret, status)
-  const deadline = Date.now() + (options.timeoutMs ?? CONFIRMATION_WAIT_MS)
-  for (;;) {
+  const { wallet, info, storage } = await createBoardingWallet(phoneSecret, status)
+  try {
     const coins = await findConfirmedBoardingCoins(wallet, txid)
-    if (coins.length > 0) {
-      const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
-      const commitmentTxid = await wallet.settle({
-        inputs: coins,
-        outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
-      })
-      return { txid: commitmentTxid, amountSats }
-    }
-    if (Date.now() >= deadline) {
-      throw new Error('Boarding is waiting for confirmation and will resume automatically while the wallet is open.')
-    }
-    await new Promise((resolve) => setTimeout(resolve, options.pollMs ?? POLL_INTERVAL_MS))
+    if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
+    const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
+    const commitmentTxid = await wallet.settle({
+      inputs: coins,
+      outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
+    })
+    return { txid: commitmentTxid, amountSats }
+  } finally {
+    await disposeVaultBoardingResources(wallet, storage)
   }
 }
