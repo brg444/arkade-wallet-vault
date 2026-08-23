@@ -1,6 +1,14 @@
-import { ArkAddress, CSVMultisigTapscript, Intent, SingleKey, Transaction, type ArkProvider } from '@arkade-os/sdk'
+import {
+  ArkAddress,
+  CSVMultisigTapscript,
+  Intent,
+  RestArkProvider,
+  SingleKey,
+  Transaction,
+  type ArkProvider,
+} from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
@@ -24,6 +32,7 @@ import {
   persistVtxoSpend,
   persistVtxoReserveSignature,
   preReserveVtxoSpend,
+  reconcilePersistedVtxoSpend,
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
@@ -37,12 +46,19 @@ import {
   vaultPolicyV1ScriptFromStatus,
   vtxoReserveRequest,
 } from './spend'
+import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { VaultPolicyV1Script } from './script'
 
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 const OP_1 = '11'.repeat(16)
 const OP_2 = '22'.repeat(16)
 const FEE_POLICY_DIGEST = 'aa'.repeat(32)
+const RECONCILE_FEE_POLICY = {
+  offchainInput: '5.0',
+  offchainOutput: 'amount * 0.001',
+  onchainInput: '7.0',
+  onchainOutput: 'amount * 0.002',
+} as const
 const RESERVATION_FACTS = {
   feePolicyDigest: FEE_POLICY_DIGEST,
   feeSats: 500,
@@ -552,12 +568,15 @@ describe('regular VTXO spend coordinator', () => {
     ).toThrow(/wrong signer set/)
   })
 
-  it('uses a successful first submit directly without querying pending transactions', async () => {
+  it('submits once after reloading an authorized operation before the write-ahead marker', async () => {
     clearPersistedVtxoSpend('vault-a')
     const fixture = await authorizedPendingFixture()
+    persistVtxoSpend(fixture.pending)
+    const reloaded = loadPersistedVtxoSpend('vault-a')!
     const calls: string[] = []
     const operator = {
       async submitTx() {
+        expect(loadPersistedVtxoSpend('vault-a')?.operatorSubmitAttempted).toBe(true)
         calls.push('submit')
         return fixture.candidate
       },
@@ -567,13 +586,7 @@ describe('regular VTXO spend coordinator', () => {
       },
     } as unknown as ArkProvider
 
-    const submitted = await advanceAuthorizedVtxoSpend(
-      operator,
-      fixture.pending,
-      fixture.current,
-      fixture.operatorPub,
-      true,
-    )
+    const submitted = await advanceAuthorizedVtxoSpend(operator, reloaded, fixture.current, fixture.operatorPub)
     expect(calls).toEqual(['submit'])
     expect(submitted.stage).toBe('operator-submitted')
     clearPersistedVtxoSpend('vault-a')
@@ -588,6 +601,7 @@ describe('regular VTXO spend coordinator', () => {
     const operator = {
       async submitTx() {
         calls.push('submit')
+        expect(loadPersistedVtxoSpend('vault-a')?.operatorSubmitAttempted).toBe(true)
         throw new TypeError('network response lost')
       },
       async getPendingTxs(intent: { proof: string; message: typeof VTXO_GET_PENDING_MESSAGE }) {
@@ -598,13 +612,7 @@ describe('regular VTXO spend coordinator', () => {
       },
     } as unknown as ArkProvider
 
-    const recovered = await advanceAuthorizedVtxoSpend(
-      operator,
-      fixture.pending,
-      fixture.current,
-      fixture.operatorPub,
-      true,
-    )
+    const recovered = await advanceAuthorizedVtxoSpend(operator, fixture.pending, fixture.current, fixture.operatorPub)
     expect(calls).toEqual(['submit', 'pending'])
     expect(recoveredProof).toBe(fixture.authorizedPendingProof)
     expect(recovered.stage).toBe('operator-submitted')
@@ -612,10 +620,34 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
   })
 
-  it('resumes an authorized operation by lookup only and keeps an empty result locked', async () => {
+  it('treats a reloaded write-ahead marker as ambiguous and uses lookup only', async () => {
     clearPersistedVtxoSpend('vault-a')
     const fixture = await authorizedPendingFixture()
-    persistVtxoSpend(fixture.pending)
+    persistVtxoSpend({ ...fixture.pending, operatorSubmitAttempted: true })
+    const reloaded = loadPersistedVtxoSpend('vault-a')!
+    const calls: string[] = []
+    const operator = {
+      async submitTx() {
+        calls.push('submit')
+        throw new Error('must not submit')
+      },
+      async getPendingTxs() {
+        calls.push('pending')
+        return [fixture.candidate]
+      },
+    } as unknown as ArkProvider
+
+    const recovered = await advanceAuthorizedVtxoSpend(operator, reloaded, fixture.current, fixture.operatorPub)
+    expect(calls).toEqual(['pending'])
+    expect(recovered.stage).toBe('operator-submitted')
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('keeps an attempted operation locked when pending lookup is empty', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    persistVtxoSpend({ ...fixture.pending, operatorSubmitAttempted: true })
+    const reloaded = loadPersistedVtxoSpend('vault-a')!
     let submitCalls = 0
     let pendingCalls = 0
     const operator = {
@@ -629,20 +661,88 @@ describe('regular VTXO spend coordinator', () => {
       },
     } as unknown as ArkProvider
 
-    await expect(
-      advanceAuthorizedVtxoSpend(operator, fixture.pending, fixture.current, fixture.operatorPub, false),
-    ).rejects.toThrow(/exactly one/)
+    await expect(advanceAuthorizedVtxoSpend(operator, reloaded, fixture.current, fixture.operatorPub)).rejects.toThrow(
+      /exactly one/,
+    )
     expect(submitCalls).toBe(0)
     expect(pendingCalls).toBe(1)
     expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('authorized')
+    expect(loadPersistedVtxoSpend('vault-a')?.operatorSubmitAttempted).toBe(true)
 
     const legacy = { ...fixture.pending, authorizedPendingProof: undefined }
     await expect(
-      advanceAuthorizedVtxoSpend(operator, legacy, fixture.current, fixture.operatorPub, true),
+      advanceAuthorizedVtxoSpend(operator, legacy, fixture.current, fixture.operatorPub),
     ).rejects.toBeInstanceOf(VtxoSpendInFlightError)
     expect(submitCalls).toBe(0)
     clearPersistedVtxoSpend('vault-a')
   })
+
+  it.each([
+    ['unattempted', false, 1, 0],
+    ['attempted', true, 0, 1],
+  ] as const)(
+    'reconciles a persisted authorized %s operation using the durable submit marker',
+    async (_label, attempted, expectedSubmitCalls, expectedPendingCalls) => {
+      clearPersistedVtxoSpend('vault-a')
+      const fixture = await authorizedPendingFixture()
+      const pending = {
+        ...fixture.pending,
+        feePolicyDigest: arkadeIntentFeePolicyDigest(RECONCILE_FEE_POLICY),
+        ...(attempted ? { operatorSubmitAttempted: true } : {}),
+      }
+      persistVtxoSpend(pending)
+      const originalLocks = navigator.locks
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        value: {
+          request: async (_name: string, _options: unknown, callback: (lock: unknown) => Promise<unknown>) =>
+            callback({}),
+        },
+      })
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            operationId: pending.operationId,
+            bundleDigest: pending.bundleDigest,
+            state: 'signed',
+            arkTxid: pending.arkTxid,
+            authorizedPsbt: pending.authorizedPsbt,
+            authorizedPendingProof: pending.authorizedPendingProof,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+      vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue({
+        network: 'mutinynet',
+        signerPubkey: golden.fixtures.arkdServerPub,
+        checkpointTapscript: '',
+        fees: { intentFee: RECONCILE_FEE_POLICY, txFeeRate: '0' },
+      } as never)
+      const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx').mockImplementation(async () => {
+        expect(loadPersistedVtxoSpend('vault-a')?.operatorSubmitAttempted).toBe(true)
+        return fixture.candidate
+      })
+      const getPending = vi.spyOn(RestArkProvider.prototype, 'getPendingTxs').mockResolvedValue([fixture.candidate])
+
+      try {
+        await expect(reconcilePersistedVtxoSpend(fixture.current)).resolves.toEqual({
+          kind: 'pending',
+          operationId: pending.operationId,
+          stage: 'operator-submitted',
+        })
+        expect(submit).toHaveBeenCalledTimes(expectedSubmitCalls)
+        expect(getPending).toHaveBeenCalledTimes(expectedPendingCalls)
+        expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+      } finally {
+        clearPersistedVtxoSpend('vault-a')
+        if (originalLocks) {
+          Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks })
+        } else {
+          Reflect.deleteProperty(navigator, 'locks')
+        }
+      }
+    },
+  )
 
   it('fails closed if status and reservation do not name the same policy script', () => {
     const changed = reserve()
