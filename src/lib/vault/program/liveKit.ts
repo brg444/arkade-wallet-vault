@@ -1,4 +1,5 @@
 import { SAVINGS_TEMPLATE } from './constants'
+import { sameBip340Key } from '../setupPlan'
 import type { VaultStatus } from '../types'
 import type { RecoveryKit } from './kit'
 
@@ -14,11 +15,12 @@ export function kitMatchesLiveVault(kit: RecoveryKit, status: VaultStatus): bool
     descriptor.templateVersion === status.templateVersion &&
     descriptor.savings.address === status.savingsAddress &&
     descriptor.savings.script === status.savingsScript &&
-    descriptor.keys.phoneBip340 === status.phoneBip340Pub &&
-    descriptor.keys.hardware === status.externalOwnerWalletPub &&
-    descriptor.keys.recovery === status.recoveryPub &&
-    descriptor.keys.vaultCosignerBase === status.vaultCosignerBasePub &&
-    descriptor.keys.arkadeCosignerBase === status.arkadeCosignerBasePub &&
+    sameBip340Key(descriptor.keys.phoneBip340, status.phoneBip340Pub) &&
+    sameBip340Key(descriptor.keys.hardware, status.externalOwnerWalletPub) &&
+    ((!descriptor.keys.recovery && !status.recoveryPub) ||
+      sameBip340Key(descriptor.keys.recovery, status.recoveryPub)) &&
+    sameBip340Key(descriptor.keys.vaultCosignerBase, status.vaultCosignerBasePub) &&
+    sameBip340Key(descriptor.keys.arkadeCosignerBase, status.arkadeCosignerBasePub) &&
     descriptor.arkadeCosigner.origin === status.arkadeCosignerOrigin &&
     descriptor.arkadeCosigner.version === status.arkadeCosignerVersion
   )

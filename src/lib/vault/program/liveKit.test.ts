@@ -51,6 +51,12 @@ describe('live Savings kit policy', () => {
     expect(kitMatchesLiveVault(kit, { ...status, savingsAddress: 'tb1pstale' })).toBe(false)
     expect(kitMatchesLiveVault(kit, { ...status, savingsScript: '5120' + '00'.repeat(32) })).toBe(false)
     expect(kitMatchesLiveVault(kit, { ...status, arkadeCosignerVersion: 'preview' })).toBe(false)
+    expect(
+      kitMatchesLiveVault(kit, {
+        ...status,
+        externalOwnerWalletPub: `${status.externalOwnerWalletPub?.startsWith('02') ? '03' : '02'}${status.externalOwnerWalletPub?.slice(2)}`,
+      }),
+    ).toBe(true)
   })
 
   it('does not let pre-enrollment state drive recovery', () => {
