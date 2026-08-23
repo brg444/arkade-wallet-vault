@@ -8,6 +8,19 @@ export function isCoarsePhone(): boolean {
   return Boolean(uaData?.mobile)
 }
 
+/** Whether this browser can create the device-bound passkey required by the vault. */
+export async function isPlatformPasskeyAvailable(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.credentials?.create) return false
+  if (typeof PublicKeyCredential === 'undefined') return false
+  const check = PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable
+  if (typeof check !== 'function') return false
+  try {
+    return await check.call(PublicKeyCredential)
+  } catch {
+    return false
+  }
+}
+
 export type PasskeyGetMode = 'local' | 'hybrid' | 'any'
 
 export function passkeyTransports(mode: PasskeyGetMode | boolean = 'any'): AuthenticatorTransport[] {

@@ -1,4 +1,5 @@
 import { readBounded } from './bounded'
+import { RECENT_HISTORY_LIMIT } from './constants'
 
 export function esploraBase(): string {
   return '/esplora'
@@ -33,9 +34,32 @@ export interface EsploraTx {
   status: { confirmed: boolean; block_height?: number; block_time?: number }
 }
 
+export const ESPLORA_TX_PAGE_SIZE = 25
+const MAX_ESPLORA_TX_PAGES = Math.ceil(RECENT_HISTORY_LIMIT / ESPLORA_TX_PAGE_SIZE)
+
 export async function fetchAddressTxs(address: string): Promise<EsploraTx[]> {
-  const res = await fetch(`${esploraBase()}/address/${address}/txs`)
-  return esploraJson<EsploraTx[]>(res, 'Could not load activity')
+  const encodedAddress = encodeURIComponent(address)
+  const byTxid = new Map<string, EsploraTx>()
+  const cursors = new Set<string>()
+  let cursor = ''
+  for (let page = 0; page < MAX_ESPLORA_TX_PAGES; page += 1) {
+    const suffix = cursor ? `/chain/${encodeURIComponent(cursor)}` : ''
+    const res = await fetch(`${esploraBase()}/address/${encodedAddress}/txs${suffix}`)
+    const transactions = await esploraJson<EsploraTx[]>(res, 'Could not load activity')
+    for (const transaction of transactions) {
+      const previous = byTxid.get(transaction.txid)
+      if (!previous || (!previous.status.confirmed && transaction.status.confirmed)) {
+        byTxid.set(transaction.txid, transaction)
+      }
+    }
+    const confirmed = transactions.filter((transaction) => transaction.status.confirmed)
+    if (confirmed.length < ESPLORA_TX_PAGE_SIZE) break
+    const next = confirmed.at(-1)?.txid || ''
+    if (!next || cursors.has(next)) break
+    cursors.add(next)
+    cursor = next
+  }
+  return [...byTxid.values()].slice(0, RECENT_HISTORY_LIMIT)
 }
 
 export async function fetchAddressUtxos(address: string): Promise<EsploraUtxo[]> {

@@ -25,7 +25,9 @@ export default function VaultHardware() {
       step={2}
       error={error}
       onBack={() => navigate('design')}
-      actions={<Button onClick={() => applyHardware(required || value)} disabled={!ready} label='Continue' />}
+      actions={
+        <Button onClick={() => applyHardware(required || value)} disabled={!ready} label='Use this hardware key' />
+      }
     >
       <Text wrap>
         {required
@@ -56,7 +58,7 @@ export default function VaultHardware() {
             Paste
           </button>
           <Text color='neutral-600' tiny wrap>
-            Starts with 02 or 03. Never paste a seed.
+            A public key starts with 02 or 03. Never enter a seed phrase or private key.
           </Text>
         </>
       )}

@@ -41,6 +41,8 @@ export interface VaultContextProps {
   skipRecovery: () => void
   downloadRecoveryKit: () => string
   backupRecoveryKit: () => Promise<boolean>
+  balanceError: string
+  balancesLoaded: boolean
   boardingAddress: string
   boardingInProgress: boolean
   restoreRecoveryKit: () => Promise<void>
@@ -78,6 +80,7 @@ export interface VaultContextProps {
   networkLabel: string
   spendingArkAddress: string
   refreshBalance: () => Promise<void>
+  refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
   openSendScan: () => void
@@ -106,6 +109,8 @@ export const VaultContext = createContext<VaultContextProps>({
   skipRecovery: () => {},
   downloadRecoveryKit: () => '',
   backupRecoveryKit: async () => false,
+  balanceError: '',
+  balancesLoaded: false,
   boardingAddress: '',
   boardingInProgress: false,
   restoreRecoveryKit: async () => {},
@@ -143,6 +148,7 @@ export const VaultContext = createContext<VaultContextProps>({
   networkLabel: 'Test network',
   spendingArkAddress: '',
   refreshBalance: async () => {},
+  refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},
   openSendScan: () => {},

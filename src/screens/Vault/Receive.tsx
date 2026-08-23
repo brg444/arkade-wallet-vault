@@ -38,7 +38,7 @@ export default function VaultReceive() {
 
   return (
     <>
-      <Header text='Receive' back={() => navigate('home')} />
+      <Header text={spending ? 'Receive to Spending' : 'Add to Savings'} back={() => navigate('home')} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
@@ -46,12 +46,12 @@ export default function VaultReceive() {
               {liveNetwork ? 'Testnet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
             </Text>
             <Text small bold>
-              {spending ? 'Arkade or Bitcoin' : 'Savings'}
+              {spending ? 'One payment request' : 'Savings address'}
             </Text>
             <Text color='neutral-600' tiny wrap>
               {spending
-                ? 'One request accepts an Arkade payment or a confirmed Bitcoin deposit. Bitcoin is boarded into VTXOs automatically.'
-                : 'Bitcoin sent here stays in Savings and requires this device plus hardware to spend.'}
+                ? 'Use this for Arkade or Bitcoin. Confirmed Bitcoin deposits move into Spending automatically.'
+                : 'Bitcoin sent here stays in Savings. Sending it later requires this device and hardware.'}
             </Text>
             {request ? (
               <div className='vault-receive-qr'>
@@ -88,7 +88,7 @@ export default function VaultReceive() {
         <Button
           onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
           disabled={!request}
-          label={copied === request ? 'Copied' : spending ? 'Copy request' : 'Copy address'}
+          label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}
         />
       </ButtonsOnBottom>
     </>

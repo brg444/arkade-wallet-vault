@@ -24,7 +24,6 @@ import type { VaultScreen } from './context'
 
 interface VaultSessionOptions {
   enrollment: EnrollmentSecrets | null
-  refreshBalance: (vaultId?: string) => Promise<void>
   reportError: (message: string) => void
   sealPlan: () => VaultSetupPlan
   setAddressPin: Dispatch<SetStateAction<AddressPin | null>>
@@ -58,7 +57,6 @@ async function restoreMap(enrollment: EnrollmentSecrets, status: VaultStatus, se
 // local credentials and the selected vault together before exposing Home.
 export function useVaultSession({
   enrollment,
-  refreshBalance,
   reportError,
   sealPlan,
   setAddressPin,
@@ -116,7 +114,6 @@ export function useVaultSession({
         } catch {
           reportError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
         }
-        await refreshBalance(result.status.vaultId)
         setScreen('home')
       } catch (error) {
         reportError(humanizeVaultError(error))
@@ -124,7 +121,7 @@ export function useVaultSession({
         setBusy(false)
       }
     },
-    [refreshBalance, reportError, sealPlan, setAddressPin, setBusy, setEnrollment, setScreen, setStatus, setup, status],
+    [reportError, sealPlan, setAddressPin, setBusy, setEnrollment, setScreen, setStatus, setup, status],
   )
 
   const enableOtherDevices = useCallback(async () => {
@@ -159,7 +156,6 @@ export function useVaultSession({
         setStatus(live)
         setAddressPin(loadAddressPin(localStorage, live.vaultId))
         await restoreMap(unlocked, live, setup)
-        await refreshBalance(live.vaultId)
         setScreen('home')
         return
       }
@@ -174,25 +170,13 @@ export function useVaultSession({
       setStatus(result.status)
       setAddressPin(loadAddressPin(localStorage, result.status.vaultId))
       await restoreMap(result.enrollment, result.status, setup)
-      await refreshBalance(result.status.vaultId)
       setScreen('home')
     } catch (error) {
       reportError(humanizeVaultError(error))
     } finally {
       setBusy(false)
     }
-  }, [
-    enrollment,
-    refreshBalance,
-    reportError,
-    setAddressPin,
-    setBusy,
-    setEnrollment,
-    setLocked,
-    setScreen,
-    setStatus,
-    setup,
-  ])
+  }, [enrollment, reportError, setAddressPin, setBusy, setEnrollment, setLocked, setScreen, setStatus, setup])
 
   return { enableOtherDevices, enroll, signIn }
 }

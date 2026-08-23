@@ -31,6 +31,8 @@ export default function VaultHome() {
   const {
     account,
     amountSats,
+    balanceError,
+    balancesLoaded,
     boardingAddress,
     canSend,
     dailyLimit,
@@ -42,7 +44,7 @@ export default function VaultHome() {
     liveNetwork,
     initiateAlert,
     spendingArkAddress,
-    refreshBalance,
+    refreshingBalance,
     savingsAddress,
     savingsSats,
     setAccount,
@@ -54,14 +56,12 @@ export default function VaultHome() {
 
   useEffect(() => {
     void reloadIfNewerWallet()
-    if (liveNetwork) void refreshBalance()
     const onFocus = () => {
       void reloadIfNewerWallet()
-      if (liveNetwork) void refreshBalance()
     }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
-  }, [liveNetwork, refreshBalance])
+  }, [])
 
   const spending = account === 'spend'
   const sats = spending ? amountSats : savingsSats
@@ -77,7 +77,7 @@ export default function VaultHome() {
 
   return (
     <>
-      <Content noRefresh>
+      <Content>
         <Padded>
           <div className='vault-home'>
             <div className='vault-account-bar'>
@@ -122,7 +122,7 @@ export default function VaultHome() {
                 <button
                   type='button'
                   className='vault-account-qr'
-                  aria-label='Scan'
+                  aria-label={spending ? 'Scan a Spending payment' : 'Scan a Savings destination'}
                   data-testid='account-scan'
                   onClick={() => {
                     hapticSubtle()
@@ -134,7 +134,7 @@ export default function VaultHome() {
                 <button
                   type='button'
                   className='vault-account-qr'
-                  aria-label='Receive'
+                  aria-label={spending ? 'Receive to Spending' : 'Add to Savings'}
                   data-testid='account-receive'
                   onClick={() => navigate('receive')}
                 >
@@ -164,7 +164,7 @@ export default function VaultHome() {
                       <span className='vault-account-option-meta'>This device, up to today’s limit</span>
                     </span>
                     <span className='vault-account-option-amt'>
-                      {prettyNumber(amountSats)} {amountSats === 1 ? 'SAT' : 'SATS'}
+                      {balancesLoaded ? `${prettyNumber(amountSats)} ${amountSats === 1 ? 'SAT' : 'SATS'}` : 'Loading…'}
                     </span>
                   </button>
                   <button
@@ -180,19 +180,30 @@ export default function VaultHome() {
                       <span className='vault-account-option-meta'>This device and hardware</span>
                     </span>
                     <span className='vault-account-option-amt'>
-                      {prettyNumber(savingsSats)} {savingsSats === 1 ? 'SAT' : 'SATS'}
+                      {balancesLoaded
+                        ? `${prettyNumber(savingsSats)} ${savingsSats === 1 ? 'SAT' : 'SATS'}`
+                        : 'Loading…'}
                     </span>
                   </button>
                 </div>
               </>
             ) : null}
 
-            <p className='vault-balance-figure' data-testid='vault-balance'>
-              {prettyNumber(sats)}
-              <span className='vault-balance-unit'>{satsUnit}</span>
+            <p
+              className='vault-balance-figure'
+              data-testid='vault-balance'
+              aria-busy={!balancesLoaded || refreshingBalance}
+              aria-live='polite'
+            >
+              {balancesLoaded ? prettyNumber(sats) : '—'}
+              {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
             </p>
 
-            {spending ? (
+            {!balancesLoaded ? (
+              <Text color='neutral-600' tiny wrap>
+                Loading {spending ? 'Spending' : 'Savings'} balance…
+              </Text>
+            ) : spending ? (
               <FlexCol gap='0.35rem'>
                 <Text color='neutral-600' tiny>
                   {prettyNumber(dailyRemaining, 0)} / {prettyNumber(dailyLimit, 0)} remaining in the rolling 24h limit
@@ -201,7 +212,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This device can’t send this alone. Hardware signs too.
+                Confirmed and unspent. Moving it requires this device and your hardware key.
               </Text>
             )}
 
@@ -216,24 +227,31 @@ export default function VaultHome() {
                   Recovery in process
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  {initiateAlert} Waiting is in blocks, not a calendar day. Cancel needs the vault services unless this
-                  vault can cancel with hardware alone.
+                  {initiateAlert} Waiting is measured in blocks, and cancellation requires the vault services unless
+                  this vault supports hardware-only cancellation.
                 </Text>
               </button>
             ) : null}
-            <ErrorMessage error={Boolean(error)} text={error} />
+
+            <ErrorMessage error={Boolean(error || balanceError)} text={error || balanceError} />
+
             <FlexRow padding='0 0 0.5rem 0'>
               <Button
                 main
                 icon={<SendIcon />}
-                label='Send'
+                label={spending ? 'Send' : 'Move to Spending'}
                 disabled={spending ? !canSend : savingsSats <= 330}
                 onClick={() => {
                   if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
                   navigate('send')
                 }}
               />
-              <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
+              <Button
+                main
+                icon={<ReceiveIcon />}
+                label={spending ? 'Receive' : 'Add to Savings'}
+                onClick={() => navigate('receive')}
+              />
             </FlexRow>
             <VaultHistory />
             {status?.enrolled && (!spendingArkAddress || !boardingAddress) ? (

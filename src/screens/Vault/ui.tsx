@@ -124,9 +124,17 @@ export function Panel({
 
 export function StepRail({ step, total = 6 }: { step: number; total?: number }) {
   return (
-    <div className='vault-rail' aria-hidden>
+    <div
+      className='vault-rail'
+      role='progressbar'
+      aria-label='Vault setup progress'
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={step}
+      aria-valuetext={`Step ${step} of ${total}`}
+    >
       {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={i < step ? 'vault-rail-dot on' : 'vault-rail-dot'} />
+        <span key={i} className={i < step ? 'vault-rail-dot on' : 'vault-rail-dot'} aria-hidden='true' />
       ))}
     </div>
   )
@@ -145,7 +153,15 @@ export function Pill({ children }: { children: ReactNode }) {
 export function Meter({ ratio, label }: { ratio: number; label: string }) {
   const width = Math.max(0, Math.min(100, Math.round(ratio * 100)))
   return (
-    <div className='vault-meter' aria-label={label}>
+    <div
+      className='vault-meter'
+      role='progressbar'
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={width}
+      aria-valuetext={`${width}% used`}
+    >
       <span style={{ width: `${width}%` }} />
     </div>
   )

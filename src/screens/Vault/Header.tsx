@@ -51,8 +51,8 @@ export default function VaultHeader({ auxAriaLabel, auxFunc, auxText, auxIcon, b
       <FlexRow between>
         <div style={{ minWidth: '4rem', marginLeft: '0.5rem' }}>
           {handleBack ? (
-            <Focusable onEnter={handleBack} fit round>
-              <div onClick={handleBack} style={{ cursor: 'pointer' }} aria-label='Go back'>
+            <Focusable ariaLabel='Go back' onEnter={handleBack} fit round>
+              <div onClick={handleBack} style={{ cursor: 'pointer' }} aria-hidden='true'>
                 <BackIcon />
               </div>
             </Focusable>
@@ -60,12 +60,12 @@ export default function VaultHeader({ auxAriaLabel, auxFunc, auxText, auxIcon, b
             '\u00A0'
           )}
         </div>
-        <p className='title' data-testid='screen-title'>
+        <h1 className='title' data-testid='screen-title'>
           {text}
-        </p>
+        </h1>
         <div style={auxStyle} onClick={auxFunc} aria-label={auxAriaLabel} data-testid='header-aux-btn'>
           {auxText || auxIcon ? (
-            <Focusable onEnter={auxFunc} fit round>
+            <Focusable ariaLabel={auxAriaLabel || auxText} onEnter={auxFunc} fit round>
               {auxText ? sideButton(auxText) : <div style={{ padding: '0.5rem' }}>{auxIcon}</div>}
             </Focusable>
           ) : (

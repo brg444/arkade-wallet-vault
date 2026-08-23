@@ -7,15 +7,18 @@ import Header from './Header'
 import Padded from '../../components/Padded'
 import Success from '../../components/Success'
 import { prettyAmount } from '../../lib/format'
+import { vaultTransactionExplorer } from '../../lib/vault/explorer'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
 import { Detail } from './ui'
 
 export default function VaultSuccess() {
-  const { boardingAddress, lastSend, lastTxid, lastTxKind, liveNetwork, navigate } = useContext(VaultContext)
+  const { boardingAddress, lastSend, lastTxid, lastTxKind, navigate, status } = useContext(VaultContext)
   const amount = lastSend ? prettyAmount(lastSend.amount) : 'Sent'
   const movingToSpending = Boolean(lastSend && boardingAddress && lastSend.address === boardingAddress)
-  const explorer = lastTxid && lastTxKind === 'onchain' ? `https://mempool.mutinynet.arkade.sh/tx/${lastTxid}` : ''
+  const explorer = lastTxKind
+    ? vaultTransactionExplorer(lastTxid, lastTxKind === 'vtxo' ? 'arkade' : 'onchain', status?.network)
+    : null
 
   return (
     <>
@@ -50,8 +53,12 @@ export default function VaultSuccess() {
       </Content>
       <ButtonsOnBottom>
         <Button onClick={() => navigate('home')} label='Done' />
-        {liveNetwork && explorer ? (
-          <Button onClick={() => window.open(explorer, '_blank')} label='View on explorer' secondary />
+        {explorer ? (
+          <Button
+            onClick={() => window.open(explorer.url, '_blank', 'noopener,noreferrer')}
+            label={explorer.label}
+            secondary
+          />
         ) : null}
       </ButtonsOnBottom>
     </>

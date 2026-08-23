@@ -51,6 +51,7 @@ export default function VaultWelcome() {
         reducedMotion={prefersReduced}
       />
       <PixelSunrise show={sunrise} reducedMotion={prefersReduced} />
+
       <Content noRefresh>
         <Padded>
           <FlexCol between>
@@ -75,38 +76,70 @@ export default function VaultWelcome() {
                 <div className='vault-welcome-title'>
                   <p className='vault-kicker'>Arkade Vault</p>
                   <Text heading big>
-                    Your vault
+                    Spending and Savings, together
                   </Text>
                 </div>
                 <Text color='neutral-600' small wrap>
-                  Daily spend on this device. Savings need hardware too.
+                  Use Spending on this device, while moving Savings also requires your hardware key.
                 </Text>
                 <div className='vault-welcome-points'>
-                  <Point icon={<BoltOutlineIcon />} text='Daily spend with Face ID' />
-                  <Point icon={<ShieldCheckOutlineIcon />} text='Hardware to move everything' />
-                  <Point icon={<SafeIcon />} text='Lose a key? Start recovery. Cancel if it wasn’t you.' />
+                  <Point
+                    icon={<BoltOutlineIcon />}
+                    text='Pay from Spending on this device, within the limits you reviewed'
+                  />
+                  <Point
+                    icon={<ShieldCheckOutlineIcon />}
+                    text='Approve every Savings send with both this device and your hardware key'
+                  />
+                  <Point icon={<SafeIcon />} text='Recover access after a waiting period if either key is lost' />
                 </div>
+                {!locked ? (
+                  <Text color='neutral-600' tiny wrap>
+                    Have your hardware public key and one-time invite ready before setup.
+                  </Text>
+                ) : null}
                 <Text color='neutral-600' tiny wrap>
-                  Testnet only. Don’t send real bitcoin.
+                  This is testnet, so don’t send real bitcoin.
                 </Text>
               </div>
             </div>
           </FlexCol>
         </Padded>
       </Content>
+
       <ButtonsOnBottom className={ready ? 'vault-welcome-actions is-ready' : 'vault-welcome-actions'}>
         <ErrorMessage error={Boolean(error)} text={error} />
-        {canSignIn ? (
+
+        {locked ? (
+          <Button
+            onClick={() => void signIn()}
+            disabled={busy}
+            loading={busy}
+            label={busy ? 'Unlocking…' : 'Unlock vault'}
+          />
+        ) : (
+          <Button onClick={() => navigate('design')} label='Set up a new vault' />
+        )}
+
+        {canSignIn && !locked ? (
           <Button
             onClick={() => void signIn()}
             disabled={busy}
             loading={busy}
             label={
-              busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for QR…') : onPhone ? 'Sign in' : 'Sign in with QR'
+              busy
+                ? onPhone
+                  ? 'Waiting for device…'
+                  : 'Waiting for QR…'
+                : onPhone
+                  ? 'Sign in to an existing vault'
+                  : 'Sign in to an existing vault with QR'
             }
+            secondary
           />
         ) : null}
-        <Button onClick={() => navigate('design')} label='Set up' secondary={canSignIn} />
+
+        {locked ? <Button onClick={() => navigate('design')} label='Set up another vault' secondary /> : null}
       </ButtonsOnBottom>
     </>
   )

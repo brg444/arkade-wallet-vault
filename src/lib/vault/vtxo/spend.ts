@@ -93,12 +93,14 @@ export interface VaultVtxoSpendQuote {
 export class VtxoReceiptPendingError extends Error {
   readonly txid: string
   readonly operationId: string
+  readonly feeSats: number
 
-  constructor(txid: string, operationId: string) {
+  constructor(txid: string, operationId: string, feeSats: number) {
     super('VTXO finalization receipt unavailable')
     this.name = 'VtxoReceiptPendingError'
     this.txid = txid
     this.operationId = operationId
+    this.feeSats = feeSats
   }
 }
 
@@ -1377,7 +1379,11 @@ async function continueSameVtxoSpend(
     try {
       await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
     } catch {
-      throw new VtxoReceiptPendingError(pending.arkTxid, pending.operationId)
+      throw new VtxoReceiptPendingError(
+        pending.arkTxid,
+        pending.operationId,
+        quoteFromPersistedVtxoSpend(pending).feeSats,
+      )
     }
     clearPersistedVtxoSpend(status.vaultId)
     return {
@@ -1404,17 +1410,18 @@ export async function sendVaultVtxo(
   })
 }
 
-export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number; maxCoin: number }> {
+export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number }> {
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
   const provider = new RestIndexerProvider(vaultArkServer())
   const scripts = [hex.encode(script.pkScript)]
-  const vtxos = await collectPagedVtxos((pageIndex) =>
-    provider.getVtxos({ scripts, spendableOnly: true, ...vaultVtxoPage(pageIndex) }),
+  const vtxos = uniqueVtxosByOutpoint(
+    await collectPagedVtxos((pageIndex) =>
+      provider.getVtxos({ scripts, spendableOnly: true, ...vaultVtxoPage(pageIndex) }),
+    ),
   )
   return {
     balance: vtxos.reduce((sum, vtxo) => sum + vtxo.value, 0),
-    maxCoin: vtxos.reduce((largest, vtxo) => Math.max(largest, vtxo.value), 0),
   }
 }
 
@@ -1425,6 +1432,12 @@ export const VAULT_VTXO_PAGE_SIZE = 100
 
 export function vaultVtxoPage(pageIndex: number): { pageIndex: number; pageSize: number } {
   return { pageIndex, pageSize: VAULT_VTXO_PAGE_SIZE }
+}
+
+export function uniqueVtxosByOutpoint<T extends { txid: string; vout: number }>(vtxos: T[]): T[] {
+  const unique = new Map<string, T>()
+  for (const vtxo of vtxos) unique.set(`${vtxo.txid}:${vtxo.vout}`, vtxo)
+  return [...unique.values()]
 }
 
 export async function collectPagedVtxos<T>(
@@ -1450,14 +1463,30 @@ export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultH
   const provider = new RestIndexerProvider(vaultArkServer())
   const scripts = [hex.encode(script.pkScript)]
   const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) }))
-  return historyFromVtxos(
-    vtxos.map((vtxo) => ({
-      txid: vtxo.txid,
-      value: vtxo.value,
-      createdAtMs: vtxo.createdAt instanceof Date ? vtxo.createdAt.getTime() : Number(vtxo.createdAt) || 0,
-      isSpent: Boolean(vtxo.isSpent || vtxo.spentBy),
-      arkTxId: vtxo.arkTxId,
-      isLeaf: Boolean(vtxo.status?.isLeaf),
-    })),
-  )
+  return historyFromVtxos(vtxos.map(vaultVtxoHistoryCoin))
+}
+
+export function vaultVtxoHistoryCoin(vtxo: {
+  txid: string
+  vout: number
+  value: number
+  createdAt: Date | string | number
+  isSpent?: boolean
+  spentBy?: string
+  arkTxId?: string
+  commitmentTxIds?: string[]
+  status?: { isLeaf?: boolean }
+  settledBy?: string
+}): Parameters<typeof historyFromVtxos>[0][number] {
+  return {
+    txid: vtxo.txid,
+    vout: vtxo.vout,
+    value: vtxo.value,
+    createdAtMs: vtxo.createdAt instanceof Date ? vtxo.createdAt.getTime() : Number(vtxo.createdAt) || 0,
+    isSpent: Boolean(vtxo.isSpent || vtxo.spentBy || vtxo.settledBy),
+    arkTxId: vtxo.arkTxId,
+    commitmentTxIds: vtxo.commitmentTxIds,
+    isLeaf: Boolean(vtxo.status?.isLeaf),
+    settledBy: vtxo.settledBy,
+  }
 }
