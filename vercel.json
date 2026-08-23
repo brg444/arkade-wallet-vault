@@ -1,0 +1,54 @@
+{
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "dist",
+  "framework": null,
+  "headers": [
+    {
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "source": "/index.html",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; worker-src 'self'"
+        },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/v1/enroll/:action", "destination": "/api/v1/enroll/:action" },
+    { "source": "/v1/passkey/:action", "destination": "/api/v1/passkey/:action" },
+    { "source": "/v1/kit", "destination": "/api/kit" },
+    { "source": "/v1/vtxo/operation", "destination": "/api/v1/vtxo-operation" },
+    { "source": "/v1/vtxo/reserve", "destination": "/api/v1/vtxo-reserve" },
+    { "source": "/v1/vtxo/authorize", "destination": "/api/v1/vtxo-authorize" },
+    {
+      "source": "/v1/vtxo/checkpoints/authorize",
+      "destination": "/api/v1/vtxo-checkpoints-authorize"
+    },
+    { "source": "/v1/vtxo/finalize", "destination": "/api/v1/vtxo-finalize" },
+    { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
+    {
+      "source": "/esplora/:path*",
+      "destination": "https://mempool.mutinynet.arkade.sh/api/:path*"
+    },
+    {
+      "source": "/arkade/:path*",
+      "destination": "https://mutinynet.arkade.sh/:path*"
+    },
+    {
+      "source": "/((?!assets/|api/|health(?:/|$)|v1(?:/|$)).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

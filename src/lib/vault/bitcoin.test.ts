@@ -1,0 +1,37 @@
+import { ArkAddress } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
+import { describe, expect, it } from 'vitest'
+import { isVaultArkAddress, isVaultBitcoinAddress, isVaultSpendAddress, scriptHexFromAddress } from './bitcoin'
+
+const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
+
+describe('vault bitcoin addresses', () => {
+  it('decodes a checksummed testnet address and rejects mainnet, ark, and garbage', () => {
+    expect(isVaultBitcoinAddress(TB1Q, 'mutinynet')).toBe(true)
+    expect(isVaultBitcoinAddress('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'mutinynet')).toBe(false)
+    expect(isVaultBitcoinAddress('1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH', 'mutinynet')).toBe(false)
+    expect(isVaultBitcoinAddress('tark1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')).toBe(
+      false,
+    )
+    expect(isVaultBitcoinAddress('bcrt1p40xfaupmdqysq0c6m5m6q0c6m5m6q0c6m5m6q0c6m5m6q0c6m5mq7n0d2p')).toBe(false)
+  })
+
+  it('encodes a valid testnet address on mutinynet only', () => {
+    const script = scriptHexFromAddress(TB1Q, 'mutinynet')
+    expect(script.startsWith('0014')).toBe(true)
+    expect(() => scriptHexFromAddress(TB1Q, 'regtest')).toThrow(/bitcoin address|unsupported/)
+    expect(() => scriptHexFromAddress('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'mutinynet')).toThrow(
+      /bitcoin address/,
+    )
+  })
+
+  it('accepts only test-network Arkade addresses for the supported Vault networks', () => {
+    const signer = hex.decode('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+    const tapKey = hex.decode('c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5')
+    const testAddress = new ArkAddress(signer, tapKey, 'tark').encode()
+    const mainAddress = new ArkAddress(signer, tapKey, 'ark').encode()
+    expect(isVaultArkAddress(testAddress, 'mutinynet')).toBe(true)
+    expect(isVaultSpendAddress(testAddress, 'mutinynet')).toBe(true)
+    expect(isVaultArkAddress(mainAddress, 'mutinynet')).toBe(false)
+  })
+})
