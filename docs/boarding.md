@@ -66,9 +66,17 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - `Wallet.settle()` starts SDK managers and indexer watchers. Each automatic
   attempt owns a temporary wallet and three per-vault repositories, then
   disposes the wallet before closing those repositories on success or failure.
+- Before creating that wallet, the coordinator reads the SDK intent
+  repository's public nonterminal outpoint set, excludes every reported
+  outpoint from another boarding attempt, and stops settlement before any
+  Operator call when that set cannot be read.
 - The automatic Vault coordinator accepts confirmed boarding inputs and the
   fixed `vault-policy-v1` output. It does not accept ArkNote or condition inputs
   whose registration proof can contain private `extraWitness` material.
 - The coordinator does not replay registrations, infer Operator state, resume
   MuSig2 sessions, or implement a second protocol state machine. Interrupted
-  settlement follows the behavior of the pinned SDK and deployed Operator.
+  settlement follows the behavior of the pinned SDK and deployed Operator. A
+  retained nonterminal intent pauses automatic boarding until its inputs are
+  consumed or the intent is otherwise resolved. The deployed interface cannot
+  always resolve that ambiguity after a browser crash, so this remains an
+  availability gate for mainnet qualification.

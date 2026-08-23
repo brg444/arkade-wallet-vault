@@ -55,6 +55,10 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
   endpoint is the remaining unavailable external dependency.
 - The wallet uses the official SDK lifecycle without custom registration,
   deletion, replay, event-stream, or Operator-status extensions.
+- Automatic boarding excludes every outpoint held by the SDK intent
+  repository before wallet creation. A retained nonterminal intent stays
+  fail-closed when the deployed interface cannot prove completion or release;
+  live qualification must define the operational resolution path.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.
