@@ -13,6 +13,7 @@ import {
   assertVaultLightningQuoteCurrent,
   decodeVaultLightningInvoice,
   requestVaultLightningQuote,
+  validateVaultLightningRefund,
   vaultLightningSendEnabled,
   withMainnetLightningTransport,
   withVaultRefundAddress,
@@ -86,6 +87,30 @@ describe('Lightning SEND release boundary', () => {
     expect(target.getAddress).not.toHaveBeenCalled()
     expect(await adapted.getContractManager()).toBe(contracts)
     expect(target.getContractManager).toHaveBeenCalledOnce()
+  })
+
+  it('binds the refund address to the advertised Spending script and Operator', async () => {
+    const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+    const operatorPubkey = hex.encode(await operator.compressedPublicKey())
+    const address = await refundAddress()
+    const script = hex.encode(ArkAddress.decode(address).pkScript)
+    const status = {
+      enrolled: true,
+      vaultId: 'vault-lightning',
+      network: 'bitcoin',
+      spendingArkAddress: address,
+      spendingArkScript: script,
+    } as import('./types').VaultStatus
+
+    expect(validateVaultLightningRefund(status, 'bitcoin', operatorPubkey).encode()).toBe(address)
+    expect(() =>
+      validateVaultLightningRefund({ ...status, spendingArkScript: '51'.repeat(34) }, 'bitcoin', operatorPubkey),
+    ).toThrow(/pinned script/)
+    const otherOperator = SingleKey.fromPrivateKey(hex.decode('07'.padStart(64, '0')))
+    const otherOperatorPubkey = hex.encode(await otherOperator.compressedPublicKey())
+    expect(() => validateVaultLightningRefund(status, 'bitcoin', otherOperatorPubkey)).toThrow(
+      /another Arkade Operator/,
+    )
   })
 
   it('passes the adapted wallet to the package client and retains its authoritative fee and refund facts', async () => {

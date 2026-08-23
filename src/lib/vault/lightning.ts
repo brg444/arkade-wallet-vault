@@ -121,6 +121,33 @@ export function withVaultRefundAddress(wallet: IWallet, refundAddress: string): 
   })
 }
 
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
+export function validateVaultLightningRefund(
+  status: VaultStatus,
+  operatorNetwork: NetworkName,
+  operatorSignerPubkey: string,
+): ArkAddress {
+  if (!status.enrolled || !status.vaultId) throw new Error('Enrolled vault required for Lightning.')
+  if (status.network !== 'bitcoin' || operatorNetwork !== 'bitcoin') {
+    throw new Error('Lightning send is enabled for mainnet only.')
+  }
+  const refund = ArkAddress.decode(String(status.spendingArkAddress || ''))
+  if (refund.hrp !== 'ark') throw new Error('Spending refund address is encoded for another network.')
+  const advertisedScript = String(status.spendingArkScript || '').toLowerCase()
+  if (!/^[0-9a-f]{68}$/.test(advertisedScript) || hex.encode(refund.pkScript) !== advertisedScript) {
+    throw new Error('Spending refund address does not match its pinned script.')
+  }
+  const signer = hex.decode(operatorSignerPubkey)
+  const xOnlySigner = signer.length === 33 ? signer.slice(1) : signer
+  if (xOnlySigner.length !== 32 || !sameBytes(refund.serverPubKey, xOnlySigner)) {
+    throw new Error('Spending refund address belongs to another Arkade Operator.')
+  }
+  return refund
+}
+
 type VaultSdkWalletResources = {
   walletRepository: IndexedDBWalletRepository
   contractRepository: IndexedDBContractRepository
@@ -145,14 +172,7 @@ export async function withVaultLightningSdkWallet<T>(
   try {
     const info = await operator.getInfo()
     if (info.network !== status.network) throw new Error('Vault and Arkade Operator networks do not match.')
-    const refund = ArkAddress.decode(status.spendingArkAddress)
-    const expectedHrp = info.network === 'bitcoin' ? 'ark' : 'tark'
-    if (refund.hrp !== expectedHrp) throw new Error('Spending refund address is encoded for another network.')
-    const signer = hex.decode(info.signerPubkey)
-    const xOnlySigner = signer.length === 33 ? signer.slice(1) : signer
-    if (hex.encode(refund.serverPubKey) !== hex.encode(xOnlySigner)) {
-      throw new Error('Spending refund address belongs to another Arkade Operator.')
-    }
+    validateVaultLightningRefund(status, info.network, info.signerPubkey)
     wallet = await Wallet.create({
       identity,
       arkServerUrl,
