@@ -1447,11 +1447,14 @@ export async function collectPagedVtxos<T>(
   const seen = new Set<number>()
   let pageIndex = 0
   for (;;) {
-    if (seen.has(pageIndex) || seen.size >= MAX_VTXO_HISTORY_PAGES) break
+    if (seen.has(pageIndex)) break
     seen.add(pageIndex)
     const { vtxos, page } = await fetchPage(pageIndex)
     all.push(...vtxos)
     if (!page || page.current + 1 >= page.total || page.next <= page.current) break
+    if (seen.size >= MAX_VTXO_HISTORY_PAGES) {
+      throw new Error('VTXO indexer pagination exceeds the safety limit')
+    }
     pageIndex = page.next
   }
   return all
