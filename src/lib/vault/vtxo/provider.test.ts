@@ -271,16 +271,67 @@ describe('VaultArkProvider event stream', () => {
     expect(repo.saveIntent).not.toHaveBeenCalled()
   })
 
-  it('retries one malformed successful response but never persists an empty intent ID', async () => {
+  it('retries malformed 2xx JSON once and persists the retained intent ID', async () => {
     const repo = new FakeIntentRepository(ambiguousIntentRow())
     globalThis.fetch = vi
       .fn()
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
-      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(new Response('{"intentId":', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ intentId: 'retained-uuid' }), { status: 200 }))
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).resolves.toBe('retained-uuid')
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(repo.rows.get('proof-txid')).toMatchObject({
+      intentId: 'retained-uuid',
+      state: 'waiting_for_batch',
+    })
+  })
+
+  it.each([
+    ['missing', '{}'],
+    ['empty', '{"intentId":""}'],
+  ])('never persists a %s intent ID after the bounded retry', async (_case, body) => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi.fn().mockImplementation(async () => new Response(body, { status: 200 }))
     const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
 
     await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/no intent ID/)
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
+  })
+
+  it('leaves registration_ambiguous when the second bounded response is malformed', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Load failed after request delivery'))
+      .mockResolvedValueOnce(new Response('{"intentId":', { status: 200 }))
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toBeInstanceOf(SyntaxError)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(repo.saveIntent).not.toHaveBeenCalled()
+    expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
+  })
+
+  it('does not retry the registration POST after a digest mismatch', async () => {
+    const repo = new FakeIntentRepository(ambiguousIntentRow())
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(arkError(1, 'DIGEST_MISMATCH', 'server configuration changed'), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ network: 'mutinynet', digest: 'fresh' }), { status: 200 }))
+    globalThis.fetch = fetchMock
+    const provider = new VaultArkProvider('/arkade', { intentCache: intentRepositoryBoardingCache(repo) })
+
+    await expect(provider.registerIntent(registerRequest)).rejects.toThrow(/digest mismatch/i)
+    const registerCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/v1/batch/registerIntent'))
+    expect(registerCalls).toHaveLength(1)
     expect(repo.saveIntent).not.toHaveBeenCalled()
     expect(repo.rows.get('proof-txid')).toMatchObject({ state: 'registration_ambiguous' })
   })
