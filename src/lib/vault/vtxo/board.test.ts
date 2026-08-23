@@ -12,6 +12,7 @@ import {
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
   createVaultBoardingStorage,
+  disposeVaultBoardingResources,
   nextVaultBoardingAction,
   vaultBoardingStorageNames,
   vaultBoardScriptFromStatus,
@@ -121,6 +122,49 @@ describe('vault-board-v1', () => {
       intents: 'arkade-vault-v2:vault-a:intents',
     })
     expect(() => vaultBoardingStorageNames('')).toThrow(/vault id/)
+  })
+
+  it('disposes the wallet before all three boarding repositories', async () => {
+    const disposed: string[] = []
+    const repository = (name: string) => ({
+      async [Symbol.asyncDispose]() {
+        disposed.push(name)
+      },
+    })
+    const storage = {
+      walletRepository: repository('wallet'),
+      contractRepository: repository('contract'),
+      intentRepository: repository('intent'),
+    }
+
+    await disposeVaultBoardingResources(
+      {
+        async dispose() {
+          disposed.push('sdk-wallet')
+        },
+      },
+      storage,
+    )
+    expect(disposed[0]).toBe('sdk-wallet')
+    expect(new Set(disposed.slice(1))).toEqual(new Set(['wallet', 'contract', 'intent']))
+  })
+
+  it('closes every repository after partial wallet creation and after a disposal failure', async () => {
+    const disposed: string[] = []
+    const repository = (name: string, fail = false) => ({
+      async [Symbol.asyncDispose]() {
+        disposed.push(name)
+        if (fail) throw new Error(`${name} close failed`)
+      },
+    })
+    const storage = {
+      walletRepository: repository('wallet', true),
+      contractRepository: repository('contract'),
+      intentRepository: repository('intent'),
+    }
+
+    await expect(disposeVaultBoardingResources(undefined, storage)).rejects.toThrow(/wallet close failed/)
+    expect(new Set(disposed)).toEqual(new Set(['wallet', 'contract', 'intent']))
   })
 
   it('settles only deposits already sent to the boarding address', () => {
