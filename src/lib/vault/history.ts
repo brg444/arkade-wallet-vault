@@ -17,7 +17,7 @@ export interface VaultHistoryGroup {
   items: VaultHistoryItem[]
 }
 
-/** Groups already-sorted history into the states and dates a wallet user needs to scan. */
+/** Groups history into the states and dates a wallet user needs to scan. */
 export function groupVaultHistory(
   items: VaultHistoryItem[],
   nowSeconds = Math.floor(Date.now() / 1000),
@@ -27,7 +27,7 @@ export function groupVaultHistory(
   yesterday.setDate(today.getDate() - 1)
   const groups: VaultHistoryGroup[] = []
 
-  for (const item of items) {
+  for (const item of [...items].sort(sortVaultHistory)) {
     const group = historyGroup(item, today, yesterday)
     const previous = groups.at(-1)
     if (previous?.key === group.key) previous.items.push(item)
@@ -37,7 +37,11 @@ export function groupVaultHistory(
 }
 
 function historyGroup(item: VaultHistoryItem, today: Date, yesterday: Date): Pick<VaultHistoryGroup, 'key' | 'label'> {
-  if (!item.confirmed) return { key: 'pending', label: 'Pending' }
+  if (!item.confirmed) {
+    return item.account === 'spend'
+      ? { key: 'preconfirmed', label: 'Preconfirmed' }
+      : { key: 'pending', label: 'Pending' }
+  }
   if (!item.blockTime) return { key: 'earlier', label: 'Earlier' }
   const date = new Date(item.blockTime * 1000)
   const key = localDateKey(date)
@@ -81,17 +85,20 @@ export function classifyAddressTx(tx: EsploraTx, address: string): Omit<VaultHis
 }
 
 export function historyFromTxs(txs: EsploraTx[], address: string, account: 'spend' | 'savings'): VaultHistoryItem[] {
-  return txs
-    .map((tx) => {
-      const item = classifyAddressTx(tx, address)
-      return item ? { ...item, account } : null
-    })
-    .filter((item): item is VaultHistoryItem => Boolean(item))
-    .sort(sortVaultHistory)
+  const byTxid = new Map<string, VaultHistoryItem>()
+  for (const tx of txs) {
+    const item = classifyAddressTx(tx, address)
+    if (!item) continue
+    const next = { ...item, account }
+    const previous = byTxid.get(item.txid)
+    if (!previous || (!previous.confirmed && next.confirmed)) byTxid.set(item.txid, next)
+  }
+  return [...byTxid.values()].sort(sortVaultHistory)
 }
 
 export interface VaultVtxoHistoryCoin {
   txid: string
+  vout: number
   value: number
   createdAtMs: number
   isSpent: boolean
@@ -104,24 +111,27 @@ export function historyFromVtxos(
   coins: VaultVtxoHistoryCoin[],
   account: 'spend' | 'savings' = 'spend',
 ): VaultHistoryItem[] {
+  const unique = uniqueHistoryCoins(coins)
   const rows: VaultHistoryItem[] = []
   const spentByArk = new Set<string>()
-  for (const coin of coins) {
-    const createdAsChange = coins.some((other) => other.arkTxId && other.arkTxId === coin.txid)
+  for (const coin of unique) {
+    const createdAsChange = unique.some((other) => other.arkTxId && other.arkTxId === coin.txid)
     if (!createdAsChange && coin.value > 0) {
       rows.push({
         txid: coin.txid,
         type: 'received',
         amount: coin.value,
-        confirmed: Boolean(coin.isLeaf),
+        // `isLeaf` is an indexer graph property, not a Bitcoin confirmation
+        // flag. The SDK keeps a spent receive settled after its VTXO moves.
+        confirmed: Boolean(coin.isLeaf || coin.isSpent),
         blockTime: unixSeconds(coin.createdAtMs),
         account,
       })
     }
     if (!coin.isSpent || !coin.arkTxId || spentByArk.has(coin.arkTxId)) continue
     spentByArk.add(coin.arkTxId)
-    const spent = coins.filter((other) => other.arkTxId === coin.arkTxId)
-    const change = coins.filter((other) => other.txid === coin.arkTxId)
+    const spent = unique.filter((other) => other.arkTxId === coin.arkTxId)
+    const change = unique.filter((other) => other.txid === coin.arkTxId)
     const amount =
       spent.reduce((sum, other) => sum + other.value, 0) - change.reduce((sum, other) => sum + other.value, 0)
     if (amount <= 0) continue
@@ -134,7 +144,48 @@ export function historyFromVtxos(
       account,
     })
   }
-  return rows.sort(sortVaultHistory)
+  return mergeHistoryRows(rows).sort(sortVaultHistory)
+}
+
+function uniqueHistoryCoins(coins: VaultVtxoHistoryCoin[]): VaultVtxoHistoryCoin[] {
+  const byOutpoint = new Map<string, VaultVtxoHistoryCoin>()
+  for (const coin of coins) {
+    const key = `${coin.txid}:${coin.vout}`
+    const previous = byOutpoint.get(key)
+    byOutpoint.set(
+      key,
+      previous
+        ? {
+            ...previous,
+            ...coin,
+            arkTxId: coin.arkTxId || previous.arkTxId,
+            isLeaf: Boolean(previous.isLeaf || coin.isLeaf),
+            isSpent: previous.isSpent || coin.isSpent,
+          }
+        : coin,
+    )
+  }
+  return [...byOutpoint.values()]
+}
+
+function mergeHistoryRows(rows: VaultHistoryItem[]): VaultHistoryItem[] {
+  const merged = new Map<string, VaultHistoryItem>()
+  for (const row of rows) {
+    const key = `${row.account}:${row.txid}:${row.type}`
+    const previous = merged.get(key)
+    merged.set(
+      key,
+      previous
+        ? {
+            ...previous,
+            amount: previous.amount + row.amount,
+            blockTime: Math.max(previous.blockTime || 0, row.blockTime || 0) || undefined,
+            confirmed: previous.confirmed && row.confirmed,
+          }
+        : row,
+    )
+  }
+  return [...merged.values()]
 }
 
 function unixSeconds(ms: number): number | undefined {
@@ -144,5 +195,11 @@ function unixSeconds(ms: number): number | undefined {
 
 function sortVaultHistory(a: VaultHistoryItem, b: VaultHistoryItem): number {
   if (a.confirmed !== b.confirmed) return a.confirmed ? 1 : -1
-  return (b.blockTime || 0) - (a.blockTime || 0)
+  return (
+    (b.blockTime || 0) - (a.blockTime || 0) ||
+    a.account.localeCompare(b.account) ||
+    a.txid.localeCompare(b.txid) ||
+    a.type.localeCompare(b.type) ||
+    a.amount - b.amount
+  )
 }

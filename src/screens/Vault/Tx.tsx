@@ -12,7 +12,16 @@ import { Detail } from './ui'
 export default function VaultTx() {
   const { liveNetwork, navigate, selectedTx } = useContext(VaultContext)
   const sent = selectedTx?.type === 'sent'
-  const explorer = selectedTx ? `https://mempool.mutinynet.arkade.sh/tx/${selectedTx.txid}` : ''
+  const explorer = selectedTx?.account === 'savings' ? `https://mempool.mutinynet.arkade.sh/tx/${selectedTx.txid}` : ''
+  const status = selectedTx
+    ? selectedTx.account === 'spend'
+      ? selectedTx.confirmed
+        ? 'Settled'
+        : 'Preconfirmed'
+      : selectedTx.confirmed
+        ? 'Confirmed'
+        : 'Pending confirmation'
+    : 'Unknown'
 
   return (
     <>
@@ -24,13 +33,10 @@ export default function VaultTx() {
               <p className='vault-kicker'>{sent ? 'You sent' : 'You received'}</p>
               <p className='vault-money'>{selectedTx ? prettyAmount(selectedTx.amount) : '—'}</p>
             </div>
+            <Detail label='Status' value={status} />
             <Detail
               label='When'
-              value={
-                selectedTx?.confirmed && selectedTx.blockTime
-                  ? prettyDate(selectedTx.blockTime)
-                  : 'Pending confirmation'
-              }
+              value={selectedTx?.blockTime ? prettyDate(selectedTx.blockTime) : 'Not available yet'}
             />
             <Detail label='Account' value={selectedTx?.account === 'savings' ? 'Savings' : 'Spending'} />
             {selectedTx ? <Detail label='Transaction' value={selectedTx.txid} mono /> : null}

@@ -13,21 +13,30 @@ function historyTime(blockTime?: number): string {
 }
 
 export default function VaultHistory() {
-  const { account, history, openTx } = useContext(VaultContext)
+  const { account, balanceError, balancesLoaded, history, openTx, refreshingBalance } = useContext(VaultContext)
   const accountName = account === 'savings' ? 'Savings' : 'Spending'
 
-  if (history.length === 0) {
+  if (!balancesLoaded || history.length === 0) {
     return (
-      <section className='vault-history' data-testid='vault-history' aria-labelledby='vault-activity-title'>
+      <section
+        className='vault-history'
+        data-testid='vault-history'
+        aria-busy={!balancesLoaded}
+        aria-labelledby='vault-activity-title'
+      >
         <div className='vault-history-head'>
           <h2 id='vault-activity-title'>Activity</h2>
-          <span>{accountName}</span>
+          <span>{refreshingBalance ? `Refreshing ${accountName}` : accountName}</span>
         </div>
-        <div className='vault-history-empty'>
+        <div className='vault-history-empty' role={!balancesLoaded ? 'status' : undefined}>
           <Text color='neutral-600' tiny wrap>
-            {account === 'savings'
-              ? 'No Savings activity yet. Add bitcoin to your Savings address to see it here.'
-              : 'No Spending activity yet. Receive a payment to see it here.'}
+            {!balancesLoaded
+              ? balanceError
+                ? 'Activity is unavailable. Refresh to try again.'
+                : 'Loading activity…'
+              : account === 'savings'
+                ? 'No Savings activity yet. Add bitcoin to your Savings address to see it here.'
+                : 'No Spending activity yet. Receive a payment to see it here.'}
           </Text>
         </div>
       </section>
@@ -38,18 +47,30 @@ export default function VaultHistory() {
     <section className='vault-history' data-testid='vault-history' aria-labelledby='vault-activity-title'>
       <div className='vault-history-head'>
         <h2 id='vault-activity-title'>Activity</h2>
-        <span>{accountName}</span>
+        <span>{refreshingBalance ? `Refreshing ${accountName}` : accountName}</span>
       </div>
       {groupVaultHistory(history).map((group) => (
         <div className='vault-history-group' key={group.key}>
           <h3 className='vault-history-group-label'>{group.label}</h3>
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
-            const state = tx.confirmed ? historyTime(tx.blockTime) || 'Confirmed' : 'Pending confirmation'
+            const time = historyTime(tx.blockTime)
+            const state =
+              tx.account === 'spend'
+                ? tx.confirmed
+                  ? time
+                    ? `Settled · ${time}`
+                    : 'Settled'
+                  : 'Preconfirmed'
+                : tx.confirmed
+                  ? time
+                    ? `Confirmed · ${time}`
+                    : 'Confirmed'
+                  : 'Pending confirmation'
             return (
               <button
                 type='button'
-                key={tx.txid}
+                key={`${tx.account}:${tx.txid}:${tx.type}`}
                 className='vault-history-row'
                 data-testid={`vault-tx-${tx.txid}`}
                 aria-label={`${sent ? 'Sent' : 'Received'} ${prettyAmount(tx.amount)}. ${state}.`}

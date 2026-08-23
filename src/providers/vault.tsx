@@ -168,7 +168,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setLastTxid(txid)
     setLastTxKind('vtxo')
   }, [])
-  const { boardingInProgress, history, refreshBalance, savingsSats, vtxoMaxCoin, vtxoSpendingSats } = useVaultBalances({
+  const {
+    balanceError,
+    balancesLoaded,
+    boardingInProgress,
+    history,
+    refreshBalance,
+    refreshingBalance,
+    savingsSats,
+    vtxoMaxCoin,
+    vtxoSpendingSats,
+  } = useVaultBalances({
     addressPin,
     busy,
     enrollment,
@@ -177,6 +187,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     onBoarded,
     reportError,
     setSpend,
+    setStatus,
     status,
   })
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
@@ -185,6 +196,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
   const clearError = useCallback(() => reportError(''), [reportError])
+
+  useEffect(() => {
+    setSelectedTx((current) => {
+      if (!current) return current
+      return history.find((item) => item.account === current.account && item.txid === current.txid) || current
+    })
+  }, [history])
   const {
     backupRecoveryKit,
     downloadRecoveryKit,
@@ -267,7 +285,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const { enableOtherDevices, enroll, signIn } = useVaultSession({
     enrollment,
-    refreshBalance,
     reportError,
     sealPlan,
     setAddressPin,
@@ -370,14 +387,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setSpend({ address: '', amount: 0, fee: liveNetwork ? LIVE_FEE : DEFAULT_FEE })
       setHandoffPsbt('')
       if (status?.vaultId) await refreshBalance(status.vaultId)
-      if (enrollment?.vaultId) {
-        const live = await fetchVaultStatus(undefined, enrollment.vaultId)
-        setStatus(live)
-        if (live.vaultId) setAddressPin(loadAddressPin(localStorage, live.vaultId))
-      }
       setScreen('success')
     },
-    [enrollment, liveNetwork, refreshBalance, spend, status],
+    [liveNetwork, refreshBalance, spend, status],
   )
 
   const approveSavingsSend = useCallback(async () => {
@@ -516,6 +528,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
+      balanceError,
+      balancesLoaded,
       boardingAddress,
       boardingInProgress,
       restoreRecoveryKit,
@@ -564,6 +578,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       networkLabel,
       spendingArkAddress,
       refreshBalance,
+      refreshingBalance,
       reset,
       reviewSpend,
       openSendScan: () => {
@@ -595,6 +610,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
+      balanceError,
+      balancesLoaded,
       boardingAddress,
       boardingInProgress,
       restoreRecoveryKit,
@@ -631,6 +648,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverEntry,
       recoverExit,
       refreshBalance,
+      refreshingBalance,
       reset,
       reviewSpend,
       scanOnSend,

@@ -36,6 +36,7 @@ import {
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
+  uniqueVtxosByOutpoint,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
   VtxoSpendUnresolvedError,
@@ -995,5 +996,13 @@ describe('regular VTXO spend coordinator', () => {
     expect(VAULT_VTXO_PAGE_SIZE).toBeGreaterThan(0)
     expect(vaultVtxoPage(0)).toEqual({ pageIndex: 0, pageSize: VAULT_VTXO_PAGE_SIZE })
     expect(vaultVtxoPage(7)).toEqual({ pageIndex: 7, pageSize: VAULT_VTXO_PAGE_SIZE })
+  })
+
+  it('deduplicates an outpoint repeated across moving indexer pages', () => {
+    const repeated = { txid: 'same', vout: 1, value: 12_000 }
+    expect(uniqueVtxosByOutpoint([repeated, repeated, { txid: 'same', vout: 2, value: 8_000 }])).toEqual([
+      repeated,
+      { txid: 'same', vout: 2, value: 8_000 },
+    ])
   })
 })

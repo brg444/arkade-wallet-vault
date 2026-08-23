@@ -11,6 +11,7 @@ function renderHome(overrides: Partial<VaultContextProps>) {
   const value = {
     account: 'spend',
     amountSats: 12_000,
+    balancesLoaded: true,
     boardingAddress: 'tb1pboardingdestination',
     busy: false,
     canSend: true,
@@ -59,11 +60,17 @@ describe('Vault home account boundaries', () => {
     renderHome({ account: 'savings' })
     expect(screen.getByRole('button', { name: 'Move to Spending' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: 'Add to Savings' })).toHaveLength(2)
-    expect(screen.getByText(/hardware key must sign too/i)).toBeTruthy()
+    expect(screen.getByText(/Confirmed and unspent.*hardware key/i)).toBeTruthy()
   })
 
   it('does not expose background boarding state on Home', () => {
     renderHome({ account: 'spend', boardingInProgress: true })
     expect(screen.queryByText(/boarding|processing|Moving received Bitcoin|Face ID/i)).toBeNull()
+  })
+
+  it('does not present zero as the balance before the first snapshot loads', () => {
+    renderHome({ balancesLoaded: false, amountSats: 0 })
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
+    expect(screen.getByText('Loading Spending balance…')).toBeTruthy()
   })
 })
