@@ -38,16 +38,20 @@ Before registration can reach the network, one durable record must bind:
 
 - the intent proof transaction ID, exact proof, and canonical message;
 - the delete proof and message;
-- a lossless serialization of every input needed by the signer router,
-  ownership checks, and finalizer;
+- a minimal input delta for facts the proof PSBT does not contain, including
+  VTXO or boarding kind, forfeit leaves, and normalized recovery state used by
+  the finalizer;
 - the exact recipients, amounts, assets, and onchain output indexes;
 - the expected settlement outputs and relevant program identities;
-- the signing-session public key; and
-- an opaque, protected signer-session envelope.
+- the canonical registration message that commits the signing-session public
+  key; and
+- an adjacent opaque, protected signer-session envelope.
 
-The intent identity, request bytes, and snapshot digest are immutable after the
-write-ahead record is created. A second process may reuse only a byte-identical
-record.
+The intent identity, request bytes, snapshot digest, and envelope ciphertext are
+immutable after the write-ahead record is created. The envelope is outside the
+snapshot digest and authenticated with the wallet or vault identity, intent
+proof transaction ID, and snapshot digest. A second process may reuse only a
+byte-identical record.
 
 The signer-session envelope belongs to the signing identity, while the SDK
 stores and returns only its opaque representation. A generic raw-session-secret
@@ -57,11 +61,11 @@ that cannot restore a session cannot advertise resumable settlement.
 
 The first snapshot version covers ordinary VTXOs and boarding inputs. An
 ArkNote or condition input can carry a preimage or other private witness in
-`extraWitness`. The plaintext intent repository is limited to public
-transaction data. Such an input remains ineligible for durable settlement
-until the identity can place its witness material inside the protected
-envelope. Registration stops before the network boundary when protected
-storage is unavailable.
+`extraWitness`, and the registration proof PSBT would contain that witness. The
+plaintext intent repository is limited to public transaction data. Such an
+input remains ineligible for durable settlement until the identity can place
+its witness material inside the protected envelope. Registration stops before
+the proof is persisted or sent when protected storage is unavailable.
 
 ## Resume procedure
 
@@ -128,6 +132,11 @@ compare-and-set transitions. A reload, worker, or second tab cannot replace an
 ambiguous, selected, active, or terminal record with a newly constructed
 request. Web Locks provide the live browser exclusion; durable state remains the
 safety boundary after a process disappears.
+
+The SDK owns those transitions. A wallet transport adapter may preserve HTTP
+or event-stream diagnostics, but it does not keep another accepted-identifier
+cache or write the intent row. Removing the preview wallet cache is part of the
+SDK pin, so registration has one durable authority.
 
 ## Qualification
 
