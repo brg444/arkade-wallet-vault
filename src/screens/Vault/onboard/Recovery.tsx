@@ -23,7 +23,7 @@ export default function VaultRecovery() {
       actions={
         hasKey ? (
           <>
-            <Button onClick={() => applyRecovery(value)} label='Add recovery' />
+            <Button onClick={() => applyRecovery(value)} label='Add recovery key' />
             <Button onClick={skipRecovery} label='Skip for now' secondary />
           </>
         ) : (
@@ -32,13 +32,12 @@ export default function VaultRecovery() {
       }
     >
       <Text wrap>
-        Optional. If you lose this device or hardware, this key starts a waiting period. The others can cancel it if
-        that wasn’t you. Skip and this vault stays this device plus hardware.
+        Optional. This key can start a waiting period if you lose this device or hardware. The keys you still have can
+        cancel a recovery you didn’t start.
       </Text>
       <KeyCard icon={<SafeIcon />} title='Recovery' role='Starts a wait you can cancel. Not for daily spend.' />
       <Text color='neutral-600' tiny wrap>
-        This is not the Recovery Kit. The kit is a file you’ll save later. It is not a seed and it does not hold this
-        key.
+        The Recovery Kit is a separate file you’ll save after setup. It is not a seed and does not contain this key.
       </Text>
       <Input
         label='Recovery public key'

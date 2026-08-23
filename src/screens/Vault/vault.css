@@ -29,6 +29,14 @@ html.palette-dark [data-testid='vault-app'] {
 
 [data-testid='vault-app'] .buttons-on-bottom > div {
   gap: 0.65rem;
+  width: 100%;
+  max-width: 608px;
+  margin-inline: auto;
+}
+
+[data-testid='vault-app'] :where(button, input, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--vault-accent);
+  outline-offset: 3px;
 }
 
 [data-testid='vault-app'] .pill-nav-icon,
@@ -247,6 +255,21 @@ button.vault-panel:disabled {
   box-shadow: 4px 4px 0 0 color-mix(in srgb, var(--vault-accent) 18%, transparent);
 }
 
+.vault-callout {
+  width: 100%;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--vault-line);
+  border-radius: 16px;
+  background: var(--vault-lavender);
+}
+
+.vault-callout.is-warning {
+  border-color: color-mix(in srgb, var(--orange-500) 45%, var(--vault-line));
+  background: color-mix(in srgb, var(--orange-50) 72%, var(--vault-paper));
+}
+
 .vault-receive-dests {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -306,6 +329,21 @@ button.vault-panel:disabled {
 
 .vault-rail-dot.on {
   background: var(--vault-accent);
+}
+
+.vault-step-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--neutral-600);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.vault-step-label span:last-child {
+  color: var(--neutral-500);
+  white-space: nowrap;
 }
 
 .vault-pill {
@@ -432,9 +470,47 @@ button.vault-panel:disabled {
 
 .vault-history {
   display: grid;
-  gap: 0;
+  gap: 1rem;
   width: 100%;
   padding-top: 0.25rem;
+}
+
+.vault-history-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.vault-history-head h2 {
+  font-family: var(--heading-font, inherit);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.vault-history-head span,
+.vault-history-group-label {
+  color: var(--neutral-500);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.vault-history-empty {
+  padding: 1rem;
+  border: 1px dashed var(--vault-line);
+  border-radius: 16px;
+}
+
+.vault-history-group {
+  display: grid;
+  gap: 0;
+}
+
+.vault-history-group-label {
+  padding-bottom: 0.35rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .vault-history-row {
@@ -452,7 +528,7 @@ button.vault-panel:disabled {
   cursor: pointer;
 }
 
-.vault-history-row:first-of-type {
+.vault-history-group .vault-history-row:first-of-type {
   border-top: 0;
 }
 
@@ -473,6 +549,8 @@ button.vault-panel:disabled {
   font-weight: 600;
   letter-spacing: -0.02em;
   white-space: nowrap;
+  text-align: right;
+  font-size: 0.875rem;
 }
 
 .vault-history-amt.is-in {
@@ -599,8 +677,8 @@ button.vault-panel:disabled {
 }
 
 .vault-account-qr {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -695,6 +773,15 @@ button.vault-panel:disabled {
 
   .vault-account-index {
     display: none;
+  }
+
+  .vault-history-row {
+    gap: 0.55rem;
+  }
+
+  .vault-history-amt {
+    max-width: 42%;
+    white-space: normal;
   }
 }
 

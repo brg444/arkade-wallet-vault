@@ -50,9 +50,16 @@ describe('Vault home account boundaries', () => {
   it('starts Savings to Spending at the pinned boarding address', async () => {
     const user = userEvent.setup()
     const value = renderHome({ account: 'savings' })
-    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await user.click(screen.getByRole('button', { name: 'Move to Spending' }))
     expect(value.setSpendDraft).toHaveBeenCalledWith({ address: value.boardingAddress })
     expect(value.navigate).toHaveBeenCalledWith('send')
+  })
+
+  it('makes Savings actions and hardware approval explicit', () => {
+    renderHome({ account: 'savings' })
+    expect(screen.getByRole('button', { name: 'Move to Spending' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Add to Savings' })).toHaveLength(2)
+    expect(screen.getByText(/hardware key must sign too/i)).toBeTruthy()
   })
 
   it('does not expose background boarding state on Home', () => {

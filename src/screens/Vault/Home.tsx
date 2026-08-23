@@ -122,7 +122,7 @@ export default function VaultHome() {
                 <button
                   type='button'
                   className='vault-account-qr'
-                  aria-label='Scan'
+                  aria-label={spending ? 'Scan a Spending payment' : 'Scan a Savings destination'}
                   data-testid='account-scan'
                   onClick={() => {
                     hapticSubtle()
@@ -134,7 +134,7 @@ export default function VaultHome() {
                 <button
                   type='button'
                   className='vault-account-qr'
-                  aria-label='Receive'
+                  aria-label={spending ? 'Receive to Spending' : 'Add to Savings'}
                   data-testid='account-receive'
                   onClick={() => navigate('receive')}
                 >
@@ -201,7 +201,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                This device can’t send this alone. Hardware signs too.
+                This device can’t send from Savings alone; your hardware key must sign too.
               </Text>
             )}
 
@@ -216,24 +216,31 @@ export default function VaultHome() {
                   Recovery in process
                 </Text>
                 <Text color='neutral-600' tiny wrap>
-                  {initiateAlert} Waiting is in blocks, not a calendar day. Cancel needs the vault services unless this
-                  vault can cancel with hardware alone.
+                  {initiateAlert} Waiting is measured in blocks, and cancellation requires the vault services unless
+                  this vault supports hardware-only cancellation.
                 </Text>
               </button>
             ) : null}
+
             <ErrorMessage error={Boolean(error)} text={error} />
+
             <FlexRow padding='0 0 0.5rem 0'>
               <Button
                 main
                 icon={<SendIcon />}
-                label='Send'
+                label={spending ? 'Send' : 'Move to Spending'}
                 disabled={spending ? !canSend : savingsSats <= 330}
                 onClick={() => {
                   if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
                   navigate('send')
                 }}
               />
-              <Button main icon={<ReceiveIcon />} label='Receive' onClick={() => navigate('receive')} />
+              <Button
+                main
+                icon={<ReceiveIcon />}
+                label={spending ? 'Receive' : 'Add to Savings'}
+                onClick={() => navigate('receive')}
+              />
             </FlexRow>
             <VaultHistory />
             {status?.enrolled && (!spendingArkAddress || !boardingAddress) ? (

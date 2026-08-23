@@ -26,7 +26,11 @@ export default function VaultTx() {
             </div>
             <Detail
               label='When'
-              value={selectedTx?.confirmed && selectedTx.blockTime ? prettyDate(selectedTx.blockTime) : 'Unconfirmed'}
+              value={
+                selectedTx?.confirmed && selectedTx.blockTime
+                  ? prettyDate(selectedTx.blockTime)
+                  : 'Pending confirmation'
+              }
             />
             <Detail label='Account' value={selectedTx?.account === 'savings' ? 'Savings' : 'Spending'} />
             {selectedTx ? <Detail label='Transaction' value={selectedTx.txid} mono /> : null}

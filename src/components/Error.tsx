@@ -10,12 +10,14 @@ interface ErrorProps {
 export default function ErrorMessage({ error, text }: ErrorProps) {
   if (!error) return null
   return (
-    <Shadow red>
-      <Padded>
-        <Text bold centered color='white' small wrap>
-          {text}
-        </Text>
-      </Padded>
-    </Shadow>
+    <div role='alert' aria-live='assertive'>
+      <Shadow red>
+        <Padded>
+          <Text bold centered color='white' small wrap>
+            {text}
+          </Text>
+        </Padded>
+      </Shadow>
+    </div>
   )
 }

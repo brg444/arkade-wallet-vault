@@ -11,6 +11,52 @@ export interface VaultHistoryItem {
   account: 'spend' | 'savings'
 }
 
+export interface VaultHistoryGroup {
+  key: string
+  label: string
+  items: VaultHistoryItem[]
+}
+
+/** Groups already-sorted history into the states and dates a wallet user needs to scan. */
+export function groupVaultHistory(
+  items: VaultHistoryItem[],
+  nowSeconds = Math.floor(Date.now() / 1000),
+): VaultHistoryGroup[] {
+  const today = new Date(nowSeconds * 1000)
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  const groups: VaultHistoryGroup[] = []
+
+  for (const item of items) {
+    const group = historyGroup(item, today, yesterday)
+    const previous = groups.at(-1)
+    if (previous?.key === group.key) previous.items.push(item)
+    else groups.push({ ...group, items: [item] })
+  }
+  return groups
+}
+
+function historyGroup(item: VaultHistoryItem, today: Date, yesterday: Date): Pick<VaultHistoryGroup, 'key' | 'label'> {
+  if (!item.confirmed) return { key: 'pending', label: 'Pending' }
+  if (!item.blockTime) return { key: 'earlier', label: 'Earlier' }
+  const date = new Date(item.blockTime * 1000)
+  const key = localDateKey(date)
+  if (key === localDateKey(today)) return { key, label: 'Today' }
+  if (key === localDateKey(yesterday)) return { key, label: 'Yesterday' }
+  return {
+    key,
+    label: new Intl.DateTimeFormat('en', {
+      day: 'numeric',
+      month: 'long',
+      ...(date.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+    }).format(date),
+  }
+}
+
+function localDateKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+}
+
 export function classifyAddressTx(tx: EsploraTx, address: string): Omit<VaultHistoryItem, 'account'> | null {
   if (!address) return null
   const spent = tx.vin.reduce(

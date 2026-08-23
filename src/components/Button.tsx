@@ -88,10 +88,11 @@ export default function Button({
 
   return (
     <button
+      aria-busy={loading || undefined}
       aria-label={ariaLabel || label}
       type='button'
       className={cn(buttonVariants({ variant: resolvedVariant }), pressed && 'pressed', className)}
-      disabled={disabled}
+      disabled={disabled || loading}
       onClick={handleClick}
       onMouseDown={handlePressStart}
       onMouseUp={handlePressEnd}

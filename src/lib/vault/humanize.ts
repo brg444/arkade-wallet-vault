@@ -2,6 +2,7 @@ import { isVaultConcurrencyUnavailableError } from './vtxo/lock'
 
 export function humanizeVaultError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
+  const name = err instanceof Error ? err.name.toLowerCase() : ''
   const msg = raw.toLowerCase()
   if (isVaultConcurrencyUnavailableError(err)) {
     return 'This browser can’t safely coordinate wallet activity. Update it or use a supported browser.'
@@ -65,8 +66,16 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('prf')) {
     return 'This browser verified the passkey but didn’t get the unlock secret. That’s common over a QR. Open the vault on the device that created it — Safari on a Mac with the same iCloud account may also work.'
   }
+  if (
+    name === 'notsupportederror' ||
+    msg.includes('not supported on this device') ||
+    msg.includes('authenticator is not available') ||
+    msg.includes('no available authenticator')
+  ) {
+    return 'This browser can’t create the device key. Open the invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
+  }
   if (msg.includes('not allowed') || msg.includes('abort') || msg.includes('timed out')) {
-    return 'Passkey cancelled.'
+    return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open the invite in Safari or Chrome.'
   }
   if (msg.includes('already set up') || msg.includes('already enrolled')) {
     return 'This vault already has a passkey. Sign in instead.'

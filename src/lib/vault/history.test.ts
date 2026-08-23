@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { classifyAddressTx, historyFromTxs, historyFromVtxos, type VaultHistoryItem } from './history'
+import {
+  classifyAddressTx,
+  groupVaultHistory,
+  historyFromTxs,
+  historyFromVtxos,
+  type VaultHistoryItem,
+} from './history'
 import type { EsploraTx } from './esplora'
 
 const ADDRESS = 'tb1pspend'
@@ -83,5 +89,32 @@ describe('vault history', () => {
       { txid: 'recv', type: 'received', amount: 20_000 },
     ])
     expect(rows.find((row) => row.txid === 'send')?.confirmed).toBe(true)
+  })
+
+  it('groups pending activity before local calendar dates', () => {
+    const now = new Date(2026, 7, 23, 12, 0)
+    const at = (day: number, hour = 12) => Math.floor(new Date(2026, 7, day, hour, 0).getTime() / 1000)
+    const item = (txid: string, confirmed: boolean, blockTime?: number): VaultHistoryItem => ({
+      txid,
+      type: 'received',
+      amount: 1,
+      confirmed,
+      blockTime,
+      account: 'spend',
+    })
+
+    const groups = groupVaultHistory(
+      [
+        item('pending', false),
+        item('today', true, at(23)),
+        item('yesterday', true, at(22)),
+        item('older-a', true, at(8, 15)),
+        item('older-b', true, at(8, 9)),
+      ],
+      Math.floor(now.getTime() / 1000),
+    )
+
+    expect(groups.map((group) => group.label)).toEqual(['Pending', 'Today', 'Yesterday', 'August 8'])
+    expect(groups.at(-1)?.items.map((row) => row.txid)).toEqual(['older-a', 'older-b'])
   })
 })

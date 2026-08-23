@@ -56,7 +56,13 @@ describe('humanizeVaultError', () => {
   })
 
   it('explains a cancelled passkey', () => {
-    expect(humanizeVaultError(new Error('The operation was aborted.'))).toMatch(/cancelled/i)
+    expect(humanizeVaultError(new Error('The operation was aborted.'))).toMatch(/wasn.t created|try again/i)
+  })
+
+  it('explains an unsupported platform authenticator', () => {
+    const error = new Error('Authenticator is not available')
+    error.name = 'NotSupportedError'
+    expect(humanizeVaultError(error)).toMatch(/can.t create the device key.*Safari or Chrome/i)
   })
 
   it('explains a missing recovery envelope', () => {

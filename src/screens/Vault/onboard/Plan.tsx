@@ -17,7 +17,7 @@ export default function VaultPlan() {
       title='Your setup'
       step={5}
       onBack={() => navigate('conditions')}
-      actions={<Button onClick={finishPlan} label='Continue' />}
+      actions={<Button onClick={finishPlan} label='Secure this device' />}
     >
       <Text wrap>
         {setup.recoveryPub
