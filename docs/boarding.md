@@ -80,3 +80,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   consumed or the intent is otherwise resolved. The deployed interface cannot
   always resolve that ambiguity after a browser crash, so this remains an
   availability gate for mainnet qualification.
+- The SDK marks an attempt cancelled after settlement throws, even when its
+  best-effort intent deletion was not acknowledged. The current deployed
+  Operator does not resolve deletion by a boarding input, so the local terminal
+  row can hide a retained remote intent and a later attempt can collide with
+  it. The Operator rejects the duplicate input, but automatic recovery remains
+  unavailable. Mainnet boarding requires a deployed cancellation behavior that
+  is qualified for boarding inputs; Vault code does not substitute another
+  intent lifecycle.
