@@ -53,6 +53,17 @@ describe('status identity binding', () => {
     expect(() => requireStatusIdentity(sampleStatus({ savingsScript: '' }), VAULT_ID)).toThrow(/Savings descriptor/)
     expect(requireStatusIdentity(sampleStatus(), VAULT_ID)).not.toHaveProperty('operationalAddress')
   })
+
+  it('normalizes the server recoveryKeyPub field and rejects conflicting aliases', () => {
+    const recovery = `02${'bb'.repeat(32)}`
+    expect(requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery }), VAULT_ID)).toMatchObject({
+      recoveryPub: recovery,
+      recoveryKeyPub: recovery,
+    })
+    expect(() =>
+      requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery, recoveryPub: `03${'cc'.repeat(32)}` }), VAULT_ID),
+    ).toThrow(/recovery key fields/)
+  })
 })
 
 describe('pingVaultService', () => {
