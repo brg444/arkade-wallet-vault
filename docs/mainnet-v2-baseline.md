@@ -12,6 +12,12 @@ authenticated public recovery map. Storage is versioned and isolated per
 vault. Protocol versions remain only where bytes are persisted, signed, or
 compared with the service.
 
+Fresh enrollment writes one local `arkade-vault-program-pin-v1` record. Its
+digest covers the vault identifier, network, complete Savings descriptor, and
+every immutable Spending and boarding field. Later status reads must match the
+record exactly, including after a reload or enrolled-to-unenrolled response.
+There is no reader or migration path for the retired Savings-only pin.
+
 One coordinator owns each durable Vault-service operation. A reload resumes a
 VTXO send by its client-generated operation ID after an ambiguous Vault-service
 response. The phone authenticates the reservation; later stages use server
