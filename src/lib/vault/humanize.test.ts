@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { humanizeVaultError, isRecoverableVaultBoardingError } from './humanize'
+import { VaultConcurrencyUnavailableError } from './vtxo/lock'
 
 describe('humanizeVaultError', () => {
+  it('renders the canonical missing Web Locks capability error', () => {
+    expect(humanizeVaultError(new VaultConcurrencyUnavailableError())).toBe(
+      'This browser can’t safely coordinate wallet activity. Update it or use a supported browser.',
+    )
+  })
+
   it('turns a network failure into a service message', () => {
     expect(humanizeVaultError(new Error('Failed to fetch'))).toMatch(/can’t reach|try again/i)
   })

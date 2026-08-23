@@ -18,6 +18,7 @@ import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
 import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
+import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
 import { signVtxoReserveDigest, verifyVtxoReserveSignature, type VtxoReserveDigestInput } from './reserveAuth'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
@@ -691,10 +692,19 @@ export function isSameVtxoPayment(pending: PersistedVtxoSpend, destAddress: stri
   return pending.destAddress === destAddress.trim() && pending.amountSats === amountSats
 }
 
-async function withVtxoSendLock<T>(vaultId: string, run: () => Promise<T>): Promise<T> {
-  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-  if (!locks) return run()
-  return locks.request(`arkade-vault-vtxo-send:${vaultId}`, { mode: 'exclusive' }, () => run())
+export async function withVtxoSendLock<T>(
+  vaultId: string,
+  run: () => Promise<T>,
+  locks: VaultLockManager | null | undefined = browserVaultLockManager(),
+): Promise<T> {
+  return requireVaultLockManager(locks).request(
+    `arkade-vault-vtxo-send:${vaultId}`,
+    { mode: 'exclusive' },
+    async (lock) => {
+      if (!lock) throw new Error('Web Locks API returned no exclusive send lock')
+      return run()
+    },
+  )
 }
 
 export function fetchVtxoOperation(vaultId: string, operationId: string): Promise<VtxoOperationView> {

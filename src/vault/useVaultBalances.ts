@@ -128,10 +128,12 @@ export function useVaultBalances({
     boardingRun.current = true
     reportError('')
     try {
-      const settled = await withVaultBoardingLock(status.vaultId, async () => {
+      const settled = await withVaultBoardingLock(status.vaultId, async (boardingLock) => {
         setBoardingInProgress(true)
         const phoneSecret = await unlockPhoneBip340(enrollment, status)
-        return withVaultBoardingSecret(phoneSecret, (liveSecret) => settleVaultBoarding(liveSecret, status))
+        return withVaultBoardingSecret(phoneSecret, (liveSecret) =>
+          settleVaultBoarding(boardingLock, liveSecret, status),
+        )
       })
       if (!settled.held) {
         boardingAttempt.current = boardingAttemptKeyAfterLock(false, '')

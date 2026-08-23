@@ -1,4 +1,4 @@
-import { Intent, RestArkProvider, type IntentRepository, type SettlementEvent } from '@arkade-os/sdk'
+import { Intent, RestArkProvider, type ArkIntent, type IntentRepository, type SettlementEvent } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { sha256 } from '@noble/hashes/sha2.js'
 
@@ -15,6 +15,16 @@ export interface BoardingIntentCache {
   set(record: QueuedBoardingIntent): void
   clear(): void
   lookup?(fingerprint: string): Promise<QueuedBoardingIntent | undefined>
+  persistAccepted(record: QueuedBoardingIntent, intent: BoardingRegisterIntent): Promise<void>
+}
+
+type BoardingRegisterIntent = Parameters<RestArkProvider['registerIntent']>[0]
+
+export class VaultIntentPersistenceError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'VaultIntentPersistenceError'
+  }
 }
 
 export function memoryBoardingIntentCache(): BoardingIntentCache {
@@ -27,11 +37,33 @@ export function memoryBoardingIntentCache(): BoardingIntentCache {
     clear: () => {
       record = undefined
     },
+    async persistAccepted() {
+      throw new VaultIntentPersistenceError('Accepted Operator intent requires durable storage')
+    },
   }
 }
 
-/** Session memory plus the SDK intent repository. Reload reads the repo; the same tab uses memory. */
-export function intentRepositoryBoardingCache(repo: Pick<IntentRepository, 'getIntents'>): BoardingIntentCache {
+function fingerprintStoredIntent(intent: Pick<ArkIntent, 'registerProof' | 'registerProofMessage'>): string {
+  return hex.encode(sha256(new TextEncoder().encode(`${intent.registerProof}\n${intent.registerProofMessage}`)))
+}
+
+function exactStoredIntent(intent: ArkIntent, request: BoardingRegisterIntent, fingerprint: string): boolean {
+  const message = Intent.encodeMessage(request.message)
+  return (
+    intent.registerProof === request.proof &&
+    intent.registerProofMessage === message &&
+    fingerprintStoredIntent(intent) === fingerprint
+  )
+}
+
+function persistenceFailure(message: string, cause?: unknown): VaultIntentPersistenceError {
+  return new VaultIntentPersistenceError(message, cause === undefined ? undefined : { cause })
+}
+
+/** Session memory plus the SDK intent repository. Accepted IDs are committed and read back before return. */
+export function intentRepositoryBoardingCache(
+  repo: Pick<IntentRepository, 'getIntents' | 'saveIntent'>,
+): BoardingIntentCache {
   const memory = memoryBoardingIntentCache()
   return {
     get: () => memory.get(),
@@ -43,12 +75,51 @@ export function intentRepositoryBoardingCache(repo: Pick<IntentRepository, 'getI
       const live = await repo.getIntents({ states: [...LIVE_INTENT_STATES] })
       for (const intent of live) {
         if (!intent.intentId || !intent.registerProof || !intent.registerProofMessage) continue
-        const stored = hex.encode(
-          sha256(new TextEncoder().encode(`${intent.registerProof}\n${intent.registerProofMessage}`)),
-        )
+        const stored = fingerprintStoredIntent(intent)
         if (stored === fingerprint) return { intentId: intent.intentId, fingerprint }
       }
       return undefined
+    },
+    async persistAccepted(record, request) {
+      let rows: ArkIntent[]
+      try {
+        rows = await repo.getIntents()
+      } catch (cause) {
+        throw persistenceFailure('Could not read the pre-registered Operator intent', cause)
+      }
+      const exact = rows.filter((intent) => exactStoredIntent(intent, request, record.fingerprint))
+      if (exact.length !== 1) {
+        throw persistenceFailure('Accepted Operator intent has no unique pre-registered proof and message')
+      }
+      const existing = exact[0]
+      if (existing.intentId && existing.intentId !== record.intentId) {
+        throw persistenceFailure('Accepted Operator intent conflicts with the persisted intent ID')
+      }
+      if (existing.state !== 'waiting_to_submit' && existing.state !== 'waiting_for_batch') {
+        throw persistenceFailure('Accepted Operator intent is not in a persistable state')
+      }
+      const accepted: ArkIntent = {
+        ...existing,
+        intentId: record.intentId,
+        state: 'waiting_for_batch',
+        updatedAt: Date.now(),
+      }
+      try {
+        await repo.saveIntent(accepted)
+        const [stored] = await repo.getIntents({ intentTxIds: [existing.intentTxId] })
+        if (
+          !stored ||
+          stored.intentId !== record.intentId ||
+          stored.state !== 'waiting_for_batch' ||
+          !exactStoredIntent(stored, request, record.fingerprint)
+        ) {
+          throw persistenceFailure('Accepted Operator intent did not survive durable readback')
+        }
+      } catch (cause) {
+        if (cause instanceof VaultIntentPersistenceError) throw cause
+        throw persistenceFailure('Could not durably persist the accepted Operator intent', cause)
+      }
+      memory.set(record)
     },
   }
 }
@@ -119,7 +190,9 @@ export class VaultArkProvider extends RestArkProvider {
     const fingerprint = boardingIntentFingerprint(intent)
     try {
       const intentId = await super.registerIntent(intent)
-      this.intentCache.set({ intentId, fingerprint })
+      const accepted = { intentId, fingerprint }
+      await this.intentCache.persistAccepted(accepted, intent)
+      this.intentCache.set(accepted)
       return intentId
     } catch (error) {
       if (!isDuplicatedInput(error)) throw error

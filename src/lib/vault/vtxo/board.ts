@@ -16,6 +16,7 @@ import { zeroBytes } from '../ceremony/directauth'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
 import { intentRepositoryBoardingCache, VaultArkProvider } from './provider'
+import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
@@ -26,26 +27,37 @@ const VAULT_SDK_STORAGE_PREFIX = 'arkade-vault-v2'
 const POLL_INTERVAL_MS = 3_000
 const CONFIRMATION_WAIT_MS = 180_000
 
+const BOARDING_LOCK_BRAND: unique symbol = Symbol('vault-boarding-lock')
+const activeBoardingLocks = new WeakSet<object>()
+
+export interface VaultBoardingLock {
+  readonly [BOARDING_LOCK_BRAND]: true
+}
+
 export type VaultBoardingLockResult<T> = { held: false } | { held: true; value: T }
 
-type BoardingLockManager = {
-  request: (
-    name: string,
-    options: { mode: 'exclusive'; ifAvailable: boolean },
-    callback: (lock: unknown) => Promise<VaultBoardingLockResult<unknown>>,
-  ) => Promise<VaultBoardingLockResult<unknown>>
+function requireActiveBoardingLock(lock: VaultBoardingLock) {
+  if (!activeBoardingLocks.has(lock)) throw new Error('Active vault boarding lock required')
 }
 
 export async function withVaultBoardingLock<T>(
   vaultId: string,
-  run: () => Promise<T>,
-  locks: BoardingLockManager | undefined = typeof navigator === 'undefined'
-    ? undefined
-    : (navigator.locks as unknown as BoardingLockManager),
+  run: (lock: VaultBoardingLock) => Promise<T>,
+  locks: VaultLockManager | null | undefined = browserVaultLockManager(),
 ): Promise<VaultBoardingLockResult<T>> {
-  if (!locks) return { held: true, value: await run() }
-  return locks.request(`arkade-vault-boarding:${vaultId}`, { mode: 'exclusive', ifAvailable: true }, async (lock) =>
-    lock ? { held: true, value: await run() } : { held: false },
+  return requireVaultLockManager(locks).request(
+    `arkade-vault-boarding:${vaultId}`,
+    { mode: 'exclusive', ifAvailable: true },
+    async (lock) => {
+      if (!lock) return { held: false }
+      const guard = { [BOARDING_LOCK_BRAND]: true } as const
+      activeBoardingLocks.add(guard)
+      try {
+        return { held: true, value: await run(guard) }
+      } finally {
+        activeBoardingLocks.delete(guard)
+      }
+    },
   ) as Promise<VaultBoardingLockResult<T>>
 }
 
@@ -251,10 +263,12 @@ async function findConfirmedBoardingCoins(wallet: Wallet, txid?: string): Promis
 }
 
 export async function settleVaultBoarding(
+  lock: VaultBoardingLock,
   phoneSecret: Uint8Array,
   status: VaultStatus,
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
+  requireActiveBoardingLock(lock)
   const { wallet, info, operator } = await createBoardingWallet(phoneSecret, status)
   const coins = await findConfirmedBoardingCoins(wallet, txid)
   if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
@@ -268,11 +282,13 @@ export async function settleVaultBoarding(
 }
 
 export async function waitForAndSettleVaultBoarding(
+  lock: VaultBoardingLock,
   phoneSecret: Uint8Array,
   status: VaultStatus,
   txid: string,
   options: { timeoutMs?: number; pollMs?: number } = {},
 ): Promise<{ txid: string; amountSats: number }> {
+  requireActiveBoardingLock(lock)
   const { wallet, info, operator } = await createBoardingWallet(phoneSecret, status)
   const deadline = Date.now() + (options.timeoutMs ?? CONFIRMATION_WAIT_MS)
   for (;;) {
