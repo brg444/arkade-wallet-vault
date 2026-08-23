@@ -637,18 +637,12 @@ function pendingProofFromCheckpoints(unsignedCheckpointPsbts: string[]): Transac
   return Intent.create(VTXO_GET_PENDING_MESSAGE, inputs, [])
 }
 
-function requireCanonicalPendingMessage(proof: Transaction) {
-  type UnknownEntry = [{ type: number; key: Uint8Array }, Uint8Array]
-  const unknown = (proof as unknown as { global?: { unknown?: UnknownEntry[] } }).global?.unknown
-  const expected = new TextEncoder().encode(Intent.encodeMessage(VTXO_GET_PENDING_MESSAGE))
-  if (
-    unknown?.length !== 1 ||
-    unknown[0][0].type !== 0x09 ||
-    unknown[0][0].key.length !== 0 ||
-    !sameBytes(unknown[0][1], expected)
-  ) {
-    throw new Error('pending proof does not contain the canonical get-pending-tx message')
+function pendingProofWithoutTapscriptSignatures(proof: Transaction): Uint8Array {
+  const unsigned = proof.clone()
+  for (let index = 0; index < unsigned.inputsLength; index++) {
+    unsigned.updateInput(index, { tapScriptSig: undefined }, true)
   }
+  return unsigned.toPSBT()
 }
 
 function requireExactTapscriptSigners(
@@ -686,8 +680,6 @@ export function requireAuthorizedPendingProof(
 ): string {
   const expected = pendingProofFromCheckpoints(unsignedCheckpointPsbts)
   const candidate = Transaction.fromPSBT(base64.decode(authorizedPendingProof))
-  requireCanonicalPendingMessage(expected)
-  requireCanonicalPendingMessage(candidate)
   if (
     candidate.id !== expected.id ||
     candidate.inputsLength !== expected.inputsLength ||
@@ -697,6 +689,9 @@ export function requireAuthorizedPendingProof(
   }
   for (let index = 0; index < expected.inputsLength; index++) {
     requireInputShapeMatches(expected.getInput(index), candidate.getInput(index), 'Vault authorization')
+  }
+  if (!sameBytes(pendingProofWithoutTapscriptSignatures(expected), pendingProofWithoutTapscriptSignatures(candidate))) {
+    throw new Error('Vault authorization changed the pending proof PSBT')
   }
   const phonePub = xOnly(status.phoneBip340Pub, 'phone pubkey')
   const vaultPub = xOnly(status.vtxoVaultCosignerPub, 'VTXO VaultCosigner pubkey')
