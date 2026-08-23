@@ -66,7 +66,10 @@ the official SDK pending-transaction interface. Mainnet remains blocked on
 live lifecycle qualification, browser concurrency tests, production key
 isolation, mainnet-specific program pins, and the private mainnet Emulator
 endpoint. Vault Program and policy adjustments begin after the Mutinynet
-lifecycle is stable. The complete release gate is in
+lifecycle is stable. A disabled outbound BOLT11 seam delegates RFQ and VHTLC
+construction to the published swap package, then funds through the ordinary
+VTXO send path. Its solver, refund, expiry, and live-payment gates are recorded
+in [docs/lightning.md](docs/lightning.md). The complete release gate is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.

@@ -5,6 +5,7 @@
 | [Architecture](architecture.md)                      | Browser, Vault service, Arkade Operator, persistence, and trust boundaries. |
 | [Vault Program](program.md)                          | Savings, Spending, recovery, and the versioned contract.                    |
 | [VTXO boarding](boarding.md)                         | Onchain entry into Spending through the standard SDK settlement flow.       |
+| [Lightning send](lightning.md)                       | Package-native outbound BOLT11 boundary, refunds, and enablement gates.      |
 | [Mainnet v2 baseline](mainnet-v2-baseline.md)        | Fresh application boundary, release order, and unresolved gates.            |
 | [Security](security.md)                              | Current guarantees, assumptions, and excluded claims.                       |
 | [Dependency advisories](advisories.md)               | Production audit findings and bundle status.                                |
