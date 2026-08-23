@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
+import type { VaultLockManager } from './lock'
 import {
   VAULT_BOARD_V1,
   VAULT_BOARD_V1_EXIT_DELAY,
@@ -167,11 +168,11 @@ describe('vault-board-v1', () => {
   })
 
   it('does not stick a boarding attempt when another tab already holds the lock', async () => {
-    const busy = {
-      request: async (
+    const busy: VaultLockManager = {
+      request: async <T>(
         _name: string,
-        _options: { mode: 'exclusive'; ifAvailable: boolean },
-        callback: (lock: unknown) => Promise<unknown>,
+        _options: { mode: 'exclusive'; ifAvailable?: boolean },
+        callback: (lock: unknown) => Promise<T>,
       ) => callback(null),
     }
     const result = await withVaultBoardingLock('vault-a', async () => 'settled', busy)

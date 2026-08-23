@@ -1,6 +1,11 @@
+import { isVaultConcurrencyUnavailableError } from './vtxo/lock'
+
 export function humanizeVaultError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
   const msg = raw.toLowerCase()
+  if (isVaultConcurrencyUnavailableError(err)) {
+    return 'This browser can’t safely coordinate wallet activity. Update it or use a supported browser.'
+  }
   if (
     msg.includes('failed to fetch') ||
     msg.includes('networkerror') ||
