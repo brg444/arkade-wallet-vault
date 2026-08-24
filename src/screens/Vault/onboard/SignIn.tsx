@@ -41,7 +41,15 @@ export default function VaultSignIn() {
           disabled={busy}
           loading={busy}
           label={
-            busy ? (onPhone ? 'Waiting for Face ID…' : 'Waiting for QR…') : onPhone ? 'Sign in' : 'Sign in with QR'
+            busy
+              ? onPhone
+                ? 'Waiting for Face ID…'
+                : 'Waiting for QR…'
+              : error
+                ? 'Try again'
+                : onPhone
+                  ? 'Sign in'
+                  : 'Sign in with QR'
           }
         />
       </ButtonsOnBottom>

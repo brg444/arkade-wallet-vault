@@ -7,6 +7,7 @@ import type { VaultStatus } from '../lib/vault/types'
 import { useVaultSession } from './useVaultSession'
 
 const mocks = vi.hoisted(() => ({
+  enable: vi.fn(),
   fetchStatus: vi.fn(),
   loadPin: vi.fn(),
   pullMap: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock('../lib/vault/pin', async (importOriginal) => ({
 
 vi.mock('../lib/vault/signIn', () => ({
   discoverVaultIdFromPasskey: vi.fn(),
-  enablePasskeyLogin: vi.fn(),
+  enablePasskeyLogin: mocks.enable,
   signInWithPasskey: mocks.recover,
   unlockLocalEnrollment: mocks.unlock,
 }))
@@ -76,20 +77,22 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   mocks.fetchStatus.mockResolvedValue(status)
+  mocks.enable.mockResolvedValue(status)
   mocks.pullMap.mockResolvedValue(null)
   mocks.recover.mockResolvedValue({ enrollment, status })
   mocks.unlock.mockResolvedValue(enrollment)
 })
 
 describe('Vault session program-pin recovery', () => {
-  it('uses the signed passkey recovery binding when the local program pin is missing', async () => {
+  it('upgrades and pins the signed passkey recovery binding when the local program pin is missing', async () => {
     mocks.loadPin.mockReturnValueOnce(null).mockReturnValueOnce(pin)
     const hook = setupHook()
 
     await act(async () => hook.result.current.signIn())
 
     expect(mocks.unlock).not.toHaveBeenCalled()
-    expect(mocks.recover).toHaveBeenCalledExactlyOnceWith('vault-a')
+    expect(mocks.enable).toHaveBeenCalledExactlyOnceWith(enrollment)
+    expect(mocks.recover).not.toHaveBeenCalled()
     expect(hook.setAddressPin).toHaveBeenCalledWith(pin)
     expect(hook.setScreen).toHaveBeenCalledWith('home')
   })
