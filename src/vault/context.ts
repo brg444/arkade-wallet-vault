@@ -81,6 +81,7 @@ export interface VaultContextProps {
   networkLabel: string
   spendingArkAddress: string
   refreshBalance: () => Promise<void>
+  retryLightningRefund: (rfqId: string) => Promise<void>
   refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
@@ -151,6 +152,7 @@ export const VaultContext = createContext<VaultContextProps>({
   networkLabel: 'Test network',
   spendingArkAddress: '',
   refreshBalance: async () => {},
+  retryLightningRefund: async () => {},
   refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},

@@ -12,10 +12,13 @@ import {
   isRfqSwapTerminal,
   lockupContractParams,
   rebuildRfqSwap,
+  rfqSwapActivityInputs,
   rfqSecretsProfile,
   type AssetSwapRepository,
   type InvoiceFacts,
   type LightningSendSwap,
+  type LockupContractReader,
+  type LockupSpendIndexer,
   type RfqQuote,
   type RfqRestoreFailure,
   type RfqSwapManagerConfig,
@@ -50,6 +53,7 @@ export interface VaultLightningFundingTarget {
 }
 
 export interface VaultLightningHistoryMetadata {
+  rfqId: string
   txid: string
   invoiceAmountSats: number
   state: string
@@ -202,6 +206,38 @@ export async function startVaultLightningLifecycle({
     restoreFailures: restored.failed,
     retiredQuoteIds: retired.retired,
     retirementFailures: retired.failed,
+  }
+}
+
+/**
+ * Run the package manager's authoritative chain read without holding a
+ * signing key. This is the reload/focus path: it can recognize settlement and
+ * record that a refund is due, while the user-authorized path remains the only
+ * place a refund signature is produced.
+ */
+export async function refreshVaultLightningLifecycle({
+  repository,
+  contracts,
+  indexer,
+  managerConfig,
+}: {
+  repository: AssetSwapRepository
+  contracts: LockupContractReader
+  indexer: LockupSpendIndexer
+  managerConfig?: RfqSwapManagerConfig
+}): Promise<{ restoreFailures: RfqRestoreFailure[]; history: VaultLightningHistoryMetadata[] }> {
+  const manager = new RfqSwapManager({ indexer, repository }, managerConfig)
+  try {
+    const restored = await manager.restoreFromRepository({
+      params: (record) => lockupContractParams(contracts, record.lockupAddress),
+    })
+    await manager.start()
+    return {
+      restoreFailures: restored.failed,
+      history: await listVaultLightningHistory(repository, indexer),
+    }
+  } finally {
+    await manager.stop()
   }
 }
 
@@ -402,19 +438,21 @@ export function getVaultLightningStatus(
 
 export async function listVaultLightningHistory(
   repository: Pick<AssetSwapRepository, 'getAllRfqSwaps'>,
+  indexer?: LockupSpendIndexer,
 ): Promise<VaultLightningHistoryMetadata[]> {
+  const activity = new Map(
+    (await rfqSwapActivityInputs({ repository, indexer })).map((input) => [input.rfqId, input.txids]),
+  )
   const payments: VaultLightningHistoryMetadata[] = []
   for (const record of await repository.getAllRfqSwaps()) {
-    if (record.kind !== 'lightning_send' || !record.fundingArkTxid) continue
-    if (!/^[0-9a-f]{64}$/.test(record.fundingArkTxid)) {
-      throw new Error(`Stored Lightning payment ${record.rfqId} has an invalid funding transaction id`)
-    }
+    if (record.kind !== 'lightning_send') continue
     const quote = quoteFromRecord(record)
-    payments.push({
-      txid: record.fundingArkTxid,
-      invoiceAmountSats: quote.invoiceAmountSats,
-      state: record.state,
-    })
+    for (const txid of activity.get(record.rfqId) ?? []) {
+      if (!/^[0-9a-f]{64}$/.test(txid)) {
+        throw new Error(`Stored Lightning payment ${record.rfqId} has an invalid transaction id`)
+      }
+      payments.push({ rfqId: record.rfqId, txid, invoiceAmountSats: quote.invoiceAmountSats, state: record.state })
+    }
   }
   return payments
 }
