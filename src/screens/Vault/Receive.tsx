@@ -48,11 +48,11 @@ export default function VaultReceive() {
             <Text small bold>
               {spending ? 'One payment request' : 'Savings address'}
             </Text>
-            <Text color='neutral-600' tiny wrap>
-              {spending
-                ? 'Use this for Arkade or Bitcoin. Confirmed Bitcoin deposits move into Spending automatically.'
-                : 'Bitcoin sent here stays in Savings. Sending it later requires this device and hardware.'}
-            </Text>
+            {!spending ? (
+              <Text color='neutral-600' tiny wrap>
+                Bitcoin sent here stays in Savings. Sending it later requires this device and hardware.
+              </Text>
+            ) : null}
             {request ? (
               <div className='vault-receive-qr'>
                 <QrCode value={request} />
