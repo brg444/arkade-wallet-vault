@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../lib/vault/constants'
 import { ENROLL_STORE, SELECTED_VAULT_STORE } from '../lib/vault/enrollmentStore'
 import { MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
+import { pinFromEnrolledStatus, saveAddressPin } from '../lib/vault/pin'
 import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import type { VaultStatus } from '../lib/vault/types'
 import golden from '../lib/vault/vtxo/testdata/vault-policy-v1-tree.json'
@@ -68,6 +69,7 @@ vi.mock('../vault/useVaultBalances', () => ({
   useVaultBalances: () => ({
     balanceError: '',
     balancesLoaded: true,
+    boardingBalance: 0,
     boardingInProgress: false,
     history: [],
     refreshBalance: vi.fn().mockResolvedValue(undefined),
@@ -112,15 +114,26 @@ const status: VaultStatus = {
   vaultId: 'vault-a',
   templateVersion: SAVINGS_TEMPLATE,
   policyVersion: POLICY_VERSION,
-  savingsAddress: '',
-  savingsScript: '',
+  savingsAddress: 'tb1psavings',
+  savingsScript: '5120' + '55'.repeat(32),
   periodAllowance: 100_000,
   periodSpent: 0,
   periodRemaining: 100_000,
   txCap: 50_000,
   absoluteFeeCap: 1_500,
   feerateCapSatVb: 10,
+  vtxoVaultCosignerPub: '02' + '11'.repeat(32),
+  vtxoExitDelay: 4608,
+  vtxoExitDelayUnit: 'seconds',
   spendingArkAddress: destination,
+  spendingArkScript: '5120' + '22'.repeat(32),
+  vtxoDelegatePub: '02' + '33'.repeat(32),
+  vtxoBoardingActive: true,
+  vtxoBoardingProgram: 'vault-board-v1',
+  vtxoBoardingAddress: 'tb1pboarding',
+  vtxoBoardingScript: '5120' + '44'.repeat(32),
+  vtxoBoardingExitDelay: 604672,
+  vtxoBoardingExitDelayUnit: 'seconds',
 }
 
 const reviewed: VaultVtxoSpendQuote = {
@@ -235,6 +248,18 @@ describe('VaultProvider reviewed VTXO reservation', () => {
   })
 
   it('does not open Home when a stored enrollment has no pinned Vault Program', async () => {
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('signin'))
+  })
+
+  it('requires a fresh passkey unlock even when the previous document was unlocked', async () => {
+    saveAddressPin(pinFromEnrolledStatus(status))
+
     render(
       <VaultProvider>
         <Probe />

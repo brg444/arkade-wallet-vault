@@ -14,7 +14,6 @@ import {
 import { hex } from '@scure/base'
 import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
-import { zeroBytes } from '../ceremony/directauth'
 import { fetchAddressUtxos } from '../esplora'
 import { vaultArkServer } from './spend'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
@@ -63,25 +62,6 @@ export function boardingAttemptKeyAfterLock(held: boolean, key: string): string 
   return held ? key : ''
 }
 
-export function isPasskeyCancellation(err: unknown): boolean {
-  const raw = err instanceof Error ? err.message.toLowerCase() : String(err || '').toLowerCase()
-  return raw.includes('the operation was aborted') || raw.includes('notallowederror')
-}
-
-/** Cancelled Face ID must not re-enter the settle effect until the next focus. */
-export function boardingFailureHold(err: unknown, key: string): { attemptKey: string; retryDelayMs: number } {
-  if (isPasskeyCancellation(err)) return { attemptKey: key, retryDelayMs: 0 }
-  return { attemptKey: '', retryDelayMs: 5 * 60_000 }
-}
-
-export async function withVaultBoardingSecret<T>(secret: Uint8Array, run: (secret: Uint8Array) => Promise<T>) {
-  try {
-    return await run(secret)
-  } finally {
-    zeroBytes(secret)
-  }
-}
-
 function xOnly(value: string | undefined, name: string): Uint8Array {
   const raw = String(value || '').toLowerCase()
   if (/^(02|03)[0-9a-f]{64}$/.test(raw)) return hex.decode(raw.slice(2))
@@ -125,6 +105,7 @@ export function vaultBoardScriptFromStatus(status: VaultStatus, operatorPub: Uin
 
 export interface VaultBoardingFunds {
   confirmed: number
+  confirmedOutpoints: string[]
   unconfirmed: number
   total: number
 }
@@ -142,9 +123,11 @@ export function nextVaultBoardingAction(
 export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<VaultBoardingFunds> {
   requireBoardingStatus(status)
   const coins = await fetchAddressUtxos(status.vtxoBoardingAddress!)
-  const confirmed = coins.filter((coin) => coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
+  const confirmedCoins = coins.filter((coin) => coin.status.confirmed)
+  const confirmed = confirmedCoins.reduce((sum, coin) => sum + coin.value, 0)
+  const confirmedOutpoints = confirmedCoins.map((coin) => `${coin.txid}:${coin.vout}`).sort()
   const unconfirmed = coins.filter((coin) => !coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
-  return { confirmed, unconfirmed, total: confirmed + unconfirmed }
+  return { confirmed, confirmedOutpoints, unconfirmed, total: confirmed + unconfirmed }
 }
 
 export function createTemporaryBoardingStorage() {
