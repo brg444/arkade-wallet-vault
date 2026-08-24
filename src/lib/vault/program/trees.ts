@@ -300,7 +300,7 @@ export function buildVaultProgramFamily(input: {
       ...(input.recoveryPub ? [input.recoveryPub] : []),
       input.vaultCosignerBase,
       input.arkadeCosignerBase,
-      ...claimants.flatMap((claimant) => [savingsInitiate[claimant].vault, savingsInitiate[claimant].arkade]),
+      ...claimants.flatMap((claimant) => [savingsInitiate[claimant]!.vault, savingsInitiate[claimant]!.arkade]),
       ...Object.values(pendingTweaks).flatMap((pair) => [pair.vault, pair.arkade]),
     ],
     'family',

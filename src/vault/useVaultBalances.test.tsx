@@ -96,7 +96,7 @@ beforeEach(() => {
   mockedTxs.mockResolvedValue([])
   mockedFunds.mockResolvedValue({ balance: 0 })
   mockedHistory.mockResolvedValue([])
-  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0 })
+  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, unconfirmed: 0 })
 })
 
 afterEach(() => vi.useRealTimers())
@@ -212,7 +212,7 @@ describe('useVaultBalances refresh coordination', () => {
         account: 'spend',
       },
     ])
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0, unconfirmed: 1_000 })
     const { result } = setupHook(false, active)
     await act(async () => {
       await Promise.resolve()
@@ -227,7 +227,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedFunds.mockClear()
     mockedHistory.mockClear()
     mockedBoardingFunds.mockClear()
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 1_000 })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 1_000, unconfirmed: 0 })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
@@ -247,7 +247,7 @@ describe('useVaultBalances refresh coordination', () => {
     vi.useFakeTimers()
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     mockedStatus.mockResolvedValue(active)
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0, unconfirmed: 1_000 })
     const { result } = setupHook(false, active)
     await act(async () => {
       await Promise.resolve()
@@ -255,10 +255,10 @@ describe('useVaultBalances refresh coordination', () => {
       await Promise.resolve()
     })
 
-    const olderPoll = deferred<{ total: number; confirmed: number }>()
+    const olderPoll = deferred<Awaited<ReturnType<typeof fetchVaultBoardingFunds>>>()
     mockedBoardingFunds
       .mockImplementationOnce(() => olderPoll.promise)
-      .mockResolvedValueOnce({ total: 2_000, confirmed: 2_000 })
+      .mockResolvedValueOnce({ total: 2_000, confirmed: 2_000, unconfirmed: 0 })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
@@ -268,7 +268,7 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.boardingConfirmedBalance).toBe(2_000)
 
     await act(async () => {
-      olderPoll.resolve({ total: 1_000, confirmed: 1_000 })
+      olderPoll.resolve({ total: 1_000, confirmed: 1_000, unconfirmed: 0 })
       await olderPoll.promise
     })
     expect(result.current.boardingConfirmedBalance).toBe(2_000)
@@ -278,7 +278,7 @@ describe('useVaultBalances refresh coordination', () => {
     vi.useFakeTimers()
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     mockedStatus.mockResolvedValue(active)
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0, unconfirmed: 1_000 })
     const { unmount } = setupHook(false, active)
     await act(async () => {
       await Promise.resolve()
@@ -286,7 +286,7 @@ describe('useVaultBalances refresh coordination', () => {
       await Promise.resolve()
     })
 
-    const pendingPoll = deferred<{ total: number; confirmed: number }>()
+    const pendingPoll = deferred<Awaited<ReturnType<typeof fetchVaultBoardingFunds>>>()
     mockedBoardingFunds.mockClear()
     mockedBoardingFunds.mockImplementationOnce(() => pendingPoll.promise)
     act(() => vi.advanceTimersByTime(15_000))
@@ -294,7 +294,7 @@ describe('useVaultBalances refresh coordination', () => {
 
     unmount()
     await act(async () => {
-      pendingPoll.resolve({ total: 1_000, confirmed: 1_000 })
+      pendingPoll.resolve({ total: 1_000, confirmed: 1_000, unconfirmed: 0 })
       await pendingPoll.promise
       vi.advanceTimersByTime(30_000)
     })

@@ -52,9 +52,12 @@ export function prfExtension(salt: Uint8Array, credentialId?: Uint8Array): Authe
   return { prf } as AuthenticationExtensionsClientInputs
 }
 
-export function prfFrom(cred: PublicKeyCredential): Uint8Array | null {
+export function prfFrom(cred: PublicKeyCredential): Uint8Array<ArrayBuffer> | null {
   const ext = cred.getClientExtensionResults() as {
-    prf?: { results?: { first?: ArrayBuffer | Uint8Array }; first?: ArrayBuffer | Uint8Array }
+    prf?: {
+      results?: { first?: ArrayBuffer | Uint8Array<ArrayBuffer> }
+      first?: ArrayBuffer | Uint8Array<ArrayBuffer>
+    }
   }
   const first = ext?.prf?.results?.first ?? ext?.prf?.first
   if (!first) return null
@@ -100,7 +103,7 @@ export function passkeyGetOptions(
 
 export function deviceSigningOptions(
   options: Omit<PublicKeyCredentialRequestOptions, 'allowCredentials'>,
-  credentialId: Uint8Array,
+  credentialId: Uint8Array<ArrayBuffer>,
 ): PublicKeyCredentialRequestOptions {
   const mode: PasskeyGetMode = isCoarsePhone() ? 'local' : 'any'
   return passkeyGetOptions(

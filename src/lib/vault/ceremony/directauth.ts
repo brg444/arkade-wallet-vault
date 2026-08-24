@@ -23,7 +23,7 @@ export async function deriveDirectP256(prf: Uint8Array): Promise<{
   for (let counter = 0; counter <= 255; counter++) {
     const scalar = new Uint8Array(
       await crypto.subtle.deriveBits(
-        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: hkdfInfo(counter) },
+        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: hkdfInfo(counter) as BufferSource },
         key,
         256,
       ),
