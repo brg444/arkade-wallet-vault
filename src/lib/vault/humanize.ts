@@ -27,6 +27,9 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('vtxo spend is unresolved') || msg.includes('vtxo reservation expired')) {
     return 'This send did not finish. Refresh your balance before trying again.'
   }
+  if (msg.includes('fee quote expired or changed')) {
+    return 'This fee quote expired or changed. Review the send again.'
+  }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
     msg.includes('vtxo finalization receipt') ||
