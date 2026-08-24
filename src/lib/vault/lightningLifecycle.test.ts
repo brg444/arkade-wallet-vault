@@ -227,6 +227,31 @@ describe('Lightning persisted lifecycle', () => {
     await harness.repository[Symbol.asyncDispose]()
   })
 
+  it('fails closed when a fresh browser has the swap record but not its registered contract', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await harness.manager.stop()
+    const freshBrowserContracts = memoryContracts().contracts
+
+    const refreshed = await refreshVaultLightningLifecycle({
+      repository: harness.repository,
+      contracts: freshBrowserContracts,
+      indexer: emptyIndexer() as never,
+      managerConfig: { pollIntervalMs: 60_000 },
+    })
+
+    expect(refreshed.restoreFailures).toEqual([
+      expect.objectContaining({
+        rfqId: quote.rfqId,
+        error: expect.objectContaining({ name: 'LockupContractMissing' }),
+      }),
+    ])
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toBeDefined()
+
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
   it('uses the package manager refund lifecycle for a funded quote that resumes after its refund time', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
