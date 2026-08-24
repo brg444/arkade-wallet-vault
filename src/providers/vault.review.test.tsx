@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   beginLightningFunding: vi.fn(),
   recordLightningFunding: vi.fn(),
   getLightningStatus: vi.fn(),
+  withLightningWallet: vi.fn(async (_secret, _status, _origin, run) => run({ repository: {} })),
   loadHandoff: vi.fn(),
 }))
 
@@ -59,7 +60,7 @@ vi.mock('../lib/vault/lightning', () => ({
   getVaultLightningStatus: mocks.getLightningStatus,
   requestVaultLightningQuote: mocks.requestLightning,
   withVaultLightningRepository: vi.fn(async (_vaultId, run) => run({})),
-  withVaultLightningSdkWallet: vi.fn(async (_secret, _status, _origin, run) => run({ repository: {} })),
+  withVaultLightningSdkWallet: mocks.withLightningWallet,
   withVaultLightningTransport: vi.fn(async (_profile, run) => run({})),
 }))
 
@@ -312,6 +313,13 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Return Lightning' })))
 
     expect(mocks.getLightningStatus).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
+    expect(mocks.withLightningWallet).toHaveBeenCalledWith(
+      phoneSecret,
+      expect.any(Object),
+      expect.any(String),
+      expect.any(Function),
+      { requiredRfqId: '44'.repeat(32) },
+    )
     expect(phoneSecret).toEqual(new Uint8Array(32))
     expect(screen.getByTestId('error')).toHaveTextContent('')
   })

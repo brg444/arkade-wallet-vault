@@ -36,6 +36,7 @@ import {
 } from './lightningLifecycle'
 import type { VaultStatus } from './types'
 import { disposeVaultBoardingResources } from './vtxo/board'
+import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './vtxo/lock'
 
 export {
   isVaultLightningInput,
@@ -126,11 +127,50 @@ function vaultLightningWalletStorageName(vaultId: string): string {
   return `arkade-vault-v2:${encodeURIComponent(id)}:wallet`
 }
 
+export async function withVaultLightningLifecycleLock<T>(
+  vaultId: string,
+  run: () => Promise<T>,
+  locks: VaultLockManager | null | undefined = browserVaultLockManager(),
+): Promise<T> {
+  const id = String(vaultId || '').trim()
+  if (!id) throw new Error('Vault ID is required for Lightning coordination.')
+  return requireVaultLockManager(locks).request(`arkade-vault-lightning:${id}`, { mode: 'exclusive' }, async (lock) => {
+    if (!lock) throw new Error('Web Locks API returned no exclusive Lightning lock')
+    return run()
+  })
+}
+
+export interface VaultLightningSdkWalletOptions {
+  requiredRfqId?: string
+}
+
+export function vaultLightningLifecycleErrors(
+  lifecycle: Pick<VaultLightningSession, 'restoreFailures' | 'retirementFailures'>,
+  requiredRfqId?: string,
+): Error[] {
+  return [...lifecycle.restoreFailures, ...lifecycle.retirementFailures]
+    .filter(({ rfqId }) => !requiredRfqId || rfqId === requiredRfqId)
+    .map(({ error }) => error)
+}
+
 export async function withVaultLightningSdkWallet<T>(
   phoneSecret: Uint8Array,
   status: VaultStatus,
   arkServerUrl: string,
   run: (session: VaultLightningSession) => Promise<T>,
+  options: VaultLightningSdkWalletOptions = {},
+): Promise<T> {
+  return withVaultLightningLifecycleLock(status.vaultId, () =>
+    withVaultLightningSdkWalletLocked(phoneSecret, status, arkServerUrl, run, options),
+  )
+}
+
+async function withVaultLightningSdkWalletLocked<T>(
+  phoneSecret: Uint8Array,
+  status: VaultStatus,
+  arkServerUrl: string,
+  run: (session: VaultLightningSession) => Promise<T>,
+  options: VaultLightningSdkWalletOptions,
 ): Promise<T> {
   if (!status.spendingArkAddress) throw new Error('Vault has no Spending address.')
   const identity = SingleKey.fromPrivateKey(phoneSecret)
@@ -162,11 +202,9 @@ export async function withVaultLightningSdkWallet<T>(
       ark: operator,
       indexer,
       repository,
+      requiredRfqId: options.requiredRfqId,
     })
-    const lifecycleErrors = [
-      ...lifecycle.restoreFailures.map(({ error }) => error),
-      ...lifecycle.retirementFailures.map(({ error }) => error),
-    ]
+    const lifecycleErrors = vaultLightningLifecycleErrors(lifecycle, options.requiredRfqId)
     if (lifecycleErrors.length > 0) {
       throw new AggregateError(lifecycleErrors, 'Lightning recovery state could not be restored safely')
     }
@@ -221,6 +259,13 @@ export async function refreshVaultLightningHistory(
   vaultId: string,
   arkServerUrl: string,
 ): Promise<import('./lightningLifecycle').VaultLightningHistoryMetadata[]> {
+  return withVaultLightningLifecycleLock(vaultId, () => refreshVaultLightningHistoryLocked(vaultId, arkServerUrl))
+}
+
+async function refreshVaultLightningHistoryLocked(
+  vaultId: string,
+  arkServerUrl: string,
+): Promise<import('./lightningLifecycle').VaultLightningHistoryMetadata[]> {
   const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(vaultId))
   const contracts = new IndexedDBContractRepository(vaultLightningWalletStorageName(vaultId))
   let primaryError: unknown
@@ -230,12 +275,6 @@ export async function refreshVaultLightningHistory(
       contracts,
       indexer: new RestIndexerProvider(arkServerUrl),
     })
-    if (refreshed.restoreFailures.length > 0) {
-      throw new AggregateError(
-        refreshed.restoreFailures.map(({ error }) => error),
-        'Lightning recovery state could not be restored safely',
-      )
-    }
     return refreshed.history
   } catch (error) {
     primaryError = error
