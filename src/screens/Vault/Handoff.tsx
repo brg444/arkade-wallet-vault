@@ -11,25 +11,10 @@ import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount } from '../../lib/format'
-import { canBrowserShareData, shareData } from '../../lib/share'
 import { encodePsbtFrames, parsePsbtFrame } from '../../lib/vault/savingsQr'
-import { psbtFile, psbtHexToBase64, readPsbtFile } from '../../lib/vault/savingsSpend'
+import { psbtHexToBase64, readPsbtFile } from '../../lib/vault/savingsSpend'
 import { VaultContext } from '../../vault/context'
 import PsbtQr from './PsbtQr'
-
-async function sharePsbt(psbtHex: string) {
-  const file = psbtFile(psbtHex)
-  const text = psbtHexToBase64(psbtHex)
-  if (canBrowserShareData({ files: [file] })) {
-    await shareData({ files: [file], title: 'Savings PSBT' })
-    return
-  }
-  if (canBrowserShareData({ text, title: 'Savings PSBT' })) {
-    await shareData({ text, title: 'Savings PSBT' })
-    return
-  }
-  await copyToClipboard(text)
-}
 
 export default function VaultHandoff() {
   const { busy, cancelSavingsHandoff, completeSavingsHandoff, error, handoffPsbt, navigate, spend } =
@@ -44,7 +29,6 @@ export default function VaultHandoff() {
   const [selectedFile, setSelectedFile] = useState('')
   const [fileError, setFileError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
-  const canShare = Boolean(typeof navigator !== 'undefined' && navigator.share)
 
   const current = frames[Math.min(frame, Math.max(frames.length - 1, 0))] || ''
 
@@ -79,22 +63,11 @@ export default function VaultHandoff() {
               {prettyAmount(spend.amount)}
             </Text>
             <Button
-              label={canShare ? 'Share with hardware' : 'Copy for hardware'}
+              label='Copy PSBT'
               onClick={() => {
                 void (async () => {
-                  try {
-                    if (canShare) {
-                      await sharePsbt(handoffPsbt)
-                      return
-                    }
-                    await copyToClipboard(payload)
-                    toast('Copied for hardware')
-                  } catch (err) {
-                    const msg = String(err)
-                    if (/abort|cancel/i.test(msg)) return
-                    await copyToClipboard(payload)
-                    toast('Copied for hardware')
-                  }
+                  await copyToClipboard(payload)
+                  toast('PSBT copied')
                 })()
               }}
             />
