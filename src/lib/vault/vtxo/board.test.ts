@@ -17,7 +17,7 @@ import {
   isReleasedIntentRetry,
   nextVaultBoardingAction,
   settleBoardingWithReleasedIntentRetry,
-  vaultBoardingStorageNames,
+  vaultBoardingStorageName,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
   withVaultBoardingSecret,
@@ -97,7 +97,6 @@ describe('vault-board-v1', () => {
     const factories = {
       walletRepository: (dbName: string) => new FakeRepository('wallet', dbName),
       contractRepository: (dbName: string) => new FakeRepository('contract', dbName),
-      intentRepository: (dbName: string) => new FakeRepository('intent', dbName),
     }
 
     const vaultA = createVaultBoardingStorage('vault-a', factories)
@@ -110,8 +109,6 @@ describe('vault-board-v1', () => {
     expect(vaultA.walletRepository.dbName).toBe(vaultA.contractRepository.dbName)
     expect(vaultB.walletRepository.dbName).toBe(vaultB.contractRepository.dbName)
     expect(vaultA.walletRepository.dbName).not.toBe(vaultB.walletRepository.dbName)
-    expect(vaultA.intentRepository.dbName).not.toBe(vaultA.walletRepository.dbName)
-
     vaultB.walletRepository.add('cursor-b')
     vaultB.contractRepository.add('contract-b')
     vaultB.walletRepository.clear()
@@ -124,14 +121,11 @@ describe('vault-board-v1', () => {
   })
 
   it('uses explicit versioned storage names and rejects a missing vault id', () => {
-    expect(vaultBoardingStorageNames('vault-a')).toEqual({
-      wallet: 'arkade-vault-v2:vault-a:wallet',
-      intents: 'arkade-vault-v2:vault-a:intents',
-    })
-    expect(() => vaultBoardingStorageNames('')).toThrow(/vault id/)
+    expect(vaultBoardingStorageName('vault-a')).toBe('arkade-vault-v2:vault-a:wallet')
+    expect(() => vaultBoardingStorageName('')).toThrow(/vault id/)
   })
 
-  it('disposes the wallet before all three boarding repositories', async () => {
+  it('disposes the wallet before both boarding repositories', async () => {
     const disposed: string[] = []
     const repository = (name: string) => ({
       async [Symbol.asyncDispose]() {
@@ -141,7 +135,6 @@ describe('vault-board-v1', () => {
     const storage = {
       walletRepository: repository('wallet'),
       contractRepository: repository('contract'),
-      intentRepository: repository('intent'),
     }
 
     await disposeVaultBoardingResources(
@@ -153,7 +146,7 @@ describe('vault-board-v1', () => {
       storage,
     )
     expect(disposed[0]).toBe('sdk-wallet')
-    expect(new Set(disposed.slice(1))).toEqual(new Set(['wallet', 'contract', 'intent']))
+    expect(new Set(disposed.slice(1))).toEqual(new Set(['wallet', 'contract']))
   })
 
   it('closes every repository after partial wallet creation and after a disposal failure', async () => {
@@ -167,11 +160,10 @@ describe('vault-board-v1', () => {
     const storage = {
       walletRepository: repository('wallet', true),
       contractRepository: repository('contract'),
-      intentRepository: repository('intent'),
     }
 
     await expect(disposeVaultBoardingResources(undefined, storage)).rejects.toThrow(/wallet close failed/)
-    expect(new Set(disposed)).toEqual(new Set(['wallet', 'contract', 'intent']))
+    expect(new Set(disposed)).toEqual(new Set(['wallet', 'contract']))
   })
 
   it('settles only deposits already sent to the boarding address', () => {

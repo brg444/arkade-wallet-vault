@@ -6,7 +6,6 @@ import {
   Wallet,
   type IWallet,
   type IndexedDBContractRepository,
-  type IndexedDBIntentRepository,
   type IndexedDBWalletRepository,
   type NetworkName,
 } from '@arkade-os/sdk'
@@ -107,7 +106,6 @@ export function validateVaultLightningRefund(
 type VaultSdkWalletResources = {
   walletRepository: IndexedDBWalletRepository
   contractRepository: IndexedDBContractRepository
-  intentRepository: IndexedDBIntentRepository
 }
 
 export async function withVaultLightningSdkWallet<T>(
