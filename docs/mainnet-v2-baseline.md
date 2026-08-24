@@ -32,9 +32,9 @@ boarding, and Operator communication remain inside the official SDK surface.
 
 1. Qualify ordinary VTXO receive and send, including reloads and lost responses.
 2. Qualify Savings-to-Spending boarding and recovery drills.
-3. Configure the private mainnet Emulator endpoint, freeze the program pins for
-   `arkade.computer`, then regenerate both Contract Packs and cross-language
-   vectors.
+3. Configure `https://mainnet-signer.invalid`, freeze its signer and the
+   program pins for `arkade.computer`, then regenerate both Contract Packs and
+   cross-language vectors.
 4. Deploy with production key isolation, independent rollback-control storage,
    and shared durable edge limits.
 5. Enable outbound BOLT11 after ordinary Spending is stable. The published
@@ -55,8 +55,11 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
 - The phone-plus-Operator boarding intermediate remains an explicit trust
   assumption until value reaches `vault-policy-v1`.
 - Mainnet pins must match `arkade.computer`, including its network, signer,
-  checkpoint policy, delays, and fee bounds. The private mainnet Emulator
-  endpoint is the remaining unavailable external dependency.
+  checkpoint policy, delays, and fee bounds. The confirmed mainnet Emulator at
+  `https://mainnet-signer.invalid` advertises signer
+  `0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`,
+  which matches the official SDK pin; release qualification and immutable
+  Contract Pack binding remain required.
 - The wallet uses the official SDK lifecycle without custom registration,
   deletion, replay, event-stream, or Operator-status extensions.
 - Automatic boarding excludes every outpoint held by the SDK intent

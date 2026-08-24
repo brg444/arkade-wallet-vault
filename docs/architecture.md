@@ -65,7 +65,8 @@ and its ledger remain one protected component so the VaultCosigner cannot sign
 without observing authoritative allowance state.
 
 The release candidate is Mutinynet-only. Mainnet uses `https://arkade.computer`
-through the official Arkade SDK. The private mainnet Emulator endpoint and the
-corresponding Contract Pack pins remain to be configured. Mainnet Vault Program
-and policy choices are a later release gate, not part of the current lifecycle
-cleanup.
+through the official Arkade SDK. The confirmed Emulator endpoint is
+`https://mainnet-signer.invalid`; its advertised signer matches the SDK pin,
+but the corresponding Contract Pack pins remain to be frozen and qualified.
+Mainnet Vault Program and policy choices are a later release gate, not part of
+the current lifecycle cleanup.

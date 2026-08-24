@@ -61,7 +61,7 @@ describe('Lightning SEND release boundary', () => {
     expect(MUTINYNET_LIGHTNING_SOLVER).toMatchObject({
       network: 'mutinynet',
       minSats: 1_000,
-      maxSats: 50_000,
+      maxSats: 25_000,
     })
   })
 
