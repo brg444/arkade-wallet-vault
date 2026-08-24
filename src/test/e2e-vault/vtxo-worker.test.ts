@@ -32,13 +32,13 @@ async function seedIntent(page: Page, vaultId: string, state: string, commitment
   }
 }
 
-async function intentState(page: Page, vaultId: string, now?: number, commitments: string[] = []) {
+async function intentState(page: Page, vaultId: string, commitments: string[] = []) {
   return page.evaluate(
-    async ({ fixturePath, id, at, destinationCommitments }) => {
+    async ({ fixturePath, id, destinationCommitments }) => {
       const fixture = await import(/* @vite-ignore */ fixturePath)
-      return fixture.boardingIntentState(id, at, destinationCommitments)
+      return fixture.boardingIntentState(id, destinationCommitments)
     },
-    { fixturePath: BROWSER_FIXTURE, id: vaultId, at: now, destinationCommitments: commitments },
+    { fixturePath: BROWSER_FIXTURE, id: vaultId, destinationCommitments: commitments },
   )
 }
 
@@ -123,25 +123,26 @@ test('retains the scoped worker across an offline interval and reloads it after 
   const reconnected = await registerWorker(page, 'vault-offline')
   expect(reconnected.scope).toBe(before.scope)
   expect(reconnected.state).toBe('activated')
-  await expect(intentState(page, 'vault-offline')).resolves.toBe('active')
+  await expect(intentState(page, 'vault-offline')).resolves.toBe('blocked')
 })
 
-test('reconciles every interrupted nonterminal intent from IndexedDB after reload', async ({ page }) => {
+test('keeps interrupted Operator intents blocked across reload without a local expiry', async ({ page }) => {
   for (const state of ['waiting_to_submit', 'waiting_for_batch', 'batch_in_progress']) {
     const vaultId = `vault-${state}`
     await seedIntent(page, vaultId, state)
     await page.reload()
-    await expect(intentState(page, vaultId)).resolves.toBe('active')
+    await expect(intentState(page, vaultId)).resolves.toBe('blocked')
   }
 
   const staleVault = 'vault-stale-page'
   await seedIntent(page, staleVault, 'waiting_for_batch')
-  await expect(intentState(page, staleVault, Date.now() + 5 * 60_000 + 1)).resolves.toBe('none')
+  await page.reload()
+  await expect(intentState(page, staleVault)).resolves.toBe('blocked')
 
   const destinationVault = 'vault-destination-evidence'
   await seedIntent(page, destinationVault, 'batch_in_progress', 'commitment-destination')
   await page.reload()
-  await expect(intentState(page, destinationVault, undefined, ['commitment-destination'])).resolves.toBe('settled')
+  await expect(intentState(page, destinationVault, ['commitment-destination'])).resolves.toBe('settled')
 })
 
 test('moves pending boarding value to confirmed VTXO value without a double-count window', async ({ page }) => {
@@ -162,12 +163,17 @@ test('moves pending boarding value to confirmed VTXO value without a double-coun
 
   const vaultId = 'vault-propagation-order'
   const pending = await boardingSnapshot(page, vaultId)
-  expect(pending).toMatchObject({ total: 50_000, confirmed: 0, unconfirmed: 50_000 })
+  expect(pending).toMatchObject({ total: 50_000, confirmed: 0, settleableOutpoints: [], unconfirmed: 50_000 })
   expect(pending.history).toEqual([expect.objectContaining({ activity: 'boarding', confirmed: false })])
 
   confirmed = true
   const onchainConfirmed = await boardingSnapshot(page, vaultId)
-  expect(onchainConfirmed).toMatchObject({ total: 50_000, confirmed: 50_000, unconfirmed: 0 })
+  expect(onchainConfirmed).toMatchObject({
+    total: 50_000,
+    confirmed: 50_000,
+    settleableOutpoints: [`${BOARDING_TXID}:0`],
+    unconfirmed: 0,
+  })
 
   await seedIntent(page, vaultId, 'batch_succeeded', 'commitment-vtxo')
   await page.reload()
