@@ -48,6 +48,7 @@ interface VaultBalancesOptions {
 interface VaultBalanceSnapshot {
   boardingBalance: number
   boardingConfirmedBalance: number
+  boardingConfirmedOutpoints: string[]
   history: VaultHistoryItem[]
   savingsSats: number
   savingsSpendableSats: number
@@ -57,6 +58,7 @@ interface VaultBalanceSnapshot {
 const EMPTY_BALANCES: VaultBalanceSnapshot = {
   boardingBalance: 0,
   boardingConfirmedBalance: 0,
+  boardingConfirmedOutpoints: [],
   history: [],
   savingsSats: 0,
   savingsSpendableSats: 0,
@@ -71,6 +73,10 @@ export function confirmedUtxoBalance(utxos: EsploraUtxo[]): number {
       total + (utxo.status.confirmed && Number.isSafeInteger(utxo.value) && utxo.value > 0 ? utxo.value : 0),
     0,
   )
+}
+
+export function boardingSettlementAttemptKey(vaultId: string, confirmedOutpoints: string[]): string {
+  return `${vaultId}:settle:${[...confirmedOutpoints].sort().join(',')}`
 }
 
 export interface SavingsBalance {
@@ -204,7 +210,7 @@ export function useVaultBalances({
             : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
             ? fetchVaultBoardingFunds(liveStatus)
-            : Promise.resolve({ total: 0, confirmed: 0 }),
+            : Promise.resolve({ total: 0, confirmed: 0, confirmedOutpoints: [] as string[] }),
         ])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
@@ -212,6 +218,10 @@ export function useVaultBalances({
           boardingBalance: boardingVersion === boardingFetchVersion.current ? boarding.total : previous.boardingBalance,
           boardingConfirmedBalance:
             boardingVersion === boardingFetchVersion.current ? boarding.confirmed : previous.boardingConfirmedBalance,
+          boardingConfirmedOutpoints:
+            boardingVersion === boardingFetchVersion.current
+              ? boarding.confirmedOutpoints
+              : previous.boardingConfirmedOutpoints,
           history: [...savings.history, ...spending.history],
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
@@ -242,6 +252,7 @@ export function useVaultBalances({
         ...previous,
         boardingBalance: funds.total,
         boardingConfirmedBalance: funds.confirmed,
+        boardingConfirmedOutpoints: funds.confirmedOutpoints,
       }))
       setBoardingPulse((value) => value + 1)
     } catch (error) {
@@ -250,6 +261,8 @@ export function useVaultBalances({
       boardingPollRun.current = false
     }
   }, [])
+
+  const boardingAttemptKey = boardingSettlementAttemptKey(status?.vaultId || '', snapshot.boardingConfirmedOutpoints)
 
   const settleConfirmedBoarding = useCallback(async () => {
     if (boardingRun.current || !status?.enrolled || !enrollment) return
@@ -270,14 +283,14 @@ export function useVaultBalances({
         boardingAttempt.current = boardingAttemptKeyAfterLock(false, '')
         return
       }
-      boardingAttempt.current = `${status.vaultId}:settle:${boardingConfirmedBalance}:${boardingBalance}`
+      boardingAttempt.current = boardingAttemptKey
       onBoarded(settled.value.txid)
       boardingRetryAfter.current = 0
       await refreshBalance(status.vaultId)
     } catch (error) {
       consoleError(error, 'automatic Spending transfer')
       reportError('')
-      const hold = boardingFailureHold(error, `${status.vaultId}:settle:${boardingConfirmedBalance}:${boardingBalance}`)
+      const hold = boardingFailureHold(error, boardingAttemptKey)
       boardingAttempt.current = hold.attemptKey
       boardingRetryAfter.current = Date.now() + hold.retryDelayMs
       await refreshBalance(status.vaultId)
@@ -285,7 +298,16 @@ export function useVaultBalances({
       boardingRun.current = false
       setBoardingInProgress(false)
     }
-  }, [boardingBalance, boardingConfirmedBalance, enrollment, onBoarded, refreshBalance, reportError, status])
+  }, [
+    boardingAttemptKey,
+    boardingBalance,
+    boardingConfirmedBalance,
+    enrollment,
+    onBoarded,
+    refreshBalance,
+    reportError,
+    status,
+  ])
 
   useEffect(() => {
     if (busy || boardingInProgress || locked || !enrollment || !status?.enrolled || !status.vtxoBoardingActive) return
@@ -295,11 +317,12 @@ export function useVaultBalances({
       return
     }
     if (Date.now() < boardingRetryAfter.current) return
-    const key = `${status.vaultId}:${action}:${boardingConfirmedBalance}:${boardingBalance}`
+    const key = boardingAttemptKey
     if (boardingAttempt.current === key) return
     void settleConfirmedBoarding()
   }, [
     boardingBalance,
+    boardingAttemptKey,
     boardingConfirmedBalance,
     boardingInProgress,
     boardingPulse,
