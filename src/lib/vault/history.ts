@@ -204,9 +204,10 @@ export function historyFromVtxos(
         txid: coin.txid,
         type: 'received',
         amount: coin.value,
-        // `isLeaf` is an indexer graph property, not a Bitcoin confirmation
-        // flag. The SDK keeps a spent receive settled after its VTXO moves.
-        confirmed: Boolean(coin.isLeaf || coin.isSpent),
+        // Reaching the pinned script in the Operator indexer is the completed
+        // Spending receive. `isLeaf` describes the VTXO graph shape, not
+        // whether the wallet has received the VTXO.
+        confirmed: true,
         blockTime: unixSeconds(coin.createdAtMs),
         account,
       })

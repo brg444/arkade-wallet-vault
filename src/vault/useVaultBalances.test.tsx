@@ -3,10 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAddressTxs, fetchAddressUtxos } from '../lib/vault/esplora'
 import { pinFromEnrolledStatus, saveAddressPin } from '../lib/vault/pin'
 import { fetchVaultStatus } from '../lib/vault/status'
+import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
-import { fetchVaultBoardingFunds } from '../lib/vault/vtxo/board'
-import { fetchVaultVtxoSnapshot } from '../lib/vault/vtxo/spend'
+import { fetchVaultBoardingFunds, vaultBoardingIntentStatus, withVaultBoardingLock } from '../lib/vault/vtxo/board'
+import {
+  fetchVaultReadonlyVtxoSnapshot,
+  reloadVaultReadonlyWorker,
+  subscribeVaultReadonlyEvents,
+} from '../lib/vault/vtxo/readonlyWorker'
 import {
   boardingSettlementAttemptKey,
   confirmedUtxoBalance,
@@ -19,13 +24,20 @@ vi.mock('../lib/vault/esplora', () => ({
   fetchAddressUtxos: vi.fn(),
 }))
 vi.mock('../lib/vault/status', () => ({ fetchVaultStatus: vi.fn() }))
+vi.mock('../lib/vault/savingsSpend', () => ({ unlockPhoneBip340: vi.fn() }))
 vi.mock('../lib/vault/vtxo/spend', () => ({
-  fetchVaultVtxoSnapshot: vi.fn(),
   reconcilePersistedVtxoSpend: vi.fn().mockResolvedValue({ kind: 'none' }),
+}))
+vi.mock('../lib/vault/vtxo/readonlyWorker', () => ({
+  fetchVaultReadonlyVtxoSnapshot: vi.fn(),
+  reloadVaultReadonlyWorker: vi.fn().mockResolvedValue(undefined),
+  subscribeVaultReadonlyEvents: vi.fn().mockReturnValue(() => undefined),
 }))
 vi.mock('../lib/vault/vtxo/board', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/vault/vtxo/board')>()),
   fetchVaultBoardingFunds: vi.fn(),
+  vaultBoardingIntentStatus: vi.fn(),
+  withVaultBoardingLock: vi.fn(),
 }))
 
 const STATUS: VaultStatus = {
@@ -61,8 +73,13 @@ const STATUS: VaultStatus = {
 const mockedStatus = vi.mocked(fetchVaultStatus)
 const mockedUtxos = vi.mocked(fetchAddressUtxos)
 const mockedTxs = vi.mocked(fetchAddressTxs)
-const mockedSnapshot = vi.mocked(fetchVaultVtxoSnapshot)
+const mockedSnapshot = vi.mocked(fetchVaultReadonlyVtxoSnapshot)
+const mockedWorkerReload = vi.mocked(reloadVaultReadonlyWorker)
+const mockedWorkerEvents = vi.mocked(subscribeVaultReadonlyEvents)
 const mockedBoardingFunds = vi.mocked(fetchVaultBoardingFunds)
+const mockedBoardingIntentStatus = vi.mocked(vaultBoardingIntentStatus)
+const mockedBoardingLock = vi.mocked(withVaultBoardingLock)
+const mockedUnlockPhone = vi.mocked(unlockPhoneBip340)
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -108,7 +125,14 @@ beforeEach(() => {
   mockedUtxos.mockResolvedValue([])
   mockedTxs.mockResolvedValue([])
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
+  mockedWorkerReload.mockResolvedValue(undefined)
+  mockedWorkerEvents.mockReturnValue(() => undefined)
   mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, confirmedOutpoints: [], history: [], unconfirmed: 0 })
+  mockedBoardingIntentStatus.mockResolvedValue('none')
+  mockedBoardingLock.mockImplementation(async (_vaultId, run) => ({
+    held: true,
+    value: await run({} as never),
+  }))
 })
 
 afterEach(() => vi.useRealTimers())
@@ -389,6 +413,34 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.vtxoSpendingSats).toBe(30_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['spend-history', 'boarding-confirmed'])
     expect(result.current.boardingConfirmedBalance).toBe(1_000)
+  })
+
+  it('rechecks a fresh active boarding intent without requesting Face ID', async () => {
+    vi.useFakeTimers()
+    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
+    mockedStatus.mockResolvedValue(active)
+    mockedBoardingFunds.mockResolvedValue({
+      total: 1_000,
+      confirmed: 1_000,
+      confirmedOutpoints: ['11'.repeat(32) + ':0'],
+      history: [],
+      unconfirmed: 0,
+    })
+    mockedBoardingIntentStatus.mockResolvedValue('active')
+
+    setupHook(false, active, true, { vaultId: active.vaultId } as EnrollmentSecrets)
+    await act(async () => {
+      for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    })
+
+    expect(mockedBoardingIntentStatus).toHaveBeenCalledTimes(1)
+    expect(mockedUnlockPhone).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000)
+    })
+    expect(mockedBoardingIntentStatus).toHaveBeenCalledTimes(2)
+    expect(mockedUnlockPhone).not.toHaveBeenCalled()
   })
 
   it('ignores a narrow boarding poll superseded by a full refresh', async () => {

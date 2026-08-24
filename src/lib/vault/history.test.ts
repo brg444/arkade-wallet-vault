@@ -23,6 +23,28 @@ function tx(partial: Partial<EsploraTx> & { txid: string }): EsploraTx {
 }
 
 describe('vault history', () => {
+  it('marks an indexed unspent VTXO as a confirmed Spending receive', () => {
+    expect(
+      historyFromVtxos([
+        {
+          txid: 'indexed-vtxo',
+          vout: 0,
+          value: 48_000,
+          createdAtMs: 1_700_000_000_000,
+          isSpent: false,
+          isLeaf: false,
+        },
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        txid: 'indexed-vtxo',
+        type: 'received',
+        amount: 48_000,
+        confirmed: true,
+      }),
+    ])
+  })
+
   it('shows unspent boarding outputs as one pending Spending receive per transaction', () => {
     const rows = historyFromBoardingUtxos([
       { txid: 'boarding', vout: 0, value: 40_000, status: { confirmed: true } },
@@ -163,6 +185,20 @@ describe('vault history', () => {
       type: 'sent',
       amount: 30_000,
       confirmed: true,
+    })
+  })
+
+  it('uses the resolved Ark transaction time for a no-change send', () => {
+    const rows = historyFromVtxos(
+      [{ txid: 'input', vout: 0, value: 20_000, createdAtMs: 2_000, isSpent: true, arkTxId: 'send' }],
+      'spend',
+      new Map([['send', 9_000]]),
+    )
+
+    expect(rows.find((row) => row.txid === 'send')).toMatchObject({
+      type: 'sent',
+      amount: 20_000,
+      blockTime: 9,
     })
   })
 
