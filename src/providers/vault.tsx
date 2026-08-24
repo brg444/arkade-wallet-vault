@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DUST_SATS } from '../lib/vault/constants'
 import { reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import {
@@ -25,9 +25,11 @@ import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
   isVtxoReceiptPendingError,
+  isVtxoReviewedReservationError,
   isVtxoSpendInFlightError,
   reserveVaultVtxo,
   sendVaultVtxo,
+  type VaultVtxoSpendQuote,
 } from '../lib/vault/vtxo/spend'
 import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
@@ -66,6 +68,15 @@ export function vaultDraftFee(account: VaultAccount, liveNetwork: boolean): numb
   return account === 'spend' ? 0 : liveNetwork ? LIVE_FEE : DEFAULT_FEE
 }
 
+export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null, spend: VaultSpend): boolean {
+  return Boolean(
+    quote &&
+      quote.destAddress.trim() === spend.address.trim() &&
+      quote.amountSats === spend.amount &&
+      quote.feeSats === spend.fee,
+  )
+}
+
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
@@ -77,6 +88,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [spend, setSpend] = useState<VaultSpend>({ address: '', amount: 0, fee: 0 })
+  const spendRef = useRef(spend)
+  spendRef.current = spend
+  const [reviewedVtxoQuote, setReviewedVtxoQuote] = useState<VaultVtxoSpendQuote | null>(null)
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
   const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | ''>('')
@@ -172,6 +186,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const selectAccount = useCallback(
     (next: VaultAccount) => {
       setAccount(next)
+      setReviewedVtxoQuote(null)
       setSpend((previous) => ({ ...previous, fee: vaultDraftFee(next, liveNetwork) }))
     },
     [liveNetwork],
@@ -309,6 +324,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const setSpendDraft = useCallback(
     (draft: Partial<VaultSpend>) => {
+      setReviewedVtxoQuote(null)
       setSpend((prev) => {
         const next = { ...prev, ...draft }
         next.fee = vaultDraftFee(account, liveNetwork)
@@ -321,6 +337,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const reviewSpend = useCallback(async () => {
     setError('')
+    setReviewedVtxoQuote(null)
     if (!status?.enrolled) {
       setError('Unlock this vault before sending.')
       return
@@ -367,6 +384,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       try {
         const quote = await reserveVaultVtxo(enrollment, status, spend.address, spend.amount)
+        if (
+          spendRef.current.address.trim() !== quote.destAddress.trim() ||
+          spendRef.current.amount !== quote.amountSats
+        ) {
+          setError('Send details changed. Review the send again.')
+          return
+        }
+        setReviewedVtxoQuote(quote)
         setSpend((current) =>
           current.address === spend.address && current.amount === spend.amount
             ? { ...current, fee: quote.feeSats }
@@ -387,6 +412,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setLastTxid(txid)
       setLastTxKind(kind)
       setLastSend(authoritativeFee === undefined ? spend : { ...spend, fee: authoritativeFee })
+      setReviewedVtxoQuote(null)
       setSpend({ address: '', amount: 0, fee: vaultDraftFee(account, liveNetwork) })
       setHandoffPsbt('')
       if (status?.vaultId) await refreshBalance(status.vaultId)
@@ -470,13 +496,28 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setError('Spending is still boarding Bitcoin. Try again in a moment.')
           return
         }
+        const reviewed = reviewedVtxoQuote
+        if (!reviewed || !reviewedVtxoQuoteMatchesDraft(reviewed, spend)) {
+          setReviewedVtxoQuote(null)
+          setSpend((current) => ({ ...current, fee: vaultDraftFee('spend', liveNetwork) }))
+          setError('This fee quote expired or changed. Review the send again.')
+          setScreen('send')
+          return
+        }
         try {
-          const result = await sendVaultVtxo(enrollment, status, spend.address, spend.amount)
+          const result = await sendVaultVtxo(enrollment, status, reviewed)
           await finishBroadcast(result.txid, 'vtxo', result.feeSats)
           return
         } catch (err) {
           if (isVtxoReceiptPendingError(err)) {
             await finishBroadcast(err.txid, 'vtxo', err.feeSats)
+            return
+          }
+          if (isVtxoReviewedReservationError(err)) {
+            setReviewedVtxoQuote(null)
+            setSpend((current) => ({ ...current, fee: vaultDraftFee('spend', liveNetwork) }))
+            setError(humanizeVaultError(err))
+            setScreen('send')
             return
           }
           if (status.vaultId) await refreshBalance(status.vaultId)
@@ -500,7 +541,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     boardingInProgress,
     enrollment,
     finishBroadcast,
+    liveNetwork,
     refreshBalance,
+    reviewedVtxoQuote,
     spend,
     spendingArkAddress,
     status,
@@ -512,6 +555,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setLocked(true)
     setError('')
     setSpend({ address: '', amount: 0, fee: 0 })
+    setReviewedVtxoQuote(null)
     setLastSend(null)
     setLastTxid('')
     setLastTxKind('')
