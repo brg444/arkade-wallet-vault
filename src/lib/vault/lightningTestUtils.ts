@@ -27,6 +27,8 @@ export const MAINNET_TEST_PROFILE: VaultLightningSolverProfile = {
   relays: ['wss://nostr.test'],
   minSats: 500,
   maxSats: 50_000,
+  maxFundingSats: 100_000,
+  feeBps: 115,
 }
 
 export const MAINNET_INVOICE =

@@ -11,6 +11,7 @@ export interface VaultLightningSolverProfile {
   minSats: number
   maxSats: number
   maxFundingSats: number
+  feeBps: number
 }
 
 /** Release-pinned Mutinynet solver. The bundled card is its source of truth. */
@@ -21,6 +22,7 @@ export const MUTINYNET_LIGHTNING_SOLVER: VaultLightningSolverProfile = {
   minSats: 1_000,
   maxSats: 25_000,
   maxFundingSats: 50_000,
+  feeBps: 30,
 }
 
 const MUTINYNET_LIGHTNING_CARD: LocalCardInput = {
@@ -64,7 +66,21 @@ export async function discoverVaultLightningSolver(
     minSats: Number(quoteLimits.min),
     maxSats: Number(quoteLimits.max),
     maxFundingSats: Number(baseLimits.max),
+    feeBps: market.fee_bps,
   }
+}
+
+/** Exact-out same-asset quote ceiling, rounded up to the next whole sat. */
+export function vaultLightningFundingForInvoice(invoiceSats: number, feeBps: number): number {
+  if (!Number.isSafeInteger(invoiceSats) || invoiceSats < 1) throw new Error('Lightning invoice amount is invalid.')
+  if (!Number.isSafeInteger(feeBps) || feeBps < 0 || feeBps >= 10_000) {
+    throw new Error('Lightning solver fee is invalid.')
+  }
+  const numerator = BigInt(invoiceSats) * 10_000n
+  const denominator = BigInt(10_000 - feeBps)
+  const funding = (numerator + denominator - 1n) / denominator
+  if (funding > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Lightning funding amount is too large.')
+  return Number(funding)
 }
 
 export function vaultLightningSendEnabled(value = import.meta.env.VITE_VAULT_LIGHTNING_SEND): boolean {

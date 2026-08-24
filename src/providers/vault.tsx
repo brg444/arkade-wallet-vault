@@ -32,9 +32,9 @@ import {
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
+  discoverVaultLightningSolver,
   isVaultLightningInput,
   vaultLightningSendEnabled,
-  vaultLightningSolverProfile,
 } from '../lib/vault/lightningConfig'
 import { decodeVaultLightningInvoice } from '../lib/vault/lightningInvoice'
 import type { VaultLightningQuote } from '../lib/vault/lightningLifecycle'
@@ -430,7 +430,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Lightning send is not enabled in this release.')
       return
     }
-    const profile = vaultLightningSolverProfile(status.network as NetworkName)
+    const profile = await discoverVaultLightningSolver(status.network as NetworkName)
     if (!profile) {
       setError('No Lightning solver is configured for this network.')
       return

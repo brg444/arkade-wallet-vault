@@ -20,9 +20,13 @@ import {
 } from '@arkade-os/swap'
 import { nostrRfqTransport } from '@arkade-os/swap/nostr'
 import { hex } from '@scure/base'
-import { vaultLightningSendEnabled, type VaultLightningSolverProfile } from './lightningConfig'
+import {
+  vaultLightningFundingForInvoice,
+  vaultLightningSendEnabled,
+  type VaultLightningSolverProfile,
+} from './lightningConfig'
 import { decodeVaultLightningInvoice } from './lightningInvoice'
-import { registeredContractScript, validateVaultLightningRequestResult } from './lightningValidation'
+import { readRegisteredLightningContractParams, registeredContractScript } from './lightningValidation'
 import {
   discardUnexposedVaultLightningQuote,
   persistVaultLightningQuote,
@@ -39,6 +43,7 @@ import { disposeVaultBoardingResources } from './vtxo/board'
 
 export {
   isVaultLightningInput,
+  discoverVaultLightningSolver,
   MUTINYNET_LIGHTNING_SOLVER,
   vaultLightningSendEnabled,
   vaultLightningSolverProfile,
@@ -302,8 +307,13 @@ export async function requestVaultLightningQuote({
   if (
     !Number.isSafeInteger(profile.minSats) ||
     !Number.isSafeInteger(profile.maxSats) ||
+    !Number.isSafeInteger(profile.maxFundingSats) ||
+    !Number.isSafeInteger(profile.feeBps) ||
     profile.minSats < 1 ||
-    profile.maxSats < profile.minSats
+    profile.maxSats < profile.minSats ||
+    profile.maxFundingSats < profile.maxSats ||
+    profile.feeBps < 0 ||
+    profile.feeBps >= 10_000
   ) {
     throw new Error('Lightning solver amount limits are invalid.')
   }
@@ -326,19 +336,23 @@ export async function requestVaultLightningQuote({
   const result = await requester(wallet, arkServerUrl, transport, { invoice: facts, rfqId: requestId })
   const contractScript = registeredContractScript(result)
   try {
-    const { contractParams, refundLocktime } = await validateVaultLightningRequestResult({
-      result,
-      rfqId: requestId,
-      facts,
-      wallet,
-      contracts,
-      nowSeconds,
-    })
+    if (!Number.isSafeInteger(result.fundAmount) || result.fundAmount > profile.maxFundingSats) {
+      throw new Error(
+        `Lightning funding amount exceeds the solver profile’s ${profile.maxFundingSats.toLocaleString()} sat limit.`,
+      )
+    }
+    const expectedFunding = vaultLightningFundingForInvoice(facts.amountSats, profile.feeBps)
+    if (result.fundAmount !== expectedFunding) {
+      throw new Error(
+        `Lightning quote asks ${result.fundAmount.toLocaleString()} sats; the pinned solver fee allows ${expectedFunding.toLocaleString()} sats.`,
+      )
+    }
+    const contractParams = await readRegisteredLightningContractParams({ result, contracts })
 
     return await persistVaultLightningQuote({
       result,
       facts,
-      refundLocktime,
+      refundLocktime: result.quote.refund_locktime!,
       contractParams,
       repository,
       manager,
