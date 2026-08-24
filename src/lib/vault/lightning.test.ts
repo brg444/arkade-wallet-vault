@@ -18,6 +18,7 @@ import { hex } from '@scure/base'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   decodeVaultLightningInvoice,
+  discoverVaultLightningSolver,
   getVaultLightningStatus,
   isVaultLightningInput,
   MUTINYNET_LIGHTNING_SOLVER,
@@ -27,6 +28,7 @@ import {
   vaultLightningSolverProfile,
   wholeSatsFromMillisats,
   withVaultLightningTransport,
+  withVaultLightningLifecycleLock,
   withVaultRefundAddress,
 } from './lightning'
 import {
@@ -65,6 +67,27 @@ describe('Lightning SEND release boundary', () => {
       maxSats: 25_000,
       maxFundingSats: 50_000,
     })
+  })
+
+  it('loads the bundled Mutinynet card through official discovery without following a registry', async () => {
+    await expect(discoverVaultLightningSolver('mutinynet')).resolves.toMatchObject({
+      pubkey: MUTINYNET_LIGHTNING_SOLVER.pubkey,
+      relays: ['wss://nostr.arkade.sh'],
+      minSats: 1_000,
+      maxSats: 25_000,
+      maxFundingSats: 50_000,
+      market: { pair: 'BTC/lightning:BTC', fee_bps: 30 },
+    })
+    await expect(discoverVaultLightningSolver('bitcoin')).resolves.toBeUndefined()
+  })
+
+  it('uses one required per-vault Web Lock for Lightning lifecycle work', async () => {
+    const run = vi.fn(async () => 'done')
+    const request = vi.fn(async (_name, _options, callback) => callback({ held: true }))
+    await expect(withVaultLightningLifecycleLock('vault-a', run, { request } as never)).resolves.toBe('done')
+    expect(request).toHaveBeenCalledWith('arkade-vault-lightning:vault-a', { mode: 'exclusive' }, expect.any(Function))
+    expect(run).toHaveBeenCalledOnce()
+    await expect(withVaultLightningLifecycleLock('vault-a', run, null)).rejects.toThrow(/Web Locks API/)
   })
 
   it('recognizes direct and URI-wrapped BOLT11 inputs without accepting ordinary addresses', () => {
@@ -471,6 +494,33 @@ describe('Lightning SEND release boundary', () => {
         enabled: true,
       }),
     ).rejects.toThrow(/funding amount exceeds.*50,000 sat limit/)
+
+    expect(await harness.repository.getRfqSwap(result.rfqId)).toBeUndefined()
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('rejects a quote above the published solver fee ceiling before Review', async () => {
+    const harness = await lightningQuoteHarness()
+    const result = await completeRequestResult(harness.wallet, harness.contracts, { fundAmount: 2_126 })
+
+    await expect(
+      requestVaultLightningQuote({
+        wallet: harness.wallet,
+        arkServerUrl: 'https://arkade.computer',
+        invoice: MAINNET_INVOICE,
+        network: 'bitcoin',
+        transport: {} as never,
+        repository: harness.repository,
+        contracts: harness.contracts,
+        manager: harness.manager,
+        profile: MAINNET_TEST_PROFILE,
+        rfqId: result.rfqId,
+        requester: vi.fn(async () => result) as never,
+        nowSeconds: INVOICE_TIMESTAMP + 1,
+        enabled: true,
+      }),
+    ).rejects.toThrow(/pinned solver fee allows at most 2,125 sats/)
 
     expect(await harness.repository.getRfqSwap(result.rfqId)).toBeUndefined()
     await harness.manager.stop()

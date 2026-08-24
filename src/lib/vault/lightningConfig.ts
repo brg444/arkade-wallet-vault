@@ -1,5 +1,5 @@
 import type { NetworkName } from '@arkade-os/sdk'
-import { discover, sideLimits, type LocalCardInput } from '@arkade-os/solver-discovery'
+import { discover, planOffer, sideLimits, type LocalCardInput, type Market } from '@arkade-os/solver-discovery'
 import mutinynetSolverCard from './ln-solver-mutinynet.card.json'
 
 const LIGHTNING_SEND_RELEASE_FLAG = 'true'
@@ -11,8 +11,10 @@ export interface VaultLightningSolverProfile {
   minSats: number
   maxSats: number
   maxFundingSats: number
-  feeBps: number
+  market: Market
 }
+
+const MUTINYNET_LIGHTNING_MARKET = mutinynetSolverCard.markets[0] as unknown as Market
 
 /** Release-pinned Mutinynet solver. The bundled card is its source of truth. */
 export const MUTINYNET_LIGHTNING_SOLVER: VaultLightningSolverProfile = {
@@ -22,7 +24,7 @@ export const MUTINYNET_LIGHTNING_SOLVER: VaultLightningSolverProfile = {
   minSats: 1_000,
   maxSats: 25_000,
   maxFundingSats: 50_000,
-  feeBps: 30,
+  market: MUTINYNET_LIGHTNING_MARKET,
 }
 
 const MUTINYNET_LIGHTNING_CARD: LocalCardInput = {
@@ -66,21 +68,24 @@ export async function discoverVaultLightningSolver(
     minSats: Number(quoteLimits.min),
     maxSats: Number(quoteLimits.max),
     maxFundingSats: Number(baseLimits.max),
-    feeBps: market.fee_bps,
+    market,
   }
 }
 
-/** Exact-out same-asset quote ceiling, rounded up to the next whole sat. */
-export function vaultLightningFundingForInvoice(invoiceSats: number, feeBps: number): number {
+/** Package-native exact-out ceiling with the card's whole-sat rounding. */
+export function vaultLightningFundingForInvoice(invoiceSats: number, profile: VaultLightningSolverProfile): number {
   if (!Number.isSafeInteger(invoiceSats) || invoiceSats < 1) throw new Error('Lightning invoice amount is invalid.')
-  if (!Number.isSafeInteger(feeBps) || feeBps < 0 || feeBps >= 10_000) {
-    throw new Error('Lightning solver fee is invalid.')
+  const plan = planOffer({
+    market: profile.market,
+    give: 'base',
+    wantAmount: BigInt(invoiceSats),
+    safetyBps: 0,
+  })
+  if (!plan.limits.withinLimits) throw new Error('Lightning amount is outside the solver market limits.')
+  if (plan.deposit.atomic > BigInt(profile.maxFundingSats)) {
+    throw new Error('Lightning funding amount is outside the solver market limits.')
   }
-  const numerator = BigInt(invoiceSats) * 10_000n
-  const denominator = BigInt(10_000 - feeBps)
-  const funding = (numerator + denominator - 1n) / denominator
-  if (funding > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Lightning funding amount is too large.')
-  return Number(funding)
+  return Number(plan.deposit.atomic)
 }
 
 export function vaultLightningSendEnabled(value = import.meta.env.VITE_VAULT_LIGHTNING_SEND): boolean {

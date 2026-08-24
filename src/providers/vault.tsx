@@ -42,6 +42,7 @@ import {
   isVtxoReceiptPendingError,
   isVtxoReviewedReservationError,
   isVtxoSpendInFlightError,
+  loadPersistedVtxoSpend,
   reserveVaultVtxo,
   sendVaultVtxo,
   type VaultVtxoSpendQuote,
@@ -455,6 +456,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setBusy(true)
     try {
       const lightning = await import('../lib/vault/lightning')
+      const persistedVtxo = loadPersistedVtxoSpend(status.vaultId)
+      const resumeVtxo =
+        persistedVtxo?.bundleDigest && persistedVtxo.destAddress && Number.isSafeInteger(persistedVtxo.amountSats)
+          ? {
+              operationId: persistedVtxo.operationId,
+              bundleDigest: persistedVtxo.bundleDigest,
+              address: persistedVtxo.destAddress,
+              amountSats: persistedVtxo.amountSats,
+            }
+          : undefined
       const phoneSecret = await unlockPhoneBip340(enrollment, status)
       let quote: VaultLightningQuote
       try {
@@ -470,6 +481,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
               contracts: session.contracts,
               manager: session.manager,
               profile,
+              resumeVtxo,
             }),
           ),
         )
@@ -744,24 +756,40 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           return
         }
         try {
-          await lightning.withVaultLightningRepository(status.vaultId, async (repository) => {
-            const target = await lightning.beginVaultLightningFunding(repository, lightningQuote.rfqId)
-            if (target.address !== reviewed.destAddress || target.amountSats !== reviewed.amountSats) {
-              throw new Error('Lightning funding target changed after Review.')
+          const sent = await lightning.withVaultLightningLifecycleLock(status.vaultId, async () => {
+            const proof = {
+              rfqId: lightningQuote.rfqId,
+              address: reviewed.destAddress,
+              amountSats: reviewed.amountSats,
+              operationId: reviewed.operationId,
+              bundleDigest: reviewed.bundleDigest,
             }
+            const target = await lightning.withVaultLightningRepository(status.vaultId, async (repository) => {
+              try {
+                return await lightning.resumeVaultLightningFunding(repository, proof)
+              } catch (err) {
+                if (!(err instanceof lightning.VaultLightningFundingNotStartedError)) throw err
+                return lightning.beginVaultLightningFunding(repository, lightningQuote.rfqId, proof)
+              }
+            })
+            if (target.address !== reviewed.destAddress || target.amountSats !== reviewed.amountSats)
+              throw new Error('Lightning funding target changed after Review.')
+            let sent: { txid: string; feeSats: number }
             try {
-              const result = await sendVaultVtxo(enrollment, status, reviewed)
-              await lightning.recordVaultLightningFundingTxid(repository, lightningQuote.rfqId, result.txid)
-              await finishBroadcast(result.txid, 'lightning', expectedFee)
+              sent = await sendVaultVtxo(enrollment, status, reviewed)
             } catch (err) {
               if (isVtxoReceiptPendingError(err)) {
-                await lightning.recordVaultLightningFundingTxid(repository, lightningQuote.rfqId, err.txid)
-                await finishBroadcast(err.txid, 'lightning', expectedFee)
-                return
+                sent = { txid: err.txid, feeSats: err.feeSats }
+              } else {
+                throw err
               }
-              throw err
             }
+            await lightning.withVaultLightningRepository(status.vaultId, (repository) =>
+              lightning.recordVaultLightningFundingTxid(repository, lightningQuote.rfqId, sent.txid),
+            )
+            return sent
           })
+          await finishBroadcast(sent.txid, 'lightning', expectedFee)
           return
         } catch (err) {
           if (isVtxoReviewedReservationError(err)) {
@@ -866,23 +894,29 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (!status?.enrolled || !enrollment) throw new Error('Sign in before returning this payment.')
         const lightning = await import('../lib/vault/lightning')
         phoneSecret = await unlockPhoneBip340(enrollment, status)
-        await lightning.withVaultLightningSdkWallet(phoneSecret, status, vaultArkServer(), async (session) => {
-          const record = await lightning.getVaultLightningStatus(session.repository, rfqId)
-          if (!record) throw new Error('This Lightning payment is no longer available.')
-          if (record.state === 'refunded' || record.state === 'settled') return
-          if (record.state === 'needs_counterparty') {
-            throw new Error('The Lightning payment could not be returned yet. Try again shortly.')
-          }
-          if (record.state === 'failed') {
-            throw new Error('The Lightning payment needs recovery before it can be returned.')
-          }
-          throw new Error('This Lightning payment is still processing.')
-        })
+        await lightning.withVaultLightningSdkWallet(
+          phoneSecret,
+          status,
+          vaultArkServer(),
+          async (session) => {
+            const record = await lightning.getVaultLightningStatus(session.repository, rfqId)
+            if (!record) throw new Error('This Lightning payment is no longer available.')
+            if (record.state === 'refunded' || record.state === 'settled') return
+            if (record.state === 'needs_counterparty') {
+              throw new Error('The Lightning payment could not be returned yet. Try again shortly.')
+            }
+            if (record.state === 'failed') {
+              throw new Error('The Lightning payment needs recovery before it can be returned.')
+            }
+            throw new Error('This Lightning payment is still processing.')
+          },
+          { enableRefunds: true },
+        )
         await refreshBalance(status.vaultId)
       } catch (err) {
         setError(humanizeVaultError(err))
       } finally {
-        zeroBytes(phoneSecret as Uint8Array)
+        if (phoneSecret) zeroBytes(phoneSecret)
         setBusy(false)
       }
     },

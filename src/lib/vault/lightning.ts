@@ -31,15 +31,18 @@ import {
   discardUnexposedVaultLightningQuote,
   persistVaultLightningQuote,
   restoreMatchingVaultLightningQuote,
+  restoreMatchingVaultLightningFundingQuote,
   restorePersistedVaultLightningQuote,
   refreshVaultLightningLifecycle,
   startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
   type VaultLightningQuote,
   type VaultLightningSession,
+  type VaultLightningVtxoProof,
 } from './lightningLifecycle'
 import type { VaultStatus } from './types'
 import { disposeVaultBoardingResources } from './vtxo/board'
+import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './vtxo/lock'
 
 export {
   isVaultLightningInput,
@@ -57,14 +60,17 @@ export {
   getVaultLightningStatus,
   listVaultLightningHistory,
   recordVaultLightningFundingTxid,
+  resumeVaultLightningFunding,
   refreshVaultLightningLifecycle,
   retireAbandonedVaultLightningQuotes,
   startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
   type VaultLightningFundingTarget,
+  type VaultLightningFundingProof,
   type VaultLightningHistoryMetadata,
   type VaultLightningQuote,
   type VaultLightningSession,
+  VaultLightningFundingNotStartedError,
 } from './lightningLifecycle'
 
 /**
@@ -131,11 +137,37 @@ function vaultLightningWalletStorageName(vaultId: string): string {
   return `arkade-vault-v2:${encodeURIComponent(id)}:wallet`
 }
 
+export async function withVaultLightningLifecycleLock<T>(
+  vaultId: string,
+  run: () => Promise<T>,
+  locks: VaultLockManager | null | undefined = browserVaultLockManager(),
+): Promise<T> {
+  const id = String(vaultId || '').trim()
+  if (!id) throw new Error('Vault ID is required for Lightning coordination.')
+  return requireVaultLockManager(locks).request(`arkade-vault-lightning:${id}`, { mode: 'exclusive' }, async (lock) => {
+    if (!lock) throw new Error('Web Locks API returned no exclusive Lightning lock')
+    return run()
+  })
+}
+
 export async function withVaultLightningSdkWallet<T>(
   phoneSecret: Uint8Array,
   status: VaultStatus,
   arkServerUrl: string,
   run: (session: VaultLightningSession) => Promise<T>,
+  options: { enableRefunds?: boolean } = {},
+): Promise<T> {
+  return withVaultLightningLifecycleLock(status.vaultId, () =>
+    withUnlockedVaultLightningSdkWallet(phoneSecret, status, arkServerUrl, run, options),
+  )
+}
+
+async function withUnlockedVaultLightningSdkWallet<T>(
+  phoneSecret: Uint8Array,
+  status: VaultStatus,
+  arkServerUrl: string,
+  run: (session: VaultLightningSession) => Promise<T>,
+  options: { enableRefunds?: boolean },
 ): Promise<T> {
   if (!status.spendingArkAddress) throw new Error('Vault has no Spending address.')
   const identity = SingleKey.fromPrivateKey(phoneSecret)
@@ -167,6 +199,7 @@ export async function withVaultLightningSdkWallet<T>(
       ark: operator,
       indexer,
       repository,
+      managerConfig: { enableAutoActions: options.enableRefunds === true },
     })
     const lifecycleErrors = [
       ...lifecycle.restoreFailures.map(({ error }) => error),
@@ -226,6 +259,13 @@ export async function refreshVaultLightningHistory(
   vaultId: string,
   arkServerUrl: string,
 ): Promise<import('./lightningLifecycle').VaultLightningHistoryMetadata[]> {
+  return withVaultLightningLifecycleLock(vaultId, () => refreshUnlockedVaultLightningHistory(vaultId, arkServerUrl))
+}
+
+async function refreshUnlockedVaultLightningHistory(
+  vaultId: string,
+  arkServerUrl: string,
+): Promise<import('./lightningLifecycle').VaultLightningHistoryMetadata[]> {
   const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(vaultId))
   const contracts = new IndexedDBContractRepository(vaultLightningWalletStorageName(vaultId))
   let primaryError: unknown
@@ -270,6 +310,7 @@ export async function requestVaultLightningQuote({
   contracts,
   manager,
   profile,
+  resumeVtxo,
   rfqId,
   requester = requestLightningSend,
   nowSeconds = Math.floor(Date.now() / 1000),
@@ -284,6 +325,7 @@ export async function requestVaultLightningQuote({
   contracts: SwapContractRegistry
   manager: RfqSwapManager
   profile: VaultLightningSolverProfile
+  resumeVtxo?: VaultLightningVtxoProof
   rfqId?: string
   requester?: LightningRequester
   nowSeconds?: number
@@ -308,12 +350,9 @@ export async function requestVaultLightningQuote({
     !Number.isSafeInteger(profile.minSats) ||
     !Number.isSafeInteger(profile.maxSats) ||
     !Number.isSafeInteger(profile.maxFundingSats) ||
-    !Number.isSafeInteger(profile.feeBps) ||
     profile.minSats < 1 ||
     profile.maxSats < profile.minSats ||
-    profile.maxFundingSats < profile.maxSats ||
-    profile.feeBps < 0 ||
-    profile.feeBps >= 10_000
+    profile.maxFundingSats < profile.maxSats
   ) {
     throw new Error('Lightning solver amount limits are invalid.')
   }
@@ -325,6 +364,17 @@ export async function requestVaultLightningQuote({
   }
   if (rfqId !== undefined && !/^[0-9a-f]{64}$/.test(rfqId)) {
     throw new Error('Lightning RFQ id must be 32 bytes of lowercase hex.')
+  }
+  if (resumeVtxo) {
+    const resumed = await restoreMatchingVaultLightningFundingQuote(
+      repository,
+      contracts,
+      manager,
+      facts.raw,
+      network,
+      resumeVtxo,
+    )
+    if (resumed) return resumed
   }
   const existing = rfqId
     ? await restorePersistedVaultLightningQuote(repository, contracts, manager, rfqId, facts.raw, network)
@@ -341,10 +391,10 @@ export async function requestVaultLightningQuote({
         `Lightning funding amount exceeds the solver profile’s ${profile.maxFundingSats.toLocaleString()} sat limit.`,
       )
     }
-    const expectedFunding = vaultLightningFundingForInvoice(facts.amountSats, profile.feeBps)
-    if (result.fundAmount !== expectedFunding) {
+    const fundingCeiling = vaultLightningFundingForInvoice(facts.amountSats, profile)
+    if (result.fundAmount > fundingCeiling) {
       throw new Error(
-        `Lightning quote asks ${result.fundAmount.toLocaleString()} sats; the pinned solver fee allows ${expectedFunding.toLocaleString()} sats.`,
+        `Lightning quote asks ${result.fundAmount.toLocaleString()} sats; the pinned solver fee allows at most ${fundingCeiling.toLocaleString()} sats.`,
       )
     }
     const contractParams = await readRegisteredLightningContractParams({ result, contracts })
