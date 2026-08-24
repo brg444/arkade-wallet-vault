@@ -22,6 +22,7 @@ import {
   VAULT_POLICY_V1_PINNED_DELEGATE,
   VaultPolicyV1Script,
 } from '../../../lib/vault/vtxo/script'
+import { persistVtxoSpend, type PersistedVtxoSpend } from '../../../lib/vault/vtxo/spend'
 
 export const VAULT_UI_ID = 'e2e-vault-ui'
 export const OPERATOR_XONLY = 'e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13'
@@ -136,7 +137,7 @@ export function wireVaultVtxo(
 ) {
   return {
     outpoint: { txid: input.txid, vout: input.vout || 0 },
-    createdAt: new Date(input.createdAt || Date.now()).toISOString(),
+    createdAt: String(Math.floor((input.createdAt || Date.now()) / 1_000)),
     expiresAt: null,
     amount: String(input.amount),
     script: status.spendingArkScript,
@@ -148,4 +149,29 @@ export function wireVaultVtxo(
     ...(input.arkTxid ? { arkTxid: input.arkTxid } : {}),
     commitmentTxids: input.commitmentTxids || [],
   }
+}
+
+export function seedReviewedVtxoSpend(
+  status: VaultStatus,
+  destAddress: string,
+  amountSats: number,
+  feeSats: number,
+  changeSats: number,
+) {
+  const record: PersistedVtxoSpend = {
+    vaultId: status.vaultId,
+    operationId: '44'.repeat(16),
+    bundleDigest: '55'.repeat(32),
+    destAddress,
+    amountSats,
+    arkTxid: '66'.repeat(32),
+    reservationExpires: '2099-08-20T00:02:00Z',
+    stage: 'reserved',
+    feePolicyDigest: '77'.repeat(32),
+    feeSats,
+    changeSats,
+    ...(changeSats > 0 ? { changeVout: 1 } : {}),
+  }
+  persistVtxoSpend(record)
+  return record
 }

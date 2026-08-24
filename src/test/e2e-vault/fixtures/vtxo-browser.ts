@@ -9,7 +9,11 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
 } from '../../../lib/vault/vtxo/board'
 import { registerVaultReadonlyServiceWorker } from '../../../lib/vault/vtxo/readonlyWorker'
-import { vaultReadonlyIntentDatabase, vaultReadonlyWorkerScope } from '../../../lib/vault/vtxo/readonlyWorkerNames'
+import {
+  vaultReadonlyIntentDatabase,
+  vaultReadonlyUpdaterTag,
+  vaultReadonlyWorkerScope,
+} from '../../../lib/vault/vtxo/readonlyWorkerNames'
 
 const OUTPOINT_TXID = '11'.repeat(32)
 
@@ -32,6 +36,14 @@ export async function readonlyWorkerState(vaultId: string) {
     scope: registration?.scope || '',
     state: registration?.active?.state || '',
   }
+}
+
+export function dispatchReadonlyUtxoUpdate(vaultId: string) {
+  navigator.serviceWorker.dispatchEvent(
+    new MessageEvent('message', {
+      data: { tag: vaultReadonlyUpdaterTag(vaultId), type: 'UTXO_UPDATE' },
+    }),
+  )
 }
 
 export interface IntentFixture {
