@@ -53,6 +53,7 @@ export interface VaultContextProps {
   approveSend: () => Promise<void>
   busy: boolean
   canSend: boolean
+  cancelSavingsHandoff: () => void
   completeSavingsHandoff: (signedPsbt: string) => Promise<void>
   handoffPsbt: string
   confirmConditions: () => void
@@ -122,6 +123,7 @@ export const VaultContext = createContext<VaultContextProps>({
   approveSend: async () => {},
   busy: false,
   canSend: false,
+  cancelSavingsHandoff: () => {},
   completeSavingsHandoff: async () => {},
   handoffPsbt: '',
   confirmConditions: () => {},

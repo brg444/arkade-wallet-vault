@@ -56,32 +56,35 @@ export default function VaultHistory() {
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
             const lightning = tx.activity === 'lightning'
+            const savingsHandoff = tx.activity === 'savings-handoff'
             const amount = tx.displayAmount ?? tx.amount
             const time = historyTime(tx.blockTime)
-            const state = lightning
-              ? ['claimed', 'settled'].includes(tx.lightningState || '')
-                ? 'Paid'
-                : tx.lightningState === 'refunded'
-                  ? 'Refunded'
-                  : 'Processing'
-              : tx.account === 'spend'
-                ? tx.confirmed
-                  ? time
-                    ? `Settled · ${time}`
-                    : 'Settled'
-                  : 'Preconfirmed'
-                : tx.confirmed
-                  ? time
-                    ? `Confirmed · ${time}`
-                    : 'Confirmed'
-                  : 'Pending confirmation'
+            const state = savingsHandoff
+              ? 'Upload signed PSBT'
+              : lightning
+                ? ['claimed', 'settled'].includes(tx.lightningState || '')
+                  ? 'Paid'
+                  : tx.lightningState === 'refunded'
+                    ? 'Refunded'
+                    : 'Processing'
+                : tx.account === 'spend'
+                  ? tx.confirmed
+                    ? time
+                      ? `Settled · ${time}`
+                      : 'Settled'
+                    : 'Preconfirmed'
+                  : tx.confirmed
+                    ? time
+                      ? `Confirmed · ${time}`
+                      : 'Confirmed'
+                    : 'Pending confirmation'
             return (
               <button
                 type='button'
                 key={`${tx.account}:${tx.txid}:${tx.type}`}
                 className='vault-history-row'
                 data-testid={`vault-tx-${tx.txid}`}
-                aria-label={`${lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} ${prettyAmount(amount)}. ${state}.`}
+                aria-label={`${savingsHandoff ? 'Waiting for hardware' : lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} ${prettyAmount(amount)}. ${state}.`}
                 onClick={() => {
                   hapticSubtle()
                   openTx(tx)
@@ -92,7 +95,13 @@ export default function VaultHistory() {
                 </span>
                 <span className='vault-history-copy'>
                   <Text small bold>
-                    {lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'}
+                    {savingsHandoff
+                      ? 'Waiting for hardware'
+                      : lightning
+                        ? 'Lightning payment'
+                        : sent
+                          ? 'Sent'
+                          : 'Received'}
                   </Text>
                   <Text color='neutral-600' tiny>
                     {state}

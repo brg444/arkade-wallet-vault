@@ -159,6 +159,25 @@ export function psbtFile(psbtHex: string, name = 'arkade-savings.psbt'): File {
   return new File([bytes as BlobPart], name, { type: 'application/octet-stream' })
 }
 
+export async function readPsbtFile(file: Blob, maxBytes = 1_000_000): Promise<string> {
+  if (file.size < 1 || file.size > maxBytes) throw new Error('PSBT file must be smaller than 1 MB')
+  const body =
+    typeof file.arrayBuffer === 'function'
+      ? await file.arrayBuffer()
+      : await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onerror = () => reject(new Error('could not read PSBT file'))
+          reader.onload = () =>
+            reader.result instanceof ArrayBuffer
+              ? resolve(reader.result)
+              : reject(new Error('could not read PSBT file'))
+          reader.readAsArrayBuffer(file)
+        })
+  const psbt = parseIncomingPsbt(hex.encode(new Uint8Array(body)))
+  inspectSavingsPsbt(psbt)
+  return psbt
+}
+
 export function parseIncomingPsbt(raw: string): string {
   const compact = String(raw || '')
     .trim()
@@ -218,6 +237,26 @@ export function inspectSavingsPsbt(psbtHex: string) {
     fee:
       inputs.reduce((sum, current) => sum + current.value, 0) -
       outputs.reduce((sum, current) => sum + current.amount, 0),
+  }
+}
+
+export function requireSavingsPsbtIntent(
+  psbtHex: string,
+  destAddress: string,
+  amountSats: number,
+  feeSats: number,
+  network: string,
+  minimumSignatures = 1,
+) {
+  const inspected = inspectSavingsPsbt(psbtHex)
+  const destination = inspected.outputs[0]
+  if (destination.amount !== amountSats) throw new Error('signed amount does not match')
+  if (destination.script !== scriptHexFromAddress(destAddress, network)) {
+    throw new Error('signed destination does not match')
+  }
+  if (inspected.fee !== feeSats || inspected.fee < 0) throw new Error('signed fee does not match')
+  if (inspected.inputs.some((current) => current.sigs < minimumSignatures)) {
+    throw new Error('this device did not sign every Savings input')
   }
 }
 
