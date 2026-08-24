@@ -22,7 +22,7 @@ function renderTx(selectedTx: VaultContextProps['selectedTx']) {
 describe('Vault transaction details', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('uses Arkade settlement language and links Spending activity to Arkade Space', () => {
+  it('uses pending language and links Spending activity to Arkade Space', () => {
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderTx({
       txid: 'ark-transaction',
