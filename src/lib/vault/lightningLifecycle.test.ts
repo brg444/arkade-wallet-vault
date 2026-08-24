@@ -15,6 +15,7 @@ import {
   withVaultRefundAddress,
   type VaultLightningQuote,
 } from './lightning'
+import { reconcileVaultLightningFundingTxids } from './lightningLifecycle'
 import {
   INVOICE_TIMESTAMP,
   MAINNET_INVOICE,
@@ -72,10 +73,12 @@ describe('Lightning persisted lifecycle', () => {
     expect(harness.requester).toHaveBeenCalledOnce()
 
     const target = await beginVaultLightningFunding(harness.repository, first.rfqId, INVOICE_TIMESTAMP + 2)
-    await expect(beginVaultLightningFunding(harness.repository, first.rfqId, INVOICE_TIMESTAMP + 2)).resolves.toEqual(
-      target,
-    )
     expect(target).toEqual({ rfqId: first.rfqId, address: harness.result.address, amountSats: 2125 })
+    await expect(beginVaultLightningFunding(harness.repository, first.rfqId, INVOICE_TIMESTAMP + 2)).rejects.toThrow(
+      /already processing/,
+    )
+    await expect(harness.request()).rejects.toThrow(/already processing/)
+    expect(harness.requester).toHaveBeenCalledOnce()
     const txid = 'cd'.repeat(32)
     await recordVaultLightningFundingTxid(harness.repository, first.rfqId, txid)
     await recordVaultLightningFundingTxid(harness.repository, first.rfqId, txid)
@@ -187,19 +190,60 @@ describe('Lightning persisted lifecycle', () => {
     await harness.repository[Symbol.asyncDispose]()
   })
 
-  it('recovers a lost funding response from package activity inputs', async () => {
+  it('recovers one exact funding txid after a lost submit response and refuses ambiguous activity', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
     await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
-    const txid = 'cd'.repeat(32)
+    const fundingTxid = 'cd'.repeat(32)
     const indexer = {
-      getVtxos: vi.fn(async () => ({ vtxos: [{ txid, vout: 0, value: quote.fundAmountSats }] })),
-      getVirtualTxs: vi.fn(async () => ({ txs: [] })),
+      getVtxos: vi.fn(async ({ scripts }: { scripts: string[] }) => {
+        expect(scripts).toEqual([hex.encode(harness.result.swapPkScript)])
+        return { vtxos: [{ txid: fundingTxid, vout: 0 }] }
+      }),
     }
 
-    await expect(listVaultLightningHistory(harness.repository, indexer as never)).resolves.toEqual([
-      { rfqId: quote.rfqId, txid, invoiceAmountSats: 2100, state: 'pending' },
+    await expect(reconcileVaultLightningFundingTxids(harness.repository, indexer as never)).resolves.toEqual([
+      quote.rfqId,
     ])
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ fundingArkTxid: fundingTxid })
+    await expect(listVaultLightningHistory(harness.repository)).resolves.toEqual([
+      { rfqId: quote.rfqId, txid: fundingTxid, invoiceAmountSats: 2100, state: 'pending' },
+    ])
+
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+    const ambiguous = await lightningQuoteHarness({ rfqId: 'bc'.repeat(32) })
+    const ambiguousQuote = await ambiguous.request()
+    await beginVaultLightningFunding(ambiguous.repository, ambiguousQuote.rfqId, INVOICE_TIMESTAMP + 2)
+    const ambiguousIndexer = {
+      getVtxos: vi.fn(async () => ({
+        vtxos: [
+          { txid: 'de'.repeat(32), vout: 0 },
+          { txid: 'ef'.repeat(32), vout: 0 },
+        ],
+      })),
+    }
+    await expect(reconcileVaultLightningFundingTxids(ambiguous.repository, ambiguousIndexer as never)).resolves.toEqual(
+      [],
+    )
+    expect((await ambiguous.repository.getRfqSwap(ambiguousQuote.rfqId))?.fundingArkTxid).toBeUndefined()
+    await ambiguous.manager.stop()
+    await ambiguous.repository[Symbol.asyncDispose]()
+  })
+
+  it('does not report a funding txid stored when the repository drops the write', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    const repository = {
+      getRfqSwap: harness.repository.getRfqSwap.bind(harness.repository),
+      saveRfqSwap: vi.fn(async () => {}),
+    }
+
+    await expect(recordVaultLightningFundingTxid(repository, quote.rfqId, 'cd'.repeat(32))).rejects.toThrow(
+      /not durably stored/,
+    )
+    expect((await harness.repository.getRfqSwap(quote.rfqId))?.fundingArkTxid).toBeUndefined()
 
     await harness.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
