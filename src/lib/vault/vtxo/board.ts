@@ -291,6 +291,29 @@ export async function findConfirmedBoardingCoins(
     .sort((a, b) => b.value - a.value)
 }
 
+export function isReleasedIntentRetry(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return message.includes('INVALID_INTENT_PROOF') && message.includes('no matching intents found')
+}
+
+/**
+ * The SDK's duplicate-input recovery deletes the earlier intent before
+ * registering again. If the Operator releases that intent concurrently, the
+ * delete returns "no matching intents" and the SDK stops one call too early.
+ * Retry the exact same SDK settlement once while the signing key is still live.
+ */
+export async function settleBoardingWithReleasedIntentRetry(
+  wallet: Pick<Wallet, 'settle'>,
+  request: Parameters<Wallet['settle']>[0],
+): Promise<string> {
+  try {
+    return await wallet.settle(request)
+  } catch (error) {
+    if (!isReleasedIntentRetry(error)) throw error
+    return wallet.settle(request)
+  }
+}
+
 export async function settleVaultBoarding(
   lock: VaultBoardingLock,
   phoneSecret: Uint8Array,
@@ -305,7 +328,7 @@ export async function settleVaultBoarding(
     const coins = await findConfirmedBoardingCoins(wallet, txid)
     if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
     const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
-    const commitmentTxid = await wallet.settle({
+    const commitmentTxid = await settleBoardingWithReleasedIntentRetry(wallet, {
       inputs: coins,
       outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
     })

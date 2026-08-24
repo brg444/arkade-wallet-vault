@@ -82,3 +82,9 @@ principal is debited once, when a later VTXO payment leaves Spending.
   not reinterpret the row; retry remains an SDK settle against the authoritative
   onchain UTXO, with the current Operator's boarding-input deletion behavior.
   Crash and missed-event recovery remain live mainnet qualification cases.
+- During live Mutinynet recovery, the SDK's duplicate-input path observed the
+  old intent disappear between its duplicate response and signed delete. The
+  delete returned `INVALID_INTENT_PROOF: no matching intents`, and the SDK did
+  not perform the now-safe registration. The adapter retries the identical
+  `Wallet.settle()` request once while the already approved device key remains
+  live. It does not retry any other error or add an Operator endpoint.
