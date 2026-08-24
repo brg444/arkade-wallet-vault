@@ -96,6 +96,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | ''>('')
   const [selectedTx, setSelectedTx] = useState<VaultHistoryItem | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [initialStatusChecked, setInitialStatusChecked] = useState(false)
   const [account, setAccount] = useState<VaultAccount>('spend')
   const [scanOnSend, setScanOnSend] = useState(false)
   const [handoffPsbt, setHandoffPsbt] = useState('')
@@ -149,6 +150,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (msg.includes('local pin') || msg.includes('not pinned locally')) {
           setError(humanizeVaultError(err))
         }
+      } finally {
+        setInitialStatusChecked(true)
       }
     }
     void boot()
@@ -209,6 +212,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     addressPin,
     busy,
     enrollment,
+    initialStatusChecked,
     locked,
     onBoarded,
     reportError,

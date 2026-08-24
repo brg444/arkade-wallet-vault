@@ -43,6 +43,7 @@ export default function VaultHome() {
     openRecover,
     liveNetwork,
     initiateAlert,
+    refreshBalance,
     spendingArkAddress,
     refreshingBalance,
     savingsAddress,
@@ -192,7 +193,7 @@ export default function VaultHome() {
             <p
               className='vault-balance-figure'
               data-testid='vault-balance'
-              aria-busy={!balancesLoaded || refreshingBalance}
+              aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
               aria-live='polite'
             >
               {balancesLoaded ? prettyNumber(sats) : '—'}
@@ -200,9 +201,11 @@ export default function VaultHome() {
             </p>
 
             {!balancesLoaded ? (
-              <Text color='neutral-600' tiny wrap>
-                Loading {spending ? 'Spending' : 'Savings'} balance…
-              </Text>
+              balanceError ? null : (
+                <Text color='neutral-600' tiny wrap>
+                  Loading {spending ? 'Spending' : 'Savings'} balance…
+                </Text>
+              )
             ) : spending ? (
               <FlexCol gap='0.35rem'>
                 <Text color='neutral-600' tiny>
@@ -234,6 +237,9 @@ export default function VaultHome() {
             ) : null}
 
             <ErrorMessage error={Boolean(error || balanceError)} text={error || balanceError} />
+            {balanceError ? (
+              <Button secondary label='Retry' loading={refreshingBalance} onClick={() => void refreshBalance()} />
+            ) : null}
 
             <FlexRow padding='0 0 0.5rem 0'>
               <Button

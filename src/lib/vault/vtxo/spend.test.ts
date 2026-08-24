@@ -1,16 +1,19 @@
 import {
   ArkAddress,
   CSVMultisigTapscript,
+  FetchError,
   Intent,
   RestArkProvider,
   SingleKey,
   Transaction,
   type ArkProvider,
+  type IndexerProvider,
+  type VirtualCoin,
 } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
-import { historyFromVtxos } from '../history'
+import { historyFromVtxos, recentAccountHistory } from '../history'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -22,6 +25,7 @@ import {
   collectPagedVtxos,
   createVtxoOperationId,
   createPhoneSignedPendingProof,
+  fetchVaultVtxoSnapshot,
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
   loadPersistedVtxoSpend,
@@ -124,6 +128,20 @@ function status(): VaultStatus {
     vtxoExitDelayUnit: 'seconds',
     spendingArkAddress: address.encode(),
     spendingArkScript: hex.encode(script.pkScript),
+  }
+}
+
+function indexedVtxo(txid: string, overrides: Partial<VirtualCoin> = {}): VirtualCoin {
+  return {
+    txid,
+    vout: 0,
+    value: 1_000,
+    status: { confirmed: true, isLeaf: true },
+    createdAt: new Date(1_000),
+    script: status().spendingArkScript || '',
+    isUnrolled: false,
+    virtualStatus: { state: 'settled', commitmentTxIds: [] },
+    ...overrides,
   }
 }
 
@@ -1224,5 +1242,119 @@ describe('regular VTXO spend coordinator', () => {
       repeated,
       { txid: 'same', vout: 2, value: 8_000 },
     ])
+  })
+
+  it('walks the wallet script once for a deduplicated balance and exact no-change send time', async () => {
+    const exactSend = 'exact-send'
+    const oldInput = indexedVtxo('old-input', {
+      value: 20_000,
+      createdAt: new Date(10_000),
+      isSpent: true,
+      arkTxId: exactSend,
+      virtualStatus: { state: 'spent', commitmentTxIds: [] },
+    })
+    const recent = Array.from({ length: 100 }, (_, index) =>
+      indexedVtxo(`receive-${index}`, { createdAt: new Date((200 + index) * 1_000) }),
+    )
+    const walletVtxos = [oldInput, ...recent, recent[0]]
+    let scriptQueries = 0
+    const outpointQueries: { txid: string; vout: number }[][] = []
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) {
+        outpointQueries.push(options.outpoints)
+        return { vtxos: [indexedVtxo(exactSend, { createdAt: new Date(400_000) })] }
+      }
+      scriptQueries += 1
+      return { vtxos: walletVtxos }
+    })
+
+    const snapshot = await fetchVaultVtxoSnapshot(status(), {
+      getVtxos: getVtxos as IndexerProvider['getVtxos'],
+    })
+    const recentHistory = recentAccountHistory(snapshot.history, 'spend')
+
+    expect(scriptQueries).toBe(1)
+    expect(outpointQueries).toEqual([[{ txid: exactSend, vout: 0 }]])
+    expect(snapshot.balance).toBe(100_000)
+    expect(recentHistory).toHaveLength(100)
+    expect(recentHistory).toContainEqual(expect.objectContaining({ txid: exactSend, type: 'sent', blockTime: 400 }))
+    expect(recentHistory.some((row) => row.txid === 'receive-0')).toBe(false)
+  })
+
+  it('uses the SDK terminal predicate when calculating the shared snapshot balance', async () => {
+    const getVtxos = vi.fn(async () => ({
+      vtxos: [
+        indexedVtxo('available', { value: 7_000 }),
+        indexedVtxo('settled', { value: 5_000, settledBy: 'commitment' }),
+      ],
+    }))
+
+    const snapshot = await fetchVaultVtxoSnapshot(status(), {
+      getVtxos: getVtxos as IndexerProvider['getVtxos'],
+    })
+
+    expect(snapshot.balance).toBe(7_000)
+    expect(getVtxos).toHaveBeenCalledTimes(1)
+  })
+
+  it('batches exact no-change timestamp lookups at the SDK outpoint-query limit', async () => {
+    const terminal = Array.from({ length: 65 }, (_, index) =>
+      indexedVtxo(`input-${index}`, {
+        isSpent: true,
+        arkTxId: `send-${index}`,
+        virtualStatus: { state: 'spent', commitmentTxIds: [] },
+      }),
+    )
+    const outpointBatchSizes: number[] = []
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) {
+        outpointBatchSizes.push(options.outpoints.length)
+        return { vtxos: [] as VirtualCoin[] }
+      }
+      return { vtxos: terminal }
+    })
+
+    await fetchVaultVtxoSnapshot(status(), { getVtxos: getVtxos as IndexerProvider['getVtxos'] })
+
+    expect(outpointBatchSizes).toEqual([64, 1])
+  })
+
+  it('keeps the old no-change fallback only when an exact timestamp lookup is retryable', async () => {
+    const input = indexedVtxo('old-input', {
+      createdAt: new Date(10_000),
+      isSpent: true,
+      arkTxId: 'missing-send',
+      virtualStatus: { state: 'spent', commitmentTxIds: [] },
+    })
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) {
+        throw new FetchError('offline', { url: 'https://indexer.test/v1/vtxos' })
+      }
+      return { vtxos: [input] }
+    })
+
+    const snapshot = await fetchVaultVtxoSnapshot(status(), {
+      getVtxos: getVtxos as IndexerProvider['getVtxos'],
+    })
+
+    expect(snapshot.history).toContainEqual(
+      expect.objectContaining({ txid: 'missing-send', type: 'sent', blockTime: 10 }),
+    )
+  })
+
+  it('fails the snapshot when an exact timestamp lookup has a non-retryable error', async () => {
+    const input = indexedVtxo('old-input', {
+      isSpent: true,
+      arkTxId: 'missing-send',
+      virtualStatus: { state: 'spent', commitmentTxIds: [] },
+    })
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) throw new Error('invalid indexer response')
+      return { vtxos: [input] }
+    })
+
+    await expect(
+      fetchVaultVtxoSnapshot(status(), { getVtxos: getVtxos as IndexerProvider['getVtxos'] }),
+    ).rejects.toThrow('invalid indexer response')
   })
 })
