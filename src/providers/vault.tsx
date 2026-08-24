@@ -674,9 +674,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setBusy(true)
       setError('')
       try {
-        if (!handoffPsbt) throw new Error('create the device signature first')
+        if (!pendingSavingsHandoff) throw new Error('the pending Savings transfer is missing')
+        if (!handoffPsbt || handoffPsbt !== pendingSavingsHandoff.psbtHex) {
+          throw new Error('the pending Savings transfer changed locally')
+        }
         const incoming = parseIncomingPsbt(signedPsbt)
-        requireSameSavingsIntent(handoffPsbt, incoming, spend.address, spend.amount, status?.network || 'mutinynet')
+        requireSameSavingsIntent(
+          pendingSavingsHandoff.psbtHex,
+          incoming,
+          pendingSavingsHandoff.destAddress,
+          pendingSavingsHandoff.amountSats,
+          pendingSavingsHandoff.network,
+        )
         const final = finalizeSavingsPsbt(incoming)
         const txid = await broadcastTx(final.txHex)
         discardPendingSavingsHandoff()
@@ -687,7 +696,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [discardPendingSavingsHandoff, finishBroadcast, handoffPsbt, spend, status?.network],
+    [discardPendingSavingsHandoff, finishBroadcast, handoffPsbt, pendingSavingsHandoff],
   )
 
   const approveSend = useCallback(async () => {

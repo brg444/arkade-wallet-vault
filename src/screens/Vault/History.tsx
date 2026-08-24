@@ -17,7 +17,7 @@ export default function VaultHistory() {
   const { account, balanceError, balancesLoaded, history, openTx, refreshingBalance } = useContext(VaultContext)
   const accountName = account === 'savings' ? 'Savings' : 'Spending'
 
-  if (!balancesLoaded || history.length === 0) {
+  if (history.length === 0) {
     return (
       <section
         className='vault-history'
@@ -60,7 +60,7 @@ export default function VaultHistory() {
             const amount = tx.displayAmount ?? tx.amount
             const time = historyTime(tx.blockTime)
             const state = savingsHandoff
-              ? 'Upload signed PSBT'
+              ? 'Complete or cancel'
               : lightning
                 ? ['claimed', 'settled'].includes(tx.lightningState || '')
                   ? 'Paid'

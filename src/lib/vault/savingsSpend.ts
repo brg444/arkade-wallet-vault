@@ -267,6 +267,11 @@ export function requireSameSavingsIntent(
   amountSats: number,
   network: string,
 ) {
+  const beforeTx = Transaction.fromPSBT(hex.decode(unsignedHex), TX_OPTS)
+  const afterTx = Transaction.fromPSBT(hex.decode(signedHex), TX_OPTS)
+  if (hex.encode(beforeTx.unsignedTx) !== hex.encode(afterTx.unsignedTx)) {
+    throw new Error('signed PSBT changed the unsigned Savings transaction')
+  }
   const before = inspectSavingsPsbt(unsignedHex)
   const after = inspectSavingsPsbt(signedHex)
   const unsignedInputs = before.inputs.map((current) => ({ ...current, sigs: 0 }))

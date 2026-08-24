@@ -87,8 +87,29 @@ describe('Vault history', () => {
 
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getByText('Waiting for hardware')).toBeTruthy()
-    expect(screen.getByText('Upload signed PSBT')).toBeTruthy()
+    expect(screen.getByText('Complete or cancel')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i }))
     expect(value.openTx).toHaveBeenCalledWith(pending)
+  })
+
+  it('keeps a local hardware handoff visible while remote Savings activity loads', () => {
+    renderHistory({
+      account: 'savings',
+      balancesLoaded: false,
+      history: [
+        {
+          txid: 'pending-savings:2',
+          type: 'sent',
+          amount: 21_500,
+          confirmed: false,
+          account: 'savings',
+          activity: 'savings-handoff',
+        },
+      ],
+    })
+
+    expect(screen.getByText('Waiting for hardware')).toBeTruthy()
+    expect(screen.getByText('Complete or cancel')).toBeTruthy()
+    expect(screen.queryByText('Loading activity…')).toBeNull()
   })
 })
