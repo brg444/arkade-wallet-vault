@@ -34,15 +34,19 @@ import {
   persistVtxoReserveSignature,
   preReserveVtxoSpend,
   reconcilePersistedVtxoSpend,
+  requireReviewedVtxoReservation,
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
   uniqueVtxosByOutpoint,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
+  VtxoReviewedReservationError,
   VtxoSpendUnresolvedError,
   VTXO_GET_PENDING_MESSAGE,
   type PersistedVtxoSpend,
+  type VaultVtxoSpendQuote,
+  type VtxoOperationView,
   type VtxoReserveResponse,
   VAULT_VTXO_PAGE_SIZE,
   vaultArkServer,
@@ -50,6 +54,7 @@ import {
   vaultVtxoHistoryCoin,
   vaultVtxoPage,
   vtxoReserveRequest,
+  sendVaultVtxo,
 } from './spend'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { VaultPolicyV1Script } from './script'
@@ -161,6 +166,51 @@ function destination(): string {
   ).encode()
 }
 
+function reviewedPending(reservationExpires = '2099-08-20T00:02:00Z'): PersistedVtxoSpend {
+  return {
+    vaultId: 'vault-a',
+    operationId: OP_1,
+    bundleDigest: '11'.repeat(32),
+    destAddress: destination(),
+    amountSats: 12_000,
+    arkTxid: 'aa'.repeat(32),
+    reservationExpires,
+    ...RESERVATION_FACTS,
+    stage: 'reserved',
+    unsignedArkPsbt: 'cHNidP9ark',
+    unsignedCheckpointPsbts: ['cHNidP9cp'],
+  }
+}
+
+function reviewedQuote(pending = reviewedPending()): VaultVtxoSpendQuote {
+  return {
+    operationId: pending.operationId,
+    bundleDigest: pending.bundleDigest,
+    destAddress: pending.destAddress,
+    amountSats: pending.amountSats,
+    feeSats: pending.feeSats!,
+    feePolicyDigest: pending.feePolicyDigest!,
+    reservationExpires: pending.reservationExpires!,
+    changeSats: pending.changeSats!,
+    ...(pending.changeVout === undefined ? {} : { changeVout: pending.changeVout }),
+  }
+}
+
+function reviewedOperation(pending = reviewedPending(), overrides: Partial<VtxoOperationView> = {}): VtxoOperationView {
+  return {
+    operationId: pending.operationId,
+    bundleDigest: pending.bundleDigest,
+    state: 'reserved',
+    arkTxid: pending.arkTxid,
+    expiresAt: pending.reservationExpires,
+    feeSats: pending.feeSats,
+    feePolicyDigest: pending.feePolicyDigest,
+    changeSats: pending.changeSats,
+    changeVout: pending.changeVout,
+    ...overrides,
+  }
+}
+
 function validCheckpointPsbt(): string {
   const checkpoint = buildReservedVtxoSpend(status(), reserve(), 12_000, destination(), FEE_POLICY_DIGEST)
     .checkpoints[0]
@@ -219,6 +269,123 @@ describe('regular VTXO spend coordinator', () => {
   it('uses the same-origin Arkade gateway in production', () => {
     expect(vaultArkServer(true)).toBe('/arkade')
     expect(vaultArkServer(false)).toBe('https://mutinynet.arkade.sh')
+  })
+
+  it.each([
+    ['operation id', { operationId: OP_2 }],
+    ['bundle digest', { bundleDigest: '22'.repeat(32) }],
+    ['authoritative fee', { feeSats: 501 }],
+    ['fee policy', { feePolicyDigest: 'bb'.repeat(32) }],
+    ['expiry', { expiresAt: '2099-08-20T00:03:00Z' }],
+  ] as const)('rejects a reviewed reservation when the server changes its %s', (_label, changed) => {
+    const pending = reviewedPending()
+    expect(() =>
+      requireReviewedVtxoReservation(pending, reviewedOperation(pending, changed), reviewedQuote(pending)),
+    ).toThrow(VtxoReviewedReservationError)
+  })
+
+  it('rejects an aborted or expired reviewed reservation before approval', () => {
+    const aborted = reviewedPending()
+    expect(() =>
+      requireReviewedVtxoReservation(aborted, reviewedOperation(aborted, { state: 'aborted' }), reviewedQuote(aborted)),
+    ).toThrow(VtxoReviewedReservationError)
+
+    const expired = reviewedPending('2026-08-20T00:02:00Z')
+    expect(() =>
+      requireReviewedVtxoReservation(
+        expired,
+        reviewedOperation(expired),
+        reviewedQuote(expired),
+        Date.parse('2026-08-20T00:02:01Z'),
+      ),
+    ).toThrow(VtxoReviewedReservationError)
+  })
+
+  it('allows the exact reviewed operation to resume after a lost authorization response', () => {
+    const pending = reviewedPending('2026-08-20T00:02:00Z')
+    expect(
+      requireReviewedVtxoReservation(
+        pending,
+        reviewedOperation(pending, { state: 'signed' }),
+        reviewedQuote(pending),
+        Date.parse('2026-08-20T00:02:01Z'),
+      ),
+    ).toBe(pending)
+  })
+
+  it.each([
+    [
+      'aborted',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify(reviewedOperation(pending, { state: 'aborted' })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+    [
+      'expired',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify(reviewedOperation(pending)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+    [
+      'changed fee',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify(reviewedOperation(pending, { feeSats: 501 })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+    [
+      'missing operation',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify({ error: pending.operationId ? 'operation not found' : 'invalid operation' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+  ] as const)('does not reserve again or request a passkey for a %s review', async (kind, response) => {
+    const pending = reviewedPending(kind === 'expired' ? '2020-08-20T00:02:00Z' : undefined)
+    persistVtxoSpend(pending)
+    const originalLocks = navigator.locks
+    const originalCredentials = navigator.credentials
+    const getCredential = vi.fn()
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: async (_name: string, _options: unknown, callback: (lock: unknown) => Promise<unknown>) =>
+          callback({}),
+      },
+    })
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { get: getCredential },
+    })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(pending))
+
+    try {
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toBeInstanceOf(
+        VtxoReviewedReservationError,
+      )
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(fetch.mock.calls[0][0]).toContain(`/v1/vtxo/operation?vaultId=vault-a&operationId=${OP_1}`)
+      expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'GET' })
+      expect(getCredential).not.toHaveBeenCalled()
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      if (originalLocks) {
+        Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks })
+      } else {
+        Reflect.deleteProperty(navigator, 'locks')
+      }
+      if (originalCredentials) {
+        Object.defineProperty(navigator, 'credentials', { configurable: true, value: originalCredentials })
+      } else {
+        Reflect.deleteProperty(navigator, 'credentials')
+      }
+    }
   })
 
   it('persists a client-generated operation id and signature before reserving and reuses them exactly', () => {

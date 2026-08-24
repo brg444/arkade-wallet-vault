@@ -84,10 +84,21 @@ export interface VaultVtxoSpendResult {
 
 export interface VaultVtxoSpendQuote {
   operationId: string
+  bundleDigest: string
+  destAddress: string
+  amountSats: number
   feeSats: number
   feePolicyDigest: string
+  reservationExpires: string
   changeSats: number
   changeVout?: number
+}
+
+export class VtxoReviewedReservationError extends Error {
+  constructor() {
+    super('This fee quote expired or changed. Review the send again.')
+    this.name = 'VtxoReviewedReservationError'
+  }
 }
 
 export class VtxoReceiptPendingError extends Error {
@@ -140,6 +151,10 @@ export function isVtxoSpendUnresolvedError(err: unknown): err is VtxoSpendUnreso
   return err instanceof VtxoSpendUnresolvedError
 }
 
+export function isVtxoReviewedReservationError(err: unknown): err is VtxoReviewedReservationError {
+  return err instanceof VtxoReviewedReservationError
+}
+
 export type PersistedVtxoSpendStage =
   | 'pre-reserve'
   | 'reserved'
@@ -156,6 +171,10 @@ export interface VtxoOperationView {
   state: VtxoOperationState
   arkTxid?: string
   expiresAt?: string
+  feeSats?: number
+  feePolicyDigest?: string
+  changeSats?: number
+  changeVout?: number
   authorizedPsbt?: string
   authorizedPendingProof?: string
   checkpointPsbts?: string[]
@@ -1048,20 +1067,71 @@ async function reservePersistedVtxoSpend(
 
 function quoteFromPersistedVtxoSpend(pending: PersistedVtxoSpend): VaultVtxoSpendQuote {
   if (
+    !/^[0-9a-f]{64}$/.test(pending.bundleDigest) ||
     !pending.feePolicyDigest ||
     pending.feeSats === undefined ||
+    !pending.reservationExpires ||
+    !Number.isFinite(Date.parse(pending.reservationExpires)) ||
     pending.changeSats === undefined ||
     !persistedReservationFactsAreValid(pending)
   ) {
-    throw new Error('persisted VTXO reservation is missing fee or change facts')
+    throw new Error('persisted VTXO reservation is missing review facts')
   }
   return {
     operationId: pending.operationId,
+    bundleDigest: pending.bundleDigest,
+    destAddress: pending.destAddress,
+    amountSats: pending.amountSats,
     feeSats: pending.feeSats,
     feePolicyDigest: pending.feePolicyDigest,
+    reservationExpires: pending.reservationExpires,
     changeSats: pending.changeSats,
     ...(pending.changeVout === undefined ? {} : { changeVout: pending.changeVout }),
   }
+}
+
+function reviewedReservationError(): never {
+  throw new VtxoReviewedReservationError()
+}
+
+function sameExpiry(left: string | undefined, right: string): boolean {
+  const leftMs = Date.parse(String(left || ''))
+  const rightMs = Date.parse(right)
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs === rightMs
+}
+
+/** Verify the durable and server-side facts shown on Review before any passkey prompt. */
+export function requireReviewedVtxoReservation(
+  pending: PersistedVtxoSpend | undefined,
+  view: VtxoOperationView,
+  reviewed: VaultVtxoSpendQuote,
+  nowMs = Date.now(),
+): PersistedVtxoSpend {
+  if (
+    !pending ||
+    pending.stage === 'pre-reserve' ||
+    pending.operationId !== reviewed.operationId ||
+    pending.bundleDigest !== reviewed.bundleDigest ||
+    pending.destAddress.trim() !== reviewed.destAddress.trim() ||
+    pending.amountSats !== reviewed.amountSats ||
+    pending.feeSats !== reviewed.feeSats ||
+    pending.feePolicyDigest !== reviewed.feePolicyDigest ||
+    !sameExpiry(pending.reservationExpires, reviewed.reservationExpires) ||
+    view.operationId !== reviewed.operationId ||
+    view.bundleDigest !== reviewed.bundleDigest ||
+    view.feeSats !== reviewed.feeSats ||
+    view.feePolicyDigest !== reviewed.feePolicyDigest ||
+    pending.changeSats !== reviewed.changeSats ||
+    pending.changeVout !== reviewed.changeVout ||
+    view.changeSats !== reviewed.changeSats ||
+    view.changeVout !== reviewed.changeVout ||
+    !sameExpiry(view.expiresAt, reviewed.reservationExpires) ||
+    view.state === 'aborted' ||
+    (view.state === 'reserved' && Date.parse(reviewed.reservationExpires) <= nowMs)
+  ) {
+    reviewedReservationError()
+  }
+  return pending
 }
 
 async function prepareVtxoSpendLocked(
@@ -1399,14 +1469,29 @@ async function continueSameVtxoSpend(
 export async function sendVaultVtxo(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
-  destAddress: string,
-  amountSats: number,
+  reviewed: VaultVtxoSpendQuote,
 ): Promise<VaultVtxoSpendResult> {
   requireMutinynetStatus(status)
-  if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
+  if (!Number.isSafeInteger(reviewed.amountSats) || reviewed.amountSats < VTXO_DUST_SATS) {
+    throw new VtxoReviewedReservationError()
+  }
   return withVtxoSendLock(status.vaultId, async () => {
-    const pending = await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats)
-    return continueSameVtxoSpend(enrollment, status, pending)
+    const pending = loadPersistedVtxoSpend(status.vaultId)
+    if (!pending) throw new VtxoReviewedReservationError()
+    let view: VtxoOperationView
+    try {
+      view = await fetchVtxoOperation(status.vaultId, reviewed.operationId)
+    } catch (err) {
+      if (operationNotFound(err) || (err instanceof Error && err.message.toLowerCase().includes('expired'))) {
+        clearPersistedVtxoSpend(status.vaultId)
+        throw new VtxoReviewedReservationError()
+      }
+      throw err
+    }
+    requireReviewedVtxoReservation(pending, view, reviewed)
+    const synced = applyVtxoOperationView(pending, view)
+    if (!synced) throw new VtxoReviewedReservationError()
+    return continueSameVtxoSpend(enrollment, status, synced)
   })
 }
 
