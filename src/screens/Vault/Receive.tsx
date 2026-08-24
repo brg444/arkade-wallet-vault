@@ -60,9 +60,11 @@ export default function VaultReceive() {
             ) : (
               <Text>No address yet.</Text>
             )}
-            <p className='vault-receive-addr' data-testid='receive-address'>
-              {request || '—'}
-            </p>
+            {!spending ? (
+              <p className='vault-receive-addr' data-testid='receive-address'>
+                {request || '—'}
+              </p>
+            ) : null}
             {spending ? (
               <HubGroup label='Payment addresses'>
                 <HubRow
