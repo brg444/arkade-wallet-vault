@@ -36,6 +36,16 @@ function vaultAuthorizerProxy(): ProxyOptions {
   }
 }
 
+function arkadeOperatorProxy(): ProxyOptions {
+  const testTarget = process.env.VAULT_E2E_ARKADE_PROXY_TARGET?.trim()
+  return {
+    target: testTarget || 'https://mutinynet.arkade.sh',
+    changeOrigin: true,
+    ...(testTarget ? { secure: false } : {}),
+    rewrite: (path) => path.replace(/^\/arkade/, ''),
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   resolve: {
@@ -67,9 +77,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/esplora/, '/api'),
       },
       '/arkade': {
-        target: 'https://mutinynet.arkade.sh',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/arkade/, ''),
+        ...arkadeOperatorProxy(),
       },
     },
   },
