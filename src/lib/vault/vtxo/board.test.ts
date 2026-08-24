@@ -10,7 +10,6 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY,
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
-  boardingFailureHold,
   createTemporaryBoardingStorage,
   disposeVaultBoardingResources,
   findConfirmedBoardingCoins,
@@ -20,7 +19,6 @@ import {
   vaultBoardScriptFromStatus,
   waitForNextBatchFailure,
   withVaultBoardingLock,
-  withVaultBoardingSecret,
 } from './board'
 
 function boardingCoin(txid: string, vout: number, value: number, confirmed = true): ExtendedCoin {
@@ -228,25 +226,6 @@ describe('vault-board-v1', () => {
     ).toThrow(/script does not match/)
   })
 
-  it('keeps the signing scalar live until asynchronous settlement finishes, then wipes it', async () => {
-    const secret = hex.decode('01'.padStart(64, '0'))
-    let finish!: () => void
-    const settlement = withVaultBoardingSecret(secret, async (liveSecret) => {
-      expect(hex.encode(liveSecret)).toBe('01'.padStart(64, '0'))
-      await new Promise<void>((resolve) => {
-        finish = resolve
-      })
-      expect(hex.encode(liveSecret)).toBe('01'.padStart(64, '0'))
-      return 'settled'
-    })
-
-    await Promise.resolve()
-    expect(hex.encode(secret)).toBe('01'.padStart(64, '0'))
-    finish()
-    await expect(settlement).resolves.toBe('settled')
-    expect(hex.encode(secret)).toBe('00'.repeat(32))
-  })
-
   it('does not stick a boarding attempt when another tab already holds the lock', async () => {
     const busy: VaultLockManager = {
       request: async <T>(
@@ -258,17 +237,5 @@ describe('vault-board-v1', () => {
     const result = await withVaultBoardingLock('vault-a', async () => 'settled', busy)
     expect(result).toEqual({ held: false })
     expect(boardingAttemptKeyAfterLock(result.held, 'vault-a:settle:49000:49000')).toBe('')
-  })
-
-  it('holds a cancelled passkey until the next focus instead of retrying immediately', () => {
-    const key = 'vault-a:settle:49000:49000'
-    expect(boardingFailureHold(new Error('The operation was aborted.'), key)).toEqual({
-      attemptKey: key,
-      retryDelayMs: 0,
-    })
-    expect(boardingFailureHold(new Error('INVALID_INTENT_PROOF (23): no matching intents found'), key)).toEqual({
-      attemptKey: '',
-      retryDelayMs: 5 * 60_000,
-    })
   })
 })

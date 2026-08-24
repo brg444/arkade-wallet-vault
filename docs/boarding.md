@@ -13,6 +13,10 @@ The Spending receive view publishes one BIP21 request containing the Arkade
 address and this Bitcoin intermediate. An Arkade-aware sender creates a VTXO
 directly. An onchain sender funds the intermediate. The wallet detects confirmed
 intermediate outputs and settles them to `vault-policy-v1` while it is open.
+The Spending balance includes unconfirmed and confirmed value at that pinned
+intermediate as soon as the Bitcoin transaction is indexed. Send selection
+continues to use only settled VTXOs, so the visible deposit is not presented as
+spendable before the Operator batch completes.
 
 Moving Savings to Spending uses the same path. The Savings PSBT pays the exact
 `vault-board-v1` address, then the ordinary boarding coordinator completes the
@@ -40,7 +44,8 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - The SDK's background boarding poll requires a continuously available signing
   `Identity`. The vault's device key is PRF-wrapped and only exists in memory
   after a user verification ceremony. The wallet detects unfinished boarding
-  after suspension or reload and requests device approval before settling it.
+  after suspension or reload. Every new document starts locked; the ordinary
+  passkey unlock restores the session signer and reconciliation then resumes.
 - `settlementConfig: false` is required for this coordinator. Otherwise the
   SDK manager may race the explicit policy-directed settle with its own
   parameterless default-output settle.
@@ -81,11 +86,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   remain live mainnet qualification cases.
 - During live Mutinynet recovery, a queued intent entered an active batch before
   the SDK's duplicate-input path could delete it. The Operator correctly could
-  not match the active intent, returned `INVALID_INTENT_PROOF: no matching
-  intents`, and then requeued it when the unconfirmed batch failed. A fixed
-  delay races the Operator's active and queued phases. The adapter instead
-  watches the SDK provider stream for the next `batch_failed` event on the exact
-  outpoints, then immediately retries the identical `Wallet.settle()` request
-  once while the already approved device key remains live. The wait is bounded,
-  closes its stream, and does not retry any other error or add an Operator
-  endpoint.
+  not match the active intent, returned `INVALID_INTENT_PROOF` because no
+  matching intents were found, and then requeued it when the unconfirmed batch
+  failed. A fixed delay races the Operator's active and queued phases. The
+  adapter instead watches the SDK provider stream for the next `batch_failed`
+  event on the exact outpoints, then immediately retries the identical
+  `Wallet.settle()` request once while the already approved device key remains
+  live. The wait is bounded, closes its stream, and does not retry any other
+  error or add an Operator endpoint.
