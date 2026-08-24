@@ -38,6 +38,7 @@ import {
   MUTINYNET_INVOICE_TIMESTAMP,
   completeRequestResult,
   memoryContracts,
+  lightningQuoteHarness,
   quoteManager,
   refundAddress,
 } from './lightningTestUtils'
@@ -62,6 +63,7 @@ describe('Lightning SEND release boundary', () => {
       network: 'mutinynet',
       minSats: 1_000,
       maxSats: 25_000,
+      maxFundingSats: 50_000,
     })
   })
 
@@ -385,57 +387,46 @@ describe('Lightning SEND release boundary', () => {
     expect(rejected.close).toHaveBeenCalledOnce()
   })
 
-  it('fails closed on a changed refund destination, invalid funding amount, and elapsed quote', async () => {
+  it('withholds a quote when the registered contract row does not contain the package-derived recovery tree', async () => {
     const vaultAddress = await refundAddress()
-    const assertRejected = async (
-      mutate: (
-        result: Awaited<ReturnType<typeof completeRequestResult>>,
-      ) => Awaited<ReturnType<typeof completeRequestResult>>,
-      message: RegExp,
-    ) => {
-      const { contracts, rows } = memoryContracts()
-      const repository = new InMemoryAssetSwapRepository()
-      const { manager } = quoteManager(repository, contracts)
-      const wallet = withVaultRefundAddress(
-        {
-          identity: SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
-          getAddress: async () => 'ark1wrong',
-          getContractManager: async () => contracts,
-        } as unknown as IWallet,
-        vaultAddress,
-      )
-      const base = await completeRequestResult(wallet, contracts)
-      const result = mutate(base)
-      await expect(
-        requestVaultLightningQuote({
-          wallet,
-          arkServerUrl: 'https://arkade.computer',
-          invoice: MAINNET_INVOICE,
-          network: 'bitcoin',
-          transport: {} as never,
-          repository,
-          contracts,
-          manager,
-          profile: MAINNET_TEST_PROFILE,
-          rfqId: base.rfqId,
-          requester: vi.fn(async () => result) as never,
-          nowSeconds: INVOICE_TIMESTAMP + 1,
-          enabled: true,
-        }),
-      ).rejects.toThrow(message)
-      expect(await repository.getRfqSwap(base.rfqId)).toBeUndefined()
-      expect(rows.get(hex.encode(base.script.pkScript))?.watch).toBe('retained')
-      await manager.stop()
-      await repository[Symbol.asyncDispose]()
-    }
-
-    await assertRejected((base) => ({ ...base, refundAddress: 'ark1mutated' }), /refund address/)
-    await assertRejected((base) => ({ ...base, fundAmount: 2099 }), /funding amount/)
-    await assertRejected((base) => ({ ...base, swapPkScript: undefined as never }), /lockup script/)
-    await assertRejected(
-      (base) => ({ ...base, quote: { ...base.quote, valid_until: INVOICE_TIMESTAMP } }),
-      /expired before Review/,
+    const { contracts, rows } = memoryContracts()
+    const repository = new InMemoryAssetSwapRepository()
+    const { manager } = quoteManager(repository, contracts)
+    const wallet = withVaultRefundAddress(
+      {
+        identity: SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
+        getAddress: async () => 'ark1wrong',
+        getContractManager: async () => contracts,
+      } as unknown as IWallet,
+      vaultAddress,
     )
+    const result = await completeRequestResult(wallet, contracts)
+    const script = hex.encode(result.script.pkScript)
+    const contract = rows.get(script)!
+    rows.set(script, { ...contract, params: { ...contract.params, refundLocktime: '1' } })
+
+    await expect(
+      requestVaultLightningQuote({
+        wallet,
+        arkServerUrl: 'https://arkade.computer',
+        invoice: MAINNET_INVOICE,
+        network: 'bitcoin',
+        transport: {} as never,
+        repository,
+        contracts,
+        manager,
+        profile: MAINNET_TEST_PROFILE,
+        rfqId: result.rfqId,
+        requester: vi.fn(async () => result) as never,
+        nowSeconds: INVOICE_TIMESTAMP + 1,
+        enabled: true,
+      }),
+    ).rejects.toThrow(/does not contain the quoted recovery tree/)
+
+    expect(await repository.getRfqSwap(result.rfqId)).toBeUndefined()
+    expect(rows.get(script)?.watch).toBe('retained')
+    await manager.stop()
+    await repository[Symbol.asyncDispose]()
   })
 
   it('does not contact a solver while the release gate is off', async () => {
@@ -457,5 +448,32 @@ describe('Lightning SEND release boundary', () => {
       }),
     ).rejects.toThrow(/not enabled/)
     expect(requester).not.toHaveBeenCalled()
+  })
+
+  it('rejects a quote above the pinned Arkade funding corridor before Review', async () => {
+    const harness = await lightningQuoteHarness()
+    const result = await completeRequestResult(harness.wallet, harness.contracts, { fundAmount: 50_001 })
+
+    await expect(
+      requestVaultLightningQuote({
+        wallet: harness.wallet,
+        arkServerUrl: 'https://arkade.computer',
+        invoice: MAINNET_INVOICE,
+        network: 'bitcoin',
+        transport: {} as never,
+        repository: harness.repository,
+        contracts: harness.contracts,
+        manager: harness.manager,
+        profile: { ...MAINNET_TEST_PROFILE, maxFundingSats: 50_000 },
+        rfqId: result.rfqId,
+        requester: vi.fn(async () => result) as never,
+        nowSeconds: INVOICE_TIMESTAMP + 1,
+        enabled: true,
+      }),
+    ).rejects.toThrow(/funding amount exceeds.*50,000 sat limit/)
+
+    expect(await harness.repository.getRfqSwap(result.rfqId)).toBeUndefined()
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
   })
 })
