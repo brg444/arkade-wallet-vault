@@ -194,6 +194,7 @@ export async function startVaultLightningLifecycle({
 }): Promise<Omit<VaultLightningSession, 'wallet' | 'repository'>> {
   const contracts = await wallet.getContractManager()
   const retired = await retireAbandonedVaultLightningQuotes(repository, contracts, managerConfig?.now?.())
+  await reconcileVaultLightningFundingTxids(repository, indexer)
   const manager = new RfqSwapManager({ indexer, repository, contracts }, managerConfig)
   manager.setCallbacks({
     refundArkade: refundArkade ?? arkadeRefunder({ ark, indexer, wallet, repository }),
@@ -281,6 +282,9 @@ export async function restorePersistedVaultLightningQuote(
   if (stored.invoice !== invoice) throw new Error(`Lightning request ${rfqId} belongs to another invoice.`)
   if (stored.fundingState === 'cancel_requested') throw new Error('This Lightning quote was cancelled.')
   if (isRfqSwapTerminal(record.state)) throw new Error('This Lightning payment is already resolved.')
+  if (stored.fundingState === 'funding' || record.fundingArkTxid) {
+    throw new Error('This Lightning payment is already processing and cannot be funded again.')
+  }
   const params = await lockupContractParams(contracts, record.lockupAddress)
   const swap = rebuildRfqSwap(record, params)
   if (!(await manager.hasSwap(rfqId))) await manager.addSwap(swap)
@@ -369,19 +373,20 @@ export async function beginVaultLightningFunding(
   if (isRfqSwapTerminal(record.state)) throw new Error('This Lightning payment is already resolved.')
   const stored = storedLightningProfile(record)
   if (stored.fundingState === 'cancel_requested') throw new Error('This Lightning quote was cancelled.')
+  if (stored.fundingState === 'funding' || record.fundingArkTxid) {
+    throw new Error('This Lightning payment is already processing and cannot be funded again.')
+  }
   assertVaultLightningQuoteCurrent(quoteFromRecord(record), nowSeconds)
-  if (stored.fundingState === 'quoted') {
-    await repository.saveRfqSwap({
-      ...record,
-      profile: {
-        ...record.profile,
-        [VAULT_LIGHTNING_PROFILE]: { ...stored, fundingState: 'funding' },
-      },
-    })
-    const persisted = await repository.getRfqSwap(rfqId)
-    if (!persisted || storedLightningProfile(persisted).fundingState !== 'funding') {
-      throw new Error('Lightning funding permission was not durably stored. Do not fund this quote.')
-    }
+  await repository.saveRfqSwap({
+    ...record,
+    profile: {
+      ...record.profile,
+      [VAULT_LIGHTNING_PROFILE]: { ...stored, fundingState: 'funding' },
+    },
+  })
+  const persisted = await repository.getRfqSwap(rfqId)
+  if (!persisted || storedLightningProfile(persisted).fundingState !== 'funding') {
+    throw new Error('Lightning funding permission was not durably stored. Do not fund this quote.')
   }
   return { rfqId, address: record.lockupAddress, amountSats: record.amount! }
 }
@@ -400,6 +405,65 @@ export async function recordVaultLightningFundingTxid(
     throw new Error('Lightning quote is already bound to another funding transaction.')
   }
   await repository.saveRfqSwap({ ...record, fundingArkTxid })
+  const persisted = await repository.getRfqSwap(rfqId)
+  if (persisted?.fundingArkTxid !== fundingArkTxid) {
+    throw new Error('Lightning funding transaction was not durably stored.')
+  }
+}
+
+/**
+ * Recover a funding txid only when the published swap activity resolver finds
+ * one unambiguous transaction for the exact persisted lockup contract.
+ *
+ * The manager does not need this txid to protect or refund the lockup: it
+ * watches by script. Persisting it makes history and receipts converge after a
+ * broadcast response is lost. Multiple observed txids are deliberately left
+ * to the manager/activity resolver rather than guessing which one funded it.
+ */
+export async function reconcileVaultLightningFundingTxids(
+  repository: Pick<AssetSwapRepository, 'getAllRfqSwaps' | 'getRfqSwap' | 'saveRfqSwap'>,
+  indexer: Pick<RestIndexerProvider, 'getVtxos' | 'getVirtualTxs'>,
+): Promise<string[]> {
+  const records = await repository.getAllRfqSwaps()
+  const unresolved = records.filter((record) => {
+    if (record.kind !== 'lightning_send' || record.fundingArkTxid) return false
+    try {
+      return storedLightningProfile(record).fundingState === 'funding'
+    } catch {
+      return false
+    }
+  })
+  if (unresolved.length === 0) return []
+
+  const activityById = new Map(
+    (
+      await rfqSwapActivityInputs({
+        repository: { getAllRfqSwaps: async () => unresolved },
+        indexer,
+      })
+    ).map((activity) => [activity.rfqId, activity]),
+  )
+  const recovered: string[] = []
+  for (const unresolvedRecord of unresolved) {
+    const candidates = [...new Set(activityById.get(unresolvedRecord.rfqId)?.txids ?? [])]
+    if (candidates.length !== 1 || !/^[0-9a-f]{64}$/.test(candidates[0])) continue
+
+    const current = await repository.getRfqSwap(unresolvedRecord.rfqId)
+    if (!current) continue
+    if (current.fundingArkTxid) {
+      if (current.fundingArkTxid !== candidates[0]) continue
+      recovered.push(current.rfqId)
+      continue
+    }
+    if (storedLightningProfile(current).fundingState !== 'funding') continue
+    await repository.saveRfqSwap({ ...current, fundingArkTxid: candidates[0] })
+    const persisted = await repository.getRfqSwap(current.rfqId)
+    if (persisted?.fundingArkTxid !== candidates[0]) {
+      throw new Error(`Recovered Lightning funding transaction for ${current.rfqId} was not durably stored`)
+    }
+    recovered.push(current.rfqId)
+  }
+  return recovered
 }
 
 export async function cancelVaultLightningQuote(
