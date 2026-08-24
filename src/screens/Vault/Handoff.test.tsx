@@ -5,6 +5,9 @@ import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultHandoff from './Handoff'
 
 const readPsbtFile = vi.hoisted(() => vi.fn())
+const copyToClipboard = vi.hoisted(() => vi.fn(async () => {}))
+
+vi.mock('../../lib/clipboard', () => ({ copyToClipboard }))
 
 vi.mock('../../lib/vault/savingsSpend', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/vault/savingsSpend')>()),
@@ -37,6 +40,15 @@ function renderHandoff() {
 }
 
 describe('Savings hardware handoff', () => {
+  it('copies the phone-signed PSBT while keeping signed-file upload available', async () => {
+    renderHandoff()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy PSBT' }))
+
+    await waitFor(() => expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith('AA=='))
+    expect(screen.getByRole('button', { name: 'Upload signed PSBT' })).toBeTruthy()
+  })
+
   it('uploads a signed PSBT file and broadcasts that payload', async () => {
     readPsbtFile.mockResolvedValueOnce('hardware-signed-psbt')
     const { completeSavingsHandoff } = renderHandoff()
