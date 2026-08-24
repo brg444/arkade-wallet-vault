@@ -125,6 +125,7 @@ export function vaultBoardScriptFromStatus(status: VaultStatus, operatorPub: Uin
 
 export interface VaultBoardingFunds {
   confirmed: number
+  confirmedOutpoints: string[]
   unconfirmed: number
   total: number
 }
@@ -142,9 +143,11 @@ export function nextVaultBoardingAction(
 export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<VaultBoardingFunds> {
   requireBoardingStatus(status)
   const coins = await fetchAddressUtxos(status.vtxoBoardingAddress!)
-  const confirmed = coins.filter((coin) => coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
+  const confirmedCoins = coins.filter((coin) => coin.status.confirmed)
+  const confirmed = confirmedCoins.reduce((sum, coin) => sum + coin.value, 0)
+  const confirmedOutpoints = confirmedCoins.map((coin) => `${coin.txid}:${coin.vout}`).sort()
   const unconfirmed = coins.filter((coin) => !coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
-  return { confirmed, unconfirmed, total: confirmed + unconfirmed }
+  return { confirmed, confirmedOutpoints, unconfirmed, total: confirmed + unconfirmed }
 }
 
 export function createTemporaryBoardingStorage() {
