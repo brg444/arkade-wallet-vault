@@ -118,7 +118,9 @@ describe('vault history', () => {
     ]
 
     expect(
-      applyLightningHistoryMetadata(rows, [{ txid: 'funding', invoiceAmountSats: 2_100, state: 'settled' }]),
+      applyLightningHistoryMetadata(rows, [
+        { rfqId: 'rfq-1', txid: 'funding', invoiceAmountSats: 2_100, state: 'settled' },
+      ]),
     ).toEqual([
       {
         ...rows[0],
@@ -126,6 +128,7 @@ describe('vault history', () => {
         displayAmount: 2_100,
         fee: 50,
         lightningState: 'settled',
+        lightningRfqId: 'rfq-1',
       },
       rows[1],
     ])

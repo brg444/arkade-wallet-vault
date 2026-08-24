@@ -852,6 +852,38 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScreen('welcome')
   }, [])
 
+  const retryLightningRefund = useCallback(
+    async (rfqId: string) => {
+      setBusy(true)
+      setError('')
+      let phoneSecret: Uint8Array | undefined
+      try {
+        if (!status?.enrolled || !enrollment) throw new Error('Sign in before returning this payment.')
+        const lightning = await import('../lib/vault/lightning')
+        phoneSecret = await unlockPhoneBip340(enrollment, status)
+        await lightning.withVaultLightningSdkWallet(phoneSecret, status, vaultArkServer(), async (session) => {
+          const record = await lightning.getVaultLightningStatus(session.repository, rfqId)
+          if (!record) throw new Error('This Lightning payment is no longer available.')
+          if (record.state === 'refunded' || record.state === 'settled') return
+          if (record.state === 'needs_counterparty') {
+            throw new Error('The Lightning payment could not be returned yet. Try again shortly.')
+          }
+          if (record.state === 'failed') {
+            throw new Error('The Lightning payment needs recovery before it can be returned.')
+          }
+          throw new Error('This Lightning payment is still processing.')
+        })
+        await refreshBalance(status.vaultId)
+      } catch (err) {
+        setError(humanizeVaultError(err))
+      } finally {
+        zeroBytes(phoneSecret as Uint8Array)
+        setBusy(false)
+      }
+    },
+    [enrollment, refreshBalance, status],
+  )
+
   const value = useMemo<VaultContextProps>(
     () => ({
       acceptDesign,
@@ -925,6 +957,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       networkLabel,
       spendingArkAddress,
       refreshBalance,
+      retryLightningRefund,
       refreshingBalance,
       reset,
       reviewSpend,
@@ -998,6 +1031,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       recoverEntry,
       recoverExit,
       refreshBalance,
+      retryLightningRefund,
       refreshingBalance,
       reset,
       reviewSpend,

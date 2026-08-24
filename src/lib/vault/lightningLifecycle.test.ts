@@ -8,6 +8,7 @@ import {
   cancelVaultLightningQuote,
   listVaultLightningHistory,
   recordVaultLightningFundingTxid,
+  refreshVaultLightningLifecycle,
   requestVaultLightningQuote,
   retireAbandonedVaultLightningQuotes,
   startVaultLightningLifecycle,
@@ -83,7 +84,7 @@ describe('Lightning persisted lifecycle', () => {
     )
     expect(await harness.repository.getRfqSwap(first.rfqId)).toMatchObject({ fundingArkTxid: txid })
     await expect(listVaultLightningHistory(harness.repository)).resolves.toEqual([
-      { txid, invoiceAmountSats: 2100, state: 'pending' },
+      { rfqId: first.rfqId, txid, invoiceAmountSats: 2100, state: 'pending' },
     ])
 
     await harness.manager.stop()
@@ -183,6 +184,46 @@ describe('Lightning persisted lifecycle', () => {
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'pending' })
 
     await lifecycle.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('recovers a lost funding response from package activity inputs', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    const txid = 'cd'.repeat(32)
+    const indexer = {
+      getVtxos: vi.fn(async () => ({ vtxos: [{ txid, vout: 0, value: quote.fundAmountSats }] })),
+      getVirtualTxs: vi.fn(async () => ({ txs: [] })),
+    }
+
+    await expect(listVaultLightningHistory(harness.repository, indexer as never)).resolves.toEqual([
+      { rfqId: quote.rfqId, txid, invoiceAmountSats: 2100, state: 'pending' },
+    ])
+
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('marks a refund due after reload without retaining a signing key', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await harness.manager.stop()
+
+    const refreshed = await refreshVaultLightningLifecycle({
+      repository: harness.repository,
+      contracts: harness.contracts,
+      indexer: emptyIndexer() as never,
+      managerConfig: {
+        pollIntervalMs: 60_000,
+        now: () => quote.refundLocktime,
+      },
+    })
+
+    expect(refreshed.restoreFailures).toEqual([])
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'needs_counterparty' })
+
     await harness.repository[Symbol.asyncDispose]()
   })
 

@@ -18,13 +18,13 @@ import {
   withVaultBoardingLock,
   withVaultBoardingSecret,
 } from '../lib/vault/vtxo/board'
-import { fetchVaultVtxoSnapshot, reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+import { fetchVaultVtxoSnapshot, reconcilePersistedVtxoSpend, vaultArkServer } from '../lib/vault/vtxo/spend'
 
 async function loadVaultLightningHistory(vaultId: string) {
   if (!vaultLightningSendEnabled()) return []
   try {
     const lightning = await import('../lib/vault/lightning')
-    return await lightning.withVaultLightningRepository(vaultId, lightning.listVaultLightningHistory)
+    return await lightning.refreshVaultLightningHistory(vaultId, vaultArkServer())
   } catch (error) {
     // This local database only decorates transaction history. Authoritative
     // balances must remain available if browser metadata cannot be opened.
