@@ -55,11 +55,14 @@ export default function VaultHistory() {
           <h3 className='vault-history-group-label'>{group.label}</h3>
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
+            const boarding = tx.activity === 'boarding'
             const lightning = tx.activity === 'lightning'
             const savingsHandoff = tx.activity === 'savings-handoff'
             const amount = tx.displayAmount ?? tx.amount
             const time = historyTime(tx.blockTime)
-            const state = savingsHandoff
+            const state = boarding
+              ? 'Pending'
+              : savingsHandoff
               ? 'Complete or cancel'
               : lightning
                 ? ['claimed', 'settled'].includes(tx.lightningState || '')
@@ -72,7 +75,7 @@ export default function VaultHistory() {
                     ? time
                       ? `Settled · ${time}`
                       : 'Settled'
-                    : 'Preconfirmed'
+                    : 'Pending'
                   : tx.confirmed
                     ? time
                       ? `Confirmed · ${time}`

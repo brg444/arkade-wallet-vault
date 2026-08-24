@@ -108,7 +108,7 @@ beforeEach(() => {
   mockedUtxos.mockResolvedValue([])
   mockedTxs.mockResolvedValue([])
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
-  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, confirmedOutpoints: [], unconfirmed: 0 })
+  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, confirmedOutpoints: [], history: [], unconfirmed: 0 })
 })
 
 afterEach(() => vi.useRealTimers())
@@ -336,6 +336,16 @@ describe('useVaultBalances refresh coordination', () => {
       total: 1_000,
       confirmed: 0,
       confirmedOutpoints: [],
+      history: [
+        {
+          txid: 'boarding-pending',
+          type: 'received',
+          amount: 1_000,
+          confirmed: false,
+          account: 'spend',
+          activity: 'boarding',
+        },
+      ],
       unconfirmed: 1_000,
     })
     const { result } = setupHook(false, active)
@@ -355,6 +365,16 @@ describe('useVaultBalances refresh coordination', () => {
       total: 1_000,
       confirmed: 1_000,
       confirmedOutpoints: ['confirmed:0'],
+      history: [
+        {
+          txid: 'boarding-confirmed',
+          type: 'received',
+          amount: 1_000,
+          confirmed: false,
+          account: 'spend',
+          activity: 'boarding',
+        },
+      ],
       unconfirmed: 0,
     })
     await act(async () => {
@@ -367,7 +387,7 @@ describe('useVaultBalances refresh coordination', () => {
     expect(mockedTxs).not.toHaveBeenCalled()
     expect(mockedSnapshot).not.toHaveBeenCalled()
     expect(result.current.vtxoSpendingSats).toBe(30_000)
-    expect(result.current.history.map((item) => item.txid)).toEqual(['spend-history'])
+    expect(result.current.history.map((item) => item.txid)).toEqual(['spend-history', 'boarding-confirmed'])
     expect(result.current.boardingConfirmedBalance).toBe(1_000)
   })
 
@@ -379,6 +399,7 @@ describe('useVaultBalances refresh coordination', () => {
       total: 1_000,
       confirmed: 0,
       confirmedOutpoints: [],
+      history: [],
       unconfirmed: 1_000,
     })
     const { result } = setupHook(false, active)
@@ -395,6 +416,7 @@ describe('useVaultBalances refresh coordination', () => {
         total: 2_000,
         confirmed: 2_000,
         confirmedOutpoints: ['new:0'],
+        history: [],
         unconfirmed: 0,
       })
     await act(async () => {
@@ -406,7 +428,13 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.boardingConfirmedBalance).toBe(2_000)
 
     await act(async () => {
-      olderPoll.resolve({ total: 1_000, confirmed: 1_000, confirmedOutpoints: ['old:0'], unconfirmed: 0 })
+      olderPoll.resolve({
+        total: 1_000,
+        confirmed: 1_000,
+        confirmedOutpoints: ['old:0'],
+        history: [],
+        unconfirmed: 0,
+      })
       await olderPoll.promise
     })
     expect(result.current.boardingConfirmedBalance).toBe(2_000)
@@ -420,6 +448,7 @@ describe('useVaultBalances refresh coordination', () => {
       total: 1_000,
       confirmed: 0,
       confirmedOutpoints: [],
+      history: [],
       unconfirmed: 1_000,
     })
     const { unmount } = setupHook(false, active)
@@ -437,7 +466,13 @@ describe('useVaultBalances refresh coordination', () => {
 
     unmount()
     await act(async () => {
-      pendingPoll.resolve({ total: 1_000, confirmed: 1_000, confirmedOutpoints: ['pending:0'], unconfirmed: 0 })
+      pendingPoll.resolve({
+        total: 1_000,
+        confirmed: 1_000,
+        confirmedOutpoints: ['pending:0'],
+        history: [],
+        unconfirmed: 0,
+      })
       await pendingPoll.promise
       vi.advanceTimersByTime(30_000)
     })

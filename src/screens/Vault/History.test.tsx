@@ -31,7 +31,7 @@ describe('Vault history', () => {
     expect(screen.getByText(/Add bitcoin to your Savings address/i)).toBeTruthy()
   })
 
-  it('shows preconfirmation state, amount units, and opens a transaction', async () => {
+  it('shows pending state, amount units, and opens a transaction', async () => {
     const user = userEvent.setup()
     const tx = {
       txid: 'pending-tx',
@@ -42,11 +42,31 @@ describe('Vault history', () => {
     }
     const value = renderHistory({ history: [tx] })
 
-    expect(screen.getByRole('heading', { name: 'Preconfirmed' })).toBeTruthy()
-    expect(screen.getAllByText('Preconfirmed')).toHaveLength(2)
+    expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
+    expect(screen.getAllByText('Pending')).toHaveLength(2)
     expect(screen.getByText('+12,000 SATS')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /Received 12,000 SATS.*Preconfirmed/i }))
+    await user.click(screen.getByRole('button', { name: /Received 12,000 SATS.*Pending/i }))
     expect(value.openTx).toHaveBeenCalledWith(tx)
+  })
+
+  it('shows detected boarding funds as a pending receive', () => {
+    renderHistory({
+      history: [
+        {
+          txid: 'boarding-tx',
+          type: 'received',
+          amount: 50_000,
+          confirmed: false,
+          account: 'spend',
+          activity: 'boarding',
+        },
+      ],
+    })
+
+    expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
+    expect(screen.getByText('Received')).toBeTruthy()
+    expect(screen.getAllByText('Pending')).toHaveLength(2)
+    expect(screen.getByText('+50,000 SATS')).toBeTruthy()
   })
 
   it('does not show a false empty state while the first snapshot is loading', () => {

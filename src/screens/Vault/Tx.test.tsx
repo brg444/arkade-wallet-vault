@@ -33,7 +33,7 @@ describe('Vault transaction details', () => {
       account: 'spend',
     })
 
-    expect(screen.getByText('Preconfirmed')).toBeTruthy()
+    expect(screen.getByText('Pending')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'View on Arkade Space' }))
     expect(open).toHaveBeenCalledWith(
       'https://explorer.mutinynet.arkade.sh/tx/ark-transaction',
@@ -57,6 +57,26 @@ describe('Vault transaction details', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View on Bitcoin explorer' }))
     expect(open).toHaveBeenCalledWith(
       'https://mempool.mutinynet.arkade.sh/tx/bitcoin-transaction',
+      '_blank',
+      'noopener,noreferrer',
+    )
+  })
+
+  it('keeps boarding activity pending and links it to the Bitcoin transaction', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderTx({
+      txid: 'boarding-transaction',
+      type: 'received',
+      amount: 50_000,
+      confirmed: false,
+      account: 'spend',
+      activity: 'boarding',
+    })
+
+    expect(screen.getByText('Pending')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'View on Bitcoin explorer' }))
+    expect(open).toHaveBeenCalledWith(
+      'https://mempool.mutinynet.arkade.sh/tx/boarding-transaction',
       '_blank',
       'noopener,noreferrer',
     )
