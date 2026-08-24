@@ -124,6 +124,7 @@ export interface VaultVtxoHistoryCoin {
 export function historyFromVtxos(
   coins: VaultVtxoHistoryCoin[],
   account: 'spend' | 'savings' = 'spend',
+  resolvedCreatedAt: ReadonlyMap<string, number> = new Map(),
 ): VaultHistoryItem[] {
   const unique = uniqueHistoryCoins(coins)
   const rows: VaultHistoryItem[] = []
@@ -173,7 +174,7 @@ export function historyFromVtxos(
       type: 'sent',
       amount,
       confirmed: true,
-      blockTime: unixSeconds(change[0]?.createdAtMs || terminalInput.createdAtMs + 1),
+      blockTime: unixSeconds(change[0]?.createdAtMs || resolvedCreatedAt.get(arkTxId) || terminalInput.createdAtMs + 1),
       account,
     })
   }

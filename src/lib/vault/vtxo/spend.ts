@@ -2,12 +2,16 @@ import {
   ArkAddress,
   buildOffchainTx,
   CSVMultisigTapscript,
+  hasTerminalSpend,
   Intent,
+  isRetryableProviderError,
   RestArkProvider,
   RestIndexerProvider,
   SingleKey,
   Transaction,
   type ArkProvider,
+  type IndexerProvider,
+  type VirtualCoin,
   verifyTapscriptSignatures,
 } from '@arkade-os/sdk'
 import { SigHash } from '@scure/btc-signer'
@@ -1495,24 +1499,10 @@ export async function sendVaultVtxo(
   })
 }
 
-export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number }> {
-  requireMutinynetStatus(status)
-  const script = vaultPolicyV1ScriptFromStatus(status)
-  const provider = new RestIndexerProvider(vaultArkServer())
-  const scripts = [hex.encode(script.pkScript)]
-  const vtxos = uniqueVtxosByOutpoint(
-    await collectPagedVtxos((pageIndex) =>
-      provider.getVtxos({ scripts, spendableOnly: true, ...vaultVtxoPage(pageIndex) }),
-    ),
-  )
-  return {
-    balance: vtxos.reduce((sum, vtxo) => sum + vtxo.value, 0),
-  }
-}
-
 export type VtxoIndexerPage = { current: number; next: number; total: number }
 
 const MAX_VTXO_HISTORY_PAGES = 256
+const VTXO_TX_TIME_BATCH_SIZE = 64
 export const VAULT_VTXO_PAGE_SIZE = 100
 
 export function vaultVtxoPage(pageIndex: number): { pageIndex: number; pageSize: number } {
@@ -1545,13 +1535,57 @@ export async function collectPagedVtxos<T>(
   return all
 }
 
-export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultHistoryItem[]> {
+type VaultVtxoIndexer = Pick<IndexerProvider, 'getVtxos'>
+
+async function fetchMissingVtxoCreatedAt(
+  provider: VaultVtxoIndexer,
+  vtxos: VirtualCoin[],
+): Promise<ReadonlyMap<string, number>> {
+  const walletTxids = new Set(vtxos.map((vtxo) => vtxo.txid))
+  const missing = [
+    ...new Set(
+      vtxos
+        .filter(hasTerminalSpend)
+        .map((vtxo) => vtxo.arkTxId || '')
+        .filter((txid) => txid && !walletTxids.has(txid)),
+    ),
+  ]
+  const createdAt = new Map<string, number>()
+  for (let offset = 0; offset < missing.length; offset += VTXO_TX_TIME_BATCH_SIZE) {
+    const txids = missing.slice(offset, offset + VTXO_TX_TIME_BATCH_SIZE)
+    try {
+      const { vtxos: resolved } = await provider.getVtxos({
+        outpoints: txids.map((txid) => ({ txid, vout: 0 })),
+        pageSize: VAULT_VTXO_PAGE_SIZE,
+      })
+      for (const vtxo of resolved) createdAt.set(vtxo.txid, vtxo.createdAt.getTime())
+    } catch (error) {
+      if (!isRetryableProviderError(error)) throw error
+    }
+  }
+  return createdAt
+}
+
+export interface VaultVtxoSnapshot {
+  balance: number
+  history: VaultHistoryItem[]
+}
+
+export async function fetchVaultVtxoSnapshot(
+  status: VaultStatus,
+  provider: VaultVtxoIndexer = new RestIndexerProvider(vaultArkServer()),
+): Promise<VaultVtxoSnapshot> {
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
-  const provider = new RestIndexerProvider(vaultArkServer())
   const scripts = [hex.encode(script.pkScript)]
-  const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) }))
-  return historyFromVtxos(vtxos.map(vaultVtxoHistoryCoin))
+  const vtxos = uniqueVtxosByOutpoint(
+    await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) })),
+  )
+  const resolvedCreatedAt = await fetchMissingVtxoCreatedAt(provider, vtxos)
+  return {
+    balance: vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0),
+    history: historyFromVtxos(vtxos.map(vaultVtxoHistoryCoin), 'spend', resolvedCreatedAt),
+  }
 }
 
 export function vaultVtxoHistoryCoin(vtxo: {
