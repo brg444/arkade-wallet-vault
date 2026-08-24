@@ -31,13 +31,9 @@ export default function VaultTx() {
           : selectedTx.lightningState === 'refunded'
             ? 'Refunded'
             : 'Processing'
-        : selectedTx.account === 'spend'
-          ? selectedTx.confirmed
-            ? 'Settled'
-            : 'Pending'
-          : selectedTx.confirmed
-            ? 'Confirmed'
-            : 'Pending confirmation'
+        : selectedTx.confirmed
+          ? 'Confirmed'
+          : 'Pending'
     : 'Unknown'
 
   return (

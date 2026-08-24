@@ -70,17 +70,11 @@ export default function VaultHistory() {
                     : tx.lightningState === 'refunded'
                       ? 'Refunded'
                       : 'Processing'
-                  : tx.account === 'spend'
-                    ? tx.confirmed
-                      ? time
-                        ? `Settled · ${time}`
-                        : 'Settled'
-                      : 'Pending'
-                    : tx.confirmed
-                      ? time
-                        ? `Confirmed · ${time}`
-                        : 'Confirmed'
-                      : 'Pending confirmation'
+                  : tx.confirmed
+                    ? time
+                      ? `Confirmed · ${time}`
+                      : 'Confirmed'
+                    : 'Pending'
             return (
               <button
                 type='button'

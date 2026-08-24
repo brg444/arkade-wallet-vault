@@ -75,7 +75,7 @@ describe('Vault history', () => {
     expect(screen.queryByText(/No Spending activity/i)).toBeNull()
   })
 
-  it('uses onchain confirmation language for Savings activity', () => {
+  it('uses the same pending language for Savings activity', () => {
     renderHistory({
       account: 'savings',
       history: [
@@ -90,7 +90,7 @@ describe('Vault history', () => {
     })
 
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
-    expect(screen.getByText('Pending confirmation')).toBeTruthy()
+    expect(screen.getAllByText('Pending')).toHaveLength(2)
   })
 
   it('reopens a phone-signed Savings transfer waiting for hardware', async () => {
