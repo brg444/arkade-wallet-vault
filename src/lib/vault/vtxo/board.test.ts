@@ -14,7 +14,9 @@ import {
   createVaultBoardingStorage,
   disposeVaultBoardingResources,
   findConfirmedBoardingCoins,
+  isReleasedIntentRetry,
   nextVaultBoardingAction,
+  settleBoardingWithReleasedIntentRetry,
   vaultBoardingStorageNames,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
@@ -193,6 +195,35 @@ describe('vault-board-v1', () => {
     const wallet = { getBoardingUtxos: async () => [first, selected] }
 
     await expect(findConfirmedBoardingCoins(wallet, selected.txid)).resolves.toEqual([selected])
+  })
+
+  it('retries only the SDK release race once with the exact settlement request', async () => {
+    const request = {
+      inputs: [boardingCoin('11'.repeat(32), 0, 20_000)],
+      outputs: [{ address: 'tark1destination', amount: 20_000n }],
+    }
+    const settle = async () => {
+      if (calls++ === 0) throw new Error('INVALID_INTENT_PROOF (23): no matching intents found for intent proof')
+      return 'commitment'
+    }
+    let calls = 0
+
+    await expect(settleBoardingWithReleasedIntentRetry({ settle } as never, request)).resolves.toBe('commitment')
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry another SDK or Operator error', async () => {
+    const settle = async () => {
+      calls += 1
+      throw new Error('not enough intent confirmations received')
+    }
+    let calls = 0
+
+    await expect(
+      settleBoardingWithReleasedIntentRetry({ settle } as never, { inputs: [], outputs: [] }),
+    ).rejects.toThrow(/not enough intent confirmations/)
+    expect(calls).toBe(1)
+    expect(isReleasedIntentRetry(new Error('INVALID_INTENT_PROOF (23): no matching intents found'))).toBe(true)
   })
 
   it('reconstructs the distinct standard boarding contract pinned by status', async () => {
