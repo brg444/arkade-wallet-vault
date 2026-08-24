@@ -52,6 +52,20 @@ export interface VaultLightningFundingTarget {
   amountSats: number
 }
 
+export interface VaultLightningFundingProof extends VaultLightningFundingTarget {
+  operationId: string
+  bundleDigest: string
+}
+
+export type VaultLightningVtxoProof = Omit<VaultLightningFundingProof, 'rfqId'>
+
+export class VaultLightningFundingNotStartedError extends Error {
+  constructor() {
+    super('Lightning funding has not started.')
+    this.name = 'VaultLightningFundingNotStartedError'
+  }
+}
+
 export interface VaultLightningHistoryMetadata {
   rfqId: string
   txid: string
@@ -67,6 +81,32 @@ interface StoredVaultLightningProfile {
   invoice: string
   quote: RfqQuote
   fundingState: VaultLightningFundingState
+  fundingProof?: VaultLightningFundingProof
+}
+
+function validFundingProof(value: unknown): value is VaultLightningFundingProof {
+  const proof = value as Partial<VaultLightningFundingProof> | undefined
+  return Boolean(
+    proof &&
+      /^[0-9a-f-]{16,}$/i.test(String(proof.operationId || '')) &&
+      /^[0-9a-f]{64}$/.test(String(proof.bundleDigest || '')) &&
+      typeof proof.address === 'string' &&
+      proof.address.length > 0 &&
+      Number.isSafeInteger(proof.amountSats) &&
+      proof.amountSats! > 0 &&
+      /^[0-9a-f]{64}$/.test(String(proof.rfqId || '')),
+  )
+}
+
+function sameFundingProof(a: VaultLightningFundingProof | undefined, b: VaultLightningFundingProof): boolean {
+  return Boolean(
+    a &&
+      a.rfqId === b.rfqId &&
+      a.address === b.address &&
+      a.amountSats === b.amountSats &&
+      a.operationId === b.operationId &&
+      a.bundleDigest === b.bundleDigest,
+  )
 }
 
 export interface VaultLightningSession {
@@ -101,7 +141,8 @@ function storedLightningProfile(record: RfqSwapRecord): StoredVaultLightningProf
     !Number.isSafeInteger(quote.refund_locktime) ||
     !Number.isSafeInteger(record.amount) ||
     quote.from_amount !== record.amount ||
-    !['quoted', 'funding', 'cancel_requested'].includes(String(value.fundingState))
+    !['quoted', 'funding', 'cancel_requested'].includes(String(value.fundingState)) ||
+    (value.fundingState === 'funding' && !validFundingProof(value.fundingProof))
   ) {
     throw new Error(`Stored Lightning quote ${record.rfqId} is incomplete`)
   }
@@ -309,6 +350,32 @@ export async function restoreMatchingVaultLightningQuote(
   return undefined
 }
 
+/** Resume only the exact VTXO reservation that already entered funding. */
+export async function restoreMatchingVaultLightningFundingQuote(
+  repository: Pick<AssetSwapRepository, 'getAllRfqSwaps' | 'getRfqSwap'>,
+  contracts: SwapContractRegistry,
+  manager: RfqSwapManager,
+  invoice: string,
+  network: NetworkName,
+  proof: VaultLightningVtxoProof,
+): Promise<VaultLightningQuote | undefined> {
+  const candidates = (await repository.getAllRfqSwaps())
+    .filter((record) => record.kind === 'lightning_send' && !record.fundingArkTxid && !isRfqSwapTerminal(record.state))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  for (const record of candidates) {
+    const stored = storedLightningProfile(record)
+    if (stored.network !== network || stored.invoice !== invoice || stored.fundingState !== 'funding') continue
+    const expected = { ...proof, rfqId: record.rfqId }
+    if (!sameFundingProof(stored.fundingProof, expected)) continue
+    assertVaultLightningQuoteCurrent(quoteFromRecord(record))
+    const params = await lockupContractParams(contracts, record.lockupAddress)
+    const swap = rebuildRfqSwap(record, params)
+    if (!(await manager.hasSwap(record.rfqId))) await manager.addSwap(swap)
+    return quoteFromRecord(record)
+  }
+  return undefined
+}
+
 export async function persistVaultLightningQuote({
   result,
   facts,
@@ -366,6 +433,7 @@ export async function persistVaultLightningQuote({
 export async function beginVaultLightningFunding(
   repository: Pick<AssetSwapRepository, 'getRfqSwap' | 'saveRfqSwap'>,
   rfqId: string,
+  fundingProof: VaultLightningFundingProof,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<VaultLightningFundingTarget> {
   const record = await repository.getRfqSwap(rfqId)
@@ -376,12 +444,20 @@ export async function beginVaultLightningFunding(
   if (stored.fundingState === 'funding' || record.fundingArkTxid) {
     throw new Error('This Lightning payment is already processing and cannot be funded again.')
   }
+  if (
+    !validFundingProof(fundingProof) ||
+    fundingProof.rfqId !== rfqId ||
+    fundingProof.address !== record.lockupAddress ||
+    fundingProof.amountSats !== record.amount
+  ) {
+    throw new Error('Lightning funding does not match the reviewed VTXO reservation.')
+  }
   assertVaultLightningQuoteCurrent(quoteFromRecord(record), nowSeconds)
   await repository.saveRfqSwap({
     ...record,
     profile: {
       ...record.profile,
-      [VAULT_LIGHTNING_PROFILE]: { ...stored, fundingState: 'funding' },
+      [VAULT_LIGHTNING_PROFILE]: { ...stored, fundingState: 'funding', fundingProof },
     },
   })
   const persisted = await repository.getRfqSwap(rfqId)
@@ -389,6 +465,24 @@ export async function beginVaultLightningFunding(
     throw new Error('Lightning funding permission was not durably stored. Do not fund this quote.')
   }
   return { rfqId, address: record.lockupAddress, amountSats: record.amount! }
+}
+
+export async function resumeVaultLightningFunding(
+  repository: Pick<AssetSwapRepository, 'getRfqSwap'>,
+  proof: VaultLightningFundingProof,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<VaultLightningFundingTarget> {
+  const record = await repository.getRfqSwap(proof.rfqId)
+  if (!record || record.fundingArkTxid || isRfqSwapTerminal(record.state)) {
+    throw new Error('This Lightning payment cannot be resumed.')
+  }
+  const stored = storedLightningProfile(record)
+  if (stored.fundingState === 'quoted') throw new VaultLightningFundingNotStartedError()
+  if (stored.fundingState !== 'funding' || !sameFundingProof(stored.fundingProof, proof)) {
+    throw new Error('Lightning funding does not match the persisted VTXO reservation.')
+  }
+  assertVaultLightningQuoteCurrent(quoteFromRecord(record), nowSeconds)
+  return { rfqId: record.rfqId, address: record.lockupAddress, amountSats: record.amount! }
 }
 
 export async function recordVaultLightningFundingTxid(

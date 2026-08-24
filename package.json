@@ -5,6 +5,7 @@
   "homepage": ".",
   "dependencies": {
     "@arkade-os/sdk": "0.4.65",
+    "@arkade-os/solver-discovery": "0.2.3",
     "@arkade-os/swap": "0.0.8",
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/geist": "^5.2.8",

@@ -14,12 +14,15 @@ import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/v
 import { VaultContext, VaultProvider } from './vault'
 
 const mocks = vi.hoisted(() => ({
+  FundingNotStartedError: class FundingNotStartedError extends Error {},
   fetchStatus: vi.fn(),
   reserve: vi.fn(),
   send: vi.fn(),
+  sdkWallet: vi.fn(),
   unlock: vi.fn(),
   requestLightning: vi.fn(),
   beginLightningFunding: vi.fn(),
+  resumeLightningFunding: vi.fn(),
   recordLightningFunding: vi.fn(),
   getLightningStatus: vi.fn(),
   loadHandoff: vi.fn(),
@@ -54,13 +57,16 @@ vi.mock('../lib/vault/savingsHandoff', async (importOriginal) => ({
 }))
 
 vi.mock('../lib/vault/lightning', () => ({
+  VaultLightningFundingNotStartedError: mocks.FundingNotStartedError,
   assertVaultLightningQuoteCurrent: vi.fn(),
   beginVaultLightningFunding: mocks.beginLightningFunding,
+  resumeVaultLightningFunding: mocks.resumeLightningFunding,
   recordVaultLightningFundingTxid: mocks.recordLightningFunding,
   getVaultLightningStatus: mocks.getLightningStatus,
   requestVaultLightningQuote: mocks.requestLightning,
   withVaultLightningRepository: vi.fn(async (_vaultId, run) => run({})),
-  withVaultLightningSdkWallet: vi.fn(async (_secret, _status, _origin, run) => run({ repository: {} })),
+  withVaultLightningLifecycleLock: vi.fn(async (_vaultId, run) => run()),
+  withVaultLightningSdkWallet: mocks.sdkWallet,
   withVaultLightningTransport: vi.fn(async (_profile, run) => run({})),
 }))
 
@@ -192,12 +198,14 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.loadHandoff.mockReturnValue(null)
     mocks.reserve.mockResolvedValue(reviewed)
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
+    mocks.sdkWallet.mockImplementation(async (_secret, _status, _origin, run) => run({ repository: {} }))
     mocks.unlock.mockResolvedValue(new Uint8Array(32).fill(7))
     mocks.beginLightningFunding.mockResolvedValue({
       rfqId: '44'.repeat(32),
       address: destination,
       amountSats: 2_125,
     })
+    mocks.resumeLightningFunding.mockRejectedValue(new mocks.FundingNotStartedError('not started'))
     mocks.recordLightningFunding.mockResolvedValue(undefined)
     mocks.getLightningStatus.mockResolvedValue({ state: 'refunded' })
     mocks.requestLightning.mockResolvedValue({
@@ -289,9 +297,20 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
     expect(screen.getByTestId('kind')).toHaveTextContent('lightning')
-    expect(mocks.beginLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
+    expect(mocks.beginLightningFunding).toHaveBeenCalledWith(
+      expect.any(Object),
+      '44'.repeat(32),
+      expect.objectContaining({
+        rfqId: '44'.repeat(32),
+        address: destination,
+        amountSats: 2_125,
+        operationId: lightningFunding.operationId,
+        bundleDigest: lightningFunding.bundleDigest,
+      }),
+    )
     expect(mocks.recordLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32), '55'.repeat(32))
     expect(mocks.send).toHaveBeenCalledWith(expect.any(Object), status, lightningFunding)
+    expect(mocks.sdkWallet.mock.calls[0]?.[4]).toBeUndefined()
   })
 
   it('restores a pending Savings handoff and reopens its hardware step', async () => {
@@ -336,6 +355,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Return Lightning' })))
 
     expect(mocks.getLightningStatus).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
+    expect(mocks.sdkWallet.mock.calls.at(-1)?.[4]).toEqual({ enableRefunds: true })
     expect(phoneSecret).toEqual(new Uint8Array(32))
     expect(screen.getByTestId('error')).toHaveTextContent('')
   })

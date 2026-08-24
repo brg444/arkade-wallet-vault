@@ -8,6 +8,7 @@ import {
   cancelVaultLightningQuote,
   listVaultLightningHistory,
   recordVaultLightningFundingTxid,
+  resumeVaultLightningFunding,
   refreshVaultLightningLifecycle,
   requestVaultLightningQuote,
   retireAbandonedVaultLightningQuotes,
@@ -31,6 +32,14 @@ import {
 afterEach(() => vi.useRealTimers())
 
 describe('Lightning persisted lifecycle', () => {
+  const fundingProof = (quote: VaultLightningQuote) => ({
+    rfqId: quote.rfqId,
+    address: quote.fundAddress,
+    amountSats: quote.fundAmountSats,
+    operationId: '11111111-1111-4111-8111-111111111111',
+    bundleDigest: 'aa'.repeat(32),
+  })
+
   it('persists complete recovery state before exposing a quote and resumes a dropped response idempotently', async () => {
     const harness = await lightningQuoteHarness()
     const first = await harness.request()
@@ -72,11 +81,37 @@ describe('Lightning persisted lifecycle', () => {
     ).resolves.toEqual(first)
     expect(harness.requester).toHaveBeenCalledOnce()
 
-    const target = await beginVaultLightningFunding(harness.repository, first.rfqId, INVOICE_TIMESTAMP + 2)
-    expect(target).toEqual({ rfqId: first.rfqId, address: harness.result.address, amountSats: 2125 })
-    await expect(beginVaultLightningFunding(harness.repository, first.rfqId, INVOICE_TIMESTAMP + 2)).rejects.toThrow(
-      /already processing/,
+    const target = await beginVaultLightningFunding(
+      harness.repository,
+      first.rfqId,
+      fundingProof(first),
+      INVOICE_TIMESTAMP + 2,
     )
+    expect(target).toEqual({ rfqId: first.rfqId, address: harness.result.address, amountSats: 2125 })
+    const proof = fundingProof(first)
+    await expect(
+      resumeVaultLightningFunding(
+        harness.repository,
+        {
+          bundleDigest: proof.bundleDigest,
+          operationId: proof.operationId,
+          amountSats: proof.amountSats,
+          address: proof.address,
+          rfqId: proof.rfqId,
+        },
+        INVOICE_TIMESTAMP + 2,
+      ),
+    ).resolves.toEqual(target)
+    await expect(
+      resumeVaultLightningFunding(
+        harness.repository,
+        { ...proof, operationId: '22222222-2222-4222-8222-222222222222' },
+        INVOICE_TIMESTAMP + 2,
+      ),
+    ).rejects.toThrow(/does not match/)
+    await expect(
+      beginVaultLightningFunding(harness.repository, first.rfqId, fundingProof(first), INVOICE_TIMESTAMP + 2),
+    ).rejects.toThrow(/already processing/)
     await expect(harness.request()).rejects.toThrow(/already processing/)
     expect(harness.requester).toHaveBeenCalledOnce()
     const txid = 'cd'.repeat(32)
@@ -168,6 +203,7 @@ describe('Lightning persisted lifecycle', () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
     await harness.manager.stop()
+    const refundArkade = vi.fn(async () => null)
     const lifecycle = await startVaultLightningLifecycle({
       wallet: harness.wallet,
       ark: {} as never,
@@ -178,13 +214,14 @@ describe('Lightning persisted lifecycle', () => {
         pollIntervalMs: 60_000,
         now: () => INVOICE_TIMESTAMP + 2,
       },
-      refundArkade: vi.fn(async () => null),
+      refundArkade,
     })
 
     expect(lifecycle.restoreFailures).toEqual([])
     expect(lifecycle.retiredQuoteIds).toEqual([])
     expect(await lifecycle.manager.hasSwap(quote.rfqId)).toBe(true)
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'pending' })
+    expect(refundArkade).not.toHaveBeenCalled()
 
     await lifecycle.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
@@ -193,7 +230,7 @@ describe('Lightning persisted lifecycle', () => {
   it('recovers one exact funding txid after a lost submit response and refuses ambiguous activity', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
-    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
     const fundingTxid = 'cd'.repeat(32)
     const indexer = {
       getVtxos: vi.fn(async ({ scripts }: { scripts: string[] }) => {
@@ -214,7 +251,12 @@ describe('Lightning persisted lifecycle', () => {
     await harness.repository[Symbol.asyncDispose]()
     const ambiguous = await lightningQuoteHarness({ rfqId: 'bc'.repeat(32) })
     const ambiguousQuote = await ambiguous.request()
-    await beginVaultLightningFunding(ambiguous.repository, ambiguousQuote.rfqId, INVOICE_TIMESTAMP + 2)
+    await beginVaultLightningFunding(
+      ambiguous.repository,
+      ambiguousQuote.rfqId,
+      fundingProof(ambiguousQuote),
+      INVOICE_TIMESTAMP + 2,
+    )
     const ambiguousIndexer = {
       getVtxos: vi.fn(async () => ({
         vtxos: [
@@ -234,7 +276,7 @@ describe('Lightning persisted lifecycle', () => {
   it('does not report a funding txid stored when the repository drops the write', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
-    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
     const repository = {
       getRfqSwap: harness.repository.getRfqSwap.bind(harness.repository),
       saveRfqSwap: vi.fn(async () => {}),
@@ -252,7 +294,7 @@ describe('Lightning persisted lifecycle', () => {
   it('marks a refund due after reload without retaining a signing key', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
-    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
     await harness.manager.stop()
 
     const refreshed = await refreshVaultLightningLifecycle({
@@ -274,7 +316,7 @@ describe('Lightning persisted lifecycle', () => {
   it('uses the package manager refund lifecycle for a funded quote that resumes after its refund time', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
-    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
     await harness.manager.stop()
     const refundArkade = vi.fn(async () => ({ arkTxid: 'cd'.repeat(32), amount: quote.fundAmountSats }))
     const lifecycle = await startVaultLightningLifecycle({

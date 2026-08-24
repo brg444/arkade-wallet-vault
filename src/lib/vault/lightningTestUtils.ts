@@ -18,6 +18,7 @@ import {
   type SwapContractRegistry,
 } from '@arkade-os/swap'
 import { hex } from '@scure/base'
+import type { Market } from '@arkade-os/solver-discovery'
 import { vi } from 'vitest'
 import { requestVaultLightningQuote, withVaultRefundAddress, type VaultLightningSolverProfile } from './lightning'
 
@@ -28,7 +29,17 @@ export const MAINNET_TEST_PROFILE: VaultLightningSolverProfile = {
   minSats: 500,
   maxSats: 50_000,
   maxFundingSats: 100_000,
-  feeBps: 115,
+  market: {
+    pair: 'BTC/lightning:BTC',
+    base_asset: { id: 'btc', name: 'Bitcoin', ticker: 'BTC', decimals: 8 },
+    quote_asset: { id: 'btc', name: 'Bitcoin', ticker: 'BTC', decimals: 8 },
+    quote_corridor: 'lightning',
+    fee_bps: 115,
+    min_base_amount: '500',
+    max_base_amount: '100000',
+    min_quote_amount: '500',
+    max_quote_amount: '50000',
+  } as Market,
 }
 
 export const MAINNET_INVOICE =
