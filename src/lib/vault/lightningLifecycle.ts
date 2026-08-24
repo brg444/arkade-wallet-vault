@@ -184,6 +184,7 @@ export async function startVaultLightningLifecycle({
   repository,
   managerConfig,
   refundArkade,
+  requiredRfqId,
 }: {
   wallet: IWallet
   ark: RestArkProvider
@@ -191,6 +192,7 @@ export async function startVaultLightningLifecycle({
   repository: AssetSwapRepository
   managerConfig?: RfqSwapManagerConfig
   refundArkade?: Parameters<RfqSwapManager['setCallbacks']>[0]['refundArkade']
+  requiredRfqId?: string
 }): Promise<Omit<VaultLightningSession, 'wallet' | 'repository'>> {
   const contracts = await wallet.getContractManager()
   const retired = await retireAbandonedVaultLightningQuotes(repository, contracts, managerConfig?.now?.())
@@ -198,14 +200,33 @@ export async function startVaultLightningLifecycle({
   manager.setCallbacks({
     refundArkade: refundArkade ?? arkadeRefunder({ ark, indexer, wallet, repository }),
   })
-  const restored = await manager.restoreFromRepository()
+  const restoreFailures = requiredRfqId
+    ? await restoreVaultLightningTarget(manager, repository, contracts, requiredRfqId)
+    : (await manager.restoreFromRepository()).failed
   await manager.start()
   return {
     contracts,
     manager,
-    restoreFailures: restored.failed,
+    restoreFailures,
     retiredQuoteIds: retired.retired,
     retirementFailures: retired.failed,
+  }
+}
+
+async function restoreVaultLightningTarget(
+  manager: RfqSwapManager,
+  repository: Pick<AssetSwapRepository, 'getRfqSwap'>,
+  contracts: SwapContractRegistry,
+  rfqId: string,
+): Promise<RfqRestoreFailure[]> {
+  try {
+    const record = await repository.getRfqSwap(rfqId)
+    if (!record) throw new Error(`Lightning recovery record ${rfqId} is missing`)
+    const params = await lockupContractParams(contracts, record.lockupAddress)
+    await manager.addSwap(rebuildRfqSwap(record, params))
+    return []
+  } catch (error) {
+    return [{ rfqId, error: error instanceof Error ? error : new Error(String(error)) }]
   }
 }
 
@@ -232,9 +253,14 @@ export async function refreshVaultLightningLifecycle({
       params: (record) => lockupContractParams(contracts, record.lockupAddress),
     })
     await manager.start()
+    const history = await scanVaultLightningHistory(
+      repository,
+      indexer,
+      new Set(restored.failed.map(({ rfqId }) => rfqId)),
+    )
     return {
-      restoreFailures: restored.failed,
-      history: await listVaultLightningHistory(repository, indexer),
+      restoreFailures: [...restored.failed, ...history.failures],
+      history: history.payments,
     }
   } finally {
     await manager.stop()
@@ -440,21 +466,35 @@ export async function listVaultLightningHistory(
   repository: Pick<AssetSwapRepository, 'getAllRfqSwaps'>,
   indexer?: LockupSpendIndexer,
 ): Promise<VaultLightningHistoryMetadata[]> {
-  const activity = new Map(
-    (await rfqSwapActivityInputs({ repository, indexer })).map((input) => [input.rfqId, input.txids]),
-  )
+  return (await scanVaultLightningHistory(repository, indexer)).payments
+}
+
+async function scanVaultLightningHistory(
+  repository: Pick<AssetSwapRepository, 'getAllRfqSwaps'>,
+  indexer?: LockupSpendIndexer,
+  excludedRfqIds: ReadonlySet<string> = new Set(),
+): Promise<{ payments: VaultLightningHistoryMetadata[]; failures: RfqRestoreFailure[] }> {
   const payments: VaultLightningHistoryMetadata[] = []
+  const failures: RfqRestoreFailure[] = []
   for (const record of await repository.getAllRfqSwaps()) {
-    if (record.kind !== 'lightning_send') continue
-    const quote = quoteFromRecord(record)
-    for (const txid of activity.get(record.rfqId) ?? []) {
-      if (!/^[0-9a-f]{64}$/.test(txid)) {
-        throw new Error(`Stored Lightning payment ${record.rfqId} has an invalid transaction id`)
+    if (record.kind !== 'lightning_send' || excludedRfqIds.has(record.rfqId)) continue
+    try {
+      const quote = quoteFromRecord(record)
+      const [activity] = await rfqSwapActivityInputs({
+        repository: { getAllRfqSwaps: async () => [record] },
+        indexer,
+      })
+      for (const txid of activity?.txids ?? []) {
+        if (!/^[0-9a-f]{64}$/.test(txid)) {
+          throw new Error(`Stored Lightning payment ${record.rfqId} has an invalid transaction id`)
+        }
+        payments.push({ rfqId: record.rfqId, txid, invoiceAmountSats: quote.invoiceAmountSats, state: record.state })
       }
-      payments.push({ rfqId: record.rfqId, txid, invoiceAmountSats: quote.invoiceAmountSats, state: record.state })
+    } catch (error) {
+      failures.push({ rfqId: record.rfqId, error: error instanceof Error ? error : new Error(String(error)) })
     }
   }
-  return payments
+  return { payments, failures }
 }
 
 export function assertVaultLightningQuoteCurrent(

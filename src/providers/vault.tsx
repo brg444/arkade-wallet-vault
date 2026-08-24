@@ -861,18 +861,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         if (!status?.enrolled || !enrollment) throw new Error('Sign in before returning this payment.')
         const lightning = await import('../lib/vault/lightning')
         phoneSecret = await unlockPhoneBip340(enrollment, status)
-        await lightning.withVaultLightningSdkWallet(phoneSecret, status, vaultArkServer(), async (session) => {
-          const record = await lightning.getVaultLightningStatus(session.repository, rfqId)
-          if (!record) throw new Error('This Lightning payment is no longer available.')
-          if (record.state === 'refunded' || record.state === 'settled') return
-          if (record.state === 'needs_counterparty') {
-            throw new Error('The Lightning payment could not be returned yet. Try again shortly.')
-          }
-          if (record.state === 'failed') {
-            throw new Error('The Lightning payment needs recovery before it can be returned.')
-          }
-          throw new Error('This Lightning payment is still processing.')
-        })
+        await lightning.withVaultLightningSdkWallet(
+          phoneSecret,
+          status,
+          vaultArkServer(),
+          async (session) => {
+            const record = await lightning.getVaultLightningStatus(session.repository, rfqId)
+            if (!record) throw new Error('This Lightning payment is no longer available.')
+            if (record.state === 'refunded' || record.state === 'settled') return
+            if (record.state === 'needs_counterparty') {
+              throw new Error('The Lightning payment could not be returned yet. Try again shortly.')
+            }
+            if (record.state === 'failed') {
+              throw new Error('The Lightning payment needs recovery before it can be returned.')
+            }
+            throw new Error('This Lightning payment is still processing.')
+          },
+          { requiredRfqId: rfqId },
+        )
         await refreshBalance(status.vaultId)
       } catch (err) {
         setError(humanizeVaultError(err))

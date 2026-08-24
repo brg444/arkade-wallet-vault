@@ -12,6 +12,8 @@ import {
   requestVaultLightningQuote,
   retireAbandonedVaultLightningQuotes,
   startVaultLightningLifecycle,
+  vaultLightningLifecycleErrors,
+  withVaultLightningLifecycleLock,
   withVaultRefundAddress,
   type VaultLightningQuote,
 } from './lightning'
@@ -26,6 +28,33 @@ import {
   quoteManager,
   refundAddress,
 } from './lightningTestUtils'
+import type { VaultLockManager } from './vtxo/lock'
+
+class DeterministicLockManager implements VaultLockManager {
+  private readonly held = new Set<string>()
+  private readonly waiters = new Map<string, (() => void)[]>()
+
+  async request<T>(
+    name: string,
+    _options: { mode: 'exclusive'; ifAvailable?: boolean },
+    callback: (lock: unknown) => Promise<T>,
+  ): Promise<T> {
+    while (this.held.has(name)) {
+      await new Promise<void>((resolve) => {
+        const waiters = this.waiters.get(name) || []
+        waiters.push(resolve)
+        this.waiters.set(name, waiters)
+      })
+    }
+    this.held.add(name)
+    try {
+      return await callback({ name })
+    } finally {
+      this.held.delete(name)
+      this.waiters.get(name)?.shift()?.()
+    }
+  }
+}
 
 afterEach(() => vi.useRealTimers())
 
@@ -205,6 +234,42 @@ describe('Lightning persisted lifecycle', () => {
     await harness.repository[Symbol.asyncDispose]()
   })
 
+  it('keeps valid history visible when another RFQ profile is malformed', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await recordVaultLightningFundingTxid(harness.repository, quote.rfqId, 'ab'.repeat(32))
+    const record = await harness.repository.getRfqSwap(quote.rfqId)
+    expect(record).toBeDefined()
+    const validRfqId = 'ef'.repeat(32)
+    await harness.repository.saveRfqSwap({
+      ...record!,
+      rfqId: validRfqId,
+      fundingArkTxid: 'cd'.repeat(32),
+      profile: {
+        ...record!.profile,
+        vaultLightning: {
+          ...(record!.profile.vaultLightning as Record<string, unknown>),
+          quote: {
+            ...((record!.profile.vaultLightning as { quote: Record<string, unknown> }).quote || {}),
+            rfq_id: validRfqId,
+          },
+        },
+      },
+    })
+    await harness.repository.saveRfqSwap({
+      ...record!,
+      profile: { ...record!.profile, vaultLightning: { version: 2 } },
+    })
+
+    await expect(listVaultLightningHistory(harness.repository)).resolves.toEqual([
+      { rfqId: validRfqId, txid: 'cd'.repeat(32), invoiceAmountSats: 2100, state: 'pending' },
+    ])
+
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
   it('marks a refund due after reload without retaining a signing key', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
@@ -223,6 +288,156 @@ describe('Lightning persisted lifecycle', () => {
 
     expect(refreshed.restoreFailures).toEqual([])
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'needs_counterparty' })
+
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('serializes two managers so a delayed keyless pass cannot regress a terminal refund', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, INVOICE_TIMESTAMP + 2)
+    await harness.manager.stop()
+    const locks = new DeterministicLockManager()
+    let announceRead!: () => void
+    const readStarted = new Promise<void>((resolve) => {
+      announceRead = resolve
+    })
+    let releaseRead!: () => void
+    const readRelease = new Promise<void>((resolve) => {
+      releaseRead = resolve
+    })
+    let firstRead = true
+    const delayedIndexer = {
+      getVtxos: vi.fn(async () => {
+        if (firstRead) {
+          firstRead = false
+          announceRead()
+          await readRelease
+        }
+        return { vtxos: [] }
+      }),
+      getVirtualTxs: vi.fn(async () => ({ txs: [] })),
+    }
+    const keyless = withVaultLightningLifecycleLock(
+      'vault-lightning',
+      () =>
+        refreshVaultLightningLifecycle({
+          repository: harness.repository,
+          contracts: harness.contracts,
+          indexer: delayedIndexer as never,
+          managerConfig: { pollIntervalMs: 60_000, now: () => quote.refundLocktime },
+        }),
+      locks,
+    )
+    await readStarted
+
+    const refundArkade = vi.fn(async () => ({ arkTxid: 'cd'.repeat(32), amount: quote.fundAmountSats }))
+    const signing = withVaultLightningLifecycleLock(
+      'vault-lightning',
+      async () => {
+        const lifecycle = await startVaultLightningLifecycle({
+          wallet: harness.wallet,
+          ark: {} as never,
+          indexer: emptyIndexer() as never,
+          repository: harness.repository,
+          managerConfig: { pollIntervalMs: 60_000, now: () => quote.refundLocktime },
+          refundArkade,
+        })
+        await lifecycle.manager.stop()
+      },
+      locks,
+    )
+    await Promise.resolve()
+    expect(refundArkade).not.toHaveBeenCalled()
+
+    releaseRead()
+    await Promise.all([keyless, signing])
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({
+      state: 'refunded',
+      refundArkTxid: 'cd'.repeat(32),
+    })
+    expect(refundArkade).toHaveBeenCalledOnce()
+
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('isolates a missing contract while preserving valid history and targeted recovery', async () => {
+    const harness = await lightningQuoteHarness()
+    const missing = await harness.request()
+    const validWallet = withVaultRefundAddress(
+      {
+        identity: SingleKey.fromPrivateKey(hex.decode('03'.padStart(64, '0'))),
+        getAddress: async () => 'ark1wrong',
+        getContractManager: async () => harness.contracts,
+      } as unknown as IWallet,
+      await refundAddress(),
+    )
+    const validResult = await completeRequestResult(validWallet, harness.contracts, { rfqId: 'ef'.repeat(32) })
+    const valid = await requestVaultLightningQuote({
+      wallet: validWallet,
+      arkServerUrl: 'https://arkade.computer',
+      invoice: MAINNET_INVOICE,
+      network: 'bitcoin',
+      transport: {} as never,
+      repository: harness.repository,
+      contracts: harness.contracts,
+      manager: harness.manager,
+      profile: MAINNET_TEST_PROFILE,
+      rfqId: validResult.rfqId,
+      requester: vi.fn(async () => validResult) as never,
+      nowSeconds: INVOICE_TIMESTAMP + 1,
+      enabled: true,
+    })
+    await beginVaultLightningFunding(harness.repository, missing.rfqId, INVOICE_TIMESTAMP + 2)
+    await beginVaultLightningFunding(harness.repository, valid.rfqId, INVOICE_TIMESTAMP + 2)
+    await recordVaultLightningFundingTxid(harness.repository, missing.rfqId, 'ab'.repeat(32))
+    await recordVaultLightningFundingTxid(harness.repository, valid.rfqId, 'cd'.repeat(32))
+    await harness.manager.stop()
+    harness.rows.delete(hex.encode(harness.result.swapPkScript))
+
+    const refreshed = await refreshVaultLightningLifecycle({
+      repository: harness.repository,
+      contracts: harness.contracts,
+      indexer: emptyIndexer() as never,
+      managerConfig: { pollIntervalMs: 60_000, now: () => INVOICE_TIMESTAMP + 2 },
+    })
+
+    expect(refreshed.restoreFailures).toEqual([
+      expect.objectContaining({
+        rfqId: missing.rfqId,
+        error: expect.objectContaining({ name: 'LockupContractMissing' }),
+      }),
+    ])
+    expect(refreshed.history).toEqual([
+      { rfqId: valid.rfqId, txid: 'cd'.repeat(32), invoiceAmountSats: 2100, state: 'pending' },
+    ])
+    const lifecycleFailures = { restoreFailures: refreshed.restoreFailures, retirementFailures: [] }
+    expect(vaultLightningLifecycleErrors(lifecycleFailures, valid.rfqId)).toEqual([])
+    expect(vaultLightningLifecycleErrors(lifecycleFailures, missing.rfqId)).toEqual([
+      expect.objectContaining({ name: 'LockupContractMissing' }),
+    ])
+
+    const refundArkade = vi.fn(async (swap: { rfqId: string }) => {
+      expect(swap.rfqId).toBe(valid.rfqId)
+      return { arkTxid: 'de'.repeat(32), amount: valid.fundAmountSats }
+    })
+    const targeted = await startVaultLightningLifecycle({
+      wallet: validWallet,
+      ark: {} as never,
+      indexer: emptyIndexer() as never,
+      repository: harness.repository,
+      managerConfig: { pollIntervalMs: 60_000, now: () => valid.refundLocktime },
+      refundArkade: refundArkade as never,
+      requiredRfqId: valid.rfqId,
+    })
+    expect(targeted.restoreFailures).toEqual([])
+    expect(refundArkade).toHaveBeenCalledOnce()
+    expect(await harness.repository.getRfqSwap(valid.rfqId)).toMatchObject({
+      state: 'refunded',
+      refundArkTxid: 'de'.repeat(32),
+    })
+    expect(await harness.repository.getRfqSwap(missing.rfqId)).toMatchObject({ state: 'pending' })
+    await targeted.manager.stop()
 
     await harness.repository[Symbol.asyncDispose]()
   })
