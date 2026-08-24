@@ -15,13 +15,21 @@ async function registerWorker(page: Page, vaultId: string) {
 }
 
 async function seedIntent(page: Page, vaultId: string, state: string, commitmentTransactionId?: string) {
-  await page.evaluate(
-    async ({ fixturePath, input }) => {
-      const fixture = await import(/* @vite-ignore */ fixturePath)
-      await fixture.seedBoardingIntent(input)
-    },
-    { fixturePath: BROWSER_FIXTURE, input: { vaultId, state, commitmentTransactionId } },
-  )
+  const seed = () =>
+    page.evaluate(
+      async ({ fixturePath, input }) => {
+        const fixture = await import(/* @vite-ignore */ fixturePath)
+        await fixture.seedBoardingIntent(input)
+      },
+      { fixturePath: BROWSER_FIXTURE, input: { vaultId, state, commitmentTransactionId } },
+    )
+  try {
+    await seed()
+  } catch (error) {
+    if (!/execution context was destroyed/i.test(String(error))) throw error
+    await page.waitForLoadState('domcontentloaded')
+    await seed()
+  }
 }
 
 async function intentState(page: Page, vaultId: string, now?: number, commitments: string[] = []) {
