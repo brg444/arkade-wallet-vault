@@ -201,8 +201,8 @@ export async function vaultBoardingIntentStatus(
     const intents = await repository.getIntents({ containingInputs })
     // Confirmed destination evidence wins over older local metadata. A stale
     // nonterminal row is not proof that an originating page is still signing:
-    // the cross-tab Web Lock excludes a live signer, then this grace (aligned
-    // with the SDK settle retry cap) permits its official duplicate cleanup.
+    // the cross-tab Web Lock excludes a live signer, then this app's bounded
+    // abandoned-operation grace permits the SDK's duplicate cleanup to retry.
     return classifyVaultBoardingIntents(intents, now, destinationCommitments)
   } finally {
     await repository[Symbol.asyncDispose]()
