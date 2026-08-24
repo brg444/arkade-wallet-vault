@@ -305,7 +305,7 @@ export function clearPersistedVtxoSpend(vaultId: string) {
   localStorage.removeItem(vtxoSpendStorageKey(vaultId))
 }
 
-function requireHex(value: string | undefined, bytes: number, name: string): Uint8Array {
+function requireHex(value: string | undefined, bytes: number, name: string): Uint8Array<ArrayBuffer> {
   let decoded: Uint8Array
   try {
     decoded = hex.decode(String(value || '').toLowerCase())
@@ -313,7 +313,7 @@ function requireHex(value: string | undefined, bytes: number, name: string): Uin
     throw new Error(`${name} is not hex`)
   }
   if (decoded.length !== bytes) throw new Error(`${name} must be ${bytes} bytes`)
-  return decoded
+  return decoded as Uint8Array<ArrayBuffer>
 }
 
 function xOnly(value: string | undefined, name: string): Uint8Array {
@@ -431,7 +431,7 @@ async function authorizeWithPasskey(
       await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: requireHex(enrollment.nonce, 12, 'enrollment nonce') },
         kek,
-        hex.decode(enrollment.ciphertext),
+        hex.decode(enrollment.ciphertext) as BufferSource,
       ),
     )
     const identity = SingleKey.fromPrivateKey(phoneSecret)
@@ -451,7 +451,7 @@ async function authorizeWithPasskey(
       phoneSecret,
     }
   } finally {
-    zeroBytes(prf, scalar)
+    zeroBytes(prf, scalar as Uint8Array)
   }
 }
 

@@ -16,7 +16,7 @@ function renderReceive(account: VaultAccount) {
     navigate: () => {},
     savingsAddress: 'tb1qsavings',
     spendingArkAddress: 'tark1spending',
-  } as VaultContextProps
+  } as unknown as VaultContextProps
   return render(
     <ToastProvider>
       <VaultContext.Provider value={value}>

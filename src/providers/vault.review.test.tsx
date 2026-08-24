@@ -3,7 +3,9 @@ import { hex } from '@scure/base'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useContext } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { POLICY_VERSION } from '../lib/vault/constants'
 import { ENROLL_STORE, SELECTED_VAULT_STORE } from '../lib/vault/enrollmentStore'
+import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import type { VaultStatus } from '../lib/vault/types'
 import golden from '../lib/vault/vtxo/testdata/vault-policy-v1-tree.json'
 import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
@@ -75,7 +77,13 @@ const destination = new ArkAddress(
 const status: VaultStatus = {
   enrolled: true,
   network: 'mutinynet',
+  clientOrigin: 'https://vault.test',
+  rpId: 'vault.test',
   vaultId: 'vault-a',
+  templateVersion: SAVINGS_TEMPLATE,
+  policyVersion: POLICY_VERSION,
+  savingsAddress: '',
+  savingsScript: '',
   periodAllowance: 100_000,
   periodSpent: 0,
   periodRemaining: 100_000,

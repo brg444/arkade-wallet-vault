@@ -30,7 +30,7 @@ function requireRPID(status: VaultStatus): string {
   return rpId
 }
 
-async function deriveKEK(prf: Uint8Array): Promise<CryptoKey> {
+async function deriveKEK(prf: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
     await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
@@ -157,7 +157,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     }
     return live
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneSecret)
+    zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }
 
@@ -263,6 +263,6 @@ export async function signInWithPasskey(
     pinEnrolledStatus(status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneSecret)
+    zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }

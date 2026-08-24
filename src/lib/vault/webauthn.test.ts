@@ -17,7 +17,7 @@ const originalCredentials = Object.getOwnPropertyDescriptor(navigator, 'credenti
 afterEach(() => {
   Object.defineProperty(navigator, 'userAgent', { configurable: true, value: original })
   if (originalCredentials) Object.defineProperty(navigator, 'credentials', originalCredentials)
-  else delete (navigator as Navigator & { credentials?: CredentialsContainer }).credentials
+  else Reflect.deleteProperty(navigator, 'credentials')
   vi.unstubAllGlobals()
 })
 
