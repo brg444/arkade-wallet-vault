@@ -4,7 +4,7 @@ import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } 
 import { applyLightningHistoryMetadata, historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { vaultLightningSendEnabled } from '../lib/vault/lightningConfig'
-import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
+import { loadAddressPin, requireStatusMatchesPin, type AddressPin } from '../lib/vault/pin'
 import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
@@ -166,9 +166,11 @@ export function useVaultBalances({
           setBalanceError('')
           return
         }
-        const pin = loadAddressPin(localStorage, id)
+        const memoryPin = addressPinRef.current
+        const pin = memoryPin?.vaultId === id ? memoryPin : loadAddressPin(localStorage, id)
         const savingsAddress = pin?.savingsAddress || ''
-        const liveStatus = await fetchVaultStatus(undefined, id)
+        const fetchedStatus = await fetchVaultStatus(undefined, id)
+        const liveStatus = pin ? requireStatusMatchesPin(fetchedStatus, pin) : fetchedStatus
         const spendingAddress = liveStatus?.spendingArkAddress || ''
         const boardingAddress = liveStatus?.vtxoBoardingAddress || ''
         if (!savingsAddress && !spendingAddress && !boardingAddress) {

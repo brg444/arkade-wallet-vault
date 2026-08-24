@@ -73,8 +73,10 @@ function setupHook(
   initialStatusChecked = true,
   enrollment: EnrollmentSecrets | null = null,
   withPin = true,
+  persistPin = true,
 ) {
-  const pin = withPin ? saveAddressPin(pinFromEnrolledStatus(status || STATUS)) : null
+  const builtPin = withPin ? pinFromEnrolledStatus(status || STATUS) : null
+  const pin = builtPin && persistPin ? saveAddressPin(builtPin) : builtPin
   const setStatus = vi.fn()
   const reportError = vi.fn()
   const onBoarded = vi.fn()
@@ -162,6 +164,16 @@ describe('savingsUtxoBalance', () => {
 })
 
 describe('useVaultBalances refresh coordination', () => {
+  it('uses and verifies the recovered in-memory pin when private storage is unavailable', async () => {
+    mockedUtxos.mockResolvedValue([{ txid: 'saved', vout: 0, value: 42_000, status: { confirmed: true } }])
+    const { result } = setupHook(true, STATUS, true, null, true, false)
+
+    await act(async () => result.current.refreshBalance())
+
+    expect(mockedUtxos).toHaveBeenCalledWith(STATUS.savingsAddress)
+    expect(result.current.savingsSats).toBe(42_000)
+  })
+
   it('ignores an older refresh that finishes after a newer snapshot', async () => {
     const older = deferred<Awaited<ReturnType<typeof fetchAddressUtxos>>>()
     mockedUtxos

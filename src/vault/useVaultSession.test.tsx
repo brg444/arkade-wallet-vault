@@ -7,21 +7,26 @@ import type { VaultStatus } from '../lib/vault/types'
 import { useVaultSession } from './useVaultSession'
 
 const mocks = vi.hoisted(() => ({
+  discover: vi.fn(),
   enable: vi.fn(),
   fetchStatus: vi.fn(),
   loadPin: vi.fn(),
+  makePin: vi.fn(),
   pullMap: vi.fn(),
   recover: vi.fn(),
+  savePin: vi.fn(),
   unlock: vi.fn(),
 }))
 
 vi.mock('../lib/vault/pin', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/vault/pin')>()),
   loadAddressPin: mocks.loadPin,
+  pinFromEnrolledStatus: mocks.makePin,
+  saveAddressPin: mocks.savePin,
 }))
 
 vi.mock('../lib/vault/signIn', () => ({
-  discoverVaultIdFromPasskey: vi.fn(),
+  discoverVaultIdFromPasskey: mocks.discover,
   enablePasskeyLogin: mocks.enable,
   signInWithPasskey: mocks.recover,
   unlockLocalEnrollment: mocks.unlock,
@@ -51,7 +56,9 @@ const status = { enrolled: true, vaultId: 'vault-a' } as VaultStatus
 const pin = { vaultId: 'vault-a', savingsAddress: 'tb1psavings' } as AddressPin
 const setup = { hardwarePub: '', recoveryPub: '' } as VaultSetupPlan
 
-function setupHook() {
+function setupHook(
+  session: { enrollment: EnrollmentSecrets | null; status: VaultStatus | null } = { enrollment, status },
+) {
   const state = {
     reportError: vi.fn(),
     sealPlan: vi.fn(() => setup),
@@ -64,10 +71,10 @@ function setupHook() {
   }
   const hook = renderHook(() =>
     useVaultSession({
-      enrollment,
+      enrollment: session.enrollment,
       ...state,
       setup,
-      status,
+      status: session.status,
     }),
   )
   return { ...hook, ...state }
@@ -76,10 +83,13 @@ function setupHook() {
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
+  mocks.discover.mockResolvedValue('vault-a')
   mocks.fetchStatus.mockResolvedValue(status)
   mocks.enable.mockResolvedValue(status)
   mocks.pullMap.mockResolvedValue(null)
   mocks.recover.mockResolvedValue({ enrollment, status })
+  mocks.makePin.mockReturnValue(pin)
+  mocks.savePin.mockReturnValue(pin)
   mocks.unlock.mockResolvedValue(enrollment)
 })
 
@@ -124,5 +134,25 @@ describe('Vault session program-pin recovery', () => {
     expect(hook.setScreen).toHaveBeenCalledWith('home')
     releaseMap()
     await act(async () => Promise.resolve())
+  })
+
+  it('opens a genuinely fresh recovered session when private browsing rejects durable writes', async () => {
+    mocks.loadPin.mockReturnValue(null)
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+    })
+    const hook = setupHook({ enrollment: null, status: null })
+
+    await act(async () => hook.result.current.signIn())
+
+    expect(mocks.recover).toHaveBeenCalledExactlyOnceWith('vault-a')
+    expect(hook.setEnrollment).toHaveBeenCalledWith(enrollment)
+    expect(hook.setAddressPin).toHaveBeenCalledWith(pin)
+    expect(hook.setStatus).toHaveBeenCalledWith(status)
+    expect(hook.setLocked).toHaveBeenCalledWith(false)
+    expect(hook.setScreen).toHaveBeenCalledWith('home')
+    expect(hook.reportError).not.toHaveBeenCalledWith('Something went wrong. Try again.')
+
+    setItem.mockRestore()
   })
 })
