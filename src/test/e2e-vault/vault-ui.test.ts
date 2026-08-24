@@ -31,17 +31,40 @@ type VaultUiState = {
   savingsUtxos: EsploraUtxo[]
 }
 
+type OperatorFixtureState = {
+  available?: boolean
+  requests?: string[]
+  vtxos?: Record<string, unknown>[]
+}
+
+type OpenVaultOptions = {
+  beforeReload?: (page: Page, status: VaultStatus) => Promise<void>
+  operatorAvailable?: boolean
+  operatorVtxos?: Record<string, unknown>[]
+  waitForBalance?: boolean
+}
+
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function setOperatorVtxos(vtxos: Record<string, unknown>[] = []) {
+async function setOperatorState(input: OperatorFixtureState = {}) {
   const response = await fetch(OPERATOR_CONTROL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ vtxos }),
+    body: JSON.stringify(input),
   })
   if (!response.ok) throw new Error(`Operator fixture reset failed: ${response.status}`)
+}
+
+async function setOperatorVtxos(vtxos: Record<string, unknown>[] = []) {
+  await setOperatorState({ available: true, vtxos })
+}
+
+async function readOperatorState(): Promise<Required<OperatorFixtureState>> {
+  const response = await fetch(OPERATOR_CONTROL)
+  if (!response.ok) throw new Error(`Operator fixture read failed: ${response.status}`)
+  return response.json() as Promise<Required<OperatorFixtureState>>
 }
 
 async function wireVtxo(page: Page, status: VaultStatus, input: Record<string, unknown>) {
@@ -67,6 +90,40 @@ async function seedIntent(page: Page, state: string, commitmentTransactionId?: s
   )
 }
 
+async function dispatchUtxoUpdate(page: Page, vaultId: string) {
+  await page.evaluate(
+    async ({ fixturePath, id }) => {
+      const fixture = await import(/* @vite-ignore */ fixturePath)
+      fixture.dispatchReadonlyUtxoUpdate(id)
+    },
+    { fixturePath: WORKER_FIXTURE, id: vaultId },
+  )
+}
+
+async function seedReviewedSpend(
+  page: Page,
+  status: VaultStatus,
+  destination: string,
+  amountSats: number,
+  feeSats: number,
+  changeSats: number,
+) {
+  await page.evaluate(
+    async ({ fixturePath, currentStatus, destAddress, amount, fee, change }) => {
+      const fixture = await import(/* @vite-ignore */ fixturePath)
+      fixture.seedReviewedVtxoSpend(currentStatus, destAddress, amount, fee, change)
+    },
+    {
+      fixturePath: UI_FIXTURE,
+      currentStatus: status,
+      destAddress: destination,
+      amount: amountSats,
+      fee: feeSats,
+      change: changeSats,
+    },
+  )
+}
+
 async function refreshHome(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy', 'true')
@@ -88,6 +145,7 @@ async function installRoutes(page: Page, getStatus: () => VaultStatus | undefine
       enrollmentMode: 'token',
     })
   })
+  await page.route('**/v1/vtxo/operation*', (route) => json(route, { error: 'operation not found' }, 404))
   await page.route('**/esplora/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -112,7 +170,7 @@ async function installRoutes(page: Page, getStatus: () => VaultStatus | undefine
   })
 }
 
-async function openVault(page: Page, initial: Partial<VaultUiState> = {}) {
+async function openVault(page: Page, initial: Partial<VaultUiState> = {}, options: OpenVaultOptions = {}) {
   let status: VaultStatus | undefined
   const state: VaultUiState = {
     boardingUtxos: initial.boardingUtxos || [],
@@ -120,7 +178,10 @@ async function openVault(page: Page, initial: Partial<VaultUiState> = {}) {
     savingsUtxos: initial.savingsUtxos || [],
   }
   await installRoutes(page, () => status, state)
-  await setOperatorVtxos()
+  await setOperatorState({
+    available: options.operatorAvailable !== false,
+    vtxos: options.operatorVtxos || [],
+  })
   await page.goto('/')
   const installed = await page.evaluate(async (fixturePath) => {
     const fixture = await import(/* @vite-ignore */ fixturePath)
@@ -128,13 +189,16 @@ async function openVault(page: Page, initial: Partial<VaultUiState> = {}) {
   }, UI_FIXTURE)
   const currentStatus = installed.status as VaultStatus
   status = currentStatus
+  await options.beforeReload?.(page, currentStatus)
   await page.reload()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
-  try {
-    await expect(page.getByTestId('vault-balance')).not.toHaveText('—', { timeout: 15_000 })
-  } catch (error) {
-    const operator = await fetch(OPERATOR_CONTROL).then((response) => response.text())
-    throw new Error(`Vault Home did not finish loading. Operator fixture: ${operator}`, { cause: error })
+  if (options.waitForBalance !== false) {
+    try {
+      await expect(page.getByTestId('vault-balance')).not.toHaveText('—', { timeout: 15_000 })
+    } catch (error) {
+      const operator = await fetch(OPERATOR_CONTROL).then((response) => response.text())
+      throw new Error(`Vault Home did not finish loading. Operator fixture: ${operator}`, { cause: error })
+    }
   }
   return { destination: installed.destination as string, state, status: currentStatus }
 }
@@ -180,6 +244,148 @@ test('renders the Spending BIP21 request and copies each underlying address', as
   })
 })
 
+test('ignores another vault worker update and refreshes on the matching update', async ({ page }) => {
+  const { status } = await openVault(page)
+  await expect(page.getByTestId('vault-balance')).toContainText('0')
+
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 25_000, txid: VTXO_TXID })])
+  await dispatchUtxoUpdate(page, 'another-vault')
+  await page.waitForTimeout(350)
+  await expect(page.getByTestId('vault-balance')).toContainText('0')
+
+  await dispatchUtxoUpdate(page, status.vaultId)
+  await expect(page.getByTestId('vault-balance')).toContainText('25,000')
+  await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+})
+
+test('keeps cached Spending balance and history during an open-session outage, then refreshes', async ({
+  context,
+  page,
+}) => {
+  const { status } = await openVault(page)
+  const cached = await wireVtxo(page, status, { amount: 25_000, txid: VTXO_TXID })
+  await setOperatorVtxos([cached])
+  await dispatchUtxoUpdate(page, status.vaultId)
+  await expect(page.getByTestId('vault-balance')).toContainText('25,000')
+  await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+
+  const nextTxid = 'ab'.repeat(32)
+  await setOperatorVtxos([
+    { ...cached, isSpent: true, spentBy: nextTxid, arkTxid: nextTxid },
+    await wireVtxo(page, status, { amount: 30_000, txid: nextTxid }),
+  ])
+  await context.setOffline(true)
+  await refreshHome(page)
+  await expect(page.getByTestId('vault-balance')).toContainText('25,000')
+  await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+
+  await context.setOffline(false)
+  await dispatchUtxoUpdate(page, status.vaultId)
+  await expect(page.getByTestId('vault-balance')).toContainText('30,000')
+  await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+})
+
+test('fails closed without an Operator cache and recovers through Retry', async ({ page }) => {
+  const { status } = await openVault(page, {}, { operatorAvailable: false, waitForBalance: false })
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+  await expect(page.getByText('Activity is unavailable. Refresh to try again.')).toBeVisible()
+  await expect(page.getByTestId('vault-balance')).toHaveText('—')
+
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 25_000, txid: VTXO_TXID })])
+  await page.getByRole('button', { name: 'Retry' }).click()
+  await expect(page.getByTestId('vault-balance')).toContainText('25,000')
+  await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+})
+
+test('renders an exact reviewed VTXO send before approval', async ({ page }) => {
+  const { destination, status } = await openVault(page)
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])
+  await dispatchUtxoUpdate(page, status.vaultId)
+  await expect(page.getByTestId('vault-balance')).toContainText('20,000')
+  await seedReviewedSpend(page, status, destination, 12_000, 500, 7_500)
+
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('20,000 / 100,000 available today')).toBeVisible()
+  await page.getByTestId('vault-send-amount').fill('12000')
+  await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
+  await page.getByRole('button', { name: 'Review send' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
+  await expect(page.getByText('12,000 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText(destination, { exact: true })).toBeVisible()
+  await expect(page.getByText('500 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText('12,500 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText('Vault service', { exact: true })).toBeVisible()
+  await expect(page.getByText('Approves if under today’s limit', { exact: true })).toBeVisible()
+  await expect(page.getByText('Hardware', { exact: true })).toBeVisible()
+  await expect(page.getByText('Not needed for this send', { exact: true })).toBeVisible()
+})
+
+test('renders an exact no-change VTXO send with the resolved time before its receive', async ({ page }) => {
+  const { status } = await openVault(page)
+  const inputTxid = '21'.repeat(32)
+  const sendTxid = '31'.repeat(32)
+  const receivedAt = Date.UTC(2026, 7, 20, 10, 0, 0)
+  const sentAt = Date.UTC(2026, 7, 21, 12, 2, 0)
+  const input = await wireVtxo(page, status, {
+    amount: 12_500,
+    txid: inputTxid,
+    createdAt: receivedAt,
+    isSpent: true,
+    spentBy: sendTxid,
+    arkTxid: sendTxid,
+  })
+  const resolver = {
+    ...(await wireVtxo(page, status, { amount: 1, txid: sendTxid, createdAt: sentAt })),
+    script: `5120${'99'.repeat(32)}`,
+  }
+  await setOperatorVtxos([input, resolver])
+  await dispatchUtxoUpdate(page, status.vaultId)
+
+  const sent = page.getByTestId(`vault-tx-${sendTxid}`)
+  await expect(page.getByTestId('vault-balance')).toContainText('0')
+  await expect(sent).toContainText('Sent')
+  await expect(sent).toContainText('12,500 SATS')
+  const expectedTime = await page.evaluate(
+    (timestamp) => new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(new Date(timestamp)),
+    sentAt,
+  )
+  await expect(sent).toContainText(`Confirmed · ${expectedTime}`)
+  const rows = page.locator('[data-testid^="vault-tx-"]')
+  await expect(rows.nth(0)).toHaveAttribute('data-testid', `vault-tx-${sendTxid}`)
+  await expect(rows.nth(1)).toHaveAttribute('data-testid', `vault-tx-${inputTxid}`)
+})
+
+test('nets VTXO change into one rendered send and omits it as a receive', async ({ page }) => {
+  const { status } = await openVault(page)
+  const inputTxid = '41'.repeat(32)
+  const sendTxid = '51'.repeat(32)
+  const input = await wireVtxo(page, status, {
+    amount: 20_000,
+    txid: inputTxid,
+    createdAt: Date.UTC(2026, 7, 20, 10, 0, 0),
+    isSpent: true,
+    spentBy: sendTxid,
+    arkTxid: sendTxid,
+  })
+  const change = await wireVtxo(page, status, {
+    amount: 7_500,
+    txid: sendTxid,
+    vout: 1,
+    createdAt: Date.UTC(2026, 7, 21, 12, 2, 0),
+  })
+  await setOperatorVtxos([input, change])
+  await dispatchUtxoUpdate(page, status.vaultId)
+
+  const sent = page.getByTestId(`vault-tx-${sendTxid}`)
+  await expect(page.getByTestId('vault-balance')).toContainText('7,500')
+  await expect(sent).toHaveCount(1)
+  await expect(sent).toContainText('Sent')
+  await expect(sent).toContainText('12,500 SATS')
+  await expect(sent).not.toContainText('Received')
+  await expect(page.getByTestId(`vault-tx-${inputTxid}`)).toContainText('Received')
+})
+
 test('shows boarding value immediately, then replaces it with the confirmed VTXO without double counting', async ({
   page,
 }) => {
@@ -212,6 +418,65 @@ test('shows boarding value immediately, then replaces it with the confirmed VTXO
   await expect(page.getByTestId('vault-balance')).toContainText('49,000')
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toHaveCount(0)
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toContainText('Confirmed')
+})
+
+test('does not reopen Face ID or start another boarding operation for a fresh active intent', async ({
+  context,
+  page,
+}) => {
+  await context.addInitScript(() => {
+    const tracked = globalThis as typeof globalThis & { __vaultCredentialGets?: number }
+    tracked.__vaultCredentialGets = 0
+    Object.defineProperty(navigator.credentials, 'get', {
+      configurable: true,
+      value: async () => {
+        tracked.__vaultCredentialGets = (tracked.__vaultCredentialGets || 0) + 1
+        throw new DOMException('Unexpected credential request', 'NotAllowedError')
+      },
+    })
+  })
+  const confirmed: EsploraUtxo = {
+    txid: BOARDING_TXID,
+    vout: 0,
+    value: 50_000,
+    status: { confirmed: true, block_height: 101 },
+  }
+  const { state, status } = await openVault(
+    page,
+    { boardingUtxos: [confirmed] },
+    { beforeReload: async (currentPage) => seedIntent(currentPage, 'waiting_for_batch') },
+  )
+  await expect(page.getByTestId('vault-balance')).toContainText('50,000')
+
+  const pageB = await context.newPage()
+  await installRoutes(pageB, () => status, state)
+  await pageB.goto('/')
+  await expect(pageB.getByTestId('account-switcher')).toBeVisible()
+  await expect(pageB.getByTestId('vault-balance')).toContainText('50,000')
+
+  await Promise.all([page.reload(), pageB.reload()])
+  await expect(page.getByTestId('vault-balance')).toContainText('50,000')
+  await expect(pageB.getByTestId('vault-balance')).toContainText('50,000')
+  await Promise.all(
+    [page, pageB].map((currentPage) =>
+      currentPage.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          }),
+      ),
+    ),
+  )
+  const credentialRequests = await Promise.all(
+    [page, pageB].map((currentPage) =>
+      currentPage.evaluate(
+        () => (globalThis as typeof globalThis & { __vaultCredentialGets?: number }).__vaultCredentialGets || 0,
+      ),
+    ),
+  )
+  expect(credentialRequests).toEqual([0, 0])
+  const operator = await readOperatorState()
+  expect(operator.requests.some((request) => request.includes('/v1/batch/registerIntent'))).toBe(false)
 })
 
 test('recovers a missed VTXO update after reconnect and updates the rendered Home balance', async ({

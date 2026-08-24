@@ -13,6 +13,7 @@ const CHECKPOINT_TAPSCRIPT = hex.encode(
 )
 
 type OperatorFixtureState = {
+  available: boolean
   info: Record<string, unknown>
   requests: string[]
   vtxos: Record<string, unknown>[]
@@ -43,7 +44,7 @@ const DEFAULT_INFO = {
 }
 
 function freshState(): OperatorFixtureState {
-  return { info: { ...DEFAULT_INFO }, requests: [], vtxos: [] }
+  return { available: true, info: { ...DEFAULT_INFO }, requests: [], vtxos: [] }
 }
 
 function readBody(request: http.IncomingMessage): Promise<string> {
@@ -87,6 +88,7 @@ export default async function globalSetup() {
       }
       const input = JSON.parse((await readBody(request)) || '{}') as Partial<OperatorFixtureState>
       state = {
+        available: input.available !== false,
         info: { ...DEFAULT_INFO, ...(input.info || {}) },
         requests: [],
         vtxos: Array.isArray(input.vtxos) ? input.vtxos : [],
@@ -95,6 +97,10 @@ export default async function globalSetup() {
       return
     }
     state.requests.push(`${request.method || 'GET'} ${url.pathname}${url.search}`)
+    if (!state.available) {
+      json(response, 503, { error: 'Operator fixture is unavailable' })
+      return
+    }
     if (request.method === 'OPTIONS') {
       response.writeHead(204, {
         'Access-Control-Allow-Headers': '*',
@@ -109,7 +115,17 @@ export default async function globalSetup() {
       return
     }
     if (url.pathname === '/v1/indexer/vtxos') {
-      json(response, 200, { page: { current: 0, next: 0, total: 1 }, vtxos: state.vtxos })
+      const scripts = new Set(url.searchParams.getAll('scripts').map((script) => script.toLowerCase()))
+      const outpoints = new Set(url.searchParams.getAll('outpoints').map((outpoint) => outpoint.toLowerCase()))
+      const vtxos = state.vtxos.filter((vtxo) => {
+        if (scripts.size > 0) return scripts.has(String(vtxo.script || '').toLowerCase())
+        if (outpoints.size > 0) {
+          const outpoint = vtxo.outpoint as { txid?: string; vout?: number } | undefined
+          return outpoints.has(`${String(outpoint?.txid || '').toLowerCase()}:${Number(outpoint?.vout || 0)}`)
+        }
+        return true
+      })
+      json(response, 200, { page: { current: 0, next: 0, total: 1 }, vtxos })
       return
     }
     if (url.pathname === '/v1/indexer/script/subscribe') {
