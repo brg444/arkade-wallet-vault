@@ -95,7 +95,8 @@ export function humanizeVaultError(err: unknown): string {
   if (
     msg.includes('template version') ||
     msg.includes('policy version') ||
-    msg.includes('current vault program descriptor')
+    msg.includes('current vault program descriptor') ||
+    msg.includes('tree does not match this vault')
   ) {
     return 'This app doesn’t match the vault. Update and try again.'
   }
@@ -129,7 +130,7 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('different key') || msg.includes('must be different')) {
     return 'Use a different hardware key.'
   }
-  return raw.charAt(0).toUpperCase() + raw.slice(1)
+  return 'Something went wrong. Try again.'
 }
 
 export function isRecoverableVaultBoardingError(err: unknown): boolean {

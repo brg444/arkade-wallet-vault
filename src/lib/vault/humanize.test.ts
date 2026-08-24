@@ -97,7 +97,13 @@ describe('humanizeVaultError', () => {
 
   it('does not mislabel a vault script mismatch as a passkey failure', () => {
     expect(humanizeVaultError(new Error('savings tree does not match this vault’s address'))).toBe(
-      'Savings tree does not match this vault’s address',
+      'This app doesn’t match the vault. Update and try again.',
+    )
+  })
+
+  it('never exposes an unknown implementation error in the wallet UI', () => {
+    expect(humanizeVaultError(new Error('INTERNAL_ERROR (0): opaque SDK detail'))).toBe(
+      'Something went wrong. Try again.',
     )
   })
 })
