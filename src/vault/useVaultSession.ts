@@ -145,7 +145,8 @@ export function useVaultSession({
     reportError('')
     try {
       const local = enrollment || findStoredEnrollment()
-      if (local) {
+      const localPin = local ? loadAddressPin(localStorage, local.vaultId) : null
+      if (local && localPin) {
         const unlocked = await unlockLocalEnrollment(local)
         setEnrollment(unlocked)
         saveEnrollment(unlocked)
@@ -159,7 +160,7 @@ export function useVaultSession({
         setScreen('home')
         return
       }
-      const selected = loadSelectedVaultId()
+      const selected = local?.vaultId || loadSelectedVaultId()
       const vaultId = selected || (await discoverVaultIdFromPasskey())
       const result = await signInWithPasskey(vaultId)
       setEnrollment(result.enrollment)

@@ -5,7 +5,11 @@ import { VaultContext, type VaultAccount, type VaultContextProps } from '../../v
 import VaultReceive from './Receive'
 
 vi.mock('../../components/QrCode', () => ({
-  default: ({ value }: { value: string }) => <div data-testid='receive-qr'>{value}</div>,
+  default: ({ large, value }: { large?: boolean; value: string }) => (
+    <div data-large={String(Boolean(large))} data-testid='receive-qr'>
+      {value}
+    </div>
+  ),
 }))
 
 function renderReceive(account: VaultAccount) {
@@ -26,14 +30,35 @@ function renderReceive(account: VaultAccount) {
   )
 }
 
+function renderReceiveWithoutAddresses(account: VaultAccount) {
+  const value = {
+    account,
+    boardingAddress: '',
+    liveNetwork: true,
+    navigate: () => {},
+    savingsAddress: '',
+    spendingArkAddress: '',
+  } as unknown as VaultContextProps
+  return render(
+    <ToastProvider>
+      <VaultContext.Provider value={value}>
+        <VaultReceive />
+      </VaultContext.Provider>
+    </ToastProvider>,
+  )
+}
+
 describe('Vault receive', () => {
   it('shows one Spending BIP21 request with Arkade and boarding addresses', () => {
     renderReceive('spend')
     expect(screen.getByRole('heading', { name: 'Receive to Spending' })).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('bitcoin:tb1qboarding?ark=tark1spending')
+    expect(screen.getByTestId('receive-qr')).toHaveAttribute('data-large', 'true')
     expect(screen.queryByTestId('receive-address')).toBeNull()
     expect(screen.getByTestId('receive-arkade-address')).toBeTruthy()
     expect(screen.getByTestId('receive-bitcoin-address')).toBeTruthy()
+    expect(screen.queryByText(/Testnet/)).toBeNull()
+    expect(screen.queryByText('One payment request')).toBeNull()
     expect(screen.queryByText(/Confirmed Bitcoin deposits/)).toBeNull()
     expect(screen.queryByText('Savings')).toBeNull()
   })
@@ -42,9 +67,16 @@ describe('Vault receive', () => {
     renderReceive('savings')
     expect(screen.getByRole('heading', { name: 'Add to Savings' })).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('tb1qsavings')
+    expect(screen.getByTestId('receive-qr')).toHaveAttribute('data-large', 'false')
     expect(screen.getByTestId('receive-address')).toHaveTextContent('tb1qsavings')
     expect(screen.getByText('Savings address')).toBeTruthy()
     expect(screen.queryByTestId('receive-arkade-address')).toBeNull()
     expect(screen.queryByTestId('receive-bitcoin-address')).toBeNull()
+  })
+
+  it('explains a missing Savings pin instead of suggesting setup is still processing', () => {
+    renderReceiveWithoutAddresses('savings')
+    expect(screen.getByText('Savings is not restored on this device. Sign in again to restore it.')).toBeTruthy()
+    expect(screen.queryByText(/setup finishes/)).toBeNull()
   })
 })
