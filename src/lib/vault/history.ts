@@ -10,6 +10,10 @@ export interface VaultHistoryItem {
   confirmed: boolean
   blockTime?: number
   account: 'spend' | 'savings'
+  activity?: 'lightning'
+  displayAmount?: number
+  fee?: number
+  lightningState?: string
 }
 
 export interface VaultHistoryGroup {
@@ -118,6 +122,30 @@ export interface VaultVtxoHistoryCoin {
   commitmentTxIds?: string[]
   isLeaf?: boolean
   settledBy?: string
+}
+
+export interface VaultLightningHistoryMetadata {
+  txid: string
+  invoiceAmountSats: number
+  state: string
+}
+
+export function applyLightningHistoryMetadata(
+  rows: VaultHistoryItem[],
+  payments: readonly VaultLightningHistoryMetadata[],
+): VaultHistoryItem[] {
+  const byTxid = new Map(payments.map((payment) => [payment.txid, payment]))
+  return rows.map((row) => {
+    const payment = row.type === 'sent' ? byTxid.get(row.txid) : undefined
+    if (!payment) return row
+    return {
+      ...row,
+      activity: 'lightning',
+      displayAmount: payment.invoiceAmountSats,
+      fee: Math.max(0, row.amount - payment.invoiceAmountSats),
+      lightningState: payment.state,
+    }
+  })
 }
 
 /** Indexer VTXOs for the spending script: receives, sends, and change-aware net amounts. */

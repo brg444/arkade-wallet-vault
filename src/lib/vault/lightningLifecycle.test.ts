@@ -6,6 +6,7 @@ import {
   assertVaultLightningQuoteCurrent,
   beginVaultLightningFunding,
   cancelVaultLightningQuote,
+  listVaultLightningHistory,
   recordVaultLightningFundingTxid,
   requestVaultLightningQuote,
   retireAbandonedVaultLightningQuotes,
@@ -16,6 +17,7 @@ import {
 import {
   INVOICE_TIMESTAMP,
   MAINNET_INVOICE,
+  MAINNET_TEST_PROFILE,
   completeRequestResult,
   emptyIndexer,
   lightningQuoteHarness,
@@ -40,13 +42,32 @@ describe('Lightning persisted lifecycle', () => {
       },
     })
     expect(stored?.profile.vaultLightning).toEqual({
-      version: 1,
+      version: 2,
+      network: 'bitcoin',
       invoice: MAINNET_INVOICE,
       quote: harness.result.quote,
       fundingState: 'quoted',
     })
 
     await expect(harness.request()).resolves.toEqual(first)
+    expect(harness.requester).toHaveBeenCalledOnce()
+
+    await expect(
+      requestVaultLightningQuote({
+        wallet: harness.wallet,
+        arkServerUrl: 'https://arkade.computer',
+        invoice: MAINNET_INVOICE,
+        network: 'bitcoin',
+        transport: {} as never,
+        repository: harness.repository,
+        contracts: harness.contracts,
+        manager: harness.manager,
+        profile: MAINNET_TEST_PROFILE,
+        requester: harness.requester as never,
+        nowSeconds: INVOICE_TIMESTAMP + 1,
+        enabled: true,
+      }),
+    ).resolves.toEqual(first)
     expect(harness.requester).toHaveBeenCalledOnce()
 
     const target = await beginVaultLightningFunding(harness.repository, first.rfqId, INVOICE_TIMESTAMP + 2)
@@ -61,6 +82,9 @@ describe('Lightning persisted lifecycle', () => {
       /another funding transaction/,
     )
     expect(await harness.repository.getRfqSwap(first.rfqId)).toMatchObject({ fundingArkTxid: txid })
+    await expect(listVaultLightningHistory(harness.repository)).resolves.toEqual([
+      { txid, invoiceAmountSats: 2100, state: 'pending' },
+    ])
 
     await harness.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
@@ -101,6 +125,7 @@ describe('Lightning persisted lifecycle', () => {
         repository,
         contracts,
         manager,
+        profile: MAINNET_TEST_PROFILE,
         rfqId: result.rfqId,
         requester: vi.fn(async () => result) as never,
         nowSeconds: INVOICE_TIMESTAMP + 1,

@@ -21,14 +21,13 @@ import {
 } from '@arkade-os/swap'
 import { nostrRfqTransport } from '@arkade-os/swap/nostr'
 import { hex } from '@scure/base'
-import {
-  decodeVaultLightningInvoice,
-  registeredContractScript,
-  validateVaultLightningRequestResult,
-} from './lightningValidation'
+import { vaultLightningSendEnabled, type VaultLightningSolverProfile } from './lightningConfig'
+import { decodeVaultLightningInvoice } from './lightningInvoice'
+import { registeredContractScript, validateVaultLightningRequestResult } from './lightningValidation'
 import {
   discardUnexposedVaultLightningQuote,
   persistVaultLightningQuote,
+  restoreMatchingVaultLightningQuote,
   restorePersistedVaultLightningQuote,
   startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
@@ -38,39 +37,29 @@ import {
 import type { VaultStatus } from './types'
 import { createVaultBoardingStorage, disposeVaultBoardingResources } from './vtxo/board'
 
-export { LightningInvoiceRejected, decodeVaultLightningInvoice, wholeSatsFromMillisats } from './lightningValidation'
+export {
+  isVaultLightningInput,
+  MUTINYNET_LIGHTNING_SOLVER,
+  vaultLightningSendEnabled,
+  vaultLightningSolverProfile,
+  type VaultLightningSolverProfile,
+} from './lightningConfig'
+export { LightningInvoiceRejected, decodeVaultLightningInvoice, wholeSatsFromMillisats } from './lightningInvoice'
 export {
   assertVaultLightningQuoteCurrent,
   beginVaultLightningFunding,
   cancelVaultLightningQuote,
   getVaultLightningStatus,
+  listVaultLightningHistory,
   recordVaultLightningFundingTxid,
   retireAbandonedVaultLightningQuotes,
   startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
   type VaultLightningFundingTarget,
+  type VaultLightningHistoryMetadata,
   type VaultLightningQuote,
   type VaultLightningSession,
 } from './lightningLifecycle'
-
-const LIGHTNING_SEND_RELEASE_FLAG = 'true'
-
-/**
- * Candidate fields copied from the production card bundled by the official
- * Arkade Wallet at arkade-os/wallet@60cc144. The public registry currently
- * advertises no mainnet Lightning market. These fields remain disabled until
- * the card and its rotation procedure are approved as release pins.
- */
-export const MAINNET_LIGHTNING_SOLVER_CANDIDATE = {
-  pubkey: '66422c952f8dcb96e4d0c3f049cd1e265b8461b916d9913c65c2494b64b4e3ce',
-  relays: ['wss://nostr.arkade.sh'],
-  minSats: 500,
-  maxSats: 50_000,
-} as const
-
-export function vaultLightningSendEnabled(value = import.meta.env.VITE_VAULT_LIGHTNING_SEND): boolean {
-  return value === LIGHTNING_SEND_RELEASE_FLAG
-}
 
 /**
  * Keep the SDK wallet intact and substitute only its receive address. The
@@ -99,11 +88,10 @@ export function validateVaultLightningRefund(
   operatorSignerPubkey: string,
 ): ArkAddress {
   if (!status.enrolled || !status.vaultId) throw new Error('Enrolled vault required for Lightning.')
-  if (status.network !== 'bitcoin' || operatorNetwork !== 'bitcoin') {
-    throw new Error('Lightning send is enabled for mainnet only.')
-  }
+  if (status.network !== operatorNetwork) throw new Error('Vault and Arkade Operator networks do not match.')
   const refund = ArkAddress.decode(String(status.spendingArkAddress || ''))
-  if (refund.hrp !== 'ark') throw new Error('Spending refund address is encoded for another network.')
+  const expectedHrp = status.network === 'bitcoin' ? 'ark' : 'tark'
+  if (refund.hrp !== expectedHrp) throw new Error('Spending refund address is encoded for another network.')
   const advertisedScript = String(status.spendingArkScript || '').toLowerCase()
   if (!/^[0-9a-f]{68}$/.test(advertisedScript) || hex.encode(refund.pkScript) !== advertisedScript) {
     throw new Error('Spending refund address does not match its pinned script.')
@@ -201,6 +189,18 @@ export async function withVaultLightningSdkWallet<T>(
 
 type LightningRequester = typeof requestLightningSend
 
+export async function withVaultLightningRepository<T>(
+  vaultId: string,
+  run: (repository: IndexedDbAssetSwapRepository) => Promise<T>,
+): Promise<T> {
+  const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(vaultId))
+  try {
+    return await run(repository)
+  } finally {
+    await repository[Symbol.asyncDispose]()
+  }
+}
+
 export async function requestVaultLightningQuote({
   wallet,
   arkServerUrl,
@@ -210,7 +210,8 @@ export async function requestVaultLightningQuote({
   repository,
   contracts,
   manager,
-  rfqId = newRfqId(),
+  profile,
+  rfqId,
   requester = requestLightningSend,
   nowSeconds = Math.floor(Date.now() / 1000),
   enabled = vaultLightningSendEnabled(),
@@ -223,32 +224,57 @@ export async function requestVaultLightningQuote({
   repository: AssetSwapRepository
   contracts: SwapContractRegistry
   manager: RfqSwapManager
+  profile: VaultLightningSolverProfile
   rfqId?: string
   requester?: LightningRequester
   nowSeconds?: number
   enabled?: boolean
 }): Promise<VaultLightningQuote> {
   if (!enabled) throw new Error('Lightning send is not enabled in this release.')
-  if (network !== 'bitcoin') throw new Error('Lightning send is enabled for mainnet only.')
-  const facts = decodeVaultLightningInvoice(invoice, network, nowSeconds)
+  if (profile.network !== network) throw new Error('Lightning solver profile is for another network.')
+  if (!/^[0-9a-f]{64}$/.test(profile.pubkey)) throw new Error('Lightning solver pubkey is invalid.')
   if (
-    facts.amountSats < MAINNET_LIGHTNING_SOLVER_CANDIDATE.minSats ||
-    facts.amountSats > MAINNET_LIGHTNING_SOLVER_CANDIDATE.maxSats
+    profile.relays.length === 0 ||
+    profile.relays.some((relay) => {
+      try {
+        return new URL(relay).protocol !== 'wss:'
+      } catch {
+        return true
+      }
+    })
   ) {
+    throw new Error('Lightning solver relay configuration is invalid.')
+  }
+  if (
+    !Number.isSafeInteger(profile.minSats) ||
+    !Number.isSafeInteger(profile.maxSats) ||
+    profile.minSats < 1 ||
+    profile.maxSats < profile.minSats
+  ) {
+    throw new Error('Lightning solver amount limits are invalid.')
+  }
+  const facts = decodeVaultLightningInvoice(invoice, network, nowSeconds)
+  if (facts.amountSats < profile.minSats || facts.amountSats > profile.maxSats) {
     throw new Error(
-      `Lightning amount must be ${MAINNET_LIGHTNING_SOLVER_CANDIDATE.minSats.toLocaleString()}–${MAINNET_LIGHTNING_SOLVER_CANDIDATE.maxSats.toLocaleString()} sats.`,
+      `Lightning amount must be ${profile.minSats.toLocaleString()}–${profile.maxSats.toLocaleString()} sats.`,
     )
   }
-  if (!/^[0-9a-f]{64}$/.test(rfqId)) throw new Error('Lightning RFQ id must be 32 bytes of lowercase hex.')
-  const existing = await restorePersistedVaultLightningQuote(repository, contracts, manager, rfqId, facts.raw)
+  if (rfqId !== undefined && !/^[0-9a-f]{64}$/.test(rfqId)) {
+    throw new Error('Lightning RFQ id must be 32 bytes of lowercase hex.')
+  }
+  const existing = rfqId
+    ? await restorePersistedVaultLightningQuote(repository, contracts, manager, rfqId, facts.raw, network)
+    : await restoreMatchingVaultLightningQuote(repository, contracts, manager, facts.raw, network)
   if (existing) return existing
 
-  const result = await requester(wallet, arkServerUrl, transport, { invoice: facts, rfqId })
+  const requestId = rfqId ?? newRfqId()
+
+  const result = await requester(wallet, arkServerUrl, transport, { invoice: facts, rfqId: requestId })
   const contractScript = registeredContractScript(result)
   try {
     const { contractParams, refundLocktime } = await validateVaultLightningRequestResult({
       result,
-      rfqId,
+      rfqId: requestId,
       facts,
       wallet,
       contracts,
@@ -262,26 +288,28 @@ export async function requestVaultLightningQuote({
       contractParams,
       repository,
       manager,
+      network,
       nowSeconds,
     })
   } catch (error) {
-    return discardUnexposedVaultLightningQuote(repository, contracts, manager, rfqId, contractScript, error)
+    return discardUnexposedVaultLightningQuote(repository, contracts, manager, requestId, contractScript, error)
   }
 }
 
-export function mainnetLightningTransport(): RfqTransport {
+export function vaultLightningTransport(profile: VaultLightningSolverProfile): RfqTransport {
   return nostrRfqTransport({
-    relays: [...MAINNET_LIGHTNING_SOLVER_CANDIDATE.relays],
-    solverPubkey: MAINNET_LIGHTNING_SOLVER_CANDIDATE.pubkey,
+    relays: [...profile.relays],
+    solverPubkey: profile.pubkey,
     timeoutMs: 30_000,
   })
 }
 
-export async function withMainnetLightningTransport<T>(
+export async function withVaultLightningTransport<T>(
+  profile: VaultLightningSolverProfile,
   run: (transport: RfqTransport) => Promise<T>,
-  createTransport: () => RfqTransport = mainnetLightningTransport,
+  createTransport: (profile: VaultLightningSolverProfile) => RfqTransport = vaultLightningTransport,
 ): Promise<T> {
-  const transport = createTransport()
+  const transport = createTransport(profile)
   try {
     return await run(transport)
   } finally {

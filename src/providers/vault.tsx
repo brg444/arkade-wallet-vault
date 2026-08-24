@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import type { NetworkName } from '@arkade-os/sdk'
 import { DUST_SATS } from '../lib/vault/constants'
 import { reconcileStagedEnrollment, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import {
@@ -24,12 +25,20 @@ import {
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
+  isVaultLightningInput,
+  vaultLightningSendEnabled,
+  vaultLightningSolverProfile,
+} from '../lib/vault/lightningConfig'
+import { decodeVaultLightningInvoice } from '../lib/vault/lightningInvoice'
+import type { VaultLightningQuote } from '../lib/vault/lightningLifecycle'
+import {
   isVtxoReceiptPendingError,
   isVtxoReviewedReservationError,
   isVtxoSpendInFlightError,
   reserveVaultVtxo,
   sendVaultVtxo,
   type VaultVtxoSpendQuote,
+  vaultArkServer,
 } from '../lib/vault/vtxo/spend'
 import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
@@ -91,9 +100,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const spendRef = useRef(spend)
   spendRef.current = spend
   const [reviewedVtxoQuote, setReviewedVtxoQuote] = useState<VaultVtxoSpendQuote | null>(null)
+  const [lightningQuote, setLightningQuote] = useState<VaultLightningQuote | null>(null)
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
-  const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | ''>('')
+  const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | 'lightning' | ''>('')
   const [selectedTx, setSelectedTx] = useState<VaultHistoryItem | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [initialStatusChecked, setInitialStatusChecked] = useState(false)
@@ -200,6 +210,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     (next: VaultAccount) => {
       setAccount(next)
       setReviewedVtxoQuote(null)
+      setLightningQuote(null)
       setSpend((previous) => ({ ...previous, fee: vaultDraftFee(next, liveNetwork) }))
     },
     [liveNetwork],
@@ -339,6 +350,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const setSpendDraft = useCallback(
     (draft: Partial<VaultSpend>) => {
       setReviewedVtxoQuote(null)
+      setLightningQuote(null)
       setSpend((prev) => {
         const next = { ...prev, ...draft }
         next.fee = vaultDraftFee(account, liveNetwork)
@@ -349,11 +361,101 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [account, liveNetwork],
   )
 
+  const reviewLightningSpend = useCallback(async () => {
+    if (!status?.enrolled || !enrollment) {
+      setError('Sign in with the passkey that created this vault.')
+      return
+    }
+    if (account !== 'spend') {
+      setError('Lightning payments use Spending.')
+      return
+    }
+    if (!vaultLightningSendEnabled()) {
+      setError('Lightning send is not enabled in this release.')
+      return
+    }
+    const profile = vaultLightningSolverProfile(status.network as NetworkName)
+    if (!profile) {
+      setError('No Lightning solver is configured for this network.')
+      return
+    }
+
+    let invoice
+    try {
+      invoice = decodeVaultLightningInvoice(spend.address, profile.network)
+    } catch (err) {
+      setError(humanizeVaultError(err))
+      return
+    }
+    if (invoice.amountSats > setup.txCapSats) {
+      setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
+      return
+    }
+    if (invoice.amountSats > vtxoSpendingSats) {
+      setError('Not enough confirmed spending funds.')
+      return
+    }
+
+    setBusy(true)
+    try {
+      const lightning = await import('../lib/vault/lightning')
+      const phoneSecret = await unlockPhoneBip340(enrollment, status)
+      let quote: VaultLightningQuote
+      try {
+        quote = await lightning.withVaultLightningSdkWallet(phoneSecret, status, vaultArkServer(), (session) =>
+          lightning.withVaultLightningTransport(profile, (transport) =>
+            lightning.requestVaultLightningQuote({
+              wallet: session.wallet,
+              arkServerUrl: vaultArkServer(),
+              invoice: invoice.raw,
+              network: profile.network,
+              transport,
+              repository: session.repository,
+              contracts: session.contracts,
+              manager: session.manager,
+              profile,
+            }),
+          ),
+        )
+      } finally {
+        zeroBytes(phoneSecret)
+      }
+      if (quote.fundAmountSats > setup.txCapSats) {
+        throw new Error(`This payment exceeds the ${setup.txCapSats.toLocaleString()} sat send limit after fees.`)
+      }
+      const funding = await reserveVaultVtxo(enrollment, status, quote.fundAddress, quote.fundAmountSats)
+      if (quote.fundAmountSats + funding.feeSats > vtxoSpendingSats) {
+        throw new Error('Not enough confirmed spending funds after fees.')
+      }
+      if (spendRef.current.address.trim().replace(/^lightning:/i, '') !== invoice.raw) {
+        throw new Error('Send details changed. Review the send again.')
+      }
+      setLightningQuote(quote)
+      setReviewedVtxoQuote(funding)
+      setSpend((current) =>
+        current.address.trim().replace(/^lightning:/i, '') === invoice.raw
+          ? { ...current, amount: quote.invoiceAmountSats, fee: quote.corridorFeeSats + funding.feeSats }
+          : current,
+      )
+      setScreen('review')
+    } catch (err) {
+      setLightningQuote(null)
+      setReviewedVtxoQuote(null)
+      setError(humanizeVaultError(err))
+    } finally {
+      setBusy(false)
+    }
+  }, [account, enrollment, setup.txCapSats, spend.address, status, vtxoSpendingSats])
+
   const reviewSpend = useCallback(async () => {
     setError('')
     setReviewedVtxoQuote(null)
     if (!status?.enrolled) {
       setError('Unlock this vault before sending.')
+      return
+    }
+    if (isVaultLightningInput(spend.address)) {
+      await reviewLightningSpend()
       return
     }
     const destNetwork = status.network
@@ -419,14 +521,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     }
     setScreen('review')
-  }, [account, enrollment, savingsSats, setup.txCapSats, spend, status, vtxoSpendingSats])
+  }, [account, enrollment, reviewLightningSpend, savingsSats, setup.txCapSats, spend, status, vtxoSpendingSats])
 
   const finishBroadcast = useCallback(
-    async (txid: string, kind: 'onchain' | 'vtxo' = 'onchain', authoritativeFee?: number) => {
+    async (txid: string, kind: 'onchain' | 'vtxo' | 'lightning' = 'onchain', authoritativeFee?: number) => {
       setLastTxid(txid)
       setLastTxKind(kind)
       setLastSend(authoritativeFee === undefined ? spend : { ...spend, fee: authoritativeFee })
       setReviewedVtxoQuote(null)
+      setLightningQuote(null)
       setSpend({ address: '', amount: 0, fee: vaultDraftFee(account, liveNetwork) })
       setHandoffPsbt('')
       if (status?.vaultId) await refreshBalance(status.vaultId)
@@ -505,6 +608,67 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setError('No spending address yet.')
         return
       }
+      if (lightningQuote) {
+        if (boardingInProgress) {
+          setError('Spending is still boarding Bitcoin. Try again in a moment.')
+          return
+        }
+        const lightning = await import('../lib/vault/lightning')
+        lightning.assertVaultLightningQuoteCurrent(lightningQuote)
+        const reviewed = reviewedVtxoQuote
+        const expectedFee = lightningQuote.corridorFeeSats + (reviewed?.feeSats ?? 0)
+        if (
+          !reviewed ||
+          reviewed.destAddress !== lightningQuote.fundAddress ||
+          reviewed.amountSats !== lightningQuote.fundAmountSats ||
+          spend.address.trim().replace(/^lightning:/i, '') !== lightningQuote.invoice ||
+          spend.amount !== lightningQuote.invoiceAmountSats ||
+          spend.fee !== expectedFee
+        ) {
+          setReviewedVtxoQuote(null)
+          setLightningQuote(null)
+          setError('This Lightning quote expired or changed. Review the payment again.')
+          setScreen('send')
+          return
+        }
+        try {
+          await lightning.withVaultLightningRepository(status.vaultId, async (repository) => {
+            const target = await lightning.beginVaultLightningFunding(repository, lightningQuote.rfqId)
+            if (target.address !== reviewed.destAddress || target.amountSats !== reviewed.amountSats) {
+              throw new Error('Lightning funding target changed after Review.')
+            }
+            try {
+              const result = await sendVaultVtxo(enrollment, status, reviewed)
+              await lightning.recordVaultLightningFundingTxid(repository, lightningQuote.rfqId, result.txid)
+              await finishBroadcast(result.txid, 'lightning', expectedFee)
+            } catch (err) {
+              if (isVtxoReceiptPendingError(err)) {
+                await lightning.recordVaultLightningFundingTxid(repository, lightningQuote.rfqId, err.txid)
+                await finishBroadcast(err.txid, 'lightning', expectedFee)
+                return
+              }
+              throw err
+            }
+          })
+          return
+        } catch (err) {
+          if (isVtxoReviewedReservationError(err)) {
+            setReviewedVtxoQuote(null)
+            setLightningQuote(null)
+            setSpend((current) => ({ ...current, fee: vaultDraftFee('spend', liveNetwork) }))
+            setError(humanizeVaultError(err))
+            setScreen('send')
+            return
+          }
+          if (status.vaultId) await refreshBalance(status.vaultId)
+          if (isVtxoSpendInFlightError(err)) {
+            setError(humanizeVaultError(err))
+            setScreen('home')
+            return
+          }
+          throw err
+        }
+      }
       if (spendingArkAddress && isVaultArkAddress(spend.address, status.network) && vtxoSpendingSats >= spend.amount) {
         if (boardingInProgress) {
           setError('Spending is still boarding Bitcoin. Try again in a moment.')
@@ -555,6 +719,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     boardingInProgress,
     enrollment,
     finishBroadcast,
+    lightningQuote,
     liveNetwork,
     refreshBalance,
     reviewedVtxoQuote,
@@ -570,6 +735,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setError('')
     setSpend({ address: '', amount: 0, fee: 0 })
     setReviewedVtxoQuote(null)
+    setLightningQuote(null)
     setLastSend(null)
     setLastTxid('')
     setLastTxKind('')

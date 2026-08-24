@@ -48,4 +48,18 @@ describe('Vault send success explorer', () => {
       'noopener,noreferrer',
     )
   })
+
+  it('reports Lightning funding as started and links its VTXO transaction', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    renderSuccess('lightning')
+
+    expect(screen.getByText('Payment started')).toBeInTheDocument()
+    expect(screen.getByText('The Lightning payment is on the way')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View on Arkade Space' }))
+    expect(open).toHaveBeenCalledWith(
+      'https://explorer.mutinynet.arkade.sh/tx/transaction-id',
+      '_blank',
+      'noopener,noreferrer',
+    )
+  })
 })
