@@ -15,8 +15,7 @@ import { VaultContext } from '../../vault/context'
 import { HubGroup, HubRow } from './ui'
 
 export default function VaultReceive() {
-  const { account, boardingAddress, liveNetwork, navigate, savingsAddress, spendingArkAddress } =
-    useContext(VaultContext)
+  const { account, boardingAddress, navigate, savingsAddress, spendingArkAddress } = useContext(VaultContext)
   const { toast } = useToast()
   const [copied, setCopied] = useState('')
   const spending = account === 'spend'
@@ -42,21 +41,8 @@ export default function VaultReceive() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            {!spending ? (
-              <>
-                <Text color='neutral-600' tiny wrap>
-                  {liveNetwork ? 'Testnet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
-                </Text>
-                <Text small bold>
-                  Savings address
-                </Text>
-                <Text color='neutral-600' tiny wrap>
-                  Bitcoin sent here stays in Savings. Sending it later requires this device and hardware.
-                </Text>
-              </>
-            ) : null}
             {request ? (
-              <QrCode large={spending} value={request} />
+              <QrCode large value={request} />
             ) : (
               <Text>
                 {spending
