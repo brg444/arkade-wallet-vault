@@ -7,10 +7,8 @@ export function probeIndexUrl(origin: string, now = Date.now()): string {
   return new URL(`/index.html?check=${now}`, origin).toString()
 }
 
-export function launchUrl(origin: string, pathname: string, now = Date.now()): string {
-  const url = new URL(pathname || '/', origin)
-  url.search = ''
-  url.hash = ''
+export function launchUrl(origin: string, now = Date.now()): string {
+  const url = new URL('/index.html', origin)
   url.searchParams.set('v', String(now))
   return url.toString()
 }
@@ -30,7 +28,7 @@ export async function reloadIfNewerWallet(): Promise<boolean> {
     const next = indexAssetName(await res.text())
     if (!current || !next || current === next) return false
     // iOS home-screen PWAs ignore location.reload() and keep the cached start URL.
-    location.replace(launchUrl(location.origin, location.pathname))
+    location.replace(launchUrl(location.origin))
     return true
   } catch {
     return false
