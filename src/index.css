@@ -553,7 +553,7 @@ hr {
 
 .pill-navbar {
   position: absolute;
-  bottom: 12px;
+  bottom: var(--bottom-anchor-gap);
   left: 50%;
   transform: translateX(-50%);
   width: fit-content;
@@ -569,8 +569,8 @@ hr {
   backdrop-filter: blur(18px) saturate(1.16);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 2px 5px -2px rgba(0, 0, 0, 0.14),
-    0 12px 28px -9px rgba(0, 0, 0, 0.22);
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 5px 14px -8px rgba(0, 0, 0, 0.24);
   z-index: 1;
   pointer-events: auto;
 }
@@ -580,8 +580,8 @@ hr {
   background-color: color-mix(in srgb, var(--neutral-100) 76%, transparent);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    0 2px 5px -2px rgba(0, 0, 0, 0.3),
-    0 10px 24px -8px rgba(0, 0, 0, 0.52);
+    0 1px 2px rgba(0, 0, 0, 0.24),
+    0 5px 14px -8px rgba(0, 0, 0, 0.48);
 }
 
 .pill-nav-btn {
