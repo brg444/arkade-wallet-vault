@@ -4,11 +4,13 @@ import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultTx from './Tx'
 
 function renderTx(selectedTx: VaultContextProps['selectedTx']) {
+  const retryLightningRefund = vi.fn(async () => {})
   render(
     <VaultContext.Provider
       value={
         {
           navigate: vi.fn(),
+          retryLightningRefund,
           selectedTx,
           status: { network: 'mutinynet' },
         } as unknown as VaultContextProps
@@ -17,6 +19,7 @@ function renderTx(selectedTx: VaultContextProps['selectedTx']) {
       <VaultTx />
     </VaultContext.Provider>,
   )
+  return { retryLightningRefund }
 }
 
 describe('Vault transaction details', () => {
@@ -80,5 +83,23 @@ describe('Vault transaction details', () => {
       '_blank',
       'noopener,noreferrer',
     )
+  })
+
+  it('offers one passkey-backed return action only when the package says a refund is due', () => {
+    const { retryLightningRefund } = renderTx({
+      txid: 'ark-lightning-funding',
+      type: 'sent',
+      amount: 2_125,
+      displayAmount: 2_100,
+      confirmed: true,
+      account: 'spend',
+      activity: 'lightning',
+      lightningState: 'needs_counterparty',
+      lightningRfqId: 'rfq-1',
+    })
+
+    expect(screen.getByText('Ready to return')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Return to Spending' }))
+    expect(retryLightningRefund).toHaveBeenCalledExactlyOnceWith('rfq-1')
   })
 })

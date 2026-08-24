@@ -28,6 +28,7 @@ import {
   persistVaultLightningQuote,
   restoreMatchingVaultLightningQuote,
   restorePersistedVaultLightningQuote,
+  refreshVaultLightningLifecycle,
   startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
   type VaultLightningQuote,
@@ -51,6 +52,7 @@ export {
   getVaultLightningStatus,
   listVaultLightningHistory,
   recordVaultLightningFundingTxid,
+  refreshVaultLightningLifecycle,
   retireAbandonedVaultLightningQuotes,
   startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
@@ -111,11 +113,17 @@ type VaultSdkWalletResources = {
 function createVaultLightningSdkStorage(vaultId: string): VaultSdkWalletResources {
   const id = String(vaultId || '').trim()
   if (!id) throw new Error('Vault ID is required for Lightning storage.')
-  const database = `arkade-vault-v2:${encodeURIComponent(id)}:wallet`
+  const database = vaultLightningWalletStorageName(id)
   return {
     walletRepository: new IndexedDBWalletRepository(database),
     contractRepository: new IndexedDBContractRepository(database),
   }
+}
+
+function vaultLightningWalletStorageName(vaultId: string): string {
+  const id = String(vaultId || '').trim()
+  if (!id) throw new Error('Vault ID is required for Lightning storage.')
+  return `arkade-vault-v2:${encodeURIComponent(id)}:wallet`
 }
 
 export async function withVaultLightningSdkWallet<T>(
@@ -206,6 +214,44 @@ export async function withVaultLightningRepository<T>(
     return await run(repository)
   } finally {
     await repository[Symbol.asyncDispose]()
+  }
+}
+
+export async function refreshVaultLightningHistory(
+  vaultId: string,
+  arkServerUrl: string,
+): Promise<import('./lightningLifecycle').VaultLightningHistoryMetadata[]> {
+  const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(vaultId))
+  const contracts = new IndexedDBContractRepository(vaultLightningWalletStorageName(vaultId))
+  let primaryError: unknown
+  try {
+    const refreshed = await refreshVaultLightningLifecycle({
+      repository,
+      contracts,
+      indexer: new RestIndexerProvider(arkServerUrl),
+    })
+    if (refreshed.restoreFailures.length > 0) {
+      throw new AggregateError(
+        refreshed.restoreFailures.map(({ error }) => error),
+        'Lightning recovery state could not be restored safely',
+      )
+    }
+    return refreshed.history
+  } catch (error) {
+    primaryError = error
+    throw error
+  } finally {
+    const cleanup = await Promise.allSettled([repository[Symbol.asyncDispose](), contracts[Symbol.asyncDispose]()])
+    const cleanupErrors = cleanup
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) => result.reason)
+    if (cleanupErrors.length > 0) {
+      if (primaryError !== undefined) {
+        throw new AggregateError([primaryError, ...cleanupErrors], 'Lightning refresh and cleanup failed')
+      }
+      if (cleanupErrors.length === 1) throw cleanupErrors[0]
+      throw new AggregateError(cleanupErrors, 'Lightning refresh cleanup failed')
+    }
   }
 }
 

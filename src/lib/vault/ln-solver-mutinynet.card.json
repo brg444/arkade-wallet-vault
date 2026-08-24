@@ -1,0 +1,55 @@
+{
+  "version": 0,
+  "name": "ln-solver-mutinynet",
+  "discovery_pubkey": "3f831510a6d7678d0c90d7d6fbc4057720517e2e30681ef4c87cc57aaf57e8d5",
+  "transports": {
+    "nostr": {
+      "relays": ["wss://nostr.arkade.sh"]
+    }
+  },
+  "markets": [
+    {
+      "pair": "BTC/lightning:BTC",
+      "base_asset": {
+        "id": "btc",
+        "name": "Bitcoin",
+        "ticker": "BTC",
+        "decimals": 8
+      },
+      "quote_asset": {
+        "id": "btc",
+        "name": "Bitcoin",
+        "ticker": "BTC",
+        "decimals": 8
+      },
+      "quote_corridor": "lightning",
+      "fee_bps": 30,
+      "min_base_amount": "1000",
+      "max_base_amount": "50000",
+      "min_quote_amount": "1000",
+      "max_quote_amount": "25000"
+    },
+    {
+      "pair": "BTC/onchain:BTC",
+      "base_asset": {
+        "id": "btc",
+        "name": "Bitcoin",
+        "ticker": "BTC",
+        "decimals": 8
+      },
+      "quote_asset": {
+        "id": "btc",
+        "name": "Bitcoin",
+        "ticker": "BTC",
+        "decimals": 8
+      },
+      "quote_corridor": "onchain",
+      "fee_bps": 0,
+      "min_base_amount": "1000",
+      "max_base_amount": "50000",
+      "min_quote_amount": "1000",
+      "max_quote_amount": "50000"
+    }
+  ],
+  "sig": "e0e8a4307c9e21368624877576fe45466bc729e8f50bea28b190d4deb054023fd177366f270808884ed006e249fbe6c9fd2d0483de0d8db6eb0021706853862b"
+}
