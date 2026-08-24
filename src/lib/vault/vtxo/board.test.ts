@@ -1,6 +1,6 @@
-import { DefaultVtxo, SettlementEventType, SingleKey, type ExtendedCoin } from '@arkade-os/sdk'
+import { DefaultVtxo, SingleKey, type ExtendedCoin } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
@@ -11,14 +11,13 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
-  createTemporaryBoardingStorage,
+  classifyVaultBoardingIntents,
   disposeVaultBoardingResources,
+  excludeSettledBoardingCoins,
   findConfirmedBoardingCoins,
-  isReleasedIntentRetry,
   nextVaultBoardingAction,
-  settleBoardingWithReleasedIntentRetry,
+  settledBoardingOutpoints,
   vaultBoardScriptFromStatus,
-  waitForNextBatchFailure,
   withVaultBoardingLock,
   withVaultBoardingSecret,
 } from './board'
@@ -68,15 +67,6 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
 }
 
 describe('vault-board-v1', () => {
-  it('uses fresh in-memory SDK state for every temporary boarding wallet', async () => {
-    const first = createTemporaryBoardingStorage()
-    const second = createTemporaryBoardingStorage()
-    await first.walletRepository.saveUtxos('boarding-address', [boardingCoin('11'.repeat(32), 0, 20_000)])
-
-    await expect(first.walletRepository.getUtxos('boarding-address')).resolves.toHaveLength(1)
-    await expect(second.walletRepository.getUtxos('boarding-address')).resolves.toEqual([])
-  })
-
   it('disposes the wallet before both boarding repositories', async () => {
     const disposed: string[] = []
     const repository = (name: string) => ({
@@ -87,6 +77,7 @@ describe('vault-board-v1', () => {
     const storage = {
       walletRepository: repository('wallet'),
       contractRepository: repository('contract'),
+      intentRepository: repository('intent'),
     }
 
     await disposeVaultBoardingResources(
@@ -98,7 +89,7 @@ describe('vault-board-v1', () => {
       storage,
     )
     expect(disposed[0]).toBe('sdk-wallet')
-    expect(new Set(disposed.slice(1))).toEqual(new Set(['wallet', 'contract']))
+    expect(new Set(disposed.slice(1))).toEqual(new Set(['wallet', 'contract', 'intent']))
   })
 
   it('closes every repository after partial wallet creation and after a disposal failure', async () => {
@@ -141,72 +132,42 @@ describe('vault-board-v1', () => {
     await expect(findConfirmedBoardingCoins(wallet, selected.txid)).resolves.toEqual([selected])
   })
 
-  it('waits for the exact outpoint lifecycle, then retries the exact SDK settlement once', async () => {
-    const request = {
-      inputs: [boardingCoin('11'.repeat(32), 0, 20_000)],
-      outputs: [{ address: 'tark1destination', amount: 20_000n }],
-    }
-    const settle = async () => {
-      if (calls++ === 0) throw new Error('INVALID_INTENT_PROOF (23): no matching intents found for intent proof')
-      return 'commitment'
-    }
-    let calls = 0
-    const provider = { getEventStream: vi.fn() }
-    const waits: string[][] = []
+  it('lets a succeeded destination VTXO suppress an Esplora-lagging boarding input', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    const settled = settledBoardingOutpoints([
+      { state: 'waiting_for_batch', intentVtxos: [outpoint] },
+      { state: 'batch_succeeded', intentVtxos: [outpoint] },
+    ] as never)
+    const laggingEsplora = [{ ...outpoint, value: 49_000 }]
+    const visibleDestinationVtxos = 48_300
 
-    await expect(
-      settleBoardingWithReleasedIntentRetry(
-        { settle } as never,
-        request,
-        provider as never,
-        async (_provider, topics) => {
-          waits.push(topics)
-        },
+    expect(settled).toEqual(new Set([`${outpoint.txid}:0`]))
+    expect(
+      visibleDestinationVtxos +
+        excludeSettledBoardingCoins(laggingEsplora, settled).reduce((sum, coin) => sum + coin.value, 0),
+    ).toBe(visibleDestinationVtxos)
+  })
+
+  it('holds a fresh active intent but releases abandoned-page metadata after the retry grace', () => {
+    const now = 1_000_000
+    expect(classifyVaultBoardingIntents([{ state: 'waiting_for_batch', updatedAt: now - 1_000 }], now)).toBe('active')
+    expect(classifyVaultBoardingIntents([{ state: 'batch_in_progress', updatedAt: now - 300_001 }], now)).toBe('none')
+    expect(
+      classifyVaultBoardingIntents(
+        [
+          { state: 'batch_in_progress', updatedAt: now },
+          { state: 'batch_succeeded', updatedAt: now - 400_000 },
+        ],
+        now,
       ),
-    ).resolves.toBe('commitment')
-    expect(calls).toBe(2)
-    expect(waits).toEqual([[`${'11'.repeat(32)}:0`]])
-  })
-
-  it('ignores batch start and releases only on batch failure, then closes the stream', async () => {
-    let closed = false
-    let signal: AbortSignal | undefined
-    async function* events() {
-      try {
-        yield { type: SettlementEventType.BatchStarted } as never
-        yield { type: SettlementEventType.BatchFailed, reason: 'not enough intent confirmations received' } as never
-      } finally {
-        closed = true
-      }
-    }
-    const provider = {
-      getEventStream(nextSignal: AbortSignal, topics: string[]) {
-        signal = nextSignal
-        expect(topics).toEqual([`${'11'.repeat(32)}:0`])
-        return events()
-      },
-    }
-
-    await waitForNextBatchFailure(provider as never, [`${'11'.repeat(32)}:0`])
-
-    expect(closed).toBe(true)
-    expect(signal?.aborted).toBe(true)
-  })
-
-  it('does not retry another SDK or Operator error', async () => {
-    const settle = async () => {
-      calls += 1
-      throw new Error('not enough intent confirmations received')
-    }
-    let calls = 0
-    const provider = { getEventStream: vi.fn() }
-
-    await expect(
-      settleBoardingWithReleasedIntentRetry({ settle } as never, { inputs: [], outputs: [] }, provider as never),
-    ).rejects.toThrow(/not enough intent confirmations/)
-    expect(calls).toBe(1)
-    expect(provider.getEventStream).not.toHaveBeenCalled()
-    expect(isReleasedIntentRetry(new Error('INVALID_INTENT_PROOF (23): no matching intents found'))).toBe(true)
+    ).toBe('settled')
+    expect(
+      classifyVaultBoardingIntents(
+        [{ state: 'waiting_for_batch', updatedAt: now, commitmentTransactionId: 'commitment' }],
+        now,
+        new Set(['commitment']),
+      ),
+    ).toBe('settled')
   })
 
   it('reconstructs the distinct standard boarding contract pinned by status', async () => {
@@ -245,6 +206,15 @@ describe('vault-board-v1', () => {
     finish()
     await expect(settlement).resolves.toBe('settled')
     expect(hex.encode(secret)).toBe('00'.repeat(32))
+  })
+
+  it('keeps the SDK signing identity on the same wipeable scalar buffer', () => {
+    const secret = hex.decode('01'.padStart(64, '0'))
+    const identity = SingleKey.fromPrivateKey(secret)
+
+    secret.fill(0)
+
+    expect(identity.toHex()).toBe('00'.repeat(32))
   })
 
   it('does not stick a boarding attempt when another tab already holds the lock', async () => {
