@@ -160,6 +160,19 @@ export function useVaultSession({
         setScreen('home')
         return
       }
+      if (local) {
+        const live = await enablePasskeyLogin(local)
+        setEnrollment(local)
+        saveEnrollment(local)
+        saveSelectedVaultId(local.vaultId)
+        setSessionLocked(false)
+        setLocked(false)
+        setStatus(live)
+        setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        await restoreMap(local, live, setup)
+        setScreen('home')
+        return
+      }
       const selected = local?.vaultId || loadSelectedVaultId()
       const vaultId = selected || (await discoverVaultIdFromPasskey())
       const result = await signInWithPasskey(vaultId)

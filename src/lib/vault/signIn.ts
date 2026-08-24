@@ -55,7 +55,7 @@ export async function beginPasskeySession(
   if (allowCredentialId && issued.allowCredentialId && allowCredentialId !== issued.allowCredentialId) {
     throw new Error('passkey credential does not match this vault')
   }
-  const mode = purpose === 'install-envelope' || isCoarsePhone() ? 'local' : 'hybrid'
+  const mode = purpose === 'install-envelope' ? 'local' : 'any'
   const publicKey = passkeyGetOptions(
     {
       challenge: challenge as BufferSource,
@@ -155,6 +155,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     if (!live.passkeyLoginAvailable) {
       throw new Error('authorizer did not persist passkey sign-in recovery data')
     }
+    pinEnrolledStatus(live)
     return live
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)

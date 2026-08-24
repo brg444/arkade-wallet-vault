@@ -115,7 +115,7 @@ export default function VaultWelcome() {
             onClick={() => void signIn()}
             disabled={busy}
             loading={busy}
-            label={busy ? 'Unlocking…' : 'Unlock vault'}
+            label={busy ? 'Unlocking…' : error ? 'Try again' : 'Unlock vault'}
           />
         ) : (
           <Button onClick={() => navigate('design')} label='Set up a new vault' />
