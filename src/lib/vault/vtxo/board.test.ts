@@ -1,6 +1,6 @@
-import { DefaultVtxo, SingleKey, type ExtendedCoin } from '@arkade-os/sdk'
+import { DefaultVtxo, SettlementEventType, SingleKey, type ExtendedCoin } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
@@ -18,6 +18,7 @@ import {
   nextVaultBoardingAction,
   settleBoardingWithReleasedIntentRetry,
   vaultBoardScriptFromStatus,
+  waitForNextBatchFailure,
   withVaultBoardingLock,
   withVaultBoardingSecret,
 } from './board'
@@ -140,7 +141,7 @@ describe('vault-board-v1', () => {
     await expect(findConfirmedBoardingCoins(wallet, selected.txid)).resolves.toEqual([selected])
   })
 
-  it('waits for an active batch to release, then retries the exact SDK settlement once', async () => {
+  it('waits for the exact outpoint lifecycle, then retries the exact SDK settlement once', async () => {
     const request = {
       inputs: [boardingCoin('11'.repeat(32), 0, 20_000)],
       outputs: [{ address: 'tark1destination', amount: 20_000n }],
@@ -150,15 +151,46 @@ describe('vault-board-v1', () => {
       return 'commitment'
     }
     let calls = 0
-    const waits: number[] = []
+    const provider = { getEventStream: vi.fn() }
+    const waits: string[][] = []
 
     await expect(
-      settleBoardingWithReleasedIntentRetry({ settle } as never, request, async (delayMs) => {
-        waits.push(delayMs)
-      }),
+      settleBoardingWithReleasedIntentRetry(
+        { settle } as never,
+        request,
+        provider as never,
+        async (_provider, topics) => {
+          waits.push(topics)
+        },
+      ),
     ).resolves.toBe('commitment')
     expect(calls).toBe(2)
-    expect(waits).toEqual([15_000])
+    expect(waits).toEqual([[`${'11'.repeat(32)}:0`]])
+  })
+
+  it('ignores batch start and releases only on batch failure, then closes the stream', async () => {
+    let closed = false
+    let signal: AbortSignal | undefined
+    async function* events() {
+      try {
+        yield { type: SettlementEventType.BatchStarted } as never
+        yield { type: SettlementEventType.BatchFailed, reason: 'not enough intent confirmations received' } as never
+      } finally {
+        closed = true
+      }
+    }
+    const provider = {
+      getEventStream(nextSignal: AbortSignal, topics: string[]) {
+        signal = nextSignal
+        expect(topics).toEqual([`${'11'.repeat(32)}:0`])
+        return events()
+      },
+    }
+
+    await waitForNextBatchFailure(provider as never, [`${'11'.repeat(32)}:0`])
+
+    expect(closed).toBe(true)
+    expect(signal?.aborted).toBe(true)
   })
 
   it('does not retry another SDK or Operator error', async () => {
@@ -167,11 +199,13 @@ describe('vault-board-v1', () => {
       throw new Error('not enough intent confirmations received')
     }
     let calls = 0
+    const provider = { getEventStream: vi.fn() }
 
     await expect(
-      settleBoardingWithReleasedIntentRetry({ settle } as never, { inputs: [], outputs: [] }),
+      settleBoardingWithReleasedIntentRetry({ settle } as never, { inputs: [], outputs: [] }, provider as never),
     ).rejects.toThrow(/not enough intent confirmations/)
     expect(calls).toBe(1)
+    expect(provider.getEventStream).not.toHaveBeenCalled()
     expect(isReleasedIntentRetry(new Error('INVALID_INTENT_PROOF (23): no matching intents found'))).toBe(true)
   })
 

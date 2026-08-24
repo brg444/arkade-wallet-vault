@@ -82,7 +82,10 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - During live Mutinynet recovery, a queued intent entered an active batch before
   the SDK's duplicate-input path could delete it. The Operator correctly could
   not match the active intent, returned `INVALID_INTENT_PROOF: no matching
-intents`, and then requeued it when the unconfirmed batch failed. The adapter
-  waits through that bounded active-batch window and retries the identical
-  `Wallet.settle()` request once while the already approved device key remains
-  live. It does not retry any other error or add an Operator endpoint.
+  intents`, and then requeued it when the unconfirmed batch failed. A fixed
+  delay races the Operator's active and queued phases. The adapter instead
+  watches the SDK provider stream for the next `batch_failed` event on the exact
+  outpoints, then immediately retries the identical `Wallet.settle()` request
+  once while the already approved device key remains live. The wait is bounded,
+  closes its stream, and does not retry any other error or add an Operator
+  endpoint.

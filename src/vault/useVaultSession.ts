@@ -7,7 +7,7 @@ import {
   setSessionLocked,
 } from '../lib/vault/enrollmentStore'
 import { humanizeVaultError } from '../lib/vault/humanize'
-import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
+import { loadAddressPin, pinFromEnrolledStatus, saveAddressPin, type AddressPin } from '../lib/vault/pin'
 import {
   discoverVaultIdFromPasskey,
   enablePasskeyLogin,
@@ -53,8 +53,18 @@ async function restoreMap(enrollment: EnrollmentSecrets, status: VaultStatus, se
   }
 }
 
-// useVaultSession owns enrollment and passkey session transitions. It commits
-// local credentials and the selected vault together before exposing Home.
+function bestEffortBrowserWrite(write: () => void) {
+  try {
+    write()
+  } catch {
+    // A verified in-memory session remains usable when a private or embedded
+    // browser refuses durable storage. The next reload will ask for the
+    // passkey again instead of turning this successful login into an error.
+  }
+}
+
+// useVaultSession owns enrollment and passkey session transitions. A verified
+// session is usable in memory even when private browsing refuses persistence.
 export function useVaultSession({
   enrollment,
   reportError,
@@ -149,41 +159,45 @@ export function useVaultSession({
       if (local && localPin) {
         const unlocked = await unlockLocalEnrollment(local)
         setEnrollment(unlocked)
-        saveEnrollment(unlocked)
-        saveSelectedVaultId(unlocked.vaultId)
-        setSessionLocked(false)
         setLocked(false)
         const live = await fetchVaultStatus(undefined, unlocked.vaultId)
         setStatus(live)
-        setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        setAddressPin(localPin)
         setScreen('home')
+        bestEffortBrowserWrite(() => saveEnrollment(unlocked))
+        bestEffortBrowserWrite(() => saveSelectedVaultId(unlocked.vaultId))
+        bestEffortBrowserWrite(() => setSessionLocked(false))
         void restoreMap(unlocked, live, setup)
         return
       }
       if (local) {
         const live = await enablePasskeyLogin(local)
+        const livePin = pinFromEnrolledStatus(live)
         setEnrollment(local)
-        saveEnrollment(local)
-        saveSelectedVaultId(local.vaultId)
-        setSessionLocked(false)
         setLocked(false)
         setStatus(live)
-        setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        setAddressPin(livePin)
         setScreen('home')
+        bestEffortBrowserWrite(() => saveAddressPin(livePin))
+        bestEffortBrowserWrite(() => saveEnrollment(local))
+        bestEffortBrowserWrite(() => saveSelectedVaultId(local.vaultId))
+        bestEffortBrowserWrite(() => setSessionLocked(false))
         void restoreMap(local, live, setup)
         return
       }
       const selected = loadSelectedVaultId()
       const vaultId = selected || (await discoverVaultIdFromPasskey())
       const result = await signInWithPasskey(vaultId)
+      const recoveredPin = pinFromEnrolledStatus(result.status)
       setEnrollment(result.enrollment)
-      saveEnrollment(result.enrollment)
-      saveSelectedVaultId(result.enrollment.vaultId)
-      setSessionLocked(false)
       setLocked(false)
       setStatus(result.status)
-      setAddressPin(loadAddressPin(localStorage, result.status.vaultId))
+      setAddressPin(recoveredPin)
       setScreen('home')
+      bestEffortBrowserWrite(() => saveAddressPin(recoveredPin))
+      bestEffortBrowserWrite(() => saveEnrollment(result.enrollment))
+      bestEffortBrowserWrite(() => saveSelectedVaultId(result.enrollment.vaultId))
+      bestEffortBrowserWrite(() => setSessionLocked(false))
       void restoreMap(result.enrollment, result.status, setup)
     } catch (error) {
       reportError(humanizeVaultError(error))

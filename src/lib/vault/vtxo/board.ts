@@ -5,8 +5,10 @@ import {
   InMemoryWalletRepository,
   RestArkProvider,
   RestIndexerProvider,
+  SettlementEventType,
   SingleKey,
   Wallet,
+  type ArkProvider,
   type ExtendedCoin,
 } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
@@ -21,7 +23,7 @@ export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
 export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
 
-const ACTIVE_BATCH_RELEASE_DELAY_MS = 15_000
+const ACTIVE_BATCH_RELEASE_TIMEOUT_MS = 120_000
 
 const BOARDING_LOCK_BRAND: unique symbol = Symbol('vault-boarding-lock')
 const activeBoardingLocks = new WeakSet<object>()
@@ -188,7 +190,7 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
     if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
       throw new Error('SDK derived a different vault-board-v1 address')
     }
-    return { wallet, info, storage }
+    return { wallet, info, operator, storage }
   } catch (error) {
     try {
       await disposeVaultBoardingResources(wallet, storage)
@@ -259,23 +261,59 @@ export function isReleasedIntentRetry(error: unknown): boolean {
   return message.includes('INVALID_INTENT_PROOF') && message.includes('no matching intents found')
 }
 
+export type IntentReleaseWaiter = (provider: Pick<ArkProvider, 'getEventStream'>, topics: string[]) => Promise<void>
+
+/**
+ * A failed active batch is the Operator's observable release boundary. The
+ * abandoned intent is back in the queue when this event arrives, giving the
+ * SDK's signed duplicate-input cleanup a deterministic chance to remove it.
+ */
+export async function waitForNextBatchFailure(
+  provider: Pick<ArkProvider, 'getEventStream'>,
+  topics: string[],
+  timeoutMs = ACTIVE_BATCH_RELEASE_TIMEOUT_MS,
+): Promise<void> {
+  const abort = new AbortController()
+  const stream = provider.getEventStream(abort.signal, topics)
+  let timedOut = false
+  const timeout = window.setTimeout(() => {
+    timedOut = true
+    abort.abort()
+  }, timeoutMs)
+  try {
+    for await (const event of stream) {
+      if (event.type === SettlementEventType.BatchFailed) return
+    }
+    if (!timedOut) throw new Error('Operator event stream ended before the active intent was released')
+  } catch (error) {
+    if (!timedOut) throw error
+  } finally {
+    window.clearTimeout(timeout)
+    abort.abort()
+    await stream.return?.().catch(() => undefined)
+  }
+}
+
 /**
  * A previous intent can already be inside an active batch when the SDK tries
- * to delete it. The Operator cannot match an active-batch intent until that
- * batch fails and requeues it. Wait through that short boundary, then retry the
- * exact SDK settlement once while the signing key is still live.
+ * to delete it. A fixed sleep races the active/queued cycle. Observe the next
+ * failed batch for the exact outpoints, then retry the same SDK settlement once
+ * while the signing key is still live.
  */
 export async function settleBoardingWithReleasedIntentRetry(
   wallet: Pick<Wallet, 'settle'>,
-  request: Parameters<Wallet['settle']>[0],
-  waitForRelease: (delayMs: number) => Promise<void> = (delayMs) =>
-    new Promise((resolve) => window.setTimeout(resolve, delayMs)),
+  request: NonNullable<Parameters<Wallet['settle']>[0]>,
+  provider: Pick<ArkProvider, 'getEventStream'>,
+  waitForRelease: IntentReleaseWaiter = waitForNextBatchFailure,
 ): Promise<string> {
   try {
     return await wallet.settle(request)
   } catch (error) {
     if (!isReleasedIntentRetry(error)) throw error
-    await waitForRelease(ACTIVE_BATCH_RELEASE_DELAY_MS)
+    const topics = request.inputs
+      .filter((input): input is ExtendedCoin => typeof input !== 'string')
+      .map((input) => `${input.txid}:${input.vout}`)
+    await waitForRelease(provider, topics)
     return wallet.settle(request)
   }
 }
@@ -287,17 +325,21 @@ export async function settleVaultBoarding(
   txid?: string,
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
-  const { wallet, info, storage } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info, operator, storage } = await createBoardingWallet(phoneSecret, status)
   let result: { txid: string; amountSats: number } | undefined
   let primaryError: unknown
   try {
     const coins = await findConfirmedBoardingCoins(wallet, txid)
     if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
     const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
-    const commitmentTxid = await settleBoardingWithReleasedIntentRetry(wallet, {
-      inputs: coins,
-      outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
-    })
+    const commitmentTxid = await settleBoardingWithReleasedIntentRetry(
+      wallet,
+      {
+        inputs: coins,
+        outputs: [{ address: status.spendingArkAddress!, amount: BigInt(amountSats) }],
+      },
+      operator,
+    )
     result = { txid: commitmentTxid, amountSats }
   } catch (error) {
     primaryError = error

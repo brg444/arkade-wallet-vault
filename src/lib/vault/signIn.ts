@@ -11,7 +11,7 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeyBinding'
-import { pinEnrolledStatus } from './pin'
+import { pinFromEnrolledStatus } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
@@ -146,7 +146,10 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     if (!live.passkeyLoginAvailable) {
       throw new Error('authorizer did not persist passkey sign-in recovery data')
     }
-    pinEnrolledStatus(live)
+    // Validate the complete program pin without making authentication depend
+    // on durable browser storage. The session coordinator persists it after
+    // the verified session is already live.
+    pinFromEnrolledStatus(live)
     return live
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
@@ -252,7 +255,10 @@ export async function signInWithPasskey(
       phoneSecret,
     })
     assertRecoveryBindingMatchesStatus(verified, status)
-    pinEnrolledStatus(status)
+    // The signed recovery binding already commits to these fields. Validate
+    // their pin shape here; persistence is best effort in the coordinator so
+    // private browsing cannot turn a valid recovery into a failed login.
+    pinFromEnrolledStatus(status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
