@@ -4,9 +4,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../lib/vault/constants'
-import { ENROLL_STORE, SELECTED_VAULT_STORE } from '../lib/vault/enrollmentStore'
+import { ENROLL_STORE, SELECTED_VAULT_STORE, SESSION_LOCK_STORE } from '../lib/vault/enrollmentStore'
 import { MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
 import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
+import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import golden from '../lib/vault/vtxo/testdata/vault-policy-v1-tree.json'
 import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
@@ -235,6 +236,29 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     )
 
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('signin'))
+  })
+
+  it('returns a locked enrolled vault to Unlock instead of the completed setup screen', async () => {
+    localStorage.setItem(SESSION_LOCK_STORE, '1')
+    localStorage.setItem(
+      SETUP_STORE_KEY,
+      JSON.stringify({
+        hardwarePub: '',
+        recoveryPub: '',
+        txCapSats: 50_000,
+        dailyLimitSats: 100_000,
+        acceptedDesign: true,
+        complete: true,
+      }),
+    )
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
   })
 
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
