@@ -62,7 +62,10 @@ export function prfFrom(cred: PublicKeyCredential): Uint8Array<ArrayBuffer> | nu
   const first = ext?.prf?.results?.first ?? ext?.prf?.first
   if (!first) return null
   const bytes = first instanceof Uint8Array ? first : new Uint8Array(first)
-  return bytes.length ? bytes : null
+  // WebAuthn owns the extension-result backing store. Recovery keeps this
+  // secret across an HTTP round trip, so never retain a view into memory the
+  // browser or authenticator is free to reuse after get() returns.
+  return bytes.length ? Uint8Array.from(bytes) : null
 }
 
 type HintedCreate = PublicKeyCredentialCreationOptions & { hints?: string[] }
