@@ -34,6 +34,7 @@ describe('Vault receive', () => {
     expect(screen.queryByTestId('receive-address')).toBeNull()
     expect(screen.getByTestId('receive-arkade-address')).toBeTruthy()
     expect(screen.getByTestId('receive-bitcoin-address')).toBeTruthy()
+    expect(screen.queryByText(/Confirmed Bitcoin deposits/)).toBeNull()
     expect(screen.queryByText('Savings')).toBeNull()
   })
 
