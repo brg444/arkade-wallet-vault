@@ -72,4 +72,23 @@ describe('Vault history', () => {
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getByText('Pending confirmation')).toBeTruthy()
   })
+
+  it('reopens a phone-signed Savings transfer waiting for hardware', async () => {
+    const user = userEvent.setup()
+    const pending = {
+      txid: 'pending-savings:1',
+      type: 'sent' as const,
+      amount: 51_500,
+      confirmed: false,
+      account: 'savings' as const,
+      activity: 'savings-handoff' as const,
+    }
+    const value = renderHistory({ account: 'savings', history: [pending] })
+
+    expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
+    expect(screen.getByText('Waiting for hardware')).toBeTruthy()
+    expect(screen.getByText('Upload signed PSBT')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i }))
+    expect(value.openTx).toHaveBeenCalledWith(pending)
+  })
 })

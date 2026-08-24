@@ -10,7 +10,7 @@ export interface VaultHistoryItem {
   confirmed: boolean
   blockTime?: number
   account: 'spend' | 'savings'
-  activity?: 'lightning'
+  activity?: 'lightning' | 'savings-handoff'
   displayAmount?: number
   fee?: number
   lightningState?: string

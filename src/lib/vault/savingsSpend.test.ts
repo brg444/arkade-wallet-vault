@@ -8,6 +8,7 @@ import {
   inspectSavingsPsbt,
   psbtFile,
   psbtHexToBase64,
+  readPsbtFile,
   requireSameSavingsIntent,
   signSavingsPsbt,
 } from './savingsSpend'
@@ -95,6 +96,12 @@ describe('savings admin PSBT', () => {
     expect(file.name).toBe('arkade-savings.psbt')
     expect(file.size).toBeGreaterThan(20)
     expect(psbtHexToBase64(hexPsbt).length).toBeGreaterThan(20)
+  })
+
+  it('reads a binary .psbt file back into the canonical hex form', async () => {
+    const hexPsbt = currentAdminPsbt()
+    await expect(readPsbtFile(psbtFile(hexPsbt))).resolves.toBe(hexPsbt)
+    await expect(readPsbtFile(new File([], 'empty.psbt'))).rejects.toThrow(/smaller than 1 MB/)
   })
 
   it.each([true, false])('spends Savings with recovery=%s', (withRecovery) => {
