@@ -36,6 +36,12 @@ routes. Enrollment requires an invitation created by the service operator.
 See [the documentation index](docs/README.md) for the program and release
 boundaries.
 
+VTXO observation follows the official Arkade Wallet worker architecture with a
+Vault-specific Face ID boundary. The persistent worker is watch-only; the
+device private key exists only during a foreground, user-verified operation.
+Exact upstream revisions and intentional Vault adapters are recorded in
+[docs/upstream-alignment.md](docs/upstream-alignment.md).
+
 ## Local development
 
 Use Node.js and pnpm:

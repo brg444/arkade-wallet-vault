@@ -62,12 +62,16 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
   Contract Pack binding remain required.
 - The wallet uses the official SDK lifecycle without custom registration,
   deletion, replay, event-stream, or Operator-status extensions.
-- Automatic boarding passes the authoritative confirmed onchain input to the
-  official SDK under an exclusive per-vault Web Lock. It does not suppress an
-  SDK retry from a retained local intent row or add a second registration
-  lifecycle. Current Operator boarding-input deletion and SDK duplicate
-  recovery must pass crash, missed-event, and two-context qualification on the
-  deployed mainnet stack.
+- Automatic boarding passes the authoritative confirmed onchain input and exact
+  `vault-policy-v1` destination to the official SDK under an exclusive per-vault
+  Web Lock. The SDK's isolated intent repository records lifecycle state. A
+  bounded local grace suppresses duplicate Face ID prompts but does not claim
+  that the Operator request expired. SDK duplicate recovery must pass crash,
+  missed-event, and two-context qualification on the deployed mainnet stack.
+- The persistent worker is read-only. It receives the device public key and
+  cannot sign. Page or process loss during a Face ID-authorized settlement must
+  require reauthorization. Browser storage remains free of the scalar,
+  unlocked identity, and resumable MuSig session.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.
@@ -76,6 +80,10 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
 - Live Mutinynet qualification must cover reload, two-tab races, dropped
   reserve and authorization responses, missed event acknowledgements, lost
   finalization, and delayed recovery.
+- Deployed browser qualification must cover scoped worker installation and
+  updates, A-to-B-to-A vault switching, simultaneous vaults in separate tabs,
+  offline recovery, lost worker events, and both VTXO-first and Esplora-first
+  propagation.
 - Outbound BOLT11 is implemented as a disabled package-native lifecycle using
   the published RFQ repository, manager, contract registry, and refunder.
   Mainnet enablement still requires an approved signed solver card and rotation
