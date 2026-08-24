@@ -6,11 +6,8 @@ import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { fetchVaultBoardingFunds } from '../lib/vault/vtxo/board'
-import { VaultBoardingSignerSession } from '../lib/vault/vtxo/boardingSession'
 import { fetchVaultVtxoSnapshot } from '../lib/vault/vtxo/spend'
 import { confirmedUtxoBalance, savingsUtxoBalance, useVaultBalances } from './useVaultBalances'
-
-const boardingLock = vi.hoisted(() => ({ run: vi.fn() }))
 
 vi.mock('../lib/vault/esplora', () => ({
   fetchAddressTxs: vi.fn(),
@@ -24,7 +21,6 @@ vi.mock('../lib/vault/vtxo/spend', () => ({
 vi.mock('../lib/vault/vtxo/board', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/vault/vtxo/board')>()),
   fetchVaultBoardingFunds: vi.fn(),
-  withVaultBoardingLock: boardingLock.run,
 }))
 
 const STATUS: VaultStatus = {
@@ -78,7 +74,6 @@ function setupHook(
   enrollment: EnrollmentSecrets | null = null,
   withPin = true,
   persistPin = true,
-  boardingSigner: VaultBoardingSignerSession = new VaultBoardingSignerSession(),
 ) {
   const builtPin = withPin ? pinFromEnrolledStatus(status || STATUS) : null
   const pin = builtPin && persistPin ? saveAddressPin(builtPin) : builtPin
@@ -88,8 +83,6 @@ function setupHook(
   const hook = renderHook(() =>
     useVaultBalances({
       addressPin: pin,
-      boardingSigner,
-      boardingSignerRevision: 0,
       busy: false,
       enrollment,
       initialStatusChecked,
@@ -100,7 +93,7 @@ function setupHook(
       status,
     }),
   )
-  return { ...hook, onBoarded, reportError, setStatus }
+  return { ...hook, reportError, setStatus }
 }
 
 beforeEach(() => {
@@ -110,8 +103,7 @@ beforeEach(() => {
   mockedUtxos.mockResolvedValue([])
   mockedTxs.mockResolvedValue([])
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
-  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, confirmedOutpoints: [], unconfirmed: 0 })
-  boardingLock.run.mockImplementation(async (_vaultId, run) => ({ held: true, value: await run({}) }))
+  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, unconfirmed: 0 })
 })
 
 afterEach(() => vi.useRealTimers())
@@ -172,120 +164,6 @@ describe('savingsUtxoBalance', () => {
 })
 
 describe('useVaultBalances refresh coordination', () => {
-  const activeBoardingStatus = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
-  const enrollment = { vaultId: STATUS.vaultId } as EnrollmentSecrets
-
-  function boardingSignerTestDouble(ready: boolean, settle: ReturnType<typeof vi.fn>) {
-    return { ready, settle } as unknown as VaultBoardingSignerSession
-  }
-
-  it('settles a confirmed boarding outpoint once and does not repeat it on focus', async () => {
-    const settle = vi.fn().mockResolvedValue({ txid: 'settled', amountSats: 49_000 })
-    mockedStatus.mockResolvedValue(activeBoardingStatus)
-    mockedBoardingFunds.mockResolvedValue({
-      total: 50_000,
-      confirmed: 50_000,
-      confirmedOutpoints: ['deposit:0'],
-      unconfirmed: 0,
-    })
-    const { onBoarded } = setupHook(
-      false,
-      activeBoardingStatus,
-      true,
-      enrollment,
-      true,
-      true,
-      boardingSignerTestDouble(true, settle),
-    )
-
-    await waitFor(() => expect(settle).toHaveBeenCalledTimes(1))
-    expect(onBoarded).toHaveBeenCalledWith('settled')
-    window.dispatchEvent(new Event('focus'))
-    await waitFor(() => expect(mockedStatus).toHaveBeenCalledTimes(3))
-    expect(settle).toHaveBeenCalledTimes(1)
-  })
-
-  it('settles a new equal-value deposit because attempts are keyed by outpoint', async () => {
-    const settle = vi.fn().mockResolvedValue({ txid: 'settled', amountSats: 49_000 })
-    mockedStatus.mockResolvedValue(activeBoardingStatus)
-    mockedBoardingFunds.mockResolvedValue({
-      total: 50_000,
-      confirmed: 50_000,
-      confirmedOutpoints: ['first:0'],
-      unconfirmed: 0,
-    })
-    setupHook(false, activeBoardingStatus, true, enrollment, true, true, boardingSignerTestDouble(true, settle))
-    await waitFor(() => expect(settle).toHaveBeenCalledTimes(1))
-
-    mockedBoardingFunds.mockResolvedValue({
-      total: 50_000,
-      confirmed: 50_000,
-      confirmedOutpoints: ['second:0'],
-      unconfirmed: 0,
-    })
-    window.dispatchEvent(new Event('focus'))
-    await waitFor(() => expect(settle).toHaveBeenCalledTimes(2))
-  })
-
-  it('retries the same confirmed outpoint after a transient SDK failure', async () => {
-    let now = 1
-    vi.spyOn(Date, 'now').mockImplementation(() => now)
-    const settle = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('temporary Operator stream failure'))
-      .mockResolvedValueOnce({ txid: 'settled', amountSats: 49_000 })
-    mockedStatus.mockResolvedValue(activeBoardingStatus)
-    mockedBoardingFunds.mockResolvedValue({
-      total: 50_000,
-      confirmed: 50_000,
-      confirmedOutpoints: ['deposit:0'],
-      unconfirmed: 0,
-    })
-    const { result } = setupHook(
-      false,
-      activeBoardingStatus,
-      true,
-      enrollment,
-      true,
-      true,
-      boardingSignerTestDouble(true, settle),
-    )
-    await waitFor(() => expect(settle).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(mockedBoardingFunds.mock.calls.length).toBeGreaterThanOrEqual(2))
-    await waitFor(() => expect(result.current.boardingInProgress).toBe(false))
-
-    now = 15_002
-    window.dispatchEvent(new Event('focus'))
-    await waitFor(() => expect(settle).toHaveBeenCalledTimes(2))
-  })
-
-  it('does not settle while locked or without a retained signer', async () => {
-    const lockedSettle = vi.fn()
-    const unreadySettle = vi.fn()
-    mockedStatus.mockResolvedValue(activeBoardingStatus)
-    mockedBoardingFunds.mockResolvedValue({
-      total: 50_000,
-      confirmed: 50_000,
-      confirmedOutpoints: ['deposit:0'],
-      unconfirmed: 0,
-    })
-    const lockedHook = setupHook(
-      true,
-      activeBoardingStatus,
-      true,
-      enrollment,
-      true,
-      true,
-      boardingSignerTestDouble(true, lockedSettle),
-    )
-    await act(async () => lockedHook.result.current.refreshBalance())
-    setupHook(false, activeBoardingStatus, true, enrollment, true, true, boardingSignerTestDouble(false, unreadySettle))
-
-    await waitFor(() => expect(mockedBoardingFunds).toHaveBeenCalled())
-    expect(lockedSettle).not.toHaveBeenCalled()
-    expect(unreadySettle).not.toHaveBeenCalled()
-  })
-
   it('uses and verifies the recovered in-memory pin when private storage is unavailable', async () => {
     mockedUtxos.mockResolvedValue([{ txid: 'saved', vout: 0, value: 42_000, status: { confirmed: true } }])
     const { result } = setupHook(true, STATUS, true, null, true, false)
@@ -407,8 +285,6 @@ describe('useVaultBalances refresh coordination', () => {
       ({ checked }) =>
         useVaultBalances({
           addressPin: pin,
-          boardingSigner: new VaultBoardingSignerSession(),
-          boardingSignerRevision: 0,
           busy: false,
           enrollment: null,
           initialStatusChecked: checked,
@@ -442,12 +318,7 @@ describe('useVaultBalances refresh coordination', () => {
         },
       ],
     })
-    mockedBoardingFunds.mockResolvedValueOnce({
-      total: 1_000,
-      confirmed: 0,
-      confirmedOutpoints: [],
-      unconfirmed: 1_000,
-    })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0, unconfirmed: 1_000 })
     const { result } = setupHook(false, active)
     await act(async () => {
       await Promise.resolve()
@@ -461,12 +332,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedTxs.mockClear()
     mockedSnapshot.mockClear()
     mockedBoardingFunds.mockClear()
-    mockedBoardingFunds.mockResolvedValueOnce({
-      total: 1_000,
-      confirmed: 1_000,
-      confirmedOutpoints: ['confirmed:0'],
-      unconfirmed: 0,
-    })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 1_000, unconfirmed: 0 })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
@@ -485,12 +351,7 @@ describe('useVaultBalances refresh coordination', () => {
     vi.useFakeTimers()
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     mockedStatus.mockResolvedValue(active)
-    mockedBoardingFunds.mockResolvedValueOnce({
-      total: 1_000,
-      confirmed: 0,
-      confirmedOutpoints: [],
-      unconfirmed: 1_000,
-    })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0, unconfirmed: 1_000 })
     const { result } = setupHook(false, active)
     await act(async () => {
       await Promise.resolve()
@@ -501,12 +362,7 @@ describe('useVaultBalances refresh coordination', () => {
     const olderPoll = deferred<Awaited<ReturnType<typeof fetchVaultBoardingFunds>>>()
     mockedBoardingFunds
       .mockImplementationOnce(() => olderPoll.promise)
-      .mockResolvedValueOnce({
-        total: 2_000,
-        confirmed: 2_000,
-        confirmedOutpoints: ['new:0'],
-        unconfirmed: 0,
-      })
+      .mockResolvedValueOnce({ total: 2_000, confirmed: 2_000, unconfirmed: 0 })
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000)
     })
@@ -516,7 +372,7 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.boardingConfirmedBalance).toBe(2_000)
 
     await act(async () => {
-      olderPoll.resolve({ total: 1_000, confirmed: 1_000, confirmedOutpoints: ['old:0'], unconfirmed: 0 })
+      olderPoll.resolve({ total: 1_000, confirmed: 1_000, unconfirmed: 0 })
       await olderPoll.promise
     })
     expect(result.current.boardingConfirmedBalance).toBe(2_000)
@@ -526,12 +382,7 @@ describe('useVaultBalances refresh coordination', () => {
     vi.useFakeTimers()
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     mockedStatus.mockResolvedValue(active)
-    mockedBoardingFunds.mockResolvedValueOnce({
-      total: 1_000,
-      confirmed: 0,
-      confirmedOutpoints: [],
-      unconfirmed: 1_000,
-    })
+    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0, unconfirmed: 1_000 })
     const { unmount } = setupHook(false, active)
     await act(async () => {
       await Promise.resolve()
@@ -547,7 +398,7 @@ describe('useVaultBalances refresh coordination', () => {
 
     unmount()
     await act(async () => {
-      pendingPoll.resolve({ total: 1_000, confirmed: 1_000, confirmedOutpoints: ['pending:0'], unconfirmed: 0 })
+      pendingPoll.resolve({ total: 1_000, confirmed: 1_000, unconfirmed: 0 })
       await pendingPoll.promise
       vi.advanceTimersByTime(30_000)
     })

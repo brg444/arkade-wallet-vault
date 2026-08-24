@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   makePin: vi.fn(),
   pullMap: vi.fn(),
   recover: vi.fn(),
-  requirePin: vi.fn((status) => status),
   savePin: vi.fn(),
   unlock: vi.fn(),
 }))
@@ -23,7 +22,6 @@ vi.mock('../lib/vault/pin', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/vault/pin')>()),
   loadAddressPin: mocks.loadPin,
   pinFromEnrolledStatus: mocks.makePin,
-  requireStatusMatchesPin: mocks.requirePin,
   saveAddressPin: mocks.savePin,
 }))
 
@@ -54,7 +52,7 @@ const enrollment = {
   ciphertext: '00',
 } as EnrollmentSecrets
 
-const status = { enrolled: true, passkeyLoginAvailable: true, vaultId: 'vault-a' } as VaultStatus
+const status = { enrolled: true, vaultId: 'vault-a' } as VaultStatus
 const pin = { vaultId: 'vault-a', savingsAddress: 'tb1psavings' } as AddressPin
 const setup = { hardwarePub: '', recoveryPub: '' } as VaultSetupPlan
 
@@ -63,7 +61,6 @@ function setupHook(
 ) {
   const state = {
     reportError: vi.fn(),
-    retainBoardingSigner: vi.fn(),
     sealPlan: vi.fn(() => setup),
     setAddressPin: vi.fn(),
     setBusy: vi.fn(),
@@ -104,7 +101,7 @@ describe('Vault session program-pin recovery', () => {
     await act(async () => hook.result.current.signIn())
 
     expect(mocks.unlock).not.toHaveBeenCalled()
-    expect(mocks.enable).toHaveBeenCalledWith(enrollment, expect.any(Function))
+    expect(mocks.enable).toHaveBeenCalledExactlyOnceWith(enrollment)
     expect(mocks.recover).not.toHaveBeenCalled()
     expect(hook.setAddressPin).toHaveBeenCalledWith(pin)
     expect(hook.setScreen).toHaveBeenCalledWith('home')
@@ -116,7 +113,7 @@ describe('Vault session program-pin recovery', () => {
 
     await act(async () => hook.result.current.signIn())
 
-    expect(mocks.unlock).toHaveBeenCalledWith(enrollment, expect.any(Function))
+    expect(mocks.unlock).toHaveBeenCalledExactlyOnceWith(enrollment)
     expect(mocks.recover).not.toHaveBeenCalled()
     expect(mocks.fetchStatus).toHaveBeenCalledExactlyOnceWith(undefined, 'vault-a')
     expect(hook.setScreen).toHaveBeenCalledWith('home')
@@ -148,7 +145,7 @@ describe('Vault session program-pin recovery', () => {
 
     await act(async () => hook.result.current.signIn())
 
-    expect(mocks.recover).toHaveBeenCalledWith('vault-a', expect.any(Function))
+    expect(mocks.recover).toHaveBeenCalledExactlyOnceWith('vault-a')
     expect(hook.setEnrollment).toHaveBeenCalledWith(enrollment)
     expect(hook.setAddressPin).toHaveBeenCalledWith(pin)
     expect(hook.setStatus).toHaveBeenCalledWith(status)

@@ -121,12 +121,7 @@ export async function beginPasskeySession(
   }
 }
 
-export type PhoneSecretRetainer = (secret: Uint8Array) => void
-
-export async function enablePasskeyLogin(
-  rec: EnrollmentSecrets,
-  retainPhoneSecret?: PhoneSecretRetainer,
-): Promise<VaultStatus> {
+export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultStatus> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
   let phoneSecret: Uint8Array | undefined
   try {
@@ -178,17 +173,13 @@ export async function enablePasskeyLogin(
     // on durable browser storage. The session coordinator persists it after
     // the verified session is already live.
     pinFromEnrolledStatus(live)
-    retainPhoneSecret?.(phoneSecret)
     return live
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }
 
-export async function unlockLocalEnrollment(
-  rec: EnrollmentSecrets,
-  retainPhoneSecret?: PhoneSecretRetainer,
-): Promise<EnrollmentSecrets> {
+export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<EnrollmentSecrets> {
   const publicStatus = await fetchPublicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
   if (rpId !== location.hostname.toLowerCase()) {
@@ -210,13 +201,12 @@ export async function unlockLocalEnrollment(
   if (!got) throw new Error('The operation was aborted.')
   const prf = prfFrom(got)
   if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
-  let secret: Uint8Array | undefined
   try {
-    secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
-    retainPhoneSecret?.(secret)
+    const secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
+    zeroBytes(secret)
     return rec
   } finally {
-    zeroBytes(secret as Uint8Array, prf)
+    zeroBytes(prf)
   }
 }
 
@@ -244,7 +234,6 @@ export async function discoverVaultIdFromPasskey(): Promise<string> {
 
 export async function signInWithPasskey(
   vaultId: string,
-  retainPhoneSecret?: PhoneSecretRetainer,
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
   let session: Awaited<ReturnType<typeof beginPasskeySession>> | undefined
   let phoneSecret: Uint8Array | undefined
@@ -293,7 +282,6 @@ export async function signInWithPasskey(
     // their pin shape here; persistence is best effort in the coordinator so
     // private browsing cannot turn a valid recovery into a failed login.
     pinFromEnrolledStatus(status)
-    retainPhoneSecret?.(phoneSecret)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)

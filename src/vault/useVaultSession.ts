@@ -7,13 +7,7 @@ import {
   setSessionLocked,
 } from '../lib/vault/enrollmentStore'
 import { humanizeVaultError } from '../lib/vault/humanize'
-import {
-  loadAddressPin,
-  pinFromEnrolledStatus,
-  requireStatusMatchesPin,
-  saveAddressPin,
-  type AddressPin,
-} from '../lib/vault/pin'
+import { loadAddressPin, pinFromEnrolledStatus, saveAddressPin, type AddressPin } from '../lib/vault/pin'
 import {
   discoverVaultIdFromPasskey,
   enablePasskeyLogin,
@@ -31,7 +25,6 @@ import type { VaultScreen } from './context'
 interface VaultSessionOptions {
   enrollment: EnrollmentSecrets | null
   reportError: (message: string) => void
-  retainBoardingSigner: (secret: Uint8Array) => void
   sealPlan: () => VaultSetupPlan
   setAddressPin: Dispatch<SetStateAction<AddressPin | null>>
   setBusy: Dispatch<SetStateAction<boolean>>
@@ -75,7 +68,6 @@ function bestEffortBrowserWrite(write: () => void) {
 export function useVaultSession({
   enrollment,
   reportError,
-  retainBoardingSigner,
   sealPlan,
   setAddressPin,
   setBusy,
@@ -127,7 +119,11 @@ export function useVaultSession({
           // Enrollment already saved the server-proposed kit locally. Remote
           // backup remains best effort and never replaces that committed map.
         }
-        setStatus(await enablePasskeyLogin(result.enrollment, retainBoardingSigner))
+        try {
+          setStatus(await enablePasskeyLogin(result.enrollment))
+        } catch {
+          reportError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
+        }
         setScreen('home')
       } catch (error) {
         reportError(humanizeVaultError(error))
@@ -135,18 +131,7 @@ export function useVaultSession({
         setBusy(false)
       }
     },
-    [
-      reportError,
-      retainBoardingSigner,
-      sealPlan,
-      setAddressPin,
-      setBusy,
-      setEnrollment,
-      setScreen,
-      setStatus,
-      setup,
-      status,
-    ],
+    [reportError, sealPlan, setAddressPin, setBusy, setEnrollment, setScreen, setStatus, setup, status],
   )
 
   const enableOtherDevices = useCallback(async () => {
@@ -157,14 +142,13 @@ export function useVaultSession({
     setBusy(true)
     reportError('')
     try {
-      setStatus(await enablePasskeyLogin(enrollment, retainBoardingSigner))
-      setScreen((current) => (current === 'passkey' ? 'home' : current))
+      setStatus(await enablePasskeyLogin(enrollment))
     } catch (error) {
       reportError(humanizeVaultError(error))
     } finally {
       setBusy(false)
     }
-  }, [enrollment, reportError, retainBoardingSigner, setBusy, setScreen, setStatus])
+  }, [enrollment, reportError, setBusy, setStatus])
 
   const signIn = useCallback(async () => {
     setBusy(true)
@@ -173,24 +157,21 @@ export function useVaultSession({
       const local = enrollment || findStoredEnrollment()
       const localPin = local ? loadAddressPin(localStorage, local.vaultId) : null
       if (local && localPin) {
-        const live = requireStatusMatchesPin(await fetchVaultStatus(undefined, local.vaultId), localPin)
-        const unlocked = live.passkeyLoginAvailable ? await unlockLocalEnrollment(local, retainBoardingSigner) : local
-        const verifiedStatus = live.passkeyLoginAvailable
-          ? live
-          : requireStatusMatchesPin(await enablePasskeyLogin(local, retainBoardingSigner), localPin)
+        const unlocked = await unlockLocalEnrollment(local)
         setEnrollment(unlocked)
         setLocked(false)
-        setStatus(verifiedStatus)
+        const live = await fetchVaultStatus(undefined, unlocked.vaultId)
+        setStatus(live)
         setAddressPin(localPin)
         setScreen('home')
         bestEffortBrowserWrite(() => saveEnrollment(unlocked))
         bestEffortBrowserWrite(() => saveSelectedVaultId(unlocked.vaultId))
         bestEffortBrowserWrite(() => setSessionLocked(false))
-        void restoreMap(unlocked, verifiedStatus, setup)
+        void restoreMap(unlocked, live, setup)
         return
       }
       if (local) {
-        const live = await enablePasskeyLogin(local, retainBoardingSigner)
+        const live = await enablePasskeyLogin(local)
         const livePin = pinFromEnrolledStatus(live)
         setEnrollment(local)
         setLocked(false)
@@ -206,7 +187,7 @@ export function useVaultSession({
       }
       const selected = loadSelectedVaultId()
       const vaultId = selected || (await discoverVaultIdFromPasskey())
-      const result = await signInWithPasskey(vaultId, retainBoardingSigner)
+      const result = await signInWithPasskey(vaultId)
       const recoveredPin = pinFromEnrolledStatus(result.status)
       setEnrollment(result.enrollment)
       setLocked(false)
@@ -223,18 +204,7 @@ export function useVaultSession({
     } finally {
       setBusy(false)
     }
-  }, [
-    enrollment,
-    reportError,
-    retainBoardingSigner,
-    setAddressPin,
-    setBusy,
-    setEnrollment,
-    setLocked,
-    setScreen,
-    setStatus,
-    setup,
-  ])
+  }, [enrollment, reportError, setAddressPin, setBusy, setEnrollment, setLocked, setScreen, setStatus, setup])
 
   return { enableOtherDevices, enroll, signIn }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reviewedVtxoQuoteMatchesDraft, spendingPositionBalance, vaultDraftFee } from './vault'
+import { reviewedVtxoQuoteMatchesDraft, vaultDraftFee } from './vault'
 
 describe('vault send draft fees', () => {
   it('keeps the Savings fallback out of an Arkade Spending draft', () => {
@@ -23,9 +23,5 @@ describe('vault send draft fees', () => {
     expect(reviewedVtxoQuoteMatchesDraft(quote, { address: 'tark1changed', amount: 12_000, fee: 500 })).toBe(false)
     expect(reviewedVtxoQuoteMatchesDraft(quote, { address: 'tark1reviewed', amount: 12_001, fee: 500 })).toBe(false)
     expect(reviewedVtxoQuoteMatchesDraft(quote, { address: 'tark1reviewed', amount: 12_000, fee: 501 })).toBe(false)
-  })
-
-  it('shows boarding Bitcoin in Spending without making it part of VTXO selection', () => {
-    expect(spendingPositionBalance(98_000, 150_000)).toBe(248_000)
   })
 })

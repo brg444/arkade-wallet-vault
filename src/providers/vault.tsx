@@ -48,7 +48,6 @@ import {
   vaultArkServer,
 } from '../lib/vault/vtxo/spend'
 import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
-import { VaultBoardingSignerSession } from '../lib/vault/vtxo/boardingSession'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -94,10 +93,6 @@ export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null,
   )
 }
 
-export function spendingPositionBalance(vtxoSats: number, boardingSats: number): number {
-  return vtxoSats + boardingSats
-}
-
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
@@ -125,22 +120,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [pendingSavingsHandoff, setPendingSavingsHandoff] = useState<PendingSavingsHandoff | null>(null)
   const [locked, setLocked] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
-  const boardingSigner = useMemo(() => new VaultBoardingSignerSession(), [])
-  const [boardingSignerRevision, setBoardingSignerRevision] = useState(0)
-  const retainBoardingSigner = useCallback(
-    (secret: Uint8Array) => {
-      boardingSigner.retain(secret)
-      setBoardingSignerRevision((current) => current + 1)
-    },
-    [boardingSigner],
-  )
-
-  useEffect(
-    () => () => {
-      boardingSigner.clear()
-    },
-    [boardingSigner],
-  )
 
   useEffect(() => {
     let existing: EnrollmentSecrets | null = null
@@ -160,17 +139,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       existingPin = pinId ? loadAddressPin(localStorage, pinId) : null
       setAddressPin(existingPin)
       const sessionLocked = loadSessionLocked()
+      setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
-      // An unlocked flag cannot survive a document reload: the passkey-backed
-      // phone signer is deliberately memory-only. Always require the normal
-      // unlock ceremony in a new document so boarding reconciliation and sends
-      // cannot appear usable without their signer.
-      if (existing) {
-        setSessionLocked(true)
-        setLocked(true)
-        setScreen(existingPin && sessionLocked ? 'welcome' : 'signin')
-      } else {
-        setLocked(sessionLocked)
+      if (existing && !sessionLocked) {
+        if (existingPin) {
+          setScreen('home')
+        } else {
+          setSessionLocked(true)
+          setLocked(true)
+          setScreen('signin')
+        }
       }
     } catch {
       clearSetupPlan()
@@ -181,14 +159,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const boot = async () => {
       try {
         const recovered = await reconcileStagedEnrollment()
-        if (recovered) {
+        if (recovered && !loadSessionLocked()) {
           setEnrollment(recovered.enrollment)
           setStatus(recovered.status)
-          const recoveredPin = loadAddressPin(localStorage, recovered.status.vaultId)
-          setAddressPin(recoveredPin)
-          setSessionLocked(true)
-          setLocked(true)
-          setScreen(recoveredPin ? 'welcome' : 'signin')
+          setAddressPin(loadAddressPin(localStorage, recovered.status.vaultId))
+          setScreen('home')
           return
         }
         if (selectedId) {
@@ -280,7 +255,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const {
     balanceError,
     balancesLoaded,
-    boardingBalance,
     boardingInProgress,
     history,
     refreshBalance,
@@ -290,8 +264,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     vtxoSpendingSats,
   } = useVaultBalances({
     addressPin,
-    boardingSigner,
-    boardingSignerRevision,
     busy,
     enrollment,
     initialStatusChecked,
@@ -303,10 +275,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   })
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
-  // Spending is the user's whole position. Confirmed VTXOs are spendable;
-  // value at the pinned boarding address is visible immediately but remains
-  // excluded from Send selection until the Operator settles it.
-  const amountSats = status?.enrolled ? spendingPositionBalance(vtxoSpendingSats, boardingBalance) : 0
+  const amountSats = status?.enrolled ? vtxoSpendingSats : 0
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
   const clearError = useCallback(() => reportError(''), [reportError])
@@ -418,7 +387,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const { enableOtherDevices, enroll, signIn } = useVaultSession({
     enrollment,
     reportError,
-    retainBoardingSigner,
     sealPlan,
     setAddressPin,
     setBusy,
@@ -659,7 +627,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const secret = await unlockPhoneBip340(enrollment, status)
     try {
       const signed = signSavingsPsbt(unsigned, secret)
-      if (spend.address === status.vtxoBoardingAddress) retainBoardingSigner(secret)
       const pending = createPendingSavingsHandoff({
         vaultId: status.vaultId,
         psbtHex: signed,
@@ -679,7 +646,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       zeroBytes(secret)
     }
-  }, [enrollment, pendingSavingsHandoff, retainBoardingSigner, savingsAddress, spend, status])
+  }, [enrollment, pendingSavingsHandoff, savingsAddress, spend, status])
 
   const discardPendingSavingsHandoff = useCallback(() => {
     const vaultId = pendingSavingsHandoff?.vaultId || status?.vaultId || ''
@@ -870,7 +837,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   ])
 
   const reset = useCallback(() => {
-    boardingSigner.clear()
     setSessionLocked(true)
     setLocked(true)
     setError('')
@@ -884,7 +850,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScanOnSend(false)
     setHandoffPsbt('')
     setScreen('welcome')
-  }, [boardingSigner])
+  }, [])
 
   const retryLightningRefund = useCallback(
     async (rfqId: string) => {
