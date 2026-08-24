@@ -27,9 +27,11 @@ state, `src/screens/Vault` contains the user flows, and `src/lib/vault`
 contains program construction, transaction validation, persistence adapters,
 and VTXO lifecycle coordinators. The production graph excludes the deleted
 general-wallet entrypoint and its unrelated swaps, assets, notes, and lending.
-The disabled Lightning send adapter delegates invoice, RFQ, VHTLC, and contract
-registration to `@arkade-os/swap`; it does not create another wallet or
-transaction lifecycle.
+The feature-gated Lightning send adapter delegates invoice, RFQ, VHTLC,
+contract registration, chain reconciliation, and refunds to
+`@arkade-os/swap`. Each bounded operation opens a standard Arkade SDK wallet
+over isolated per-vault repositories. Vault code does not add a transaction
+builder or parallel swap lifecycle.
 
 Each VTXO send has a client-generated operation ID that is persisted before
 the first mutation. The phone signs the canonical reserve request before the

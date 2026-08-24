@@ -76,12 +76,13 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
 - Live Mutinynet qualification must cover reload, two-tab races, dropped
   reserve and authorization responses, missed event acknowledgements, lost
   finalization, and delayed recovery.
-- Outbound BOLT11 is implemented as a disabled package-native lifecycle using
-  the published RFQ repository, manager, contract registry, and refunder.
-  Mainnet enablement still requires an approved signed solver card and rotation
-  procedure, quote-to-reservation expiry tests, and real invoice and refund
-  tests. The public mainnet solver registry currently advertises no Lightning
-  market.
+- Outbound BOLT11 is implemented as a feature-gated Mutinynet lifecycle using
+  the published RFQ repository, manager, activity reader, contract registry,
+  and refunder. Mainnet enablement still requires an approved signed solver
+  card and rotation procedure, quote-to-reservation expiry tests, real invoice
+  and refund tests, and a portable recovery path for the package records and
+  VHTLC contract data that currently live in browser IndexedDB. The public
+  mainnet solver registry currently advertises no Lightning market.
 - Lightning receive remains disabled. The route needs a published package with
   the current receive fixes, a deployed mainnet solver market, a production
   covenant claim service, reload-safe client state, and proof that every claim

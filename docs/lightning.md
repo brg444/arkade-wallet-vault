@@ -38,22 +38,25 @@ discarded without creating a second operation. An ambiguous funding response
 resumes through the existing VTXO operation and the official SDK
 pending-transaction interface.
 
-The package manager restores nonterminal records at startup. An unfunded quote
-can be cancelled or retired after expiry. Once the funding target is exposed,
-the record remains until the payment resolves or refunds because an absent
-broadcast response does not prove that no funds moved.
+The package manager restores nonterminal records during an authorized wallet
+session. A read-only manager pass also reconciles records during balance
+refresh and window focus. It uses the package activity reader to recover a
+funding transaction identity when the local response was lost. An unfunded
+quote can be cancelled or retired after expiry. Once funding starts, the record
+remains until the payment settles or refunds because an absent broadcast
+response does not prove that no funds moved.
 
 ## Refunds
 
-The initial send posture matches the current Arkade Wallet integration. The
-VHTLC's noninteractive refund path uses the server, solver, and mainnet
-Emulator to return value directly to `vault-policy-v1`. Package-level tests
-rebuild the persisted contract and verify that this leaf contains the exact
-Spending script.
-
 The package manager uses the published Arkade refunder for unresolved funded
-records. Mainnet enablement still requires real immediate-failure and delayed
-refund tests against the approved service and solver configuration.
+records and returns value directly to `vault-policy-v1`. A read-only refresh
+can identify a payment that is ready to return, but producing the refund
+signature requires the passkey-backed phone key. The transaction screen then
+offers `Return to Spending`. Package-level tests rebuild the persisted contract
+and verify that its refund leaf contains the exact Spending script.
+
+Mainnet enablement still requires immediate-failure and delayed-refund tests
+against the approved service and solver configuration.
 
 ## Lightning receive
 
@@ -72,9 +75,13 @@ underfunding, Operator outage, claim, solver refund, and unilateral recovery.
 
 ## Release gate
 
-The module is disabled unless `VITE_VAULT_LIGHTNING_SEND` is exactly `true`,
-and no production UI currently consumes it. Enabling it requires all of the
-following:
+The send UI is available only when `VITE_VAULT_LIGHTNING_SEND` is exactly
+`true`. The current release also requires the pinned Mutinynet solver profile,
+so another network fails closed. Mutinynet qualification requires a real
+invoice to exercise quote, funding, settlement, reload, lost funding response,
+expiry, and refund with bounded value.
+
+Mainnet requires all of the following:
 
 1. ordinary mainnet VTXO Spending is qualified against `arkade.computer`;
 2. the mainnet Emulator and Vault Program pins are frozen;
@@ -83,5 +90,8 @@ following:
    Lightning market;
 4. quote expiry and ordinary reservation expiry are coordinated and covered by
    reload and lost-response tests;
-5. a real invoice exercises pay, immediate failure refund, delayed status, and
-   ambiguous funding recovery with bounded value.
+5. the package RFQ record and VHTLC contract data have a portable recovery
+   path. They currently live in browser IndexedDB, so a fresh browser cannot
+   reconstruct a funded swap;
+6. a real invoice exercises payment, immediate-failure refund, delayed status,
+   and ambiguous funding recovery with bounded value.
