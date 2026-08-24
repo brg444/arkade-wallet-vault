@@ -49,8 +49,9 @@ remains out of scope.
 - Arkade transaction construction, intent handling, boarding, and settlement
   use the official SDK against `https://arkade.computer`. Vault code does not
   add Operator lifecycle endpoints or replay a lost MuSig2 signing session.
-- Boarding excludes outpoints held by a nonterminal SDK intent before creating
-  a new SDK wallet. Failure to read that lock set stops settlement.
+- Boarding attempts are serialized by a per-vault Web Lock. The confirmed
+  onchain input is then handed to the official SDK; Vault code does not maintain
+  a competing intent lock or registration lifecycle.
 - An empty or mismatched pending-transaction lookup stays fail-closed and keeps
   the operation locked. Operator-side manual resolution is an availability
   requirement, not a reason to resubmit an ambiguous transaction.

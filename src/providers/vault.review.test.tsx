@@ -64,6 +64,7 @@ vi.mock('../vault/useVaultBalances', () => ({
     refreshBalance: vi.fn().mockResolvedValue(undefined),
     refreshingBalance: false,
     savingsSats: 0,
+    savingsSpendableSats: 0,
     vtxoSpendingSats: 20_000,
   }),
 }))
