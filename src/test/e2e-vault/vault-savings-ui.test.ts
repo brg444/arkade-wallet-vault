@@ -13,8 +13,9 @@ function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 }
 
-async function openVault(page: Page): Promise<VaultStatus> {
+async function openVault(page: Page): Promise<{ broadcastHex: () => string; status: VaultStatus }> {
   let status: VaultStatus | undefined
+  let broadcastHex = ''
   await page.route('**/v1/status*', (route) =>
     json(
       route,
@@ -33,6 +34,10 @@ async function openVault(page: Page): Promise<VaultStatus> {
   await page.route('**/esplora/**', (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/esplora/blocks/tip/height') return route.fulfill({ status: 200, body: '1' })
+    if (url.pathname === '/esplora/tx' && route.request().method() === 'POST') {
+      broadcastHex = route.request().postData() || ''
+      return route.fulfill({ status: 200, body: 'dd'.repeat(32) })
+    }
     return json(route, [])
   })
   await page.goto('/')
@@ -42,7 +47,7 @@ async function openVault(page: Page): Promise<VaultStatus> {
   }, UI_FIXTURE)) as VaultStatus
   await page.reload()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
-  return status
+  return { broadcastHex: () => broadcastHex, status }
 }
 
 async function selectSavings(page: Page) {
@@ -51,7 +56,10 @@ async function selectSavings(page: Page) {
   await expect(page.getByTestId('account-switcher')).toContainText('Savings')
 }
 
-async function createPhoneSignedPendingTransfer(page: Page, status: VaultStatus): Promise<string> {
+async function createPendingTransfer(
+  page: Page,
+  status: VaultStatus,
+): Promise<{ hardwareSigned: string; phoneSigned: string }> {
   return page.evaluate(
     async ({ amount, enrollmentPath, fee, fixturePath, handoffPath, savingsPath, vaultStatus }) => {
       const enrollmentStore = await import(/* @vite-ignore */ enrollmentPath)
@@ -69,23 +77,28 @@ async function createPhoneSignedPendingTransfer(page: Page, status: VaultStatus)
         coins: [{ txid: '77'.repeat(32), vout: 0, value: amount + fee, confirmedHeight: 1 }],
         leaf: 'admin',
       })
-      const secret = fixtures.scalarSecret(3)
+      const phoneSecret = fixtures.scalarSecret(3)
+      const hardwareSecret = fixtures.scalarSecret(4)
       try {
-        const signed = savings.signSavingsPsbt(unsigned, secret)
+        const phoneSigned = savings.signSavingsPsbt(unsigned, phoneSecret)
         handoff.savePendingSavingsHandoff(
           localStorage,
           handoff.createPendingSavingsHandoff({
             vaultId: vaultStatus.vaultId,
-            psbtHex: signed,
+            psbtHex: phoneSigned,
             destAddress: vaultStatus.vtxoBoardingAddress,
             amountSats: amount,
             feeSats: fee,
             network: vaultStatus.network,
           }),
         )
-        return signed
+        return {
+          phoneSigned,
+          hardwareSigned: savings.signSavingsPsbt(phoneSigned, hardwareSecret),
+        }
       } finally {
-        secret.fill(0)
+        phoneSecret.fill(0)
+        hardwareSecret.fill(0)
       }
     },
     {
@@ -100,13 +113,10 @@ async function createPhoneSignedPendingTransfer(page: Page, status: VaultStatus)
   )
 }
 
-test('persists a phone-signed Savings PSBT and supports copy, paste, upload, and deletion', async ({
-  context,
-  page,
-}) => {
+test('persists a phone-signed Savings PSBT and completes a real hardware-signed handoff', async ({ context, page }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3003' })
-  const status = await openVault(page)
-  const psbtHex = await createPhoneSignedPendingTransfer(page, status)
+  const { broadcastHex, status } = await openVault(page)
+  const { hardwareSigned, phoneSigned } = await createPendingTransfer(page, status)
 
   await page.reload()
   await selectSavings(page)
@@ -120,21 +130,22 @@ test('persists a phone-signed Savings PSBT and supports copy, paste, upload, and
 
   await page.getByRole('button', { name: 'Copy PSBT' }).click()
   const copied = await page.evaluate(() => navigator.clipboard.readText())
-  expect(copied).toMatch(/^cHNidP/)
+  expect(copied).toBe(Buffer.from(phoneSigned, 'hex').toString('base64'))
 
-  await page.getByTestId('savings-signed-psbt-paste').fill(copied)
+  await page.getByTestId('savings-signed-psbt-paste').fill(Buffer.from(hardwareSigned, 'hex').toString('base64'))
   await expect(page.getByRole('button', { name: 'Broadcast' })).toBeEnabled()
 
   await page.getByTestId('savings-signed-psbt-file').setInputFiles({
     name: 'hardware-signed.psbt',
     mimeType: 'application/octet-stream',
-    buffer: Buffer.from(psbtHex, 'hex'),
+    buffer: Buffer.from(hardwareSigned, 'hex'),
   })
   await expect(page.getByText('hardware-signed.psbt is ready to broadcast.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Delete pending transfer' }).click()
-  await expect(page.getByTestId('account-switcher')).toContainText('Savings')
-  await expect(page.getByRole('button', { name: /Waiting for hardware/i })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Broadcast' }).click()
+  await expect(page.getByRole('heading', { name: 'Moving' })).toBeVisible()
+  await expect(page.getByText('Finishes after Bitcoin confirms')).toBeVisible()
+  await expect.poll(broadcastHex).toMatch(/^[0-9a-f]+$/)
   await expect
     .poll(() => page.evaluate((id) => localStorage.getItem(`arkade-vault-savings-handoff-v1:${id}`), status.vaultId))
     .toBeNull()
