@@ -62,15 +62,12 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
   Contract Pack binding remain required.
 - The wallet uses the official SDK lifecycle without custom registration,
   deletion, replay, event-stream, or Operator-status extensions.
-- Automatic boarding excludes every outpoint held by the SDK intent
-  repository before wallet creation. A retained nonterminal intent stays
-  fail-closed when the deployed interface cannot prove completion or release;
-  live qualification must define the operational resolution path.
-- The stock SDK can record an intent as cancelled after an unacknowledged
-  delete. The current deployed Operator does not match that delete by boarding
-  input, which leaves automatic retry unable to distinguish a released intent
-  from a retained one. Mainnet boarding remains blocked until the deployed
-  cancellation path is qualified for boarding inputs.
+- Automatic boarding passes the authoritative confirmed onchain input to the
+  official SDK under an exclusive per-vault Web Lock. It does not suppress an
+  SDK retry from a retained local intent row or add a second registration
+  lifecycle. Current Operator boarding-input deletion and SDK duplicate
+  recovery must pass crash, missed-event, and two-context qualification on the
+  deployed mainnet stack.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.

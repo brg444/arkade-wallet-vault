@@ -88,6 +88,7 @@ export interface VaultContextProps {
   clearSendScan: () => void
   savingsAddress: string
   savingsSats: number
+  savingsSpendableSats: number
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
@@ -156,6 +157,7 @@ export const VaultContext = createContext<VaultContextProps>({
   clearSendScan: () => {},
   savingsAddress: '',
   savingsSats: 0,
+  savingsSpendableSats: 0,
   screen: 'welcome',
   setAccount: () => {},
   setSpendDraft: () => {},

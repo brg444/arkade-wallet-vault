@@ -66,25 +66,19 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - `Wallet.settle()` starts SDK managers and indexer watchers. Each automatic
   attempt owns a temporary wallet and three per-vault repositories, then
   disposes the wallet before closing those repositories on success or failure.
-- Before creating that wallet, the coordinator reads the SDK intent
-  repository's public nonterminal outpoint set, excludes every reported
-  outpoint from another boarding attempt, and stops settlement before any
-  Operator call when that set cannot be read.
 - The automatic Vault coordinator accepts confirmed boarding inputs and the
   fixed `vault-policy-v1` output. It does not accept ArkNote or condition inputs
   whose registration proof can contain private `extraWitness` material.
 - The coordinator does not replay registrations, infer Operator state, resume
-  MuSig2 sessions, or implement a second protocol state machine. Interrupted
-  settlement follows the behavior of the pinned SDK and deployed Operator. A
-  retained nonterminal intent pauses automatic boarding until its inputs are
-  consumed or the intent is otherwise resolved. The deployed interface cannot
-  always resolve that ambiguity after a browser crash, so this remains an
-  availability gate for mainnet qualification.
-- The SDK marks an attempt cancelled after settlement throws, even when its
-  best-effort intent deletion was not acknowledged. The current deployed
-  Operator does not resolve deletion by a boarding input, so the local terminal
-  row can hide a retained remote intent and a later attempt can collide with
-  it. The Operator rejects the duplicate input, but automatic recovery remains
-  unavailable. Mainnet boarding requires a deployed cancellation behavior that
-  is qualified for boarding inputs; Vault code does not substitute another
-  intent lifecycle.
+  MuSig2 sessions, or implement a second protocol state machine. It passes the
+  confirmed input to `Wallet.settle()` on each exclusive attempt. The SDK owns
+  persisted intent state and duplicate recovery; the Operator owns registration
+  release. Pre-filtering inputs from the SDK intent repository is deliberately
+  avoided because a retained local row must not permanently suppress the SDK's
+  recovery path.
+- SDK 0.4.65 persists intent snapshots, but its generic startup reconciliation
+  checks inputs through the VTXO indexer. A boarding input is an onchain UTXO,
+  so that reconciliation alone cannot prove it consumed. The Vault adapter does
+  not reinterpret the row; retry remains an SDK settle against the authoritative
+  onchain UTXO, with the current Operator's boarding-input deletion behavior.
+  Crash and missed-event recovery remain live mainnet qualification cases.

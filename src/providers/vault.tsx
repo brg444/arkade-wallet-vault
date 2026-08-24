@@ -228,6 +228,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     refreshBalance,
     refreshingBalance,
     savingsSats,
+    savingsSpendableSats,
     vtxoSpendingSats,
   } = useVaultBalances({
     addressPin,
@@ -476,7 +477,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
       return
     }
-    const source = account === 'savings' ? savingsSats : vtxoSpendingSats
+    const source = account === 'savings' ? savingsSpendableSats : vtxoSpendingSats
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -521,7 +522,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     }
     setScreen('review')
-  }, [account, enrollment, reviewLightningSpend, savingsSats, setup.txCapSats, spend, status, vtxoSpendingSats])
+  }, [
+    account,
+    enrollment,
+    reviewLightningSpend,
+    savingsSpendableSats,
+    setup.txCapSats,
+    spend,
+    status,
+    vtxoSpendingSats,
+  ])
 
   const finishBroadcast = useCallback(
     async (txid: string, kind: 'onchain' | 'vtxo' | 'lightning' = 'onchain', authoritativeFee?: number) => {
@@ -818,6 +828,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       clearSendScan: () => setScanOnSend(false),
       savingsAddress,
       savingsSats,
+      savingsSpendableSats,
       screen: loaded ? screen : 'welcome',
       setAccount: selectAccount,
       setSpendDraft,
@@ -881,6 +892,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       scanOnSend,
       savingsAddress,
       savingsSats,
+      savingsSpendableSats,
       screen,
       selectAccount,
       setSpendDraft,

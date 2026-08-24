@@ -7,7 +7,7 @@ import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { fetchVaultBoardingFunds } from '../lib/vault/vtxo/board'
 import { fetchVaultVtxoSnapshot } from '../lib/vault/vtxo/spend'
-import { confirmedUtxoBalance, useVaultBalances } from './useVaultBalances'
+import { confirmedUtxoBalance, savingsUtxoBalance, useVaultBalances } from './useVaultBalances'
 
 vi.mock('../lib/vault/esplora', () => ({
   fetchAddressTxs: vi.fn(),
@@ -115,6 +115,52 @@ describe('confirmedUtxoBalance', () => {
   })
 })
 
+describe('savingsUtxoBalance', () => {
+  it('shows pending wallet-owned change but keeps only confirmed coins spendable', () => {
+    const address = 'tb1psavings'
+    const balance = savingsUtxoBalance(
+      [
+        { txid: 'old-a', vout: 0, value: 47_260, status: { confirmed: true } },
+        { txid: 'old-b', vout: 0, value: 32_260, status: { confirmed: true } },
+        { txid: 'send', vout: 1, value: 418_100, status: { confirmed: false } },
+      ],
+      [
+        {
+          txid: 'send',
+          vin: [{ prevout: { scriptpubkey_address: address, value: 519_600 } }],
+          vout: [
+            { scriptpubkey_address: 'tb1pboarding', value: 100_000 },
+            { scriptpubkey_address: address, value: 418_100 },
+          ],
+          status: { confirmed: false },
+        },
+      ],
+      address,
+    )
+
+    expect(balance).toEqual({ total: 497_620, spendable: 79_520 })
+  })
+
+  it('does not show an unconfirmed external deposit', () => {
+    const address = 'tb1psavings'
+    const incoming = { txid: 'incoming', vout: 0, value: 90_000, status: { confirmed: false } }
+    const balance = savingsUtxoBalance(
+      [incoming, incoming],
+      [
+        {
+          txid: 'incoming',
+          vin: [{ prevout: { scriptpubkey_address: 'tb1psender', value: 90_500 } }],
+          vout: [{ scriptpubkey_address: address, value: 90_000 }],
+          status: { confirmed: false },
+        },
+      ],
+      address,
+    )
+
+    expect(balance).toEqual({ total: 0, spendable: 0 })
+  })
+})
+
 describe('useVaultBalances refresh coordination', () => {
   it('ignores an older refresh that finishes after a newer snapshot', async () => {
     const older = deferred<Awaited<ReturnType<typeof fetchAddressUtxos>>>()
@@ -134,6 +180,7 @@ describe('useVaultBalances refresh coordination', () => {
       await second
     })
     expect(result.current.savingsSats).toBe(25_000)
+    expect(result.current.savingsSpendableSats).toBe(25_000)
     expect(result.current.vtxoSpendingSats).toBe(30_000)
 
     await act(async () => {
@@ -141,6 +188,7 @@ describe('useVaultBalances refresh coordination', () => {
       await first
     })
     expect(result.current.savingsSats).toBe(25_000)
+    expect(result.current.savingsSpendableSats).toBe(25_000)
     expect(result.current.vtxoSpendingSats).toBe(30_000)
   })
 
@@ -171,6 +219,7 @@ describe('useVaultBalances refresh coordination', () => {
     })
 
     expect(result.current.savingsSats).toBe(20_000)
+    expect(result.current.savingsSpendableSats).toBe(20_000)
     expect(result.current.vtxoSpendingSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
     expect(result.current.balanceError).toBe('Something went wrong. Try again.')

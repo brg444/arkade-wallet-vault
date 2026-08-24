@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { consoleError } from '../lib/logs'
-import { fetchAddressTxs, fetchAddressUtxos, type EsploraUtxo } from '../lib/vault/esplora'
+import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } from '../lib/vault/esplora'
 import { applyLightningHistoryMetadata, historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { vaultLightningSendEnabled } from '../lib/vault/lightningConfig'
@@ -50,6 +50,7 @@ interface VaultBalanceSnapshot {
   boardingConfirmedBalance: number
   history: VaultHistoryItem[]
   savingsSats: number
+  savingsSpendableSats: number
   vtxoSpendingSats: number
 }
 
@@ -58,6 +59,7 @@ const EMPTY_BALANCES: VaultBalanceSnapshot = {
   boardingConfirmedBalance: 0,
   history: [],
   savingsSats: 0,
+  savingsSpendableSats: 0,
   vtxoSpendingSats: 0,
 }
 
@@ -69,6 +71,41 @@ export function confirmedUtxoBalance(utxos: EsploraUtxo[]): number {
       total + (utxo.status.confirmed && Number.isSafeInteger(utxo.value) && utxo.value > 0 ? utxo.value : 0),
     0,
   )
+}
+
+export interface SavingsBalance {
+  total: number
+  spendable: number
+}
+
+/**
+ * Keeps change from a pending Savings send visible without treating an
+ * unconfirmed external deposit as spendable or part of the displayed balance.
+ */
+export function savingsUtxoBalance(
+  utxos: EsploraUtxo[],
+  transactions: EsploraTx[],
+  savingsAddress: string,
+): SavingsBalance {
+  const unique = new Map<string, EsploraUtxo>()
+  for (const utxo of utxos) unique.set(`${utxo.txid}:${utxo.vout}`, utxo)
+  const walletSpendTxids = new Set(
+    transactions
+      .filter(
+        (transaction) =>
+          !transaction.status.confirmed &&
+          transaction.vin.some((input) => input.prevout?.scriptpubkey_address === savingsAddress),
+      )
+      .map((transaction) => transaction.txid),
+  )
+  let spendable = 0
+  let pendingChange = 0
+  for (const utxo of unique.values()) {
+    if (!Number.isSafeInteger(utxo.value) || utxo.value <= 0) continue
+    if (utxo.status.confirmed) spendable += utxo.value
+    else if (walletSpendTxids.has(utxo.txid)) pendingChange += utxo.value
+  }
+  return { total: spendable + pendingChange, spendable }
 }
 
 // useVaultBalances is the only coordinator allowed to refresh account funds,
@@ -106,7 +143,8 @@ export function useVaultBalances({
 
   const refreshVaultId = status?.vaultId || enrollment?.vaultId || addressPin?.vaultId || ''
 
-  const { boardingBalance, boardingConfirmedBalance, history, savingsSats, vtxoSpendingSats } = snapshot
+  const { boardingBalance, boardingConfirmedBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats } =
+    snapshot
 
   const refreshBalance = useCallback(
     async (vaultId?: string) => {
@@ -144,12 +182,16 @@ export function useVaultBalances({
         const [savings, spending, boarding] = await Promise.all([
           savingsAddress
             ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)]).then(
-                ([utxos, transactions]) => ({
-                  balance: confirmedUtxoBalance(utxos),
-                  history: historyFromTxs(transactions, savingsAddress, 'savings'),
-                }),
+                ([utxos, transactions]) => {
+                  const balance = savingsUtxoBalance(utxos, transactions, savingsAddress)
+                  return {
+                    balance: balance.total,
+                    spendable: balance.spendable,
+                    history: historyFromTxs(transactions, savingsAddress, 'savings'),
+                  }
+                },
               )
-            : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
+            : Promise.resolve({ balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }),
           spendingAddress && liveStatus.enrolled
             ? Promise.all([fetchVaultVtxoSnapshot(liveStatus), loadVaultLightningHistory(liveStatus.vaultId)]).then(
                 ([vtxos, lightning]) => ({
@@ -170,6 +212,7 @@ export function useVaultBalances({
             boardingVersion === boardingFetchVersion.current ? boarding.confirmed : previous.boardingConfirmedBalance,
           history: [...savings.history, ...spending.history],
           savingsSats: savings.balance,
+          savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
         }))
         setBalancesLoaded(true)
@@ -337,6 +380,7 @@ export function useVaultBalances({
     refreshBalance,
     refreshingBalance,
     savingsSats,
+    savingsSpendableSats,
     vtxoSpendingSats,
   }
 }

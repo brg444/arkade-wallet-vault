@@ -61,7 +61,7 @@ describe('Vault home account boundaries', () => {
     renderHome({ account: 'savings' })
     expect(screen.getByRole('button', { name: 'Move to Spending' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: 'Add to Savings' })).toHaveLength(2)
-    expect(screen.getByText(/Confirmed and unspent.*hardware key/i)).toBeTruthy()
+    expect(screen.getByText(/Moving funds.*hardware key/i)).toBeTruthy()
   })
 
   it('does not expose background boarding state on Home', () => {

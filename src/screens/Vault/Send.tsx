@@ -79,7 +79,7 @@ export default function VaultSend() {
     spend,
     setup,
     status,
-    savingsSats,
+    savingsSpendableSats,
   } = useContext(VaultContext)
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
@@ -164,7 +164,7 @@ export default function VaultSend() {
             </Text>
             {fromSavings ? (
               <Text color='neutral-600' tiny>
-                {prettyNumber(savingsSats, 0)} sats in savings
+                {prettyNumber(savingsSpendableSats, 0)} sats available
               </Text>
             ) : (
               <>
