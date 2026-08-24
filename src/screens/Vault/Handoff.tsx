@@ -5,6 +5,7 @@ import Content from './Content'
 import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
 import Header from './Header'
+import Input from '../../components/Input'
 import Padded from '../../components/Padded'
 import Scanner from './Scanner'
 import Text from '../../components/Text'
@@ -116,6 +117,17 @@ export default function VaultHandoff() {
               secondary
               label={selectedFile ? 'Choose a different PSBT' : 'Upload signed PSBT'}
               onClick={() => fileInput.current?.click()}
+            />
+            <Input
+              label='Signed PSBT'
+              placeholder='Paste signed PSBT (base64 or hex)'
+              value={pasted}
+              testId='savings-signed-psbt-paste'
+              onChange={(value) => {
+                setPasted(value)
+                setSelectedFile('')
+                setFileError('')
+              }}
             />
             {selectedFile ? (
               <Text color='neutral-600' tiny wrap>

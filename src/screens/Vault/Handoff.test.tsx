@@ -63,6 +63,18 @@ describe('Savings hardware handoff', () => {
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt'))
   })
 
+  it('accepts a pasted hardware-signed PSBT alongside file upload', async () => {
+    const { completeSavingsHandoff } = renderHandoff()
+
+    fireEvent.change(screen.getByTestId('savings-signed-psbt-paste'), {
+      target: { value: 'hardware-signed-psbt-base64' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Broadcast' }))
+
+    await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt-base64'))
+    expect(screen.getByRole('button', { name: 'Upload signed PSBT' })).toBeTruthy()
+  })
+
   it('can delete the locally pending transfer', () => {
     const { cancelSavingsHandoff } = renderHandoff()
     fireEvent.click(screen.getByRole('button', { name: 'Delete pending transfer' }))
