@@ -49,6 +49,12 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('VTXO reservation expired'))).toMatch(/did not finish/i)
   })
 
+  it('keeps an expired reviewed quote actionable', () => {
+    expect(humanizeVaultError(new Error('This fee quote expired or changed. Review the send again.'))).toBe(
+      'This fee quote expired or changed. Review the send again.',
+    )
+  })
+
   it('does not expose signing scalar internals', () => {
     expect(humanizeVaultError(new Error('Invalid scalar: out of range'))).toBe(
       'Couldn’t unlock Spending. Sign in again.',
