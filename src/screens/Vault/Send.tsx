@@ -66,7 +66,6 @@ function isVaultSendInput(value: string, network?: string, allowLightning = true
 export default function VaultSend() {
   const {
     account,
-    amountSats,
     boardingAddress,
     busy,
     clearSendScan,
@@ -80,13 +79,14 @@ export default function VaultSend() {
     setup,
     status,
     savingsSpendableSats,
+    vtxoSpendingSats,
   } = useContext(VaultContext)
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
   const destNetwork = status?.network
   const lightning = !fromSavings && Boolean(lightningInvoice(spend.address, destNetwork))
   const [scan, setScan] = useState(false)
-  const availableSpend = Math.max(0, Math.min(dailyRemaining, amountSats))
+  const availableSpend = Math.max(0, Math.min(dailyRemaining, vtxoSpendingSats))
   const used = Math.max(0, setup.dailyLimitSats - availableSpend)
   const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
 
