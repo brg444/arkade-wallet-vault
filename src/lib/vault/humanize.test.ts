@@ -101,6 +101,12 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('this passkey does not belong to this vault'))).toMatch(/scan the QR|original/i)
   })
 
+  it('distinguishes a verified PRF whose saved phone-key envelope cannot be opened', () => {
+    expect(
+      humanizeVaultError(new Error('passkey PRF authentication succeeded but could not decrypt the saved phone key')),
+    ).toMatch(/passkey was verified.*saved Spending key.*same sign-in button/i)
+  })
+
   it('does not mislabel a vault script mismatch as a passkey failure', () => {
     expect(humanizeVaultError(new Error('savings tree does not match this vault’s address'))).toBe(
       'This app doesn’t match the vault. Update and try again.',
