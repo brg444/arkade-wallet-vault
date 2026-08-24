@@ -108,4 +108,21 @@ describe('Vault session program-pin recovery', () => {
     expect(mocks.fetchStatus).toHaveBeenCalledExactlyOnceWith(undefined, 'vault-a')
     expect(hook.setScreen).toHaveBeenCalledWith('home')
   })
+
+  it('opens Home without waiting for the optional recovery-map fetch', async () => {
+    mocks.loadPin.mockReturnValue(pin)
+    let releaseMap!: () => void
+    mocks.pullMap.mockReturnValue(
+      new Promise<null>((resolve) => {
+        releaseMap = () => resolve(null)
+      }),
+    )
+    const hook = setupHook()
+
+    await act(async () => hook.result.current.signIn())
+
+    expect(hook.setScreen).toHaveBeenCalledWith('home')
+    releaseMap()
+    await act(async () => Promise.resolve())
+  })
 })

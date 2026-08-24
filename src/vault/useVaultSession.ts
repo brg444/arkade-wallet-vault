@@ -156,8 +156,8 @@ export function useVaultSession({
         const live = await fetchVaultStatus(undefined, unlocked.vaultId)
         setStatus(live)
         setAddressPin(loadAddressPin(localStorage, live.vaultId))
-        await restoreMap(unlocked, live, setup)
         setScreen('home')
+        void restoreMap(unlocked, live, setup)
         return
       }
       if (local) {
@@ -169,8 +169,8 @@ export function useVaultSession({
         setLocked(false)
         setStatus(live)
         setAddressPin(loadAddressPin(localStorage, live.vaultId))
-        await restoreMap(local, live, setup)
         setScreen('home')
+        void restoreMap(local, live, setup)
         return
       }
       const selected = loadSelectedVaultId()
@@ -183,8 +183,8 @@ export function useVaultSession({
       setLocked(false)
       setStatus(result.status)
       setAddressPin(loadAddressPin(localStorage, result.status.vaultId))
-      await restoreMap(result.enrollment, result.status, setup)
       setScreen('home')
+      void restoreMap(result.enrollment, result.status, setup)
     } catch (error) {
       reportError(humanizeVaultError(error))
     } finally {

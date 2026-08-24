@@ -44,13 +44,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - `settlementConfig: false` is required for this coordinator. Otherwise the
   SDK manager may race the explicit policy-directed settle with its own
   parameterless default-output settle.
-- The SDK defaults its wallet and contract repositories to one global IndexedDB
-  database. Contract initialization loads every contract in that database, and
-  wallet sync metadata is global to it. The Vault client supplies one versioned
-  database per vault for both repositories. The temporary boarding wallet does
-  not configure an intent repository: the live `Wallet.settle()` call owns the
-  attempt, while the Operator remains authoritative for queued intent state.
-  The application never reads or migrates the SDK's global default database.
+- The SDK defaults its wallet and contract repositories to IndexedDB. The
+  temporary boarding wallet instead uses fresh SDK in-memory repositories. It
+  has no durable wallet state to migrate or reconcile and no intent repository:
+  the live `Wallet.settle()` call owns the attempt, while the Operator remains
+  authoritative for queued intent state.
 - The explicit coordinator uses one Web Lock per vault. A supporting browser
   prevents a second tab from registering a competing intent or requesting
   another device approval. Boarding and ordinary sends fail closed when Web
@@ -61,12 +59,11 @@ principal is debited once, when a later VTXO payment leaves Spending.
   direct streaming rewrite. A buffered serverless function breaks the event
   stream before settlement completes.
 - Boarding uses the SDK's `RestArkProvider` and `Wallet.settle()` directly.
-  Vault code does not override intent registration, deletion, event streaming,
-  or duplicate handling. The SDK and `arkade.computer` own that protocol
-  lifecycle.
+  The SDK and Operator own registration, deletion, event streaming, and batch
+  confirmation. Vault code retains no copy of those protocol messages.
 - `Wallet.settle()` starts SDK managers and indexer watchers. Each automatic
-  attempt owns a temporary wallet and three per-vault repositories, then
-  disposes the wallet before closing those repositories on success or failure.
+  attempt owns one temporary wallet and two in-memory SDK repositories, then
+  disposes all three on success or failure.
 - The automatic Vault coordinator accepts confirmed boarding inputs and the
   fixed `vault-policy-v1` output. It does not accept ArkNote or condition inputs
   whose registration proof can contain private `extraWitness` material.
@@ -82,9 +79,10 @@ principal is debited once, when a later VTXO payment leaves Spending.
   remains an SDK settle against the authoritative onchain UTXO, with the current
   Operator's boarding-input deletion behavior. Crash and missed-event recovery
   remain live mainnet qualification cases.
-- During live Mutinynet recovery, the SDK's duplicate-input path observed the
-  old intent disappear between its duplicate response and signed delete. The
-  delete returned `INVALID_INTENT_PROOF: no matching intents`, and the SDK did
-  not perform the now-safe registration. The adapter retries the identical
+- During live Mutinynet recovery, a queued intent entered an active batch before
+  the SDK's duplicate-input path could delete it. The Operator correctly could
+  not match the active intent, returned `INVALID_INTENT_PROOF: no matching
+intents`, and then requeued it when the unconfirmed batch failed. The adapter
+  waits through that bounded active-batch window and retries the identical
   `Wallet.settle()` request once while the already approved device key remains
   live. It does not retry any other error or add an Operator endpoint.

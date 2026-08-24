@@ -1,8 +1,8 @@
 import {
   DefaultVtxo,
   Estimator,
-  IndexedDBContractRepository,
-  IndexedDBWalletRepository,
+  InMemoryContractRepository,
+  InMemoryWalletRepository,
   RestArkProvider,
   RestIndexerProvider,
   SingleKey,
@@ -21,7 +21,7 @@ export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
 export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
 
-const VAULT_SDK_STORAGE_PREFIX = 'arkade-vault-v2'
+const ACTIVE_BATCH_RELEASE_DELAY_MS = 15_000
 
 const BOARDING_LOCK_BRAND: unique symbol = Symbol('vault-boarding-lock')
 const activeBoardingLocks = new WeakSet<object>()
@@ -145,36 +145,10 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
   return { confirmed, unconfirmed, total: confirmed + unconfirmed }
 }
 
-export function vaultBoardingStorageName(vaultId: string): string {
-  const id = String(vaultId || '').trim()
-  if (!id) throw new Error('vault id required for SDK storage')
-  return `${VAULT_SDK_STORAGE_PREFIX}:${encodeURIComponent(id)}:wallet`
-}
-
-type BoardingStorageFactories<W, C> = {
-  walletRepository: (dbName: string) => W
-  contractRepository: (dbName: string) => C
-}
-
-export function createVaultBoardingStorage(vaultId: string): {
-  walletRepository: IndexedDBWalletRepository
-  contractRepository: IndexedDBContractRepository
-}
-export function createVaultBoardingStorage<W, C>(
-  vaultId: string,
-  factories: BoardingStorageFactories<W, C>,
-): { walletRepository: W; contractRepository: C }
-export function createVaultBoardingStorage<W, C>(
-  vaultId: string,
-  factories: BoardingStorageFactories<W, C> = {
-    walletRepository: (dbName) => new IndexedDBWalletRepository(dbName) as W,
-    contractRepository: (dbName) => new IndexedDBContractRepository(dbName) as C,
-  },
-) {
-  const dbName = vaultBoardingStorageName(vaultId)
+export function createTemporaryBoardingStorage() {
   return {
-    walletRepository: factories.walletRepository(dbName),
-    contractRepository: factories.contractRepository(dbName),
+    walletRepository: new InMemoryWalletRepository(),
+    contractRepository: new InMemoryContractRepository(),
   }
 }
 
@@ -197,7 +171,7 @@ export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
 
 async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
   const identity = SingleKey.fromPrivateKey(phoneSecret)
-  const storage = createVaultBoardingStorage(status.vaultId)
+  const storage = createTemporaryBoardingStorage()
   let wallet: Wallet | undefined
   try {
     const { operator, info } = await liveBoardingOperator(status)
@@ -286,19 +260,22 @@ export function isReleasedIntentRetry(error: unknown): boolean {
 }
 
 /**
- * The SDK's duplicate-input recovery deletes the earlier intent before
- * registering again. If the Operator releases that intent concurrently, the
- * delete returns "no matching intents" and the SDK stops one call too early.
- * Retry the exact same SDK settlement once while the signing key is still live.
+ * A previous intent can already be inside an active batch when the SDK tries
+ * to delete it. The Operator cannot match an active-batch intent until that
+ * batch fails and requeues it. Wait through that short boundary, then retry the
+ * exact SDK settlement once while the signing key is still live.
  */
 export async function settleBoardingWithReleasedIntentRetry(
   wallet: Pick<Wallet, 'settle'>,
   request: Parameters<Wallet['settle']>[0],
+  waitForRelease: (delayMs: number) => Promise<void> = (delayMs) =>
+    new Promise((resolve) => window.setTimeout(resolve, delayMs)),
 ): Promise<string> {
   try {
     return await wallet.settle(request)
   } catch (error) {
     if (!isReleasedIntentRetry(error)) throw error
+    await waitForRelease(ACTIVE_BATCH_RELEASE_DELAY_MS)
     return wallet.settle(request)
   }
 }
