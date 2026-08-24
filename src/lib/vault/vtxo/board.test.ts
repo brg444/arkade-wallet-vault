@@ -11,13 +11,12 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
-  createVaultBoardingStorage,
+  createTemporaryBoardingStorage,
   disposeVaultBoardingResources,
   findConfirmedBoardingCoins,
   isReleasedIntentRetry,
   nextVaultBoardingAction,
   settleBoardingWithReleasedIntentRetry,
-  vaultBoardingStorageName,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
   withVaultBoardingSecret,
@@ -68,61 +67,13 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
 }
 
 describe('vault-board-v1', () => {
-  it('isolates SDK wallet, contract, and intent state by vault', async () => {
-    const databases = new Map<string, Set<string>>()
-    class FakeRepository {
-      private readonly rows: Set<string>
+  it('uses fresh in-memory SDK state for every temporary boarding wallet', async () => {
+    const first = createTemporaryBoardingStorage()
+    const second = createTemporaryBoardingStorage()
+    await first.walletRepository.saveUtxos('boarding-address', [boardingCoin('11'.repeat(32), 0, 20_000)])
 
-      constructor(
-        readonly kind: string,
-        readonly dbName: string,
-      ) {
-        const key = `${kind}:${dbName}`
-        this.rows = databases.get(key) || new Set<string>()
-        databases.set(key, this.rows)
-      }
-
-      add(value: string) {
-        this.rows.add(value)
-      }
-
-      has(value: string) {
-        return this.rows.has(value)
-      }
-
-      clear() {
-        this.rows.clear()
-      }
-    }
-    const factories = {
-      walletRepository: (dbName: string) => new FakeRepository('wallet', dbName),
-      contractRepository: (dbName: string) => new FakeRepository('contract', dbName),
-    }
-
-    const vaultA = createVaultBoardingStorage('vault-a', factories)
-    const vaultB = createVaultBoardingStorage('vault-b', factories)
-    vaultA.walletRepository.add('cursor-a')
-    vaultA.contractRepository.add('contract-a')
-
-    expect(vaultB.walletRepository.has('cursor-a')).toBe(false)
-    expect(vaultB.contractRepository.has('contract-a')).toBe(false)
-    expect(vaultA.walletRepository.dbName).toBe(vaultA.contractRepository.dbName)
-    expect(vaultB.walletRepository.dbName).toBe(vaultB.contractRepository.dbName)
-    expect(vaultA.walletRepository.dbName).not.toBe(vaultB.walletRepository.dbName)
-    vaultB.walletRepository.add('cursor-b')
-    vaultB.contractRepository.add('contract-b')
-    vaultB.walletRepository.clear()
-    vaultB.contractRepository.clear()
-    const reopenedB = createVaultBoardingStorage('vault-b', factories)
-    expect(reopenedB.walletRepository.has('cursor-b')).toBe(false)
-    expect(reopenedB.contractRepository.has('contract-b')).toBe(false)
-    expect(vaultA.walletRepository.has('cursor-a')).toBe(true)
-    expect(vaultA.contractRepository.has('contract-a')).toBe(true)
-  })
-
-  it('uses explicit versioned storage names and rejects a missing vault id', () => {
-    expect(vaultBoardingStorageName('vault-a')).toBe('arkade-vault-v2:vault-a:wallet')
-    expect(() => vaultBoardingStorageName('')).toThrow(/vault id/)
+    await expect(first.walletRepository.getUtxos('boarding-address')).resolves.toHaveLength(1)
+    await expect(second.walletRepository.getUtxos('boarding-address')).resolves.toEqual([])
   })
 
   it('disposes the wallet before both boarding repositories', async () => {
@@ -189,7 +140,7 @@ describe('vault-board-v1', () => {
     await expect(findConfirmedBoardingCoins(wallet, selected.txid)).resolves.toEqual([selected])
   })
 
-  it('retries only the SDK release race once with the exact settlement request', async () => {
+  it('waits for an active batch to release, then retries the exact SDK settlement once', async () => {
     const request = {
       inputs: [boardingCoin('11'.repeat(32), 0, 20_000)],
       outputs: [{ address: 'tark1destination', amount: 20_000n }],
@@ -199,9 +150,15 @@ describe('vault-board-v1', () => {
       return 'commitment'
     }
     let calls = 0
+    const waits: number[] = []
 
-    await expect(settleBoardingWithReleasedIntentRetry({ settle } as never, request)).resolves.toBe('commitment')
+    await expect(
+      settleBoardingWithReleasedIntentRetry({ settle } as never, request, async (delayMs) => {
+        waits.push(delayMs)
+      }),
+    ).resolves.toBe('commitment')
     expect(calls).toBe(2)
+    expect(waits).toEqual([15_000])
   })
 
   it('does not retry another SDK or Operator error', async () => {
