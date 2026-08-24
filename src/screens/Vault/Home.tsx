@@ -41,7 +41,6 @@ export default function VaultHome() {
     navigate,
     openSendScan,
     openRecover,
-    liveNetwork,
     initiateAlert,
     refreshBalance,
     spendingArkAddress,
@@ -50,7 +49,6 @@ export default function VaultHome() {
     savingsSats,
     setAccount,
     setSpendDraft,
-    status,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [picker, setPicker] = useState(false)
@@ -115,9 +113,7 @@ export default function VaultHome() {
                   >
                     {truncateAddress(address, 6)}
                   </button>
-                ) : (
-                  <p className='vault-account-addr is-empty'>{liveNetwork ? 'Testnet' : 'No address yet'}</p>
-                )}
+                ) : null}
               </div>
               <div className='vault-account-actions'>
                 <button
@@ -260,11 +256,6 @@ export default function VaultHome() {
               />
             </FlexRow>
             <VaultHistory />
-            {status?.enrolled && (!spendingArkAddress || !boardingAddress) ? (
-              <Text color='neutral-600' tiny wrap>
-                Receive isn’t ready yet. Try again after setup finishes.
-              </Text>
-            ) : null}
           </div>
         </Padded>
       </Content>

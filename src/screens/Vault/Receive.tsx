@@ -42,23 +42,27 @@ export default function VaultReceive() {
       <Content noRefresh>
         <Padded>
           <FlexCol>
-            <Text color='neutral-600' tiny wrap>
-              {liveNetwork ? 'Testnet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
-            </Text>
-            <Text small bold>
-              {spending ? 'One payment request' : 'Savings address'}
-            </Text>
             {!spending ? (
-              <Text color='neutral-600' tiny wrap>
-                Bitcoin sent here stays in Savings. Sending it later requires this device and hardware.
-              </Text>
+              <>
+                <Text color='neutral-600' tiny wrap>
+                  {liveNetwork ? 'Testnet. Don’t send real bitcoin.' : 'Don’t send real bitcoin.'}
+                </Text>
+                <Text small bold>
+                  Savings address
+                </Text>
+                <Text color='neutral-600' tiny wrap>
+                  Bitcoin sent here stays in Savings. Sending it later requires this device and hardware.
+                </Text>
+              </>
             ) : null}
             {request ? (
-              <div className='vault-receive-qr'>
-                <QrCode value={request} />
-              </div>
+              <QrCode large={spending} value={request} />
             ) : (
-              <Text>No address yet.</Text>
+              <Text>
+                {spending
+                  ? 'Spending receive is unavailable. Return to the wallet and try again.'
+                  : 'Savings is not restored on this device. Sign in again to restore it.'}
+              </Text>
             )}
             {!spending ? (
               <p className='vault-receive-addr' data-testid='receive-address'>

@@ -105,6 +105,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let existing: EnrollmentSecrets | null = null
+    let existingPin: AddressPin | null = null
     try {
       const plan = loadSetupPlan()
       if (plan) {
@@ -117,11 +118,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       existing = selected ? loadEnrollment(localStorage, selected) : findStoredEnrollment()
       if (existing?.vaultId) saveSelectedVaultId(existing.vaultId)
       const pinId = existing?.vaultId || selected
-      setAddressPin(pinId ? loadAddressPin(localStorage, pinId) : null)
+      existingPin = pinId ? loadAddressPin(localStorage, pinId) : null
+      setAddressPin(existingPin)
       const sessionLocked = loadSessionLocked()
       setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
-      if (existing && !sessionLocked) setScreen('home')
+      if (existing && !sessionLocked) {
+        if (existingPin) {
+          setScreen('home')
+        } else {
+          setSessionLocked(true)
+          setLocked(true)
+          setScreen('signin')
+        }
+      }
     } catch {
       clearSetupPlan()
     } finally {

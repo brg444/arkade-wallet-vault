@@ -166,4 +166,14 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(screen.getByTestId('error')).toHaveTextContent('This fee quote expired or changed. Review the send again.')
     expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed)
   })
+
+  it('does not open Home when a stored enrollment has no pinned Vault Program', async () => {
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('signin'))
+  })
 })
