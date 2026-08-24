@@ -173,7 +173,7 @@ export function useVaultSession({
         setScreen('home')
         return
       }
-      const selected = local?.vaultId || loadSelectedVaultId()
+      const selected = loadSelectedVaultId()
       const vaultId = selected || (await discoverVaultIdFromPasskey())
       const result = await signInWithPasskey(vaultId)
       setEnrollment(result.enrollment)

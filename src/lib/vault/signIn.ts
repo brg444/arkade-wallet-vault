@@ -66,16 +66,7 @@ export async function beginPasskeySession(
     },
     mode,
   )
-  let got: PublicKeyCredential | null
-  try {
-    got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
-  } catch (err) {
-    const name = err instanceof DOMException ? err.name : ''
-    if (mode === 'hybrid' && expectedCred && (name === 'NotAllowedError' || name === 'InvalidStateError')) {
-      throw new Error('this browser does not have the passkey that created this vault')
-    }
-    throw err
-  }
+  const got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
   if (!got) throw new Error('The operation was aborted.')
   if (expectedCred && bytesToHex(new Uint8Array(got.rawId)) !== expectedCred) {
     throw new Error('passkey credential does not match this vault')
