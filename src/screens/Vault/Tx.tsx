@@ -2,6 +2,7 @@ import { useContext } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from './Content'
+import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
 import Header from './Header'
 import Padded from '../../components/Padded'
@@ -11,7 +12,7 @@ import { VaultContext } from '../../vault/context'
 import { Detail } from './ui'
 
 export default function VaultTx() {
-  const { navigate, selectedTx, status: vaultStatus } = useContext(VaultContext)
+  const { busy, error, navigate, retryLightningRefund, selectedTx, status: vaultStatus } = useContext(VaultContext)
   const sent = selectedTx?.type === 'sent'
   const boarding = selectedTx?.activity === 'boarding'
   const lightning = selectedTx?.activity === 'lightning'
@@ -30,7 +31,9 @@ export default function VaultTx() {
           ? 'Paid'
           : selectedTx.lightningState === 'refunded'
             ? 'Refunded'
-            : 'Processing'
+            : selectedTx.lightningState === 'needs_counterparty'
+              ? 'Ready to return'
+              : 'Processing'
         : selectedTx.confirmed
           ? 'Confirmed'
           : 'Pending'
@@ -58,10 +61,19 @@ export default function VaultTx() {
               <Detail label='Fee' value={prettyAmount(selectedTx.fee)} />
             ) : null}
             {selectedTx ? <Detail label='Transaction' value={selectedTx.txid} mono /> : null}
+            <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
+        {selectedTx?.lightningState === 'needs_counterparty' && selectedTx.lightningRfqId ? (
+          <Button
+            onClick={() => retryLightningRefund(selectedTx.lightningRfqId!)}
+            label='Return to Spending'
+            disabled={busy}
+            loading={busy}
+          />
+        ) : null}
         <Button onClick={() => navigate('home')} label='Done' />
         {explorer ? (
           <Button

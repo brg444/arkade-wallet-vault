@@ -14,6 +14,7 @@ export interface VaultHistoryItem {
   displayAmount?: number
   fee?: number
   lightningState?: string
+  lightningRfqId?: string
 }
 
 export interface VaultHistoryGroup {
@@ -147,6 +148,7 @@ export interface VaultVtxoHistoryCoin {
 }
 
 export interface VaultLightningHistoryMetadata {
+  rfqId: string
   txid: string
   invoiceAmountSats: number
   state: string
@@ -166,6 +168,7 @@ export function applyLightningHistoryMetadata(
       displayAmount: payment.invoiceAmountSats,
       fee: Math.max(0, row.amount - payment.invoiceAmountSats),
       lightningState: payment.state,
+      lightningRfqId: payment.rfqId,
     }
   })
 }

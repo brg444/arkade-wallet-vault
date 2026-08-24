@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   requestLightning: vi.fn(),
   beginLightningFunding: vi.fn(),
   recordLightningFunding: vi.fn(),
+  getLightningStatus: vi.fn(),
   loadHandoff: vi.fn(),
 }))
 
@@ -56,9 +57,10 @@ vi.mock('../lib/vault/lightning', () => ({
   assertVaultLightningQuoteCurrent: vi.fn(),
   beginVaultLightningFunding: mocks.beginLightningFunding,
   recordVaultLightningFundingTxid: mocks.recordLightningFunding,
+  getVaultLightningStatus: mocks.getLightningStatus,
   requestVaultLightningQuote: mocks.requestLightning,
   withVaultLightningRepository: vi.fn(async (_vaultId, run) => run({})),
-  withVaultLightningSdkWallet: vi.fn(async (_secret, _status, _origin, run) => run({})),
+  withVaultLightningSdkWallet: vi.fn(async (_secret, _status, _origin, run) => run({ repository: {} })),
   withVaultLightningTransport: vi.fn(async (_profile, run) => run({})),
 }))
 
@@ -161,6 +163,9 @@ function Probe() {
       <button type='button' onClick={() => vault.history[0] && vault.openTx(vault.history[0])}>
         Open first activity
       </button>
+      <button type='button' onClick={() => vault.retryLightningRefund('44'.repeat(32))}>
+        Return Lightning
+      </button>
     </div>
   )
 }
@@ -194,6 +199,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
       amountSats: 2_125,
     })
     mocks.recordLightningFunding.mockResolvedValue(undefined)
+    mocks.getLightningStatus.mockResolvedValue({ state: 'refunded' })
     mocks.requestLightning.mockResolvedValue({
       kind: 'lightning',
       invoice: MUTINYNET_INVOICE,
@@ -313,5 +319,24 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open first activity' }))
     expect(screen.getByTestId('screen')).toHaveTextContent('handoff')
     expect(screen.getByTestId('fee')).toHaveTextContent('1500')
+  })
+
+  it('reacquires and clears the phone key for a package-managed refund retry', async () => {
+    vi.stubEnv('VITE_VAULT_LIGHTNING_SEND', 'true')
+    const phoneSecret = new Uint8Array(32).fill(7)
+    mocks.unlock.mockResolvedValueOnce(phoneSecret)
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Return Lightning' })))
+
+    expect(mocks.getLightningStatus).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
+    expect(phoneSecret).toEqual(new Uint8Array(32))
+    expect(screen.getByTestId('error')).toHaveTextContent('')
   })
 })

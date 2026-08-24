@@ -24,13 +24,13 @@ import {
   reloadVaultReadonlyWorker,
   subscribeVaultReadonlyEvents,
 } from '../lib/vault/vtxo/readonlyWorker'
-import { reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+import { reconcilePersistedVtxoSpend, vaultArkServer } from '../lib/vault/vtxo/spend'
 
 async function loadVaultLightningHistory(vaultId: string) {
   if (!vaultLightningSendEnabled()) return []
   try {
     const lightning = await import('../lib/vault/lightning')
-    return await lightning.withVaultLightningRepository(vaultId, lightning.listVaultLightningHistory)
+    return await lightning.refreshVaultLightningHistory(vaultId, vaultArkServer())
   } catch (error) {
     // This local database only decorates transaction history. Authoritative
     // balances must remain available if browser metadata cannot be opened.
