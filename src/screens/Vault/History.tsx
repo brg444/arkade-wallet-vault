@@ -63,24 +63,24 @@ export default function VaultHistory() {
             const state = boarding
               ? 'Pending'
               : savingsHandoff
-              ? 'Complete or cancel'
-              : lightning
-                ? ['claimed', 'settled'].includes(tx.lightningState || '')
-                  ? 'Paid'
-                  : tx.lightningState === 'refunded'
-                    ? 'Refunded'
-                    : 'Processing'
-                : tx.account === 'spend'
-                  ? tx.confirmed
-                    ? time
-                      ? `Settled · ${time}`
-                      : 'Settled'
-                    : 'Pending'
-                  : tx.confirmed
-                    ? time
-                      ? `Confirmed · ${time}`
-                      : 'Confirmed'
-                    : 'Pending confirmation'
+                ? 'Complete or cancel'
+                : lightning
+                  ? ['claimed', 'settled'].includes(tx.lightningState || '')
+                    ? 'Paid'
+                    : tx.lightningState === 'refunded'
+                      ? 'Refunded'
+                      : 'Processing'
+                  : tx.account === 'spend'
+                    ? tx.confirmed
+                      ? time
+                        ? `Settled · ${time}`
+                        : 'Settled'
+                      : 'Pending'
+                    : tx.confirmed
+                      ? time
+                        ? `Confirmed · ${time}`
+                        : 'Confirmed'
+                      : 'Pending confirmation'
             return (
               <button
                 type='button'
