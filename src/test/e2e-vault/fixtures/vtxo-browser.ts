@@ -3,7 +3,7 @@ import { historyFromVtxos } from '../../../lib/vault/history'
 import type { VaultStatus } from '../../../lib/vault/types'
 import {
   fetchVaultBoardingFunds,
-  vaultBoardingIntentStatus,
+  planVaultBoarding,
   VAULT_BOARD_V1,
   VAULT_BOARD_V1_EXIT_DELAY,
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
@@ -74,8 +74,11 @@ export async function seedBoardingIntent({ vaultId, state, commitmentTransaction
   }
 }
 
-export async function boardingIntentState(vaultId: string, now = Date.now(), destinationCommitments: string[] = []) {
-  return vaultBoardingIntentStatus(vaultId, [BOARDING_OUTPOINT], now, new Set(destinationCommitments))
+export async function boardingIntentState(vaultId: string, destinationCommitments: string[] = []) {
+  const plan = await planVaultBoarding(vaultId, [BOARDING_OUTPOINT], new Set(destinationCommitments))
+  if (plan.settledOutpoints.length) return 'settled'
+  if (plan.blockedOutpoints.length) return 'blocked'
+  return 'eligible'
 }
 
 function boardingStatus(vaultId: string, boardingAddress: string): VaultStatus {

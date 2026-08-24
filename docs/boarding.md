@@ -55,7 +55,7 @@ The persistent worker receives only the compressed device public key through
 page, but it cannot sign or settle. The PRF-derived private scalar is available
 only in the foreground after Face ID. One per-vault Web Lock excludes another
 tab while the page creates a short-lived SDK wallet, settles the confirmed
-boarding inputs, closes the wallet and repositories, and zeroes the source
+boarding output, closes the wallet and repositories, and zeroes the source
 secret.
 
 A page or process interruption during signing discards that session. The next
@@ -65,12 +65,18 @@ to IndexedDB, local storage, or the service worker.
 
 ## Retry and reconciliation
 
-The SDK intent repository records settlement progress across reloads. A fresh
-nonterminal intent suppresses another Face ID prompt while the worker and page
-continue observing it. The five-minute hold is a local abandoned-operation
-grace, not evidence that the Operator request expired. After that grace and
-only when no tab owns the Web Lock, a new foreground attempt may let the SDK
-run its supported duplicate cleanup and retry path.
+The SDK intent repository records settlement progress for each boarding
+outpoint. A nonterminal request, or a terminal request that reports retained
+Operator state, blocks another automatic attempt for that outpoint. It never
+ages back into a retry on a local timer. A different confirmed outpoint remains
+eligible and is settled separately, so one interrupted request does not block a
+later deposit or bind it to the same request.
+
+The read-only worker can observe these records and public chain state, but it
+cannot resume a lost signing session. Delegate support starts with an existing
+VTXO and cannot sign a raw boarding output. The foreground therefore gives one
+exact eligible output to `Wallet.settle()` after Face ID. The SDK owns proof
+construction, registration, event handling, and intent persistence.
 
 Confirmed destination evidence always wins over stale local metadata. Missing
 events, worker suspension, offline periods, and focus changes trigger bounded
@@ -79,10 +85,15 @@ Events improve responsiveness but are not the sole source of truth.
 
 Vault code does not implement registration proofs, replay Operator messages,
 infer private Operator state, or add lifecycle endpoints to arkd. It supplies
-the confirmed onchain inputs and exact policy output to `Wallet.settle()`. The
-SDK owns registration, intent persistence, duplicate cleanup, event handling,
-and settlement; the deployed Arkade Operator remains authoritative for batch
-state.
+one confirmed onchain input and the exact policy output to `Wallet.settle()`;
+the deployed Arkade Operator remains authoritative for batch state.
+
+The current Mutinynet Operator returns no match when SDK duplicate recovery
+tries to delete a retained boarding-only intent. The wallet therefore keeps
+that output visible and pending without repeatedly reopening Face ID. It can
+proceed after Operator cleanup or recover with the device key once the
+604672-second exit delay matures. Hardware alone is not part of the boarding
+recovery path.
 
 ## Release qualification
 

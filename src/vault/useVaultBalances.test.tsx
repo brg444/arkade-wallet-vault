@@ -6,7 +6,12 @@ import { fetchVaultStatus } from '../lib/vault/status'
 import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
-import { fetchVaultBoardingFunds, vaultBoardingIntentStatus, withVaultBoardingLock } from '../lib/vault/vtxo/board'
+import {
+  fetchVaultBoardingFunds,
+  planVaultBoarding,
+  settleVaultBoarding,
+  withVaultBoardingLock,
+} from '../lib/vault/vtxo/board'
 import {
   fetchVaultReadonlyVtxoSnapshot,
   reloadVaultReadonlyWorker,
@@ -36,7 +41,8 @@ vi.mock('../lib/vault/vtxo/readonlyWorker', () => ({
 vi.mock('../lib/vault/vtxo/board', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/vault/vtxo/board')>()),
   fetchVaultBoardingFunds: vi.fn(),
-  vaultBoardingIntentStatus: vi.fn(),
+  planVaultBoarding: vi.fn(),
+  settleVaultBoarding: vi.fn(),
   withVaultBoardingLock: vi.fn(),
 }))
 
@@ -77,7 +83,8 @@ const mockedSnapshot = vi.mocked(fetchVaultReadonlyVtxoSnapshot)
 const mockedWorkerReload = vi.mocked(reloadVaultReadonlyWorker)
 const mockedWorkerEvents = vi.mocked(subscribeVaultReadonlyEvents)
 const mockedBoardingFunds = vi.mocked(fetchVaultBoardingFunds)
-const mockedBoardingIntentStatus = vi.mocked(vaultBoardingIntentStatus)
+const mockedBoardingPlan = vi.mocked(planVaultBoarding)
+const mockedSettleBoarding = vi.mocked(settleVaultBoarding)
 const mockedBoardingLock = vi.mocked(withVaultBoardingLock)
 const mockedUnlockPhone = vi.mocked(unlockPhoneBip340)
 
@@ -127,8 +134,20 @@ beforeEach(() => {
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
   mockedWorkerReload.mockResolvedValue(undefined)
   mockedWorkerEvents.mockReturnValue(() => undefined)
-  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0, confirmedOutpoints: [], history: [], unconfirmed: 0 })
-  mockedBoardingIntentStatus.mockResolvedValue('none')
+  mockedBoardingFunds.mockResolvedValue({
+    total: 0,
+    confirmed: 0,
+    history: [],
+    settleableOutpoints: [],
+    unconfirmed: 0,
+  })
+  mockedBoardingPlan.mockImplementation(async (_vaultId, outpoints) => ({
+    blockedOutpoints: [],
+    eligibleOutpoints: [...outpoints],
+    settledOutpoints: [],
+  }))
+  mockedSettleBoarding.mockResolvedValue({ txid: 'settled', amountSats: 1_000 })
+  mockedUnlockPhone.mockImplementation(async () => new Uint8Array(32).fill(1))
   mockedBoardingLock.mockImplementation(async (_vaultId, run) => ({
     held: true,
     value: await run({} as never),
@@ -359,7 +378,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedBoardingFunds.mockResolvedValueOnce({
       total: 1_000,
       confirmed: 0,
-      confirmedOutpoints: [],
+      settleableOutpoints: [],
       history: [
         {
           txid: 'boarding-pending',
@@ -388,7 +407,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedBoardingFunds.mockResolvedValueOnce({
       total: 1_000,
       confirmed: 1_000,
-      confirmedOutpoints: ['confirmed:0'],
+      settleableOutpoints: ['confirmed:0'],
       history: [
         {
           txid: 'boarding-confirmed',
@@ -415,32 +434,69 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.boardingConfirmedBalance).toBe(1_000)
   })
 
-  it('rechecks a fresh active boarding intent without requesting Face ID', async () => {
-    vi.useFakeTimers()
+  it('settles one eligible boarding outpoint instead of aggregating every confirmed input', async () => {
+    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
+    const blocked = `${'11'.repeat(32)}:0`
+    const eligible = `${'22'.repeat(32)}:1`
+    mockedStatus.mockResolvedValue(active)
+    mockedBoardingFunds.mockResolvedValue({
+      total: 1_000,
+      confirmed: 1_000,
+      settleableOutpoints: [blocked, eligible],
+      history: [],
+      unconfirmed: 0,
+    })
+    mockedBoardingPlan.mockResolvedValue({
+      blockedOutpoints: [blocked],
+      eligibleOutpoints: [eligible],
+      settledOutpoints: [],
+    })
+
+    setupHook(false, active, true, { vaultId: active.vaultId } as EnrollmentSecrets)
+    await waitFor(() => expect(mockedUnlockPhone).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockedSettleBoarding).toHaveBeenCalledTimes(1))
+    expect(mockedSettleBoarding).toHaveBeenCalledWith(expect.anything(), expect.any(Uint8Array), active, eligible)
+  })
+
+  it('does not reopen Face ID for a locally blocked boarding outpoint', async () => {
+    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
+    const outpoint = `${'11'.repeat(32)}:0`
+    mockedStatus.mockResolvedValue(active)
+    mockedBoardingFunds.mockResolvedValue({
+      total: 1_000,
+      confirmed: 1_000,
+      settleableOutpoints: [outpoint],
+      history: [],
+      unconfirmed: 0,
+    })
+    mockedBoardingPlan.mockResolvedValue({
+      blockedOutpoints: [outpoint],
+      eligibleOutpoints: [],
+      settledOutpoints: [],
+    })
+
+    setupHook(false, active, true, { vaultId: active.vaultId } as EnrollmentSecrets)
+    await waitFor(() => expect(mockedBoardingPlan).toHaveBeenCalled())
+    expect(mockedUnlockPhone).not.toHaveBeenCalled()
+    expect(mockedSettleBoarding).not.toHaveBeenCalled()
+  })
+
+  it('keeps an expired boarding output visible without opening Face ID', async () => {
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     mockedStatus.mockResolvedValue(active)
     mockedBoardingFunds.mockResolvedValue({
       total: 1_000,
       confirmed: 1_000,
-      confirmedOutpoints: ['11'.repeat(32) + ':0'],
+      settleableOutpoints: [],
       history: [],
       unconfirmed: 0,
     })
-    mockedBoardingIntentStatus.mockResolvedValue('active')
 
-    setupHook(false, active, true, { vaultId: active.vaultId } as EnrollmentSecrets)
-    await act(async () => {
-      for (let i = 0; i < 8; i += 1) await Promise.resolve()
-    })
-
-    expect(mockedBoardingIntentStatus).toHaveBeenCalledTimes(1)
+    const { result } = setupHook(false, active, true, { vaultId: active.vaultId } as EnrollmentSecrets)
+    await waitFor(() => expect(result.current.boardingBalance).toBe(1_000))
+    expect(mockedBoardingPlan).not.toHaveBeenCalled()
     expect(mockedUnlockPhone).not.toHaveBeenCalled()
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
-    })
-    expect(mockedBoardingIntentStatus).toHaveBeenCalledTimes(2)
-    expect(mockedUnlockPhone).not.toHaveBeenCalled()
+    expect(mockedSettleBoarding).not.toHaveBeenCalled()
   })
 
   it('ignores a narrow boarding poll superseded by a full refresh', async () => {
@@ -450,7 +506,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedBoardingFunds.mockResolvedValueOnce({
       total: 1_000,
       confirmed: 0,
-      confirmedOutpoints: [],
+      settleableOutpoints: [],
       history: [],
       unconfirmed: 1_000,
     })
@@ -467,7 +523,7 @@ describe('useVaultBalances refresh coordination', () => {
       .mockResolvedValueOnce({
         total: 2_000,
         confirmed: 2_000,
-        confirmedOutpoints: ['new:0'],
+        settleableOutpoints: ['new:0'],
         history: [],
         unconfirmed: 0,
       })
@@ -483,7 +539,7 @@ describe('useVaultBalances refresh coordination', () => {
       olderPoll.resolve({
         total: 1_000,
         confirmed: 1_000,
-        confirmedOutpoints: ['old:0'],
+        settleableOutpoints: ['old:0'],
         history: [],
         unconfirmed: 0,
       })
@@ -499,7 +555,7 @@ describe('useVaultBalances refresh coordination', () => {
     mockedBoardingFunds.mockResolvedValueOnce({
       total: 1_000,
       confirmed: 0,
-      confirmedOutpoints: [],
+      settleableOutpoints: [],
       history: [],
       unconfirmed: 1_000,
     })
@@ -521,7 +577,7 @@ describe('useVaultBalances refresh coordination', () => {
       pendingPoll.resolve({
         total: 1_000,
         confirmed: 1_000,
-        confirmedOutpoints: ['pending:0'],
+        settleableOutpoints: ['pending:0'],
         history: [],
         unconfirmed: 0,
       })

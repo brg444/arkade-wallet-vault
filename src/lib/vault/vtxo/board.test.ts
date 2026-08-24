@@ -11,7 +11,7 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
-  classifyVaultBoardingIntents,
+  classifyVaultBoardingOutpoint,
   disposeVaultBoardingResources,
   excludeSettledBoardingCoins,
   findConfirmedBoardingCoins,
@@ -110,26 +110,80 @@ describe('vault-board-v1', () => {
   })
 
   it('settles only deposits already sent to the boarding address', () => {
-    expect(nextVaultBoardingAction({ confirmed: 0, total: 49_000 })).toBe('wait')
-    expect(nextVaultBoardingAction({ confirmed: 49_000, total: 49_000 })).toBe('settle')
-    expect(nextVaultBoardingAction({ confirmed: 0, total: 0 })).toBe('idle')
+    expect(nextVaultBoardingAction({ settleableOutpoints: [], total: 49_000 })).toBe('wait')
+    expect(nextVaultBoardingAction({ settleableOutpoints: ['11'.repeat(32) + ':0'], total: 49_000 })).toBe('settle')
+    expect(nextVaultBoardingAction({ settleableOutpoints: [], total: 0 })).toBe('idle')
   })
 
-  it('returns every confirmed boarding coin for the SDK settlement attempt', async () => {
+  it('returns confirmed, non-expired boarding coins for SDK settlement', async () => {
     const first = boardingCoin('11'.repeat(32), 0, 20_000)
     const available = boardingCoin('22'.repeat(32), 1, 30_000)
     const unconfirmed = boardingCoin('33'.repeat(32), 2, 40_000, false)
-    const wallet = { getBoardingUtxos: async () => [first, available, unconfirmed] }
+    const expired = {
+      ...boardingCoin('44'.repeat(32), 3, 50_000),
+      status: {
+        confirmed: true,
+        block_time: Math.floor(Date.now() / 1_000) - Number(VAULT_BOARD_V1_EXIT_DELAY) - 1,
+      },
+    }
+    const wallet = { getBoardingUtxos: async () => [first, available, unconfirmed, expired] }
 
     await expect(findConfirmedBoardingCoins(wallet)).resolves.toEqual([available, first])
   })
 
-  it('can scope an SDK settlement retry to one boarding transaction', async () => {
+  it('scopes an SDK settlement attempt to one exact boarding outpoint', async () => {
     const first = boardingCoin('11'.repeat(32), 0, 20_000)
     const selected = boardingCoin('22'.repeat(32), 1, 30_000)
     const wallet = { getBoardingUtxos: async () => [first, selected] }
 
-    await expect(findConfirmedBoardingCoins(wallet, selected.txid)).resolves.toEqual([selected])
+    await expect(findConfirmedBoardingCoins(wallet, `${selected.txid}:${selected.vout}`)).resolves.toEqual([selected])
+  })
+
+  it('keeps active and retained Operator intents blocked without a local timeout', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    const intent = (state: string, cancellationReason?: string) =>
+      ({ state, cancellationReason, intentVtxos: [outpoint] }) as never
+
+    expect(classifyVaultBoardingOutpoint([intent('waiting_to_submit')], outpoint)).toBe('blocked')
+    expect(classifyVaultBoardingOutpoint([intent('waiting_for_batch')], outpoint)).toBe('blocked')
+    expect(classifyVaultBoardingOutpoint([intent('batch_in_progress')], outpoint)).toBe('blocked')
+    expect(
+      classifyVaultBoardingOutpoint(
+        [intent('cancelled', 'INVALID_INTENT_PROOF (23): no matching intents found')],
+        outpoint,
+      ),
+    ).toBe('blocked')
+  })
+
+  it('keeps unrelated rows eligible but fails closed on every cancelled matching request', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    const other = { txid: '22'.repeat(32), vout: 0 }
+    expect(
+      classifyVaultBoardingOutpoint([{ state: 'waiting_for_batch', intentVtxos: [other] } as never], outpoint),
+    ).toBe('eligible')
+    expect(
+      classifyVaultBoardingOutpoint(
+        [{ state: 'cancelled', cancellationReason: 'validation failed', intentVtxos: [outpoint] } as never],
+        outpoint,
+      ),
+    ).toBe('blocked')
+  })
+
+  it('lets settled destination evidence override stale local intent state', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    expect(
+      classifyVaultBoardingOutpoint(
+        [
+          {
+            state: 'waiting_for_batch',
+            commitmentTransactionId: 'commitment',
+            intentVtxos: [outpoint],
+          } as never,
+        ],
+        outpoint,
+        new Set(['commitment']),
+      ),
+    ).toBe('settled')
   })
 
   it('lets a succeeded destination VTXO suppress an Esplora-lagging boarding input', () => {
@@ -146,28 +200,6 @@ describe('vault-board-v1', () => {
       visibleDestinationVtxos +
         excludeSettledBoardingCoins(laggingEsplora, settled).reduce((sum, coin) => sum + coin.value, 0),
     ).toBe(visibleDestinationVtxos)
-  })
-
-  it('holds a fresh active intent but releases abandoned-page metadata after the retry grace', () => {
-    const now = 1_000_000
-    expect(classifyVaultBoardingIntents([{ state: 'waiting_for_batch', updatedAt: now - 1_000 }], now)).toBe('active')
-    expect(classifyVaultBoardingIntents([{ state: 'batch_in_progress', updatedAt: now - 300_001 }], now)).toBe('none')
-    expect(
-      classifyVaultBoardingIntents(
-        [
-          { state: 'batch_in_progress', updatedAt: now },
-          { state: 'batch_succeeded', updatedAt: now - 400_000 },
-        ],
-        now,
-      ),
-    ).toBe('settled')
-    expect(
-      classifyVaultBoardingIntents(
-        [{ state: 'waiting_for_batch', updatedAt: now, commitmentTransactionId: 'commitment' }],
-        now,
-        new Set(['commitment']),
-      ),
-    ).toBe('settled')
   })
 
   it('reconstructs the distinct standard boarding contract pinned by status', async () => {
