@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { reviewedVtxoQuoteMatchesDraft, vaultDraftFee } from './vault'
+import { reviewedVtxoQuoteMatchesDraft, spendingPositionBalance, vaultDraftFee } from './vault'
 
 describe('vault send draft fees', () => {
   it('keeps the Savings fallback out of an Arkade Spending draft', () => {
     expect(vaultDraftFee('spend', true)).toBe(0)
     expect(vaultDraftFee('savings', true)).toBe(1_500)
+  })
+
+  it('shows boarding deposits in Spending without changing spend selection', () => {
+    expect(spendingPositionBalance(98_000, 150_000)).toBe(248_000)
   })
 
   it('keeps approval bound to the amount, destination, and authoritative fee shown on Review', () => {

@@ -93,6 +93,10 @@ export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null,
   )
 }
 
+export function spendingPositionBalance(vtxoSats: number, boardingSats: number): number {
+  return vtxoSats + boardingSats
+}
+
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
@@ -255,6 +259,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const {
     balanceError,
     balancesLoaded,
+    boardingBalance,
     boardingInProgress,
     history,
     refreshBalance,
@@ -275,7 +280,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   })
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
-  const amountSats = status?.enrolled ? vtxoSpendingSats : 0
+  const amountSats = status?.enrolled ? spendingPositionBalance(vtxoSpendingSats, boardingBalance) : 0
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
   const clearError = useCallback(() => reportError(''), [reportError])
