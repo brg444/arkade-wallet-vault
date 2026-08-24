@@ -145,14 +145,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const sessionLocked = loadSessionLocked()
       setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
-      if (existing && !sessionLocked) {
-        if (existingPin) {
-          setScreen('home')
-        } else {
-          setSessionLocked(true)
-          setLocked(true)
-          setScreen('signin')
-        }
+      if (existing && sessionLocked) {
+        setScreen('welcome')
+      } else if (existing && existingPin) {
+        setScreen('home')
+      } else if (existing) {
+        setSessionLocked(true)
+        setLocked(true)
+        setScreen('signin')
       }
     } catch {
       clearSetupPlan()
