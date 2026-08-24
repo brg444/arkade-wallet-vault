@@ -47,9 +47,10 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - The SDK defaults its wallet and contract repositories to one global IndexedDB
   database. Contract initialization loads every contract in that database, and
   wallet sync metadata is global to it. The Vault client supplies one versioned
-  database per vault for both repositories and a separate per-vault intent
-  database. The application never reads or migrates the SDK's global default
-  database.
+  database per vault for both repositories. The temporary boarding wallet does
+  not configure an intent repository: the live `Wallet.settle()` call owns the
+  attempt, while the Operator remains authoritative for queued intent state.
+  The application never reads or migrates the SDK's global default database.
 - The explicit coordinator uses one Web Lock per vault. A supporting browser
   prevents a second tab from registering a competing intent or requesting
   another device approval. Boarding and ordinary sends fail closed when Web
@@ -72,16 +73,15 @@ principal is debited once, when a later VTXO payment leaves Spending.
 - The coordinator does not replay registrations, infer Operator state, resume
   MuSig2 sessions, or implement a second protocol state machine. It passes the
   confirmed input to `Wallet.settle()` on each exclusive attempt. The SDK owns
-  persisted intent state and duplicate recovery; the Operator owns registration
-  release. Pre-filtering inputs from the SDK intent repository is deliberately
-  avoided because a retained local row must not permanently suppress the SDK's
-  recovery path.
-- SDK 0.4.65 persists intent snapshots, but its generic startup reconciliation
-  checks inputs through the VTXO indexer. A boarding input is an onchain UTXO,
-  so that reconciliation alone cannot prove it consumed. The Vault adapter does
-  not reinterpret the row; retry remains an SDK settle against the authoritative
-  onchain UTXO, with the current Operator's boarding-input deletion behavior.
-  Crash and missed-event recovery remain live mainnet qualification cases.
+  registration and duplicate recovery; the Operator owns queued intent state
+  and release. No local intent row suppresses a retry of an onchain input that
+  remains unspent.
+- SDK intent persistence is deliberately not enabled for the temporary
+  boarding wallet. Its generic startup reconciliation checks inputs through the
+  VTXO indexer, while a boarding input is an onchain UTXO. A retry therefore
+  remains an SDK settle against the authoritative onchain UTXO, with the current
+  Operator's boarding-input deletion behavior. Crash and missed-event recovery
+  remain live mainnet qualification cases.
 - During live Mutinynet recovery, the SDK's duplicate-input path observed the
   old intent disappear between its duplicate response and signed delete. The
   delete returned `INVALID_INTENT_PROOF: no matching intents`, and the SDK did

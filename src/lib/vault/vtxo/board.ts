@@ -2,7 +2,6 @@ import {
   DefaultVtxo,
   Estimator,
   IndexedDBContractRepository,
-  IndexedDBIntentRepository,
   IndexedDBWalletRepository,
   RestArkProvider,
   RestIndexerProvider,
@@ -146,44 +145,36 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
   return { confirmed, unconfirmed, total: confirmed + unconfirmed }
 }
 
-export function vaultBoardingStorageNames(vaultId: string): { wallet: string; intents: string } {
+export function vaultBoardingStorageName(vaultId: string): string {
   const id = String(vaultId || '').trim()
   if (!id) throw new Error('vault id required for SDK storage')
-  const scope = encodeURIComponent(id)
-  return {
-    wallet: `${VAULT_SDK_STORAGE_PREFIX}:${scope}:wallet`,
-    intents: `${VAULT_SDK_STORAGE_PREFIX}:${scope}:intents`,
-  }
+  return `${VAULT_SDK_STORAGE_PREFIX}:${encodeURIComponent(id)}:wallet`
 }
 
-type BoardingStorageFactories<W, C, I> = {
+type BoardingStorageFactories<W, C> = {
   walletRepository: (dbName: string) => W
   contractRepository: (dbName: string) => C
-  intentRepository: (dbName: string) => I
 }
 
 export function createVaultBoardingStorage(vaultId: string): {
   walletRepository: IndexedDBWalletRepository
   contractRepository: IndexedDBContractRepository
-  intentRepository: IndexedDBIntentRepository
 }
-export function createVaultBoardingStorage<W, C, I>(
+export function createVaultBoardingStorage<W, C>(
   vaultId: string,
-  factories: BoardingStorageFactories<W, C, I>,
-): { walletRepository: W; contractRepository: C; intentRepository: I }
-export function createVaultBoardingStorage<W, C, I>(
+  factories: BoardingStorageFactories<W, C>,
+): { walletRepository: W; contractRepository: C }
+export function createVaultBoardingStorage<W, C>(
   vaultId: string,
-  factories: BoardingStorageFactories<W, C, I> = {
+  factories: BoardingStorageFactories<W, C> = {
     walletRepository: (dbName) => new IndexedDBWalletRepository(dbName) as W,
     contractRepository: (dbName) => new IndexedDBContractRepository(dbName) as C,
-    intentRepository: (dbName) => new IndexedDBIntentRepository(dbName) as I,
   },
 ) {
-  const names = vaultBoardingStorageNames(vaultId)
+  const dbName = vaultBoardingStorageName(vaultId)
   return {
-    walletRepository: factories.walletRepository(names.wallet),
-    contractRepository: factories.contractRepository(names.wallet),
-    intentRepository: factories.intentRepository(names.intents),
+    walletRepository: factories.walletRepository(dbName),
+    contractRepository: factories.contractRepository(dbName),
   }
 }
 
@@ -237,7 +228,6 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
 type BoardingStorageResources = {
   walletRepository: { [Symbol.asyncDispose](): Promise<void> }
   contractRepository: { [Symbol.asyncDispose](): Promise<void> }
-  intentRepository: { [Symbol.asyncDispose](): Promise<void> }
 }
 
 export async function disposeVaultBoardingResources(
@@ -253,7 +243,6 @@ export async function disposeVaultBoardingResources(
   const repositories = await Promise.allSettled([
     storage.walletRepository[Symbol.asyncDispose](),
     storage.contractRepository[Symbol.asyncDispose](),
-    storage.intentRepository[Symbol.asyncDispose](),
   ])
   for (const result of repositories) {
     if (result.status === 'rejected' && failure === undefined) failure = result.reason
