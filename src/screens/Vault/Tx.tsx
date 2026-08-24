@@ -13,6 +13,7 @@ import { Detail } from './ui'
 export default function VaultTx() {
   const { navigate, selectedTx, status: vaultStatus } = useContext(VaultContext)
   const sent = selectedTx?.type === 'sent'
+  const lightning = selectedTx?.activity === 'lightning'
   const explorer = selectedTx
     ? vaultTransactionExplorer(
         selectedTx.txid,
@@ -21,24 +22,32 @@ export default function VaultTx() {
       )
     : null
   const status = selectedTx
-    ? selectedTx.account === 'spend'
-      ? selectedTx.confirmed
-        ? 'Settled'
-        : 'Preconfirmed'
-      : selectedTx.confirmed
-        ? 'Confirmed'
-        : 'Pending confirmation'
+    ? lightning
+      ? ['claimed', 'settled'].includes(selectedTx.lightningState || '')
+        ? 'Paid'
+        : selectedTx.lightningState === 'refunded'
+          ? 'Refunded'
+          : 'Processing'
+      : selectedTx.account === 'spend'
+        ? selectedTx.confirmed
+          ? 'Settled'
+          : 'Preconfirmed'
+        : selectedTx.confirmed
+          ? 'Confirmed'
+          : 'Pending confirmation'
     : 'Unknown'
 
   return (
     <>
-      <Header text={sent ? 'Sent' : 'Received'} back={() => navigate('home')} />
+      <Header text={lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} back={() => navigate('home')} />
       <Content noRefresh>
         <Padded>
           <FlexCol gap='1.15rem'>
             <div className='vault-hero'>
-              <p className='vault-kicker'>{sent ? 'You sent' : 'You received'}</p>
-              <p className='vault-money'>{selectedTx ? prettyAmount(selectedTx.amount) : '—'}</p>
+              <p className='vault-kicker'>{lightning ? 'You paid' : sent ? 'You sent' : 'You received'}</p>
+              <p className='vault-money'>
+                {selectedTx ? prettyAmount(selectedTx.displayAmount ?? selectedTx.amount) : '—'}
+              </p>
             </div>
             <Detail label='Status' value={status} />
             <Detail
@@ -46,6 +55,9 @@ export default function VaultTx() {
               value={selectedTx?.blockTime ? prettyDate(selectedTx.blockTime) : 'Not available yet'}
             />
             <Detail label='Account' value={selectedTx?.account === 'savings' ? 'Savings' : 'Spending'} />
+            {lightning && selectedTx?.fee !== undefined ? (
+              <Detail label='Fee' value={prettyAmount(selectedTx.fee)} />
+            ) : null}
             {selectedTx ? <Detail label='Transaction' value={selectedTx.txid} mono /> : null}
           </FlexCol>
         </Padded>

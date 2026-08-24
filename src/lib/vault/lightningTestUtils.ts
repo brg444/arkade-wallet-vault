@@ -19,15 +19,27 @@ import {
 } from '@arkade-os/swap'
 import { hex } from '@scure/base'
 import { vi } from 'vitest'
-import { requestVaultLightningQuote, withVaultRefundAddress } from './lightning'
+import { requestVaultLightningQuote, withVaultRefundAddress, type VaultLightningSolverProfile } from './lightning'
+
+export const MAINNET_TEST_PROFILE: VaultLightningSolverProfile = {
+  network: 'bitcoin',
+  pubkey: '66'.repeat(32),
+  relays: ['wss://nostr.test'],
+  minSats: 500,
+  maxSats: 50_000,
+}
 
 export const MAINNET_INVOICE =
   'lnbc21u1pnk8larsp526g88ejh9ac0es9j6juxwenzdzvs6hcrphna5pp3jefpukmtk3hqpp5m206npk0fr6k45u8f90capqw48k3pzymlqhk0j98kyx4mz383pkqdz9235x2gr3w45kx6eqvfex7amwypnx77pqdf6k6urnyphhvetjyp6xsefqd3sh57fqv3hkwxqyp2xqcqz95rzjqv9ruzr6quwpsuwmyshlvenk0xm7djrtt8ugt2ja6cx3dkqtccdgvzzxeyqq28qqqqqqqqqqqqqqq9gq2y9qyysgqvu5k5w9q0xe62envhds058r9h8v5uak09hn3uzlw39sqkcuwh34j44gc53j6x6sg0u6yf6l0durxqqekytupxpf66zc7rc9cpav72ssqpcgv3p'
 
+export const MUTINYNET_INVOICE =
+  'lntbs21u1p4ghty5pp500cgfavsavx2prgw3vm4s6ckrjvg9zyjx3k87segw240hr2l2glqdqqcqzzsxqyz5vqsp56tscwj6zyk4k9g2xm4r0tf7s6xemuq2rqm7vea0tfymmzwapaqlq9qxpqysgq49fj3f48wy2utl25xzs8tjg7ak89p3242p2h3e9rk20alxajjqarjusq8222fsa9ncy43ucslfdcdtld2pd58hcxtndmjf0sfyqsf2qpsf0h6s'
+export const MUTINYNET_INVOICE_TIMESTAMP = 1_787_538_580
+
 export const INVOICE_TIMESTAMP = 1_734_606_755
 export const INVOICE_EXPIRES = INVOICE_TIMESTAMP + 43_200
 
-export async function refundAddress() {
+export async function refundAddress(network: 'bitcoin' | 'mutinynet' = 'bitcoin') {
   const phone = SingleKey.fromPrivateKey(hex.decode('01'.padStart(64, '0')))
   const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
   const phonePub = (await phone.compressedPublicKey()).slice(1)
@@ -37,7 +49,7 @@ export async function refundAddress() {
     serverPubKey: operatorPub,
     csvTimelock: DefaultVtxo.Script.DEFAULT_TIMELOCK,
   })
-  return script.address('ark', operatorPub).encode()
+  return script.address(network === 'bitcoin' ? 'ark' : 'tark', operatorPub).encode()
 }
 
 export function memoryContracts() {
@@ -172,6 +184,7 @@ export async function lightningQuoteHarness(options: { validUntil?: number; rfqI
       repository,
       contracts,
       manager,
+      profile: MAINNET_TEST_PROFILE,
       rfqId: result.rfqId,
       requester: requester as never,
       nowSeconds: INVOICE_TIMESTAMP + 1,

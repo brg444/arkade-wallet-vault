@@ -19,17 +19,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   decodeVaultLightningInvoice,
   getVaultLightningStatus,
+  isVaultLightningInput,
+  MUTINYNET_LIGHTNING_SOLVER,
   requestVaultLightningQuote,
   validateVaultLightningRefund,
   vaultLightningSendEnabled,
+  vaultLightningSolverProfile,
   wholeSatsFromMillisats,
-  withMainnetLightningTransport,
+  withVaultLightningTransport,
   withVaultRefundAddress,
 } from './lightning'
 import {
   INVOICE_EXPIRES,
   INVOICE_TIMESTAMP,
   MAINNET_INVOICE,
+  MAINNET_TEST_PROFILE,
+  MUTINYNET_INVOICE,
+  MUTINYNET_INVOICE_TIMESTAMP,
   completeRequestResult,
   memoryContracts,
   quoteManager,
@@ -49,6 +55,22 @@ describe('Lightning SEND release boundary', () => {
     expect(vaultLightningSendEnabled('true')).toBe(true)
   })
 
+  it('pins only the dedicated Mutinynet solver in the active release profile', () => {
+    expect(vaultLightningSolverProfile('mutinynet')).toEqual(MUTINYNET_LIGHTNING_SOLVER)
+    expect(vaultLightningSolverProfile('bitcoin')).toBeUndefined()
+    expect(MUTINYNET_LIGHTNING_SOLVER).toMatchObject({
+      network: 'mutinynet',
+      minSats: 1_000,
+      maxSats: 50_000,
+    })
+  })
+
+  it('recognizes direct and URI-wrapped BOLT11 inputs without accepting ordinary addresses', () => {
+    expect(isVaultLightningInput(MUTINYNET_INVOICE)).toBe(true)
+    expect(isVaultLightningInput(`lightning:${MUTINYNET_INVOICE}`)).toBe(true)
+    expect(isVaultLightningInput('tark1qqexample')).toBe(false)
+  })
+
   it('decodes the invoice locally and rejects wrong-network and expired invoices', () => {
     const facts = decodeVaultLightningInvoice(MAINNET_INVOICE, 'bitcoin', INVOICE_TIMESTAMP + 1)
     expect(facts).toEqual({
@@ -61,6 +83,18 @@ describe('Lightning SEND release boundary', () => {
       /not for mutinynet/,
     )
     expect(() => decodeVaultLightningInvoice(MAINNET_INVOICE, 'bitcoin', INVOICE_EXPIRES)).toThrow(/expired/)
+  })
+
+  it('decodes a Mutinynet invoice without treating testnet HRP as mainnet', () => {
+    expect(decodeVaultLightningInvoice(MUTINYNET_INVOICE, 'mutinynet', MUTINYNET_INVOICE_TIMESTAMP + 1)).toEqual({
+      raw: MUTINYNET_INVOICE,
+      paymentHash: '7bf084f590eb0ca08d0e8b37586b161c98828892346c7f432872aafb8d5f523e',
+      amountSats: 2100,
+      expiresAt: MUTINYNET_INVOICE_TIMESTAMP + 86_400,
+    })
+    expect(() => decodeVaultLightningInvoice(MUTINYNET_INVOICE, 'bitcoin', MUTINYNET_INVOICE_TIMESTAMP + 1)).toThrow(
+      /not for bitcoin/,
+    )
   })
 
   it('rejects fractional millisatoshi amounts instead of rounding them down', () => {
@@ -120,6 +154,22 @@ describe('Lightning SEND release boundary', () => {
     )
   })
 
+  it('binds a Mutinynet refund to the current Operator without a mainnet-only gate', async () => {
+    const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+    const operatorPubkey = hex.encode(await operator.compressedPublicKey())
+    const address = await refundAddress('mutinynet')
+    const status = {
+      enrolled: true,
+      vaultId: 'vault-lightning-mutinynet',
+      network: 'mutinynet',
+      spendingArkAddress: address,
+      spendingArkScript: hex.encode(ArkAddress.decode(address).pkScript),
+    } as import('./types').VaultStatus
+
+    expect(validateVaultLightningRefund(status, 'mutinynet', operatorPubkey).encode()).toBe(address)
+    expect(() => validateVaultLightningRefund(status, 'bitcoin', operatorPubkey)).toThrow(/networks do not match/)
+  })
+
   it('passes the adapted wallet to the package client and retains its authoritative fee and refund facts', async () => {
     const vaultAddress = await refundAddress()
     const identity = SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0')))
@@ -154,6 +204,7 @@ describe('Lightning SEND release boundary', () => {
       repository,
       contracts,
       manager,
+      profile: MAINNET_TEST_PROFILE,
       rfqId: result.rfqId,
       requester: requester as never,
       nowSeconds: INVOICE_TIMESTAMP + 1,
@@ -161,6 +212,7 @@ describe('Lightning SEND release boundary', () => {
     })
     expect(quote).toMatchObject({
       invoiceAmountSats: 2100,
+      fundAddress: result.address,
       fundAmountSats: 2125,
       corridorFeeSats: 25,
     })
@@ -176,7 +228,8 @@ describe('Lightning SEND release boundary', () => {
       },
     })
     expect(record?.profile.vaultLightning).toEqual({
-      version: 1,
+      version: 2,
+      network: 'bitcoin',
       invoice: MAINNET_INVOICE,
       quote: result.quote,
       fundingState: 'quoted',
@@ -282,6 +335,7 @@ describe('Lightning SEND release boundary', () => {
       repository,
       contracts,
       manager,
+      profile: MAINNET_TEST_PROFILE,
       rfqId: 'ab'.repeat(32),
       nowSeconds: INVOICE_TIMESTAMP + 1,
       enabled: true,
@@ -310,7 +364,8 @@ describe('Lightning SEND release boundary', () => {
   it('always closes the package Nostr transport', async () => {
     const transport = { close: vi.fn(async () => {}) } as unknown as import('@arkade-os/swap').RfqTransport
     await expect(
-      withMainnetLightningTransport(
+      withVaultLightningTransport(
+        MAINNET_TEST_PROFILE,
         async () => 'quoted',
         () => transport,
       ),
@@ -319,7 +374,8 @@ describe('Lightning SEND release boundary', () => {
 
     const rejected = { close: vi.fn(async () => {}) } as unknown as import('@arkade-os/swap').RfqTransport
     await expect(
-      withMainnetLightningTransport(
+      withVaultLightningTransport(
+        MAINNET_TEST_PROFILE,
         async () => {
           throw new Error('solver unavailable')
         },
@@ -360,6 +416,7 @@ describe('Lightning SEND release boundary', () => {
           repository,
           contracts,
           manager,
+          profile: MAINNET_TEST_PROFILE,
           rfqId: base.rfqId,
           requester: vi.fn(async () => result) as never,
           nowSeconds: INVOICE_TIMESTAMP + 1,
@@ -393,6 +450,7 @@ describe('Lightning SEND release boundary', () => {
         repository: {} as InMemoryAssetSwapRepository,
         contracts: {} as SwapContractRegistry,
         manager: {} as RfqSwapManager,
+        profile: MAINNET_TEST_PROFILE,
         requester: requester as never,
         nowSeconds: INVOICE_TIMESTAMP + 1,
         enabled: false,

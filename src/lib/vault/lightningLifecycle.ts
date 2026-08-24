@@ -1,4 +1,10 @@
-import { ArkAddress, type IWallet, type RestArkProvider, type RestIndexerProvider } from '@arkade-os/sdk'
+import {
+  ArkAddress,
+  type IWallet,
+  type NetworkName,
+  type RestArkProvider,
+  type RestIndexerProvider,
+} from '@arkade-os/sdk'
 import {
   RfqSwapManager,
   arkadeRefunder,
@@ -17,10 +23,11 @@ import {
   type SwapContractRegistry,
 } from '@arkade-os/swap'
 import { hex } from '@scure/base'
-import { decodeVaultLightningInvoice, type LightningRequestResult } from './lightningValidation'
+import { decodeVaultLightningInvoice } from './lightningInvoice'
+import type { LightningRequestResult } from './lightningValidation'
 
 const VAULT_LIGHTNING_PROFILE = 'vaultLightning'
-const VAULT_LIGHTNING_PROFILE_VERSION = 1
+const VAULT_LIGHTNING_PROFILE_VERSION = 2
 const VAULT_LIGHTNING_STORAGE_PREFIX = 'arkade-vault-v2'
 
 export interface VaultLightningQuote {
@@ -29,6 +36,7 @@ export interface VaultLightningQuote {
   invoiceAmountSats: number
   invoiceExpiresAt: number
   rfqId: string
+  fundAddress: string
   fundAmountSats: number
   corridorFeeSats: number
   validUntil: number
@@ -41,10 +49,17 @@ export interface VaultLightningFundingTarget {
   amountSats: number
 }
 
+export interface VaultLightningHistoryMetadata {
+  txid: string
+  invoiceAmountSats: number
+  state: string
+}
+
 type VaultLightningFundingState = 'quoted' | 'funding' | 'cancel_requested'
 
 interface StoredVaultLightningProfile {
-  version: 1
+  version: 2
+  network: NetworkName
   invoice: string
   quote: RfqQuote
   fundingState: VaultLightningFundingState
@@ -86,7 +101,10 @@ function storedLightningProfile(record: RfqSwapRecord): StoredVaultLightningProf
   ) {
     throw new Error(`Stored Lightning quote ${record.rfqId} is incomplete`)
   }
-  const invoice = decodeVaultLightningInvoice(value.invoice, 'bitcoin', 0)
+  if (!['bitcoin', 'testnet', 'signet', 'mutinynet', 'regtest'].includes(String(value.network))) {
+    throw new Error(`Stored Lightning quote ${record.rfqId} has no network`)
+  }
+  const invoice = decodeVaultLightningInvoice(value.invoice, value.network as NetworkName, 0)
   if (quote.to_amount !== invoice.amountSats) {
     throw new Error(`Stored Lightning quote ${record.rfqId} does not match its invoice`)
   }
@@ -95,7 +113,7 @@ function storedLightningProfile(record: RfqSwapRecord): StoredVaultLightningProf
 
 function quoteFromRecord(record: RfqSwapRecord): VaultLightningQuote {
   const stored = storedLightningProfile(record)
-  const invoice = decodeVaultLightningInvoice(stored.invoice, 'bitcoin', 0)
+  const invoice = decodeVaultLightningInvoice(stored.invoice, stored.network, 0)
   const fundAmountSats = record.amount!
   return {
     kind: 'lightning',
@@ -103,6 +121,7 @@ function quoteFromRecord(record: RfqSwapRecord): VaultLightningQuote {
     invoiceAmountSats: invoice.amountSats,
     invoiceExpiresAt: invoice.expiresAt,
     rfqId: record.rfqId,
+    fundAddress: record.lockupAddress,
     fundAmountSats,
     corridorFeeSats: fundAmountSats - invoice.amountSats,
     validUntil: stored.quote.valid_until,
@@ -217,10 +236,12 @@ export async function restorePersistedVaultLightningQuote(
   manager: RfqSwapManager,
   rfqId: string,
   invoice: string,
+  network: NetworkName,
 ): Promise<VaultLightningQuote | undefined> {
   const record = await repository.getRfqSwap(rfqId)
   if (!record) return undefined
   const stored = storedLightningProfile(record)
+  if (stored.network !== network) throw new Error(`Lightning request ${rfqId} belongs to another network.`)
   if (stored.invoice !== invoice) throw new Error(`Lightning request ${rfqId} belongs to another invoice.`)
   if (stored.fundingState === 'cancel_requested') throw new Error('This Lightning quote was cancelled.')
   if (isRfqSwapTerminal(record.state)) throw new Error('This Lightning payment is already resolved.')
@@ -230,6 +251,24 @@ export async function restorePersistedVaultLightningQuote(
   return quoteFromRecord(record)
 }
 
+export async function restoreMatchingVaultLightningQuote(
+  repository: Pick<AssetSwapRepository, 'getAllRfqSwaps' | 'getRfqSwap'>,
+  contracts: SwapContractRegistry,
+  manager: RfqSwapManager,
+  invoice: string,
+  network: NetworkName,
+): Promise<VaultLightningQuote | undefined> {
+  const candidates = (await repository.getAllRfqSwaps())
+    .filter((record) => record.kind === 'lightning_send' && !isRfqSwapTerminal(record.state))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  for (const record of candidates) {
+    const stored = storedLightningProfile(record)
+    if (stored.network !== network || stored.invoice !== invoice || stored.fundingState === 'cancel_requested') continue
+    return restorePersistedVaultLightningQuote(repository, contracts, manager, record.rfqId, invoice, network)
+  }
+  return undefined
+}
+
 export async function persistVaultLightningQuote({
   result,
   facts,
@@ -237,6 +276,7 @@ export async function persistVaultLightningQuote({
   contractParams,
   repository,
   manager,
+  network,
   nowSeconds,
 }: {
   result: LightningRequestResult
@@ -245,10 +285,12 @@ export async function persistVaultLightningQuote({
   contractParams: Record<string, string>
   repository: AssetSwapRepository
   manager: RfqSwapManager
+  network: NetworkName
   nowSeconds: number
 }): Promise<VaultLightningQuote> {
   const stored: StoredVaultLightningProfile = {
     version: VAULT_LIGHTNING_PROFILE_VERSION,
+    network,
     invoice: facts.raw,
     quote: result.quote,
     fundingState: 'quoted',
@@ -356,6 +398,25 @@ export function getVaultLightningStatus(
   rfqId: string,
 ): Promise<RfqSwapRecord | undefined> {
   return repository.getRfqSwap(rfqId)
+}
+
+export async function listVaultLightningHistory(
+  repository: Pick<AssetSwapRepository, 'getAllRfqSwaps'>,
+): Promise<VaultLightningHistoryMetadata[]> {
+  const payments: VaultLightningHistoryMetadata[] = []
+  for (const record of await repository.getAllRfqSwaps()) {
+    if (record.kind !== 'lightning_send' || !record.fundingArkTxid) continue
+    if (!/^[0-9a-f]{64}$/.test(record.fundingArkTxid)) {
+      throw new Error(`Stored Lightning payment ${record.rfqId} has an invalid funding transaction id`)
+    }
+    const quote = quoteFromRecord(record)
+    payments.push({
+      txid: record.fundingArkTxid,
+      invoiceAmountSats: quote.invoiceAmountSats,
+      state: record.state,
+    })
+  }
+  return payments
 }
 
 export function assertVaultLightningQuoteCurrent(

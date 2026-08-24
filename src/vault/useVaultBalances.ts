@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { consoleError } from '../lib/logs'
 import { fetchAddressTxs, fetchAddressUtxos, type EsploraUtxo } from '../lib/vault/esplora'
-import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
+import { applyLightningHistoryMetadata, historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import { humanizeVaultError } from '../lib/vault/humanize'
+import { vaultLightningSendEnabled } from '../lib/vault/lightningConfig'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import { fetchVaultStatus } from '../lib/vault/status'
@@ -18,6 +19,20 @@ import {
   withVaultBoardingSecret,
 } from '../lib/vault/vtxo/board'
 import { fetchVaultVtxoSnapshot, reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+
+async function loadVaultLightningHistory(vaultId: string) {
+  if (!vaultLightningSendEnabled()) return []
+  try {
+    const lightning = await import('../lib/vault/lightning')
+    return await lightning.withVaultLightningRepository(vaultId, lightning.listVaultLightningHistory)
+  } catch (error) {
+    // This local database only decorates transaction history. Authoritative
+    // balances must remain available if browser metadata cannot be opened.
+    consoleError(error, 'could not load Lightning history metadata')
+    return []
+  }
+}
+
 interface VaultBalancesOptions {
   addressPin: AddressPin | null
   busy: boolean
@@ -136,7 +151,12 @@ export function useVaultBalances({
               )
             : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           spendingAddress && liveStatus.enrolled
-            ? fetchVaultVtxoSnapshot(liveStatus)
+            ? Promise.all([fetchVaultVtxoSnapshot(liveStatus), loadVaultLightningHistory(liveStatus.vaultId)]).then(
+                ([vtxos, lightning]) => ({
+                  ...vtxos,
+                  history: applyLightningHistoryMetadata(vtxos.history, lightning),
+                }),
+              )
             : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
             ? fetchVaultBoardingFunds(liveStatus)
