@@ -6,6 +6,7 @@
 | [Vault Program](program.md)                          | Savings, Spending, recovery, and the versioned contract.                      |
 | [VTXO boarding](boarding.md)                         | Onchain entry into Spending through the standard SDK settlement flow.         |
 | [Upstream alignment](upstream-alignment.md)          | Official Wallet and SDK pins, Vault extensions, and dependency update checks. |
+| [Release qualification](testing.md)                  | Automated, physical Face ID, and live Mutinynet release gates.                |
 | [Lightning send](lightning.md)                       | Package-native outbound BOLT11 boundary, refunds, and enablement gates.       |
 | [Mainnet v2 baseline](mainnet-v2-baseline.md)        | Fresh application boundary, release order, and unresolved gates.              |
 | [Security](security.md)                              | Current guarantees, assumptions, and excluded claims.                         |
