@@ -210,7 +210,7 @@ export function useVaultBalances({
             : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
             ? fetchVaultBoardingFunds(liveStatus)
-            : Promise.resolve({ total: 0, confirmed: 0, confirmedOutpoints: [] as string[] }),
+            : Promise.resolve({ total: 0, confirmed: 0, confirmedOutpoints: [] as string[], history: [] }),
         ])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
@@ -222,7 +222,7 @@ export function useVaultBalances({
             boardingVersion === boardingFetchVersion.current
               ? boarding.confirmedOutpoints
               : previous.boardingConfirmedOutpoints,
-          history: [...savings.history, ...spending.history],
+          history: [...savings.history, ...spending.history, ...boarding.history],
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
@@ -253,6 +253,7 @@ export function useVaultBalances({
         boardingBalance: funds.total,
         boardingConfirmedBalance: funds.confirmed,
         boardingConfirmedOutpoints: funds.confirmedOutpoints,
+        history: [...previous.history.filter((item) => item.activity !== 'boarding'), ...funds.history],
       }))
       setBoardingPulse((value) => value + 1)
     } catch (error) {

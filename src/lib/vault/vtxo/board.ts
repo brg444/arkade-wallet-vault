@@ -16,6 +16,7 @@ import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
 import { zeroBytes } from '../ceremony/directauth'
 import { fetchAddressUtxos } from '../esplora'
+import { historyFromBoardingUtxos, type VaultHistoryItem } from '../history'
 import { vaultArkServer } from './spend'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
 
@@ -126,6 +127,7 @@ export function vaultBoardScriptFromStatus(status: VaultStatus, operatorPub: Uin
 export interface VaultBoardingFunds {
   confirmed: number
   confirmedOutpoints: string[]
+  history: VaultHistoryItem[]
   unconfirmed: number
   total: number
 }
@@ -147,7 +149,13 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
   const confirmed = confirmedCoins.reduce((sum, coin) => sum + coin.value, 0)
   const confirmedOutpoints = confirmedCoins.map((coin) => `${coin.txid}:${coin.vout}`).sort()
   const unconfirmed = coins.filter((coin) => !coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
-  return { confirmed, confirmedOutpoints, unconfirmed, total: confirmed + unconfirmed }
+  return {
+    confirmed,
+    confirmedOutpoints,
+    history: historyFromBoardingUtxos(coins),
+    unconfirmed,
+    total: confirmed + unconfirmed,
+  }
 }
 
 export function createTemporaryBoardingStorage() {

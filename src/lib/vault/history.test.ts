@@ -3,6 +3,7 @@ import {
   applyLightningHistoryMetadata,
   classifyAddressTx,
   groupVaultHistory,
+  historyFromBoardingUtxos,
   historyFromTxs,
   historyFromVtxos,
   recentAccountHistory,
@@ -22,6 +23,26 @@ function tx(partial: Partial<EsploraTx> & { txid: string }): EsploraTx {
 }
 
 describe('vault history', () => {
+  it('shows unspent boarding outputs as one pending Spending receive per transaction', () => {
+    const rows = historyFromBoardingUtxos([
+      { txid: 'boarding', vout: 0, value: 40_000, status: { confirmed: true } },
+      { txid: 'boarding', vout: 1, value: 10_000, status: { confirmed: true } },
+      { txid: 'boarding', vout: 1, value: 10_000, status: { confirmed: true } },
+    ])
+
+    expect(rows).toEqual([
+      {
+        txid: 'boarding',
+        type: 'received',
+        amount: 50_000,
+        confirmed: false,
+        account: 'spend',
+        activity: 'boarding',
+      },
+    ])
+    expect(groupVaultHistory(rows)[0].label).toBe('Pending')
+  })
+
   it('treats an incoming output as received', () => {
     const item = classifyAddressTx(
       tx({
@@ -228,7 +249,7 @@ describe('vault history', () => {
       Math.floor(now.getTime() / 1000),
     )
 
-    expect(groups.map((group) => group.label)).toEqual(['Preconfirmed', 'Today', 'Yesterday', 'August 8'])
+    expect(groups.map((group) => group.label)).toEqual(['Pending', 'Today', 'Yesterday', 'August 8'])
     expect(groups.at(-1)?.items.map((row) => row.txid)).toEqual(['older-a', 'older-b'])
   })
 
