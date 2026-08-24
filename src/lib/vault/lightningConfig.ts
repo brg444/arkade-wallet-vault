@@ -8,6 +8,7 @@ export interface VaultLightningSolverProfile {
   relays: readonly string[]
   minSats: number
   maxSats: number
+  maxFundingSats: number
 }
 
 /** Release-pinned Mutinynet solver. Discovery cannot redirect vault funds. */
@@ -17,6 +18,7 @@ export const MUTINYNET_LIGHTNING_SOLVER: VaultLightningSolverProfile = {
   relays: ['wss://nostr.arkade.sh'],
   minSats: 1_000,
   maxSats: 25_000,
+  maxFundingSats: 50_000,
 }
 
 export function vaultLightningSendEnabled(value = import.meta.env.VITE_VAULT_LIGHTNING_SEND): boolean {

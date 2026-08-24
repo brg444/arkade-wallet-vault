@@ -22,7 +22,7 @@ import { nostrRfqTransport } from '@arkade-os/swap/nostr'
 import { hex } from '@scure/base'
 import { vaultLightningSendEnabled, type VaultLightningSolverProfile } from './lightningConfig'
 import { decodeVaultLightningInvoice } from './lightningInvoice'
-import { registeredContractScript, validateVaultLightningRequestResult } from './lightningValidation'
+import { readRegisteredLightningContractParams, registeredContractScript } from './lightningValidation'
 import {
   discardUnexposedVaultLightningQuote,
   persistVaultLightningQuote,
@@ -302,8 +302,10 @@ export async function requestVaultLightningQuote({
   if (
     !Number.isSafeInteger(profile.minSats) ||
     !Number.isSafeInteger(profile.maxSats) ||
+    !Number.isSafeInteger(profile.maxFundingSats) ||
     profile.minSats < 1 ||
-    profile.maxSats < profile.minSats
+    profile.maxSats < profile.minSats ||
+    profile.maxFundingSats < profile.maxSats
   ) {
     throw new Error('Lightning solver amount limits are invalid.')
   }
@@ -326,19 +328,17 @@ export async function requestVaultLightningQuote({
   const result = await requester(wallet, arkServerUrl, transport, { invoice: facts, rfqId: requestId })
   const contractScript = registeredContractScript(result)
   try {
-    const { contractParams, refundLocktime } = await validateVaultLightningRequestResult({
-      result,
-      rfqId: requestId,
-      facts,
-      wallet,
-      contracts,
-      nowSeconds,
-    })
+    if (!Number.isSafeInteger(result.fundAmount) || result.fundAmount > profile.maxFundingSats) {
+      throw new Error(
+        `Lightning funding amount exceeds the solver profile’s ${profile.maxFundingSats.toLocaleString()} sat limit.`,
+      )
+    }
+    const contractParams = await readRegisteredLightningContractParams({ result, contracts })
 
     return await persistVaultLightningQuote({
       result,
       facts,
-      refundLocktime,
+      refundLocktime: result.quote.refund_locktime!,
       contractParams,
       repository,
       manager,
