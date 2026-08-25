@@ -1,19 +1,27 @@
 import { ArkAddress } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { Address, NETWORK, TEST_NETWORK } from '@scure/btc-signer'
 import { describe, expect, it } from 'vitest'
 import { isVaultArkAddress, isVaultBitcoinAddress, isVaultSpendAddress, scriptHexFromAddress } from './bitcoin'
 
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
+const BC1Q = Address(NETWORK).encode(Address(TEST_NETWORK).decode(TB1Q))
 
 describe('vault bitcoin addresses', () => {
   it('decodes a checksummed testnet address and rejects mainnet, ark, and garbage', () => {
     expect(isVaultBitcoinAddress(TB1Q, 'mutinynet')).toBe(true)
-    expect(isVaultBitcoinAddress('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'mutinynet')).toBe(false)
+    expect(isVaultBitcoinAddress(BC1Q, 'mutinynet')).toBe(false)
     expect(isVaultBitcoinAddress('1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH', 'mutinynet')).toBe(false)
     expect(isVaultBitcoinAddress('tark1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq')).toBe(
       false,
     )
     expect(isVaultBitcoinAddress('bcrt1p40xfaupmdqysq0c6m5m6q0c6m5m6q0c6m5m6q0c6m5m6q0c6m5mq7n0d2p')).toBe(false)
+  })
+
+  it('parses mainnet Bitcoin addresses only when the caller names bitcoin', () => {
+    expect(isVaultBitcoinAddress(BC1Q, 'bitcoin')).toBe(true)
+    expect(isVaultBitcoinAddress(TB1Q, 'bitcoin')).toBe(false)
+    expect(scriptHexFromAddress(BC1Q, 'bitcoin').startsWith('0014')).toBe(true)
   })
 
   it('encodes a valid testnet address on mutinynet only', () => {
@@ -33,5 +41,8 @@ describe('vault bitcoin addresses', () => {
     expect(isVaultArkAddress(testAddress, 'mutinynet')).toBe(true)
     expect(isVaultSpendAddress(testAddress, 'mutinynet')).toBe(true)
     expect(isVaultArkAddress(mainAddress, 'mutinynet')).toBe(false)
+    expect(isVaultArkAddress(mainAddress, 'bitcoin')).toBe(true)
+    expect(isVaultSpendAddress(mainAddress, 'bitcoin')).toBe(true)
+    expect(isVaultArkAddress(testAddress, 'bitcoin')).toBe(false)
   })
 })
