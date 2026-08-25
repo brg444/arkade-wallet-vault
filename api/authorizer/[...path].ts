@@ -17,6 +17,7 @@ export const MAX_GATEWAY_BYTES = 1024 * 1024
 export const GATEWAY_UPSTREAM_TIMEOUT_MS = 20_000
 const RATE_WINDOW_MS = 60_000
 const RATE_LIMIT = 60
+const LOCAL_CACHE_CONTROL = 'no-store, max-age=0'
 
 const FLAT_VTXO_PATHS: Record<string, string> = {
   '/api/v1/vtxo-operation': '/v1/vtxo/operation',
@@ -175,7 +176,12 @@ export async function readBoundedUpstream(res: Response, maxBytes = MAX_GATEWAY_
   return Buffer.concat(chunks.map((c) => Buffer.from(c)))
 }
 
+function localResponse(res: VercelLikeRes) {
+  res.setHeader('Cache-Control', LOCAL_CACHE_CONTROL)
+}
+
 function jsonError(res: VercelLikeRes, status: number, message: string) {
+  localResponse(res)
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json')
   res.end(JSON.stringify({ error: message }))
@@ -190,6 +196,7 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   const pathAndQuery = targetPath(req)
   const pathOnly = pathAndQuery.split('?')[0]
   if (!allowAuthorizerPath(pathOnly)) {
+    localResponse(res)
     res.statusCode = 404
     res.end()
     return
