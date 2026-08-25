@@ -1,19 +1,15 @@
 import {
   ArkAddress,
   CSVMultisigTapscript,
-  FetchError,
   Intent,
   RestArkProvider,
   SingleKey,
   Transaction,
   type ArkProvider,
-  type IndexerProvider,
-  type VirtualCoin,
 } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
-import { historyFromVtxos, recentAccountHistory } from '../history'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -21,11 +17,11 @@ import {
   applyVtxoOperationView,
   advanceAuthorizedVtxoSpend,
   buildReservedVtxoSpend,
+  buildPersistedVtxoSdkBundle,
   clearPersistedVtxoSpend,
-  collectPagedVtxos,
+  createVaultSdkOperationValidation,
   createVtxoOperationId,
   createPhoneSignedPendingProof,
-  fetchVaultVtxoSnapshot,
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
   loadPersistedVtxoSpend,
@@ -42,7 +38,6 @@ import {
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
-  uniqueVtxosByOutpoint,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
   VtxoReviewedReservationError,
@@ -52,16 +47,23 @@ import {
   type VaultVtxoSpendQuote,
   type VtxoOperationView,
   type VtxoReserveResponse,
-  VAULT_VTXO_PAGE_SIZE,
   vaultArkServer,
   vaultPolicyV1ScriptFromStatus,
-  vaultVtxoHistoryCoin,
-  vaultVtxoPage,
   vtxoReserveRequest,
   sendVaultVtxo,
 } from './spend'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { VaultPolicyV1Script } from './script'
+import type { SubmitExactVaultSdkOperationParams } from './sdkOperationAdapter'
+
+const sdkOperationAdapterMocks = vi.hoisted(() => ({
+  submit: vi.fn(),
+}))
+
+vi.mock('./sdkOperationAdapter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./sdkOperationAdapter')>()),
+  submitExactVaultSdkOperation: sdkOperationAdapterMocks.submit,
+}))
 
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 const OP_1 = '11'.repeat(16)
@@ -131,20 +133,6 @@ function status(): VaultStatus {
   }
 }
 
-function indexedVtxo(txid: string, overrides: Partial<VirtualCoin> = {}): VirtualCoin {
-  return {
-    txid,
-    vout: 0,
-    value: 1_000,
-    status: { confirmed: true, isLeaf: true },
-    createdAt: new Date(1_000),
-    script: status().spendingArkScript || '',
-    isUnrolled: false,
-    virtualStatus: { state: 'settled', commitmentTxIds: [] },
-    ...overrides,
-  }
-}
-
 function reserve(): VtxoReserveResponse {
   const current = status()
   const unroll = CSVMultisigTapscript.encode({
@@ -200,6 +188,32 @@ function reviewedPending(reservationExpires = '2099-08-20T00:02:00Z'): Persisted
   }
 }
 
+function sdkReservedPending(): PersistedVtxoSpend {
+  const current = status()
+  const reservation = fragmentedReserve()
+  const built = buildReservedVtxoSpend(current, reservation, 12_000, destination(), FEE_POLICY_DIGEST)
+  return {
+    vaultId: 'vault-a',
+    operationId: OP_1,
+    bundleDigest: '11'.repeat(32),
+    destAddress: destination(),
+    amountSats: 12_000,
+    arkTxid: built.arkTx.id,
+    reservationExpires: '2099-08-20T00:02:00Z',
+    checkpointTapscript: reservation.checkpointTapscript,
+    ...RESERVATION_FACTS,
+    stage: 'reserved',
+    unsignedArkPsbt: base64.encode(built.arkTx.toPSBT()),
+    unsignedCheckpointPsbts: built.checkpoints.map((checkpoint) => base64.encode(checkpoint.toPSBT())),
+    sdkBundleVersion: 1,
+    reservedInputs: reservation.inputs.map((input) => ({ ...input })),
+    reservedOutputs: [
+      { scriptHex: reservation.destScript, amountSats: 12_000 },
+      { scriptHex: reservation.changeScript, amountSats: reservation.changeSats },
+    ],
+  }
+}
+
 function reviewedQuote(pending = reviewedPending()): VaultVtxoSpendQuote {
   return {
     operationId: pending.operationId,
@@ -226,6 +240,36 @@ function reviewedOperation(pending = reviewedPending(), overrides: Partial<VtxoO
     changeSats: pending.changeSats,
     changeVout: pending.changeVout,
     ...overrides,
+  }
+}
+
+function installImmediateNavigatorLock(): () => void {
+  const original = navigator.locks
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async (_name: string, _options: unknown, callback: (lock: unknown) => Promise<unknown>) => callback({}),
+    },
+  })
+  return () => {
+    if (original) Object.defineProperty(navigator, 'locks', { configurable: true, value: original })
+    else Reflect.deleteProperty(navigator, 'locks')
+  }
+}
+
+function currentOperatorInfo(pending: PersistedVtxoSpend) {
+  return {
+    network: 'mutinynet',
+    signerPubkey: golden.fixtures.arkdServerPub,
+    checkpointTapscript: pending.checkpointTapscript,
+    fees: { intentFee: RECONCILE_FEE_POLICY, txFeeRate: '0' },
+  } as never
+}
+
+function freshPolicyPending(pending = sdkReservedPending()): PersistedVtxoSpend {
+  return {
+    ...pending,
+    feePolicyDigest: arkadeIntentFeePolicyDigest(RECONCILE_FEE_POLICY),
   }
 }
 
@@ -270,6 +314,13 @@ async function authorizedPendingFixture() {
   }
   return {
     current,
+    built,
+    phone,
+    vault,
+    phoneArk,
+    authorizedArk,
+    finalArk,
+    operatorCheckpoints,
     pending,
     phoneProof,
     authorizedPendingProof,
@@ -406,6 +457,266 @@ describe('regular VTXO spend coordinator', () => {
     }
   })
 
+  it('runs one fresh reserved v1 operation through the SDK adapter and clears it only after finalization', async () => {
+    sdkOperationAdapterMocks.submit.mockReset()
+    clearPersistedVtxoSpend('vault-a')
+    const pending = freshPolicyPending()
+    persistVtxoSpend(pending)
+    const restoreLock = installImmediateNavigatorLock()
+    const finalizeTx = vi.spyOn(RestArkProvider.prototype, 'finalizeTx').mockResolvedValue(undefined)
+    vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(pending))
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/v1/vtxo/operation')) {
+        return new Response(JSON.stringify(reviewedOperation(pending)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url.includes('/v1/vtxo/finalize')) {
+        return new Response(
+          JSON.stringify({
+            operationId: pending.operationId,
+            bundleDigest: pending.bundleDigest,
+            state: 'finalized',
+            arkTxid: pending.arkTxid,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      throw new Error(`unexpected request: ${url}`)
+    })
+    sdkOperationAdapterMocks.submit.mockImplementation(async (params: SubmitExactVaultSdkOperationParams) => {
+      expect(params.inputs.map(({ txid, vout, value }) => ({ txid, vout, value }))).toEqual(
+        pending.reservedInputs!.map(({ txid, vout, valueSats }) => ({ txid, vout, value: valueSats })),
+      )
+      expect(params.outputs.map(({ script, amount }) => ({ script: hex.encode(script!), amount }))).toEqual(
+        pending.reservedOutputs!.map(({ scriptHex, amountSats }) => ({
+          script: scriptHex,
+          amount: BigInt(amountSats),
+        })),
+      )
+      await params.callbacks.finalize({
+        arkTxid: pending.arkTxid,
+        authorizedCheckpointPsbts: pending.unsignedCheckpointPsbts!,
+        signal: new AbortController().signal,
+      })
+      return pending.arkTxid
+    })
+
+    try {
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).resolves.toEqual({
+        txid: pending.arkTxid,
+        operationId: pending.operationId,
+        feeSats: pending.feeSats,
+      })
+      expect(sdkOperationAdapterMocks.submit).toHaveBeenCalledTimes(1)
+      expect(finalizeTx).toHaveBeenCalledTimes(1)
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
+    }
+  })
+
+  it('requires the SDK callback bundle to be byte-identical to the persisted reservation before Face ID', async () => {
+    sdkOperationAdapterMocks.submit.mockReset()
+    clearPersistedVtxoSpend('vault-a')
+    const pending = freshPolicyPending()
+    persistVtxoSpend(pending)
+    const restoreLock = installImmediateNavigatorLock()
+    const originalCredentials = navigator.credentials
+    const getCredential = vi.fn()
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { get: getCredential },
+    })
+    vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(pending))
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(reviewedOperation(pending)), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    sdkOperationAdapterMocks.submit.mockImplementation(async (params: SubmitExactVaultSdkOperationParams) =>
+      params.callbacks.authorizeArk({
+        unsignedArkPsbt: `${pending.unsignedArkPsbt}A`,
+        unsignedCheckpointPsbts: pending.unsignedCheckpointPsbts!,
+        signal: new AbortController().signal,
+      }),
+    )
+
+    try {
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toThrow(
+        /different reserved transaction bundle/,
+      )
+      expect(sdkOperationAdapterMocks.submit).toHaveBeenCalledTimes(1)
+      expect(getCredential).not.toHaveBeenCalled()
+      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('reserved')
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
+      if (originalCredentials) {
+        Object.defineProperty(navigator, 'credentials', { configurable: true, value: originalCredentials })
+      } else {
+        Reflect.deleteProperty(navigator, 'credentials')
+      }
+    }
+  })
+
+  it('resumes a lost fresh authorize response through the durable Operator path without rebuilding the spend', async () => {
+    sdkOperationAdapterMocks.submit.mockReset()
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    const pending = freshPolicyPending()
+    persistVtxoSpend(pending)
+    const restoreLock = installImmediateNavigatorLock()
+    vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(pending))
+    const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx').mockResolvedValue(fixture.candidate)
+    const getPending = vi.spyOn(RestArkProvider.prototype, 'getPendingTxs')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          reviewedOperation(pending, {
+            state: 'signed',
+            authorizedPsbt: fixture.pending.authorizedPsbt,
+            authorizedPendingProof: fixture.pending.authorizedPendingProof,
+          }),
+        ),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
+    try {
+      await expect(sendVaultVtxo({} as never, fixture.current, reviewedQuote(pending))).rejects.toThrow(
+        /deployment RP ID/,
+      )
+      expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
+      expect(submit).toHaveBeenCalledTimes(1)
+      expect(getPending).not.toHaveBeenCalled()
+      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
+    }
+  })
+
+  it('resumes operator-submitted and checkpoints-authorized v1 records without entering the fresh adapter', async () => {
+    sdkOperationAdapterMocks.submit.mockReset()
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    const fresh = freshPolicyPending()
+    const restoreLock = installImmediateNavigatorLock()
+    vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(fresh))
+    const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx')
+    const getPending = vi.spyOn(RestArkProvider.prototype, 'getPendingTxs')
+    const finalize = vi.spyOn(RestArkProvider.prototype, 'finalizeTx').mockRejectedValue(new Error('offline'))
+
+    const operatorSubmitted: PersistedVtxoSpend = {
+      ...fresh,
+      stage: 'operator-submitted',
+      unsignedArkPsbt: fixture.pending.unsignedArkPsbt,
+      authorizedPsbt: fixture.pending.authorizedPsbt,
+      authorizedPendingProof: fixture.pending.authorizedPendingProof,
+      operatorArkPsbt: fixture.candidate.finalArkTx,
+      operatorCheckpointPsbts: fixture.candidate.signedCheckpointTxs,
+    }
+    persistVtxoSpend(operatorSubmitted)
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(reviewedOperation(operatorSubmitted, { state: 'signed' })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    try {
+      await expect(sendVaultVtxo({} as never, fixture.current, reviewedQuote(operatorSubmitted))).rejects.toThrow(
+        /deployment RP ID/,
+      )
+      expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
+      expect(submit).not.toHaveBeenCalled()
+      expect(getPending).not.toHaveBeenCalled()
+      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+
+      const checkpointPsbts: string[] = []
+      for (const raw of fixture.candidate.signedCheckpointTxs) {
+        const phoneSigned = await fixture.phone.sign(Transaction.fromPSBT(base64.decode(raw)))
+        checkpointPsbts.push(base64.encode((await fixture.vault.sign(phoneSigned)).toPSBT()))
+      }
+      const checkpointsAuthorized: PersistedVtxoSpend = {
+        ...operatorSubmitted,
+        stage: 'checkpoints-authorized',
+        checkpointPsbts,
+      }
+      persistVtxoSpend(checkpointsAuthorized)
+      fetch.mockResolvedValue(
+        new Response(JSON.stringify(reviewedOperation(checkpointsAuthorized, { state: 'submitted' })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+
+      await expect(sendVaultVtxo({} as never, fixture.current, reviewedQuote(checkpointsAuthorized))).rejects.toThrow(
+        /offline/,
+      )
+      expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
+      expect(finalize).toHaveBeenCalledTimes(1)
+      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('checkpoints-authorized')
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
+    }
+  })
+
+  it('validates reloaded Vault signatures before any Operator submit or finalize', async () => {
+    sdkOperationAdapterMocks.submit.mockReset()
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    const operator = {
+      submitTx: vi.fn(),
+      getPendingTxs: vi.fn(),
+    } as unknown as ArkProvider
+    await expect(
+      advanceAuthorizedVtxoSpend(
+        operator,
+        { ...fixture.pending, authorizedPsbt: base64.encode(fixture.phoneArk.toPSBT()) },
+        fixture.current,
+        fixture.operatorPub,
+      ),
+    ).rejects.toThrow(/wrong signer set/)
+    expect(operator.submitTx).not.toHaveBeenCalled()
+    expect(operator.getPendingTxs).not.toHaveBeenCalled()
+
+    const fresh = freshPolicyPending()
+    const checkpointOnlyOperator: PersistedVtxoSpend = {
+      ...fresh,
+      stage: 'checkpoints-authorized',
+      authorizedPendingProof: fixture.pending.authorizedPendingProof,
+      checkpointPsbts: fixture.candidate.signedCheckpointTxs,
+    }
+    persistVtxoSpend(checkpointOnlyOperator)
+    const restoreLock = installImmediateNavigatorLock()
+    vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(fresh))
+    const finalize = vi.spyOn(RestArkProvider.prototype, 'finalizeTx')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(reviewedOperation(checkpointOnlyOperator, { state: 'submitted' })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    try {
+      await expect(sendVaultVtxo({} as never, fixture.current, reviewedQuote(checkpointOnlyOperator))).rejects.toThrow(
+        /wrong signer set/,
+      )
+      expect(finalize).not.toHaveBeenCalled()
+      expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
+    }
+  })
+
   it('persists a client-generated operation id and signature before reserving and reuses them exactly', () => {
     clearPersistedVtxoSpend('vault-a')
     const operationId = createVtxoOperationId(hex.decode(OP_1))
@@ -509,30 +820,6 @@ describe('regular VTXO spend coordinator', () => {
     )
     expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
     expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
-  })
-
-  it('normalizes settledBy as terminal and suppresses its batch replacement', () => {
-    const rows = historyFromVtxos([
-      vaultVtxoHistoryCoin({
-        txid: 'receive',
-        vout: 0,
-        value: 20_000,
-        createdAt: 2_000,
-        settledBy: 'commitment',
-      }),
-      vaultVtxoHistoryCoin({
-        txid: 'settled-replacement',
-        vout: 0,
-        value: 20_000,
-        createdAt: 4_000,
-        commitmentTxIds: ['commitment'],
-        status: { isLeaf: true },
-      }),
-    ])
-
-    expect(rows).toEqual([
-      expect.objectContaining({ txid: 'receive', amount: 20_000, confirmed: true, type: 'received' }),
-    ])
   })
 
   it('uses the reserved zero fee when a payment needs more than the largest coin', () => {
@@ -770,6 +1057,7 @@ describe('regular VTXO spend coordinator', () => {
       fixture.operatorPub,
     )
     expect(matched.arkTxid).toBe(fixture.pending.arkTxid)
+    expect(Transaction.fromPSBT(base64.decode(matched.operatorArkPsbt)).id).toBe(fixture.pending.arkTxid)
     expect(matched.operatorCheckpointPsbts).toHaveLength(2)
     expect(() => matchPendingOperatorSubmission(fixture.pending, [], fixture.current, fixture.operatorPub)).toThrow(
       /exactly one/,
@@ -800,6 +1088,29 @@ describe('regular VTXO spend coordinator', () => {
     ).toThrow(/wrong signer set/)
   })
 
+  it('requires the real signer sets and exact PSBTs at every SDK adapter stage', async () => {
+    const fixture = await authorizedPendingFixture()
+    const validation = createVaultSdkOperationValidation(fixture.current, fixture.built.arkTx, fixture.operatorPub)
+    expect(() => validation.assertArkTransaction(fixture.built.arkTx, 'unsigned')).not.toThrow()
+    expect(() => validation.assertArkTransaction(fixture.authorizedArk, 'vault-authorized')).not.toThrow()
+    expect(() => validation.assertArkTransaction(fixture.finalArk, 'operator-signed')).not.toThrow()
+
+    const originalCheckpoint = fixture.built.checkpoints[0]
+    const operatorCheckpoint = fixture.operatorCheckpoints[0]
+    expect(() =>
+      validation.assertCheckpointTransaction(operatorCheckpoint, originalCheckpoint, 'operator-signed'),
+    ).not.toThrow()
+    expect(() =>
+      validation.assertCheckpointTransaction(operatorCheckpoint, originalCheckpoint, 'vault-authorized'),
+    ).toThrow(/wrong signer set/)
+
+    const phoneCheckpoint = await fixture.phone.sign(operatorCheckpoint)
+    const vaultCheckpoint = await fixture.vault.sign(phoneCheckpoint)
+    expect(() =>
+      validation.assertCheckpointTransaction(vaultCheckpoint, originalCheckpoint, 'vault-authorized'),
+    ).not.toThrow()
+  })
+
   it('submits once after reloading an authorized operation before the write-ahead marker', async () => {
     clearPersistedVtxoSpend('vault-a')
     const fixture = await authorizedPendingFixture()
@@ -821,6 +1132,8 @@ describe('regular VTXO spend coordinator', () => {
     const submitted = await advanceAuthorizedVtxoSpend(operator, reloaded, fixture.current, fixture.operatorPub)
     expect(calls).toEqual(['submit'])
     expect(submitted.stage).toBe('operator-submitted')
+    expect(submitted.operatorArkPsbt).toBe(fixture.candidate.finalArkTx)
+    expect(loadPersistedVtxoSpend('vault-a')?.operatorArkPsbt).toBe(fixture.candidate.finalArkTx)
     clearPersistedVtxoSpend('vault-a')
   })
 
@@ -848,6 +1161,7 @@ describe('regular VTXO spend coordinator', () => {
     expect(calls).toEqual(['submit', 'pending'])
     expect(recoveredProof).toBe(fixture.authorizedPendingProof)
     expect(recovered.stage).toBe('operator-submitted')
+    expect(recovered.operatorArkPsbt).toBe(fixture.candidate.finalArkTx)
     expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
     clearPersistedVtxoSpend('vault-a')
   })
@@ -1049,6 +1363,122 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
   })
 
+  it('persists and deterministically rebuilds the validated fresh SDK bundle', () => {
+    clearPersistedVtxoSpend('vault-a')
+    const reserved = sdkReservedPending()
+    persistVtxoSpend(reserved)
+
+    const reloaded = loadPersistedVtxoSpend('vault-a')!
+    expect(reloaded).toMatchObject({
+      sdkBundleVersion: 1,
+      reservedInputs: reserved.reservedInputs,
+      reservedOutputs: reserved.reservedOutputs,
+    })
+    const rebuilt = buildPersistedVtxoSdkBundle(status(), reloaded)
+    expect(rebuilt.rebuilt.arkTx.id).toBe(reserved.arkTxid)
+    expect(rebuilt.rebuilt.checkpoints.map((tx) => tx.id)).toEqual(
+      reserved.unsignedCheckpointPsbts!.map((raw) => Transaction.fromPSBT(base64.decode(raw)).id),
+    )
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it.each([
+    [
+      'too many inputs',
+      (pending: PersistedVtxoSpend) => ({
+        ...pending,
+        reservedInputs: Array.from({ length: 51 }, (_, index) => ({
+          ...pending.reservedInputs![0],
+          txid: index.toString(16).padStart(64, '0'),
+        })),
+      }),
+    ],
+    [
+      'noncanonical inputs',
+      (pending: PersistedVtxoSpend) => ({ ...pending, reservedInputs: [...pending.reservedInputs!].reverse() }),
+    ],
+    [
+      'missing change output',
+      (pending: PersistedVtxoSpend) => ({ ...pending, reservedOutputs: pending.reservedOutputs!.slice(0, 1) }),
+    ],
+    [
+      'reordered outputs',
+      (pending: PersistedVtxoSpend) => ({ ...pending, reservedOutputs: [...pending.reservedOutputs!].reverse() }),
+    ],
+    [
+      'malformed script',
+      (pending: PersistedVtxoSpend) => ({
+        ...pending,
+        reservedInputs: [{ ...pending.reservedInputs![0], scriptHex: '00' }, ...pending.reservedInputs!.slice(1)],
+      }),
+    ],
+  ] as const)('rejects a persisted fresh SDK bundle with %s', (_label, mutate) => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend(mutate(sdkReservedPending()))
+    expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('revalidates stored SDK scripts against the current pinned Vault policy', () => {
+    const pending = sdkReservedPending()
+    pending.reservedInputs = pending.reservedInputs!.map((input) => ({ ...input, scriptHex: `5120${'44'.repeat(32)}` }))
+    expect(() => buildPersistedVtxoSdkBundle(status(), pending)).toThrow(/not current vault-policy-v1/)
+  })
+
+  it.each([
+    ['reserved', (pending: PersistedVtxoSpend) => pending],
+    [
+      'authorized',
+      (pending: PersistedVtxoSpend) => ({
+        ...pending,
+        stage: 'authorized' as const,
+        authorizedPsbt: pending.unsignedArkPsbt,
+        authorizedPendingProof: pending.unsignedCheckpointPsbts![0],
+      }),
+    ],
+    [
+      'operator-submitted',
+      (pending: PersistedVtxoSpend) => ({
+        ...pending,
+        stage: 'operator-submitted' as const,
+        authorizedPsbt: pending.unsignedArkPsbt,
+        authorizedPendingProof: pending.unsignedCheckpointPsbts![0],
+        operatorSubmitAttempted: true,
+        operatorArkPsbt: pending.unsignedArkPsbt,
+        operatorCheckpointPsbts: pending.unsignedCheckpointPsbts,
+      }),
+    ],
+    [
+      'checkpoints-authorized',
+      (pending: PersistedVtxoSpend) => ({
+        ...pending,
+        stage: 'checkpoints-authorized' as const,
+        authorizedPendingProof: pending.unsignedCheckpointPsbts![0],
+        checkpointPsbts: pending.unsignedCheckpointPsbts,
+      }),
+    ],
+    [
+      'operator-finalized',
+      (pending: PersistedVtxoSpend) => ({
+        ...pending,
+        stage: 'operator-finalized' as const,
+        authorizedPendingProof: pending.unsignedCheckpointPsbts![0],
+        checkpointPsbts: pending.unsignedCheckpointPsbts,
+      }),
+    ],
+  ] as const)('reloads a fresh SDK operation at the durable %s boundary', (stage, atBoundary) => {
+    clearPersistedVtxoSpend('vault-a')
+    const pending = atBoundary(sdkReservedPending())
+    persistVtxoSpend(pending)
+    expect(loadPersistedVtxoSpend('vault-a')).toMatchObject({
+      stage,
+      sdkBundleVersion: 1,
+      reservedInputs: pending.reservedInputs,
+      reservedOutputs: pending.reservedOutputs,
+    })
+    clearPersistedVtxoSpend('vault-a')
+  })
+
   it('uses the operation view to resume a lost authorize response', () => {
     clearPersistedVtxoSpend('vault-a')
     const checkpointPsbt = validCheckpointPsbt()
@@ -1205,156 +1635,5 @@ describe('regular VTXO spend coordinator', () => {
         state: 'signed',
       }),
     ).toThrow(/digest mismatch/)
-  })
-
-  it('fetches every indexer page before classifying history', async () => {
-    const pages = [
-      { vtxos: [{ txid: 'input' }], page: { current: 0, next: 1, total: 2 } },
-      { vtxos: [{ txid: 'change' }], page: { current: 1, next: 2, total: 2 } },
-    ]
-    const requested: number[] = []
-    const vtxos = await collectPagedVtxos(async (pageIndex) => {
-      requested.push(pageIndex)
-      return pages[pageIndex]
-    })
-    expect(requested).toEqual([0, 1])
-    expect(vtxos.map((vtxo) => vtxo.txid)).toEqual(['input', 'change'])
-  })
-
-  it('fails instead of returning partial VTXO data beyond the pagination ceiling', async () => {
-    await expect(
-      collectPagedVtxos(async (pageIndex) => ({
-        vtxos: [{ txid: `page-${pageIndex}` }],
-        page: { current: pageIndex, next: pageIndex + 1, total: 257 },
-      })),
-    ).rejects.toThrow(/pagination exceeds the safety limit/)
-  })
-
-  it('always supplies the page size required by the deployed indexer', () => {
-    expect(VAULT_VTXO_PAGE_SIZE).toBeGreaterThan(0)
-    expect(vaultVtxoPage(0)).toEqual({ pageIndex: 0, pageSize: VAULT_VTXO_PAGE_SIZE })
-    expect(vaultVtxoPage(7)).toEqual({ pageIndex: 7, pageSize: VAULT_VTXO_PAGE_SIZE })
-  })
-
-  it('deduplicates an outpoint repeated across moving indexer pages', () => {
-    const repeated = { txid: 'same', vout: 1, value: 12_000 }
-    expect(uniqueVtxosByOutpoint([repeated, repeated, { txid: 'same', vout: 2, value: 8_000 }])).toEqual([
-      repeated,
-      { txid: 'same', vout: 2, value: 8_000 },
-    ])
-  })
-
-  it('walks the wallet script once for a deduplicated balance and exact no-change send time', async () => {
-    const exactSend = 'exact-send'
-    const oldInput = indexedVtxo('old-input', {
-      value: 20_000,
-      createdAt: new Date(10_000),
-      isSpent: true,
-      arkTxId: exactSend,
-      virtualStatus: { state: 'spent', commitmentTxIds: [] },
-    })
-    const recent = Array.from({ length: 100 }, (_, index) =>
-      indexedVtxo(`receive-${index}`, { createdAt: new Date((200 + index) * 1_000) }),
-    )
-    const walletVtxos = [oldInput, ...recent, recent[0]]
-    let scriptQueries = 0
-    const outpointQueries: { txid: string; vout: number }[][] = []
-    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
-      if (options && 'outpoints' in options && options.outpoints) {
-        outpointQueries.push(options.outpoints)
-        return { vtxos: [indexedVtxo(exactSend, { createdAt: new Date(400_000) })] }
-      }
-      scriptQueries += 1
-      return { vtxos: walletVtxos }
-    })
-
-    const snapshot = await fetchVaultVtxoSnapshot(status(), {
-      getVtxos: getVtxos as IndexerProvider['getVtxos'],
-    })
-    const recentHistory = recentAccountHistory(snapshot.history, 'spend')
-
-    expect(scriptQueries).toBe(1)
-    expect(outpointQueries).toEqual([[{ txid: exactSend, vout: 0 }]])
-    expect(snapshot.balance).toBe(100_000)
-    expect(recentHistory).toHaveLength(100)
-    expect(recentHistory).toContainEqual(expect.objectContaining({ txid: exactSend, type: 'sent', blockTime: 400 }))
-    expect(recentHistory.some((row) => row.txid === 'receive-0')).toBe(false)
-  })
-
-  it('uses the SDK terminal predicate when calculating the shared snapshot balance', async () => {
-    const getVtxos = vi.fn(async () => ({
-      vtxos: [
-        indexedVtxo('available', { value: 7_000 }),
-        indexedVtxo('settled', { value: 5_000, settledBy: 'commitment' }),
-      ],
-    }))
-
-    const snapshot = await fetchVaultVtxoSnapshot(status(), {
-      getVtxos: getVtxos as IndexerProvider['getVtxos'],
-    })
-
-    expect(snapshot.balance).toBe(7_000)
-    expect(getVtxos).toHaveBeenCalledTimes(1)
-  })
-
-  it('batches exact no-change timestamp lookups at the SDK outpoint-query limit', async () => {
-    const terminal = Array.from({ length: 65 }, (_, index) =>
-      indexedVtxo(`input-${index}`, {
-        isSpent: true,
-        arkTxId: `send-${index}`,
-        virtualStatus: { state: 'spent', commitmentTxIds: [] },
-      }),
-    )
-    const outpointBatchSizes: number[] = []
-    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
-      if (options && 'outpoints' in options && options.outpoints) {
-        outpointBatchSizes.push(options.outpoints.length)
-        return { vtxos: [] as VirtualCoin[] }
-      }
-      return { vtxos: terminal }
-    })
-
-    await fetchVaultVtxoSnapshot(status(), { getVtxos: getVtxos as IndexerProvider['getVtxos'] })
-
-    expect(outpointBatchSizes).toEqual([64, 1])
-  })
-
-  it('keeps the old no-change fallback only when an exact timestamp lookup is retryable', async () => {
-    const input = indexedVtxo('old-input', {
-      createdAt: new Date(10_000),
-      isSpent: true,
-      arkTxId: 'missing-send',
-      virtualStatus: { state: 'spent', commitmentTxIds: [] },
-    })
-    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
-      if (options && 'outpoints' in options && options.outpoints) {
-        throw new FetchError('offline', { url: 'https://indexer.test/v1/vtxos' })
-      }
-      return { vtxos: [input] }
-    })
-
-    const snapshot = await fetchVaultVtxoSnapshot(status(), {
-      getVtxos: getVtxos as IndexerProvider['getVtxos'],
-    })
-
-    expect(snapshot.history).toContainEqual(
-      expect.objectContaining({ txid: 'missing-send', type: 'sent', blockTime: 10 }),
-    )
-  })
-
-  it('fails the snapshot when an exact timestamp lookup has a non-retryable error', async () => {
-    const input = indexedVtxo('old-input', {
-      isSpent: true,
-      arkTxId: 'missing-send',
-      virtualStatus: { state: 'spent', commitmentTxIds: [] },
-    })
-    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
-      if (options && 'outpoints' in options && options.outpoints) throw new Error('invalid indexer response')
-      return { vtxos: [input] }
-    })
-
-    await expect(
-      fetchVaultVtxoSnapshot(status(), { getVtxos: getVtxos as IndexerProvider['getVtxos'] }),
-    ).rejects.toThrow('invalid indexer response')
   })
 })

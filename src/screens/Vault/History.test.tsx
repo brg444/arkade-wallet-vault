@@ -132,4 +132,23 @@ describe('Vault history', () => {
     expect(screen.getByText('Complete or cancel')).toBeTruthy()
     expect(screen.queryByText('Loading activity…')).toBeNull()
   })
+
+  it('describes a terminal failed Lightning payment as needing recovery', () => {
+    renderHistory({
+      history: [
+        {
+          txid: 'lightning-failed',
+          type: 'sent',
+          amount: 2_125,
+          confirmed: true,
+          account: 'spend',
+          activity: 'lightning',
+          lightningState: 'failed',
+          lightningRfqId: 'rfq-failed',
+        },
+      ],
+    })
+
+    expect(screen.getByText('Needs recovery')).toBeTruthy()
+  })
 })

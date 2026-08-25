@@ -5,7 +5,7 @@ import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../lib/vault/constants'
 import { ENROLL_STORE, SELECTED_VAULT_STORE, SESSION_LOCK_STORE } from '../lib/vault/enrollmentStore'
-import { MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
+import { INVOICE_TIMESTAMP, MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
 import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
@@ -198,7 +198,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.loadHandoff.mockReturnValue(null)
     mocks.reserve.mockResolvedValue(reviewed)
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
-    mocks.sdkWallet.mockImplementation(async (_secret, _status, _origin, run) => run({ repository: {} }))
+    mocks.sdkWallet.mockImplementation(async (_secret, _status, run) => run({ repository: {} }))
     mocks.unlock.mockResolvedValue(new Uint8Array(32).fill(7))
     mocks.beginLightningFunding.mockResolvedValue({
       rfqId: '44'.repeat(32),
@@ -277,6 +277,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
 
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
     vi.stubEnv('VITE_VAULT_LIGHTNING_SEND', 'true')
+    vi.spyOn(Date, 'now').mockReturnValue((INVOICE_TIMESTAMP + 1) * 1_000)
     const lightningFunding = { ...reviewed, destAddress: destination, amountSats: 2_125, feeSats: 50 }
     mocks.reserve.mockResolvedValue(lightningFunding)
     mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 50 })
@@ -306,11 +307,12 @@ describe('VaultProvider reviewed VTXO reservation', () => {
         amountSats: 2_125,
         operationId: lightningFunding.operationId,
         bundleDigest: lightningFunding.bundleDigest,
+        fundingFeeSats: 50,
       }),
     )
     expect(mocks.recordLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32), '55'.repeat(32))
     expect(mocks.send).toHaveBeenCalledWith(expect.any(Object), status, lightningFunding)
-    expect(mocks.sdkWallet.mock.calls[0]?.[4]).toBeUndefined()
+    expect(mocks.sdkWallet.mock.calls[0]?.[3]).toBeUndefined()
   })
 
   it('restores a pending Savings handoff and reopens its hardware step', async () => {
@@ -355,7 +357,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Return Lightning' })))
 
     expect(mocks.getLightningStatus).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
-    expect(mocks.sdkWallet.mock.calls.at(-1)?.[4]).toEqual({ enableRefunds: true })
+    expect(mocks.sdkWallet.mock.calls.at(-1)?.[3]).toEqual({ refundRfqId: '44'.repeat(32) })
     expect(phoneSecret).toEqual(new Uint8Array(32))
     expect(screen.getByTestId('error')).toHaveTextContent('')
   })
