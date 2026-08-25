@@ -1,5 +1,5 @@
 import { readBounded } from './bounded'
-import { POLICY_VERSION } from './constants'
+import { POLICY_VERSION, requireSupportedVaultNetwork } from './constants'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus, VaultStatusWire } from './types'
@@ -57,6 +57,7 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   }
   const body = parseJsonObject<PublicAuthorizerStatus>(text, 'status')
   if ('vaultId' in body && body.vaultId) throw new Error('public status must not name a vault')
+  requireSupportedVaultNetwork(body.network)
   if (body.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   return body
@@ -102,6 +103,7 @@ export function requireStatusIdentity(
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
   if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
   if (status.vaultId !== expected) throw new Error('status vault id does not match')
+  requireSupportedVaultNetwork(status.network)
   if (status.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   if (status.enrolled && (!String(status.savingsAddress || '').trim() || !String(status.savingsScript || '').trim())) {

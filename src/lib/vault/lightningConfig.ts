@@ -88,8 +88,13 @@ export function vaultLightningFundingForInvoice(invoiceSats: number, profile: Va
   return Number(plan.deposit.atomic)
 }
 
-export function vaultLightningSendEnabled(value = import.meta.env.VITE_VAULT_LIGHTNING_SEND): boolean {
-  return value === LIGHTNING_SEND_RELEASE_FLAG
+export function vaultLightningSendEnabled(
+  network: NetworkName | undefined,
+  value = import.meta.env.VITE_VAULT_LIGHTNING_SEND,
+): boolean {
+  return (
+    value === LIGHTNING_SEND_RELEASE_FLAG && network !== undefined && vaultLightningSolverProfile(network) !== undefined
+  )
 }
 
 export function isVaultLightningInput(value: string): boolean {

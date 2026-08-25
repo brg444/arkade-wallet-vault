@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from './constants'
 import { pinEnrolledStatus } from './pin'
 import { SAVINGS_TEMPLATE } from './program/constants'
-import { fetchVaultStatus, parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
+import {
+  fetchPublicStatus,
+  fetchVaultStatus,
+  parseStatusJson,
+  pingVaultService,
+  requireStatusIdentity,
+  vaultStatusPath,
+} from './status'
 import type { VaultStatusWire } from './types'
 
 const VAULT_ID = 'vault-test-current'
@@ -73,6 +80,12 @@ describe('status identity binding', () => {
     expect(requireStatusIdentity(sampleStatus(), VAULT_ID).templateVersion).toBe(SAVINGS_TEMPLATE)
   })
 
+  it('keeps mainnet disabled until the named Vault Program is released for it', () => {
+    expect(() => requireStatusIdentity(sampleStatus({ network: 'bitcoin' }), VAULT_ID)).toThrow(
+      /unsupported Vault network/,
+    )
+  })
+
   it('requires the Savings descriptor but no retired Daily account', () => {
     expect(() => requireStatusIdentity(sampleStatus({ savingsScript: '' }), VAULT_ID)).toThrow(/Savings descriptor/)
     expect(requireStatusIdentity(sampleStatus(), VAULT_ID)).not.toHaveProperty('operationalAddress')
@@ -125,6 +138,28 @@ describe('pingVaultService', () => {
       ),
     )
     await expect(pingVaultService()).resolves.toBe(true)
+  })
+
+  it('rejects a mainnet deployment before its Vault Program is released', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              network: 'bitcoin',
+              clientOrigin: 'https://vault.example',
+              rpId: 'vault.example',
+              templateVersion: SAVINGS_TEMPLATE,
+              policyVersion: POLICY_VERSION,
+              enrollmentMode: 'invite',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    )
+    await expect(fetchPublicStatus()).rejects.toThrow(/unsupported Vault network/)
+    await expect(pingVaultService()).resolves.toBe(false)
   })
 
   it('is down when the service does not answer', async () => {

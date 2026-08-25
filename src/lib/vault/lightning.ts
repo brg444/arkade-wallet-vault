@@ -211,7 +211,7 @@ export async function requestVaultLightningQuote({
   rfqId,
   requester = requestLightningSend,
   nowSeconds = Math.floor(Date.now() / 1000),
-  enabled = vaultLightningSendEnabled(),
+  enabled,
 }: {
   wallet: IWallet
   arkServerUrl: string
@@ -228,7 +228,9 @@ export async function requestVaultLightningQuote({
   nowSeconds?: number
   enabled?: boolean
 }): Promise<VaultLightningQuote> {
-  if (!enabled) throw new Error('Lightning send is not enabled in this release.')
+  if (!(enabled ?? vaultLightningSendEnabled(network))) {
+    throw new Error('Lightning send is not enabled in this release.')
+  }
   if (profile.network !== network) throw new Error('Lightning solver profile is for another network.')
   if (!/^[0-9a-f]{64}$/.test(profile.pubkey)) throw new Error('Lightning solver pubkey is invalid.')
   if (

@@ -427,7 +427,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Lightning payments use Spending.')
       return
     }
-    if (!vaultLightningSendEnabled()) {
+    if (!vaultLightningSendEnabled(status.network as NetworkName)) {
       setError('Lightning send is not enabled in this release.')
       return
     }
