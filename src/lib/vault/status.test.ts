@@ -3,7 +3,7 @@ import { POLICY_VERSION } from './constants'
 import { pinEnrolledStatus } from './pin'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { fetchVaultStatus, parseStatusJson, pingVaultService, requireStatusIdentity, vaultStatusPath } from './status'
-import type { VaultStatus } from './types'
+import type { VaultStatusWire } from './types'
 
 const VAULT_ID = 'vault-test-current'
 
@@ -12,7 +12,9 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
+type CompatibleStatusWire = VaultStatusWire & { recoveryPub?: string }
+
+function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatusWire {
   return {
     enrolled: true,
     network: 'mutinynet',
@@ -21,8 +23,12 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     vaultId: VAULT_ID,
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    arkadeCosignerOrigin: 'https://mutinynet.arkade.sh',
+    arkadeCosignerVersion: '0.4.65',
     savingsAddress: 'tb1ptest',
     savingsScript: '5120' + 'aa'.repeat(32),
+    passkeyLoginAvailable: false,
+    enrollmentMode: 'invite',
     periodAllowance: 100_000,
     periodSpent: 0,
     periodRemaining: 100_000,
@@ -84,7 +90,7 @@ describe('status identity binding', () => {
   })
 
   it('fails closed when a pinned enrolled vault is reported as unenrolled', async () => {
-    pinEnrolledStatus(sampleStatus())
+    pinEnrolledStatus(requireStatusIdentity(sampleStatus(), VAULT_ID))
     vi.stubGlobal(
       'fetch',
       vi.fn(

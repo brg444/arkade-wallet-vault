@@ -1,6 +1,6 @@
 import { vaultGet, vaultPost } from './api'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from './status'
-import type { VaultStatus } from './types'
+import type { VaultStatus, VaultStatusWire } from './types'
 
 const enrollmentHeader = (token: string) => ({ 'X-Vault-Enrollment-Token': token })
 
@@ -25,14 +25,15 @@ export interface VaultEnrollmentRequest {
   userHandle: string
   clientDataJSON: string
   authenticatorData: string
-  attestationObject: string
+  attestationObject?: string
   credentialId: string
   webauthnP256: string
   phoneDirectP256: string
   phoneBip340Pub: string
-  vaultId: string
-  externalOwnerWalletXOnly: string
+  externalOwnerWalletXOnly?: string
   recoveryXOnly?: string
+  recoveryKeyXOnly?: string
+  vaultId?: string
   descriptorHash?: string
 }
 
@@ -45,15 +46,15 @@ export interface VaultEnrollProposeResponse {
 export type VaultPasskeyPurpose = 'recover' | 'install-envelope' | 'transition' | 'map-write'
 
 export interface VaultPasskeyChallengeRequest {
-  purpose: VaultPasskeyPurpose
-  vaultId: string
+  purpose: string
+  vaultId?: string
 }
 
 export interface VaultPasskeyChallengeResponse {
   challengeId: string
   challenge: string
-  allowCredentialId?: string
-  expiresInSeconds?: number
+  allowCredentialId: string
+  expiresInSeconds: number
 }
 
 export interface VaultSessionAssertion {
@@ -93,10 +94,14 @@ export interface VaultRecoverEnvelopeResponse extends VaultRecoveryBindingRespon
   bindingPhoneSig: string
 }
 
-export type VaultTransitionRequest = {
+export interface VaultTransitionRequest extends VaultSessionAssertion {
   vaultId: string
+  purpose: string
   psbt: string
-} & Partial<VaultSessionAssertion>
+}
+
+export type VaultInitiateRequest = Omit<VaultTransitionRequest, 'purpose'> & { purpose: 'initiate' }
+export type VaultClawbackRequest = Omit<VaultTransitionRequest, 'purpose'> & { purpose: 'clawback' }
 
 export interface VaultTransitionResponse {
   signedPsbt: string
@@ -111,7 +116,7 @@ export interface VaultMapWriteRequest extends VaultSessionAssertion {
 export interface VtxoReserveRequest {
   operationId: string
   vaultId: string
-  purpose: 'spend'
+  purpose: string
   destAddress: string
   amountSats: number
   phoneSignature: string
@@ -125,11 +130,11 @@ export interface VtxoReserveResponse {
   changeAddress: string
   changeScript: string
   changeSats: number
-  changeVout?: number
+  changeVout?: number | null
   destScript: string
   feeSats: number
   feePolicyDigest: string
-  checkpointTapscript: string
+  checkpointTapscript?: string
 }
 
 export interface VtxoAuthorizeRequest {
@@ -184,6 +189,26 @@ export interface VtxoFinalizeResponse {
 
 export type VtxoOperationState = 'reserved' | 'signed' | 'submitted' | 'finalized' | 'aborted' | 'unresolved'
 
+// Exact JSON object emitted by GET /v1/vtxo/operation.
+export interface VtxoOperationWireView {
+  operationId: string
+  bundleDigest: string
+  state: string
+  arkTxid?: string
+  expiresAt?: string
+  feeSats: number
+  feePolicyDigest: string
+  changeSats: number
+  changeVout?: number | null
+  changeScript: string
+  authorizedPsbt?: string
+  authorizedPendingProof?: string
+  checkpointPsbts?: string[]
+}
+
+// Wallet domain view after the operation state is bound to the current
+// lifecycle. Optional economic fields retain compatibility with persisted
+// browser fixtures; they are required on VtxoOperationWireView.
 export interface VtxoOperationView {
   operationId: string
   bundleDigest: string
@@ -193,10 +218,19 @@ export interface VtxoOperationView {
   feeSats?: number
   feePolicyDigest?: string
   changeSats?: number
-  changeVout?: number
+  changeVout?: number | null
+  changeScript?: string
   authorizedPsbt?: string
   authorizedPendingProof?: string
   checkpointPsbts?: string[]
+}
+
+export function vtxoOperationViewFromWire(wire: VtxoOperationWireView): VtxoOperationView {
+  return wire as VtxoOperationView
+}
+
+export interface VaultMutationSuccess {
+  ok: boolean
 }
 
 export interface VaultCosignerEnrollmentClient {
@@ -205,18 +239,18 @@ export interface VaultCosignerEnrollmentClient {
   invite(token: string): Promise<VaultInviteView>
   start(token: string): Promise<VaultEnrollStartResponse>
   propose(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
-  finish(token: string, request: VaultEnrollmentRequest): Promise<VaultStatus>
+  finish(token: string, request: VaultEnrollmentRequest): Promise<VaultStatusWire>
   binding(request: VaultRecoveryBindingRequest): Promise<VaultRecoveryBindingResponse>
-  install(request: VaultInstallEnvelopeRequest): Promise<{ ok: boolean }>
+  install(request: VaultInstallEnvelopeRequest): Promise<VaultMutationSuccess>
   recover(request: VaultRecoverEnvelopeRequest): Promise<VaultRecoverEnvelopeResponse>
 }
 
 export interface VaultCosignerRecoveryClient {
   challenge(request: VaultPasskeyChallengeRequest): Promise<VaultPasskeyChallengeResponse>
-  initiate(request: VaultTransitionRequest): Promise<VaultTransitionResponse>
-  clawback(request: VaultTransitionRequest): Promise<VaultTransitionResponse>
+  initiate(request: VaultInitiateRequest): Promise<VaultTransitionResponse>
+  clawback(request: VaultClawbackRequest): Promise<VaultTransitionResponse>
   readMap(vaultId: string): Promise<unknown>
-  writeMap(request: VaultMapWriteRequest): Promise<{ ok: boolean }>
+  writeMap(request: VaultMapWriteRequest): Promise<VaultMutationSuccess>
 }
 
 export interface VaultCosignerSpendingClient {
@@ -224,7 +258,7 @@ export interface VaultCosignerSpendingClient {
   authorize(request: VtxoAuthorizeRequest): Promise<VtxoAuthorizeResponse>
   authorizeCheckpoints(request: VtxoCheckpointAuthorizeRequest): Promise<VtxoCheckpointAuthorizeResponse>
   finalize(request: VtxoFinalizeRequest): Promise<VtxoFinalizeResponse>
-  operation(vaultId: string, operationId: string): Promise<VtxoOperationView>
+  operation(vaultId: string, operationId: string): Promise<VtxoOperationWireView>
 }
 
 export interface VaultCosignerClient {

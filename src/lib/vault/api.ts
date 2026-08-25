@@ -3,6 +3,13 @@ import { authorizerBase } from './status'
 
 export { MAX_API_RESPONSE_BYTES, readBounded } from './bounded'
 
+// Exact structured error emitted by application-level /v1 failures. Gateway
+// and mutation-boundary failures may remain plain text or omit code.
+export interface VaultErrorResponse {
+  error: string
+  code: string
+}
+
 export async function vaultGet<T>(path: string, extraHeaders: Record<string, string> = {}): Promise<T> {
   return vaultRequest<T>(path, undefined, extraHeaders)
 }
@@ -25,7 +32,7 @@ async function vaultRequest<T>(path: string, bodyJSON?: string, extraHeaders: Re
   if (!res.ok) {
     let message = text.trim()
     try {
-      const data = JSON.parse(text) as { error?: string }
+      const data = JSON.parse(text) as Partial<VaultErrorResponse>
       if (data?.error) message = data.error
     } catch {
       // proxy/HTML bodies are not useful to show
