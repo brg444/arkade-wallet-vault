@@ -1,11 +1,11 @@
+import { TxType, type Activity, type ArkTransaction } from '@arkade-os/sdk'
 import { describe, expect, it } from 'vitest'
 import {
-  applyLightningHistoryMetadata,
   classifyAddressTx,
   groupVaultHistory,
   historyFromBoardingUtxos,
+  historyFromSdkActivities,
   historyFromTxs,
-  historyFromVtxos,
   recentAccountHistory,
   type VaultHistoryItem,
 } from './history'
@@ -23,26 +23,154 @@ function tx(partial: Partial<EsploraTx> & { txid: string }): EsploraTx {
 }
 
 describe('vault history', () => {
-  it('marks an indexed unspent VTXO as a confirmed Spending receive', () => {
+  const sdkTx = (
+    txid: string,
+    type: TxType,
+    amount: number,
+    settled = true,
+    createdAt = 1_700_000_000_000,
+  ): ArkTransaction => ({
+    key: { arkTxid: txid, commitmentTxid: '', boardingTxid: '' },
+    type,
+    amount,
+    settled,
+    createdAt,
+  })
+
+  it('projects only script-scoped SDK activity and leaves boarding on its existing feed', () => {
+    const vault = sdkTx('vault-send', TxType.TxSent, 12_000, false)
+    const unrelated = sdkTx('default-receive', TxType.TxReceived, 30_000)
+    const boarding = sdkTx('boarding', TxType.TxReceived, 40_000)
+    boarding.key.arkTxid = ''
+    boarding.key.boardingTxid = 'boarding'
+    const activities: Activity[] = [
+      { id: 'vault-send', txs: [vault], amount: -12_000, createdAt: vault.createdAt, settled: false },
+      { id: 'default-receive', txs: [unrelated], amount: 30_000, createdAt: unrelated.createdAt, settled: true },
+      {
+        id: 'boarding:boarding',
+        intent: { kind: 'boarding', label: 'Deposit' },
+        txs: [boarding],
+        amount: 40_000,
+        createdAt: boarding.createdAt,
+        settled: true,
+      },
+    ]
+
     expect(
-      historyFromVtxos([
-        {
-          txid: 'indexed-vtxo',
-          vout: 0,
-          value: 48_000,
-          createdAtMs: 1_700_000_000_000,
-          isSpent: false,
-          isLeaf: false,
-        },
-      ]),
-    ).toEqual([
-      expect.objectContaining({
-        txid: 'indexed-vtxo',
-        type: 'received',
-        amount: 48_000,
-        confirmed: true,
+      historyFromSdkActivities(activities, {
+        vaultTxids: new Set(['vault-send', 'boarding']),
+        lightningRfqIds: new Set(),
       }),
+    ).toEqual([
+      {
+        txid: 'vault-send',
+        type: 'sent',
+        amount: 12_000,
+        confirmed: false,
+        blockTime: 1_700_000_000,
+        account: 'spend',
+      },
     ])
+  })
+
+  it('admits only this vault’s RFQ group and preserves its package outcome', () => {
+    const funding = sdkTx('funding', TxType.TxSent, 2_107)
+    const refund = sdkTx('refund', TxType.TxReceived, 2_100)
+    const activities: Activity[] = [
+      {
+        id: 'swap:rfq-1',
+        intent: {
+          kind: 'swap',
+          outcome: 'refunded',
+          metadata: { rfqId: 'rfq-1', swapKind: 'lightning_send' },
+        },
+        txs: [funding, refund],
+        amount: -7,
+        createdAt: funding.createdAt,
+        settled: true,
+      },
+    ]
+
+    expect(
+      historyFromSdkActivities(activities, {
+        vaultTxids: new Set(),
+        lightningRfqIds: new Set(['rfq-1']),
+      }),
+    ).toEqual([
+      {
+        txid: 'funding',
+        type: 'sent',
+        amount: 7,
+        confirmed: true,
+        blockTime: 1_700_000_000,
+        account: 'spend',
+        activity: 'lightning',
+        lightningState: 'refunded',
+        lightningRfqId: 'rfq-1',
+      },
+    ])
+  })
+
+  it('shows a funded RFQ record with no SDK activity, then replaces it with the resolved group', () => {
+    const rfqId = 'ab'.repeat(32)
+    const fundingTxid = 'cd'.repeat(32)
+    const record = {
+      rfqId,
+      fundingTxid,
+      state: 'pending',
+      amount: 2_107,
+      displayAmount: 2_100,
+      fee: 32,
+      createdAt: 1_700_000_000,
+      terminal: false,
+    }
+    const scope = { vaultTxids: new Set<string>(), lightningRfqIds: new Set([rfqId]) }
+
+    expect(historyFromSdkActivities([], scope, [record])).toEqual([
+      {
+        txid: fundingTxid,
+        type: 'sent',
+        amount: 2_107,
+        confirmed: false,
+        blockTime: 1_700_000_000,
+        account: 'spend',
+        activity: 'lightning',
+        displayAmount: 2_100,
+        fee: 32,
+        lightningState: 'pending',
+        lightningRfqId: rfqId,
+      },
+    ])
+
+    const funding = sdkTx(fundingTxid, TxType.TxSent, 2_107)
+    const refund = sdkTx('ef'.repeat(32), TxType.TxReceived, 2_100)
+    const resolved: Activity = {
+      id: `swap:${rfqId}`,
+      intent: {
+        kind: 'swap',
+        outcome: 'refunded',
+        metadata: { rfqId, swapKind: 'lightning_send' },
+      },
+      txs: [funding, refund],
+      amount: -7,
+      createdAt: funding.createdAt,
+      settled: true,
+    }
+    const rows = historyFromSdkActivities([resolved], scope, [{ ...record, state: 'refunded', terminal: true }])
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({
+      txid: fundingTxid,
+      amount: 7,
+      confirmed: true,
+      blockTime: 1_700_000_000,
+      account: 'spend',
+      type: 'sent',
+      activity: 'lightning',
+      displayAmount: 2_100,
+      fee: 7,
+      lightningState: 'refunded',
+      lightningRfqId: rfqId,
+    })
   })
 
   it('shows unspent boarding outputs as one pending Spending receive per transaction', () => {
@@ -140,129 +268,6 @@ describe('vault history', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ txid: 'same', confirmed: true, blockTime: 30 })
-  })
-
-  it('classifies indexer VTXOs as spending receives and net sends', () => {
-    const rows = historyFromVtxos([
-      { txid: 'recv', vout: 0, value: 20_000, createdAtMs: 2_000, isSpent: true, arkTxId: 'send', isLeaf: true },
-      { txid: 'send', vout: 1, value: 8_000, createdAtMs: 4_000, isSpent: false, isLeaf: false },
-    ])
-    expect(rows.map((row) => ({ txid: row.txid, type: row.type, amount: row.amount }))).toEqual([
-      { txid: 'send', type: 'sent', amount: 12_000 },
-      { txid: 'recv', type: 'received', amount: 20_000 },
-    ])
-    expect(rows.find((row) => row.txid === 'send')?.confirmed).toBe(true)
-  })
-
-  it('decorates only the matching sent row with Lightning amount and total fees', () => {
-    const rows: VaultHistoryItem[] = [
-      { txid: 'funding', type: 'sent', amount: 2_150, confirmed: true, account: 'spend' },
-      { txid: 'funding', type: 'received', amount: 100, confirmed: true, account: 'spend' },
-    ]
-
-    expect(
-      applyLightningHistoryMetadata(rows, [
-        { rfqId: 'rfq-1', txid: 'funding', invoiceAmountSats: 2_100, state: 'settled' },
-      ]),
-    ).toEqual([
-      {
-        ...rows[0],
-        activity: 'lightning',
-        displayAmount: 2_100,
-        fee: 50,
-        lightningState: 'settled',
-        lightningRfqId: 'rfq-1',
-      },
-      rows[1],
-    ])
-  })
-
-  it('includes a real fee in the net debit instead of inventing one from coin fragmentation', () => {
-    const rows = historyFromVtxos([
-      { txid: 'coin-a', vout: 0, value: 10_000, createdAtMs: 1_000, isSpent: true, arkTxId: 'send' },
-      { txid: 'coin-b', vout: 0, value: 25_000, createdAtMs: 2_000, isSpent: true, arkTxId: 'send' },
-      { txid: 'send', vout: 1, value: 5_000, createdAtMs: 3_000, isSpent: false, isLeaf: false },
-    ])
-
-    expect(rows.find((row) => row.txid === 'send')).toMatchObject({
-      type: 'sent',
-      amount: 30_000,
-      confirmed: true,
-    })
-  })
-
-  it('uses the resolved Ark transaction time for a no-change send', () => {
-    const rows = historyFromVtxos(
-      [{ txid: 'input', vout: 0, value: 20_000, createdAtMs: 2_000, isSpent: true, arkTxId: 'send' }],
-      'spend',
-      new Map([['send', 9_000]]),
-    )
-
-    expect(rows.find((row) => row.txid === 'send')).toMatchObject({
-      type: 'sent',
-      amount: 20_000,
-      blockTime: 9,
-    })
-  })
-
-  it('keeps a spent offchain receive settled and ignores duplicate outpoints', () => {
-    const duplicate = {
-      txid: 'receive',
-      vout: 0,
-      value: 20_000,
-      createdAtMs: 2_000,
-      isSpent: true,
-      arkTxId: 'send',
-      isLeaf: false,
-    }
-    const rows = historyFromVtxos([
-      duplicate,
-      duplicate,
-      { txid: 'send', vout: 1, value: 8_000, createdAtMs: 4_000, isSpent: false, isLeaf: false },
-    ])
-
-    expect(rows.filter((row) => row.txid === 'receive')).toEqual([
-      expect.objectContaining({ amount: 20_000, confirmed: true, type: 'received' }),
-    ])
-    expect(rows.find((row) => row.txid === 'send')).toMatchObject({ amount: 12_000, type: 'sent' })
-  })
-
-  it('settles the original receive without duplicating its batch replacement', () => {
-    const rows = historyFromVtxos([
-      {
-        txid: 'receive',
-        vout: 0,
-        value: 20_000,
-        createdAtMs: 2_000,
-        isSpent: true,
-        settledBy: 'commitment',
-        isLeaf: false,
-      },
-      {
-        txid: 'settled-replacement',
-        vout: 0,
-        value: 20_000,
-        createdAtMs: 4_000,
-        isSpent: false,
-        commitmentTxIds: ['commitment'],
-        isLeaf: true,
-      },
-    ])
-
-    expect(rows).toEqual([
-      expect.objectContaining({ txid: 'receive', amount: 20_000, confirmed: true, type: 'received' }),
-    ])
-  })
-
-  it('combines multiple wallet outputs from one receive into one activity row', () => {
-    const rows = historyFromVtxos([
-      { txid: 'receive', vout: 0, value: 12_000, createdAtMs: 2_000, isSpent: false, isLeaf: true },
-      { txid: 'receive', vout: 1, value: 8_000, createdAtMs: 2_000, isSpent: false, isLeaf: true },
-    ])
-
-    expect(rows).toEqual([
-      expect.objectContaining({ txid: 'receive', amount: 20_000, confirmed: true, type: 'received' }),
-    ])
   })
 
   it('groups pending activity before local calendar dates', () => {

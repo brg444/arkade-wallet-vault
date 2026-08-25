@@ -33,7 +33,9 @@ export default function VaultTx() {
             ? 'Refunded'
             : selectedTx.lightningState === 'needs_counterparty'
               ? 'Ready to return'
-              : 'Processing'
+              : selectedTx.lightningState === 'failed'
+                ? 'Needs recovery'
+                : 'Processing'
         : selectedTx.confirmed
           ? 'Confirmed'
           : 'Pending'

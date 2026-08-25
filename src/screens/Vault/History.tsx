@@ -71,7 +71,9 @@ export default function VaultHistory() {
                       ? 'Refunded'
                       : tx.lightningState === 'needs_counterparty'
                         ? 'Ready to return'
-                        : 'Processing'
+                        : tx.lightningState === 'failed'
+                          ? 'Needs recovery'
+                          : 'Processing'
                   : tx.confirmed
                     ? time
                       ? `Confirmed · ${time}`

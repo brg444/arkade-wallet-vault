@@ -102,4 +102,20 @@ describe('Vault transaction details', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Return to Spending' }))
     expect(retryLightningRefund).toHaveBeenCalledExactlyOnceWith('rfq-1')
   })
+
+  it('describes a terminal failed Lightning payment as needing recovery', () => {
+    renderTx({
+      txid: 'ark-lightning-failed',
+      type: 'sent',
+      amount: 2_125,
+      confirmed: true,
+      account: 'spend',
+      activity: 'lightning',
+      lightningState: 'failed',
+      lightningRfqId: 'rfq-failed',
+    })
+
+    expect(screen.getByText('Needs recovery')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Return to Spending' })).toBeNull()
+  })
 })

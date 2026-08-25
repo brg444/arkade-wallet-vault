@@ -469,7 +469,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const phoneSecret = await unlockPhoneBip340(enrollment, status)
       let quote: VaultLightningQuote
       try {
-        quote = await lightning.withVaultLightningSdkWallet(phoneSecret, status, vaultArkServer(), (session) =>
+        quote = await lightning.withVaultLightningSdkWallet(phoneSecret, status, (session) =>
           lightning.withVaultLightningTransport(profile, (transport) =>
             lightning.requestVaultLightningQuote({
               wallet: session.wallet,
@@ -763,6 +763,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
               amountSats: reviewed.amountSats,
               operationId: reviewed.operationId,
               bundleDigest: reviewed.bundleDigest,
+              fundingFeeSats: reviewed.feeSats,
             }
             const target = await lightning.withVaultLightningRepository(status.vaultId, async (repository) => {
               try {
@@ -897,7 +898,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         await lightning.withVaultLightningSdkWallet(
           phoneSecret,
           status,
-          vaultArkServer(),
           async (session) => {
             const record = await lightning.getVaultLightningStatus(session.repository, rfqId)
             if (!record) throw new Error('This Lightning payment is no longer available.')
@@ -910,7 +910,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             }
             throw new Error('This Lightning payment is still processing.')
           },
-          { enableRefunds: true },
+          { refundRfqId: rfqId },
         )
         await refreshBalance(status.vaultId)
       } catch (err) {

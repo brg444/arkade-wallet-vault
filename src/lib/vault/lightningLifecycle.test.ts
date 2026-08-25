@@ -1,22 +1,25 @@
-import { SingleKey, type IWallet } from '@arkade-os/sdk'
-import { InMemoryAssetSwapRepository } from '@arkade-os/swap'
+import { SingleKey } from '@arkade-os/sdk'
+import { InMemoryAssetSwapRepository, RefundNotLocallyPossibleError, type RfqSwapManager } from '@arkade-os/swap'
 import { hex } from '@scure/base'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   assertVaultLightningQuoteCurrent,
   beginVaultLightningFunding,
   cancelVaultLightningQuote,
-  listVaultLightningHistory,
   recordVaultLightningFundingTxid,
   resumeVaultLightningFunding,
-  refreshVaultLightningLifecycle,
   requestVaultLightningQuote,
   retireAbandonedVaultLightningQuotes,
-  startVaultLightningLifecycle,
-  withVaultRefundAddress,
+  vaultLightningRequestWallet,
   type VaultLightningQuote,
 } from './lightning'
-import { reconcileVaultLightningFundingTxids } from './lightningLifecycle'
+import {
+  createVaultLightningObserver,
+  listVaultLightningActivityRecords,
+  maintainVaultLightningObserver,
+  reconcileVaultLightningFundingTxids,
+  withAuthenticatedVaultLightningRefund,
+} from './lightningLifecycle'
 import {
   INVOICE_TIMESTAMP,
   MAINNET_INVOICE,
@@ -31,6 +34,20 @@ import {
 
 afterEach(() => vi.useRealTimers())
 
+async function startTestObserver(deps: Parameters<typeof createVaultLightningObserver>[0]) {
+  const manager = createVaultLightningObserver(deps)
+  return {
+    manager,
+    ...(await maintainVaultLightningObserver({
+      manager,
+      contracts: deps.contracts,
+      indexer: deps.indexer,
+      repository: deps.repository,
+      nowSeconds: deps.managerConfig?.now?.(),
+    })),
+  }
+}
+
 describe('Lightning persisted lifecycle', () => {
   const fundingProof = (quote: VaultLightningQuote) => ({
     rfqId: quote.rfqId,
@@ -38,6 +55,7 @@ describe('Lightning persisted lifecycle', () => {
     amountSats: quote.fundAmountSats,
     operationId: '11111111-1111-4111-8111-111111111111',
     bundleDigest: 'aa'.repeat(32),
+    fundingFeeSats: 25,
   })
 
   it('persists complete recovery state before exposing a quote and resumes a dropped response idempotently', async () => {
@@ -98,6 +116,7 @@ describe('Lightning persisted lifecycle', () => {
           amountSats: proof.amountSats,
           address: proof.address,
           rfqId: proof.rfqId,
+          fundingFeeSats: proof.fundingFeeSats,
         },
         INVOICE_TIMESTAMP + 2,
       ),
@@ -121,9 +140,49 @@ describe('Lightning persisted lifecycle', () => {
       /another funding transaction/,
     )
     expect(await harness.repository.getRfqSwap(first.rfqId)).toMatchObject({ fundingArkTxid: txid })
-    await expect(listVaultLightningHistory(harness.repository)).resolves.toEqual([
-      { rfqId: first.rfqId, txid, invoiceAmountSats: 2100, state: 'pending' },
+    await expect(listVaultLightningActivityRecords(harness.repository)).resolves.toEqual([
+      expect.objectContaining({ rfqId: first.rfqId, fundingTxid: txid, displayAmount: 2100, state: 'pending' }),
     ])
+
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('does not bypass persisted funding when the rest of that swap record is damaged', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
+    const record = await harness.repository.getRfqSwap(quote.rfqId)
+    const profile = record!.profile.vaultLightning as { quote: { from_amount: number } }
+    await harness.repository.saveRfqSwap({
+      ...record!,
+      profile: {
+        ...record!.profile,
+        vaultLightning: {
+          ...profile,
+          quote: { ...profile.quote, from_amount: profile.quote.from_amount + 1 },
+        },
+      },
+    })
+    const requester = vi.fn()
+
+    await expect(
+      requestVaultLightningQuote({
+        wallet: harness.wallet,
+        arkServerUrl: 'https://arkade.computer',
+        invoice: MAINNET_INVOICE,
+        network: 'bitcoin',
+        transport: {} as never,
+        repository: harness.repository,
+        contracts: harness.contracts,
+        manager: harness.manager,
+        profile: MAINNET_TEST_PROFILE,
+        requester: requester as never,
+        nowSeconds: INVOICE_TIMESTAMP + 2,
+        enabled: true,
+      }),
+    ).rejects.toThrow(/already processing/)
+    expect(requester).not.toHaveBeenCalled()
 
     await harness.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
@@ -144,13 +203,10 @@ describe('Lightning persisted lifecycle', () => {
       },
     })
     const { manager } = quoteManager(repository, contracts)
-    const wallet = withVaultRefundAddress(
-      {
-        identity: SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
-        getAddress: async () => 'ark1wrong',
-        getContractManager: async () => contracts,
-      } as unknown as IWallet,
+    const wallet = vaultLightningRequestWallet(
+      SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
       vaultAddress,
+      contracts as never,
     )
     const result = await completeRequestResult(wallet, contracts)
 
@@ -199,29 +255,211 @@ describe('Lightning persisted lifecycle', () => {
     await expired.repository[Symbol.asyncDispose]()
   })
 
+  it('removes an abandoned unfunded record even when its old contract is missing', async () => {
+    const harness = await lightningQuoteHarness({ validUntil: INVOICE_TIMESTAMP + 2 })
+    const quote = await harness.request()
+    harness.rows.delete(hex.encode(harness.result.swapPkScript))
+
+    const result = await retireAbandonedVaultLightningQuotes(
+      harness.repository,
+      harness.contracts,
+      INVOICE_TIMESTAMP + 3,
+    )
+    expect(result.retired).toEqual([quote.rfqId])
+    expect(result.failed).toEqual([{ rfqId: quote.rfqId, error: expect.any(Error) }])
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toBeUndefined()
+
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('treats cancellation as complete when only best-effort contract retirement fails', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    harness.rows.delete(hex.encode(harness.result.swapPkScript))
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await expect(cancelVaultLightningQuote(harness, quote.rfqId)).resolves.toBe(true)
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toBeUndefined()
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('contract retirement failed after cancellation'))
+
+    consoleSpy.mockRestore()
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
   it('restores a persisted package RFQ record after restart', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
     await harness.manager.stop()
-    const refundArkade = vi.fn(async () => null)
-    const lifecycle = await startVaultLightningLifecycle({
-      wallet: harness.wallet,
-      ark: {} as never,
+    const lifecycle = await startTestObserver({
+      contracts: harness.contracts,
       indexer: emptyIndexer() as never,
       repository: harness.repository,
       managerConfig: {
-        enableAutoActions: false,
         pollIntervalMs: 60_000,
         now: () => INVOICE_TIMESTAMP + 2,
       },
-      refundArkade,
     })
 
     expect(lifecycle.restoreFailures).toEqual([])
     expect(lifecycle.retiredQuoteIds).toEqual([])
     expect(await lifecycle.manager.hasSwap(quote.rfqId)).toBe(true)
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'pending' })
-    expect(refundArkade).not.toHaveBeenCalled()
+
+    await lifecycle.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('keeps one non-signing package observer alive on the persistent repository', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await harness.manager.stop()
+
+    const observer = await startTestObserver({
+      contracts: harness.contracts,
+      indexer: emptyIndexer() as never,
+      repository: harness.repository,
+      managerConfig: { pollIntervalMs: 60_000, now: () => INVOICE_TIMESTAMP + 2 },
+    })
+
+    expect(observer.restoreFailures).toEqual([])
+    expect(await observer.manager.hasSwap(quote.rfqId)).toBe(true)
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'pending' })
+    await expect(observer.manager.getStats()).resolves.toMatchObject({ isRunning: false, monitoredSwaps: 1 })
+
+    await observer.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('rebuilds a stale second-tab manager from terminal durable state before polling', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
+    await recordVaultLightningFundingTxid(harness.repository, quote.rfqId, 'ab'.repeat(32))
+    await harness.manager.stop()
+
+    const deps = {
+      contracts: harness.contracts,
+      indexer: emptyIndexer() as never,
+      repository: harness.repository,
+      managerConfig: { now: () => INVOICE_TIMESTAMP + 3 },
+    }
+    const tabA = createVaultLightningObserver(deps)
+    const tabB = createVaultLightningObserver(deps)
+    await maintainVaultLightningObserver({ manager: tabA, ...deps, nowSeconds: INVOICE_TIMESTAMP + 3 })
+    await maintainVaultLightningObserver({ manager: tabB, ...deps, nowSeconds: INVOICE_TIMESTAMP + 3 })
+    expect(await tabB.hasSwap(quote.rfqId)).toBe(true)
+
+    const durable = await harness.repository.getRfqSwap(quote.rfqId)
+    if (!durable) throw new Error('funded quote was not persisted')
+    await harness.repository.saveRfqSwap({
+      ...durable,
+      state: 'settled',
+      updatedAt: durable.updatedAt + 1,
+      lockupSpendArkTxids: ['cd'.repeat(32)],
+    })
+
+    await maintainVaultLightningObserver({ manager: tabB, ...deps, nowSeconds: INVOICE_TIMESTAMP + 4 })
+    expect(await tabB.hasSwap(quote.rfqId)).toBe(false)
+    expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({
+      state: 'settled',
+      fundingArkTxid: 'ab'.repeat(32),
+      lockupSpendArkTxids: ['cd'.repeat(32)],
+    })
+
+    await tabA.stop()
+    await tabB.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('projects one valid funded package record for no-activity history synthesis', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
+    const fundingTxid = 'de'.repeat(32)
+    await recordVaultLightningFundingTxid(harness.repository, quote.rfqId, fundingTxid)
+
+    await expect(listVaultLightningActivityRecords(harness.repository)).resolves.toEqual([
+      {
+        rfqId: quote.rfqId,
+        fundingTxid,
+        state: 'pending',
+        amount: quote.fundAmountSats,
+        displayAmount: quote.invoiceAmountSats,
+        fee: quote.corridorFeeSats + 25,
+        createdAt: INVOICE_TIMESTAMP + 1,
+        terminal: false,
+      },
+    ])
+
+    await harness.manager.stop()
+    await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('isolates one stale restore and retirement failure so a new quote can proceed', async () => {
+    const harness = await lightningQuoteHarness({ validUntil: INVOICE_TIMESTAMP + 2 })
+    const stale = await harness.request()
+    const staleRecord = await harness.repository.getRfqSwap(stale.rfqId)
+    expect(staleRecord).toBeDefined()
+    await harness.repository.saveRfqSwap({ ...staleRecord!, lockupAddress: 'not-an-arkade-address' })
+    const restoreRfqId = 'ef'.repeat(32)
+    const storedProfile = staleRecord!.profile.vaultLightning as {
+      quote: { rfq_id: string; valid_until: number }
+    }
+    await harness.repository.saveRfqSwap({
+      ...staleRecord!,
+      rfqId: restoreRfqId,
+      lockupAddress: 'also-not-an-arkade-address',
+      updatedAt: staleRecord!.updatedAt + 1,
+      profile: {
+        ...staleRecord!.profile,
+        vaultLightning: {
+          ...storedProfile,
+          quote: {
+            ...storedProfile.quote,
+            rfq_id: restoreRfqId,
+            valid_until: INVOICE_TIMESTAMP + 100,
+          },
+        },
+      },
+    })
+    await harness.manager.stop()
+
+    const lifecycle = await startTestObserver({
+      contracts: harness.contracts,
+      indexer: emptyIndexer() as never,
+      repository: harness.repository,
+      managerConfig: {
+        pollIntervalMs: 60_000,
+        now: () => INVOICE_TIMESTAMP + 3,
+      },
+    })
+    expect(lifecycle.retirementFailures).toHaveLength(1)
+    expect(lifecycle.restoreFailures).toHaveLength(1)
+    expect(await harness.repository.getRfqSwap(stale.rfqId)).toBeUndefined()
+    expect(await harness.repository.getRfqSwap(restoreRfqId)).toBeDefined()
+
+    const replacement = await completeRequestResult(harness.wallet, harness.contracts, { rfqId: 'cd'.repeat(32) })
+    const requester = vi.fn(async () => replacement)
+    await expect(
+      requestVaultLightningQuote({
+        wallet: harness.wallet,
+        arkServerUrl: 'https://arkade.computer',
+        invoice: MAINNET_INVOICE,
+        network: 'bitcoin',
+        transport: {} as never,
+        repository: harness.repository,
+        contracts: harness.contracts,
+        manager: lifecycle.manager,
+        profile: MAINNET_TEST_PROFILE,
+        requester: requester as never,
+        nowSeconds: INVOICE_TIMESTAMP + 3,
+        enabled: true,
+      }),
+    ).resolves.toMatchObject({ rfqId: replacement.rfqId })
+    expect(requester).toHaveBeenCalledOnce()
+    expect(await harness.repository.getRfqSwap(replacement.rfqId)).toBeDefined()
 
     await lifecycle.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
@@ -243,8 +481,8 @@ describe('Lightning persisted lifecycle', () => {
       quote.rfqId,
     ])
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ fundingArkTxid: fundingTxid })
-    await expect(listVaultLightningHistory(harness.repository)).resolves.toEqual([
-      { rfqId: quote.rfqId, txid: fundingTxid, invoiceAmountSats: 2100, state: 'pending' },
+    await expect(listVaultLightningActivityRecords(harness.repository)).resolves.toEqual([
+      expect.objectContaining({ rfqId: quote.rfqId, fundingTxid, displayAmount: 2100, state: 'pending' }),
     ])
 
     await harness.manager.stop()
@@ -297,7 +535,7 @@ describe('Lightning persisted lifecycle', () => {
     await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
     await harness.manager.stop()
 
-    const refreshed = await refreshVaultLightningLifecycle({
+    const observer = await startTestObserver({
       repository: harness.repository,
       contracts: harness.contracts,
       indexer: emptyIndexer() as never,
@@ -307,30 +545,39 @@ describe('Lightning persisted lifecycle', () => {
       },
     })
 
-    expect(refreshed.restoreFailures).toEqual([])
+    expect(observer.restoreFailures).toEqual([])
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'needs_counterparty' })
 
+    await observer.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
   })
 
-  it('uses the package manager refund lifecycle for a funded quote that resumes after its refund time', async () => {
+  it('keeps background polling unsigned, then refunds only inside the authenticated callback lifetime', async () => {
     const harness = await lightningQuoteHarness()
     const quote = await harness.request()
     await beginVaultLightningFunding(harness.repository, quote.rfqId, fundingProof(quote), INVOICE_TIMESTAMP + 2)
     await harness.manager.stop()
     const refundArkade = vi.fn(async () => ({ arkTxid: 'cd'.repeat(32), amount: quote.fundAmountSats }))
-    const lifecycle = await startVaultLightningLifecycle({
-      wallet: harness.wallet,
-      ark: {} as never,
+    const lifecycle = await startTestObserver({
+      contracts: harness.contracts,
       indexer: emptyIndexer() as never,
       repository: harness.repository,
       managerConfig: {
         pollIntervalMs: 60_000,
         now: () => quote.refundLocktime,
       },
-      refundArkade,
     })
 
+    expect(refundArkade).not.toHaveBeenCalled()
+    const action = vi.fn()
+    const unsubscribe = lifecycle.manager.onActionExecuted(action)
+    await lifecycle.manager.poll()
+    expect(refundArkade).not.toHaveBeenCalled()
+    expect(action).not.toHaveBeenCalled()
+
+    await withAuthenticatedVaultLightningRefund(lifecycle.manager, quote.rfqId, refundArkade, async () => {
+      expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({ state: 'refunded' })
+    })
     expect(refundArkade).toHaveBeenCalledOnce()
     expect(await harness.repository.getRfqSwap(quote.rfqId)).toMatchObject({
       state: 'refunded',
@@ -338,8 +585,52 @@ describe('Lightning persisted lifecycle', () => {
     })
     expect(harness.rows.get(hex.encode(harness.result.swapPkScript))?.watch).toBe('retained')
 
+    unsubscribe()
     await lifecycle.manager.stop()
     await harness.repository[Symbol.asyncDispose]()
+  })
+
+  it('restores fail-closed refund callbacks when authenticated work throws', async () => {
+    let callbacks: Parameters<RfqSwapManager['setCallbacks']>[0] | undefined
+    const manager = {
+      setCallbacks: vi.fn((next: Parameters<RfqSwapManager['setCallbacks']>[0]) => {
+        callbacks = next
+      }),
+      poll: vi.fn(async () => undefined),
+      getPendingSwaps: vi.fn(async () => []),
+      removeSwap: vi.fn(async () => undefined),
+      restoreFromRepository: vi.fn(async () => ({ restored: [], failed: [], pruned: [] })),
+    }
+    const refundArkade = vi.fn(async () => null)
+
+    await expect(
+      withAuthenticatedVaultLightningRefund(manager, 'ab'.repeat(32), refundArkade, async () => {
+        throw new Error('status read failed')
+      }),
+    ).rejects.toThrow('status read failed')
+
+    expect(manager.setCallbacks).toHaveBeenCalledTimes(2)
+    const authenticatedCallbacks = manager.setCallbacks.mock.calls[0]?.[0]
+    if (!authenticatedCallbacks) throw new Error('authenticated callbacks were not installed')
+    await expect(
+      authenticatedCallbacks.canRefundArkade!({ rfqId: 'ab'.repeat(32), refundLocktime: 0 } as never),
+    ).resolves.toEqual({ ok: true })
+    await expect(
+      authenticatedCallbacks.canRefundArkade!({ rfqId: 'cd'.repeat(32), refundLocktime: 0 } as never),
+    ).resolves.toEqual({ ok: false, reason: 'Face ID is required to return this payment to Spending.' })
+    await expect(authenticatedCallbacks.refundArkade({ rfqId: 'ab'.repeat(32) } as never)).resolves.toBeNull()
+    await expect(authenticatedCallbacks.refundArkade({ rfqId: 'cd'.repeat(32) } as never)).rejects.toBeInstanceOf(
+      RefundNotLocallyPossibleError,
+    )
+    expect(refundArkade).toHaveBeenCalledOnce()
+
+    const restoredCallbacks = callbacks
+    if (!restoredCallbacks) throw new Error('callbacks were not restored')
+    await expect(restoredCallbacks.canRefundArkade!({ refundLocktime: 0 } as never)).resolves.toEqual({
+      ok: false,
+      reason: 'Face ID is required to return this payment to Spending.',
+    })
+    await expect(restoredCallbacks.refundArkade({} as never)).rejects.toBeInstanceOf(RefundNotLocallyPossibleError)
   })
 
   it('rechecks quote and invoice expiry immediately before funding', () => {

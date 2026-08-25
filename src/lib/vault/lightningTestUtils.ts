@@ -20,7 +20,7 @@ import {
 import { hex } from '@scure/base'
 import type { Market } from '@arkade-os/solver-discovery'
 import { vi } from 'vitest'
-import { requestVaultLightningQuote, withVaultRefundAddress, type VaultLightningSolverProfile } from './lightning'
+import { requestVaultLightningQuote, vaultLightningRequestWallet, type VaultLightningSolverProfile } from './lightning'
 
 export const MAINNET_TEST_PROFILE: VaultLightningSolverProfile = {
   network: 'bitcoin',
@@ -177,13 +177,10 @@ export async function lightningQuoteHarness(options: { validUntil?: number; rfqI
   const { contracts, rows } = memoryContracts()
   const repository = new InMemoryAssetSwapRepository()
   const { manager } = quoteManager(repository, contracts)
-  const wallet = withVaultRefundAddress(
-    {
-      identity: SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
-      getAddress: async () => 'ark1wrong',
-      getContractManager: async () => contracts,
-    } as unknown as IWallet,
+  const wallet = vaultLightningRequestWallet(
+    SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
     vaultAddress,
+    contracts as never,
   )
   const result = await completeRequestResult(wallet, contracts, options)
   const requester = vi.fn(async () => result)
