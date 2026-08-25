@@ -15,6 +15,7 @@ import { tapLeafHash } from '@scure/btc-signer/payment.js'
 import { base64, hex } from '@scure/base'
 import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth'
 import {
+  UnknownVtxoOperationStateError,
   vaultCosignerClient,
   vtxoOperationViewFromWire,
   type VtxoAuthorizeRequest,
@@ -315,6 +316,14 @@ function requireHex(value: string | undefined, bytes: number, name: string): Uin
   return decoded as Uint8Array<ArrayBuffer>
 }
 
+function requireNonemptyHex(value: string | undefined, name: string): string {
+  const normalized = String(value || '').toLowerCase()
+  if (!normalized) throw new Error(`${name} is missing`)
+  if (normalized.length % 2 !== 0) throw new Error(`${name} is not hex`)
+  requireHex(normalized, normalized.length / 2, name)
+  return normalized
+}
+
 function xOnly(value: string | undefined, name: string): Uint8Array {
   const raw = String(value || '').toLowerCase()
   if (/^(02|03)[0-9a-f]{64}$/.test(raw)) return hex.decode(raw.slice(2))
@@ -369,7 +378,9 @@ async function requirePinnedOperator(provider: ArkProvider, status: VaultStatus,
   if (!sameBytes(xOnly(info.signerPubkey, 'Operator signer pubkey'), address.serverPubKey)) {
     throw new Error('Operator signer does not match the spending address')
   }
-  if (checkpointTapscript && info.checkpointTapscript.toLowerCase() !== checkpointTapscript.toLowerCase()) {
+  const reservedCheckpointTapscript = requireNonemptyHex(checkpointTapscript, 'reserved checkpoint tapscript')
+  const operatorCheckpointTapscript = requireNonemptyHex(info.checkpointTapscript, 'Operator checkpoint tapscript')
+  if (operatorCheckpointTapscript !== reservedCheckpointTapscript) {
     throw new Error('Operator checkpoint tapscript changed after reservation')
   }
   return info
@@ -585,7 +596,7 @@ export function buildReservedVtxoSpend(
     if (reserve.changeAddress !== status.spendingArkAddress) throw new Error('change address is not vault-policy-v1')
     outputs.push({ script: requireHex(reserve.changeScript, 34, 'change script'), amount: BigInt(reserve.changeSats) })
   }
-  const checkpointTapscript = reserve.checkpointTapscript as string
+  const checkpointTapscript = requireNonemptyHex(reserve.checkpointTapscript, 'checkpoint tapscript')
   const unroll = CSVMultisigTapscript.decode(
     requireHex(checkpointTapscript, checkpointTapscript.length / 2, 'checkpoint tapscript'),
   )
@@ -1204,6 +1215,7 @@ async function syncPersistedSpendWithOperation(pending: PersistedVtxoSpend): Pro
   try {
     view = await fetchVtxoOperation(pending.vaultId, pending.operationId)
   } catch (err) {
+    if (err instanceof UnknownVtxoOperationStateError) throw err
     if (operationNotFound(err)) {
       return pending
     }

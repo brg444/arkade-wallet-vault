@@ -212,4 +212,18 @@ describe('Vault cosigner wire DTO conformance', () => {
 
     expect(vtxoOperationViewFromWire(wire)).toBe(wire)
   })
+
+  it('fails closed on an operation state the wallet does not implement', () => {
+    const wire = {
+      operationId: '11'.repeat(16),
+      bundleDigest: '22'.repeat(32),
+      state: 'future-state',
+      feeSats: 123,
+      feePolicyDigest: '44'.repeat(32),
+      changeSats: 456,
+      changeScript: `5120${'55'.repeat(32)}`,
+    } satisfies VtxoOperationWireView
+
+    expect(() => vtxoOperationViewFromWire(wire)).toThrow(/unknown VTXO operation state/)
+  })
 })

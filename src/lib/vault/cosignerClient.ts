@@ -189,6 +189,13 @@ export interface VtxoFinalizeResponse {
 
 export type VtxoOperationState = 'reserved' | 'signed' | 'submitted' | 'finalized' | 'aborted' | 'unresolved'
 
+export class UnknownVtxoOperationStateError extends Error {
+  constructor(state: unknown) {
+    super(`unknown VTXO operation state: ${String(state)}`)
+    this.name = 'UnknownVtxoOperationStateError'
+  }
+}
+
 // Exact JSON object emitted by GET /v1/vtxo/operation.
 export interface VtxoOperationWireView {
   operationId: string
@@ -226,6 +233,17 @@ export interface VtxoOperationView {
 }
 
 export function vtxoOperationViewFromWire(wire: VtxoOperationWireView): VtxoOperationView {
+  switch (wire.state) {
+    case 'reserved':
+    case 'signed':
+    case 'submitted':
+    case 'finalized':
+    case 'aborted':
+    case 'unresolved':
+      break
+    default:
+      throw new UnknownVtxoOperationStateError(wire.state)
+  }
   return wire as VtxoOperationView
 }
 
