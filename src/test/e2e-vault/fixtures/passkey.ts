@@ -5,6 +5,11 @@ import { recoveryBindingDigest } from '../../../lib/vault/passkeyBinding'
 import { bytesToHex } from '../../../lib/vault/hex'
 import { POLICY_VERSION } from '../../../lib/vault/constants'
 import { SAVINGS_TEMPLATE } from '../../../lib/vault/program/constants'
+import type {
+  VaultEnrollStartResponse,
+  VaultMutationSuccess,
+  VaultPasskeyChallengeResponse,
+} from '../../../lib/vault/cosignerClient'
 import type { VaultStatus } from '../../../lib/vault/types'
 
 const ORIGIN = 'http://localhost:3003'
@@ -173,7 +178,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       phoneBip340Pub: proposed?.phoneBip340Pub,
       phoneDirectP256: proposed?.phoneDirectP256,
       passkeyLoginAvailable: this.passkeyLoginAvailable,
-      enrollmentMode: 'token',
+      enrollmentMode: this.enrolled ? 'closed' : 'token',
       vtxoVaultCosignerPub: PROGRAM_FIXTURE.vaultCosignerBase,
       vtxoExitDelay: 4608,
       vtxoExitDelayUnit: 'seconds',
@@ -244,14 +249,17 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       return json(route, requestedVault ? this.status(requestedVault) : publicStatus())
     }
     if (path === '/v1/enroll/start') {
-      return json(route, {
+      const response: VaultEnrollStartResponse = {
         handle: 'e2e-enrollment-handle',
         vaultId: VAULT_ID,
         challenge: '01'.repeat(32),
         rpId: RP_ID,
+        rpName: 'Arkade Vault',
         userId: bytesToHex(new TextEncoder().encode(VAULT_ID)),
-        userName: 'vault-e2e',
-      })
+        userName: 'vault',
+        timeoutMs: 300_000,
+      }
+      return json(route, response)
     }
     if (path === '/v1/enroll/propose' && body) {
       this.proposed = body
@@ -273,17 +281,17 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
     }
     if (path === '/v1/enroll/finish') {
       this.enrolled = true
-      return json(route, {})
+      return json(route, this.status())
     }
     if (path === '/v1/passkey/challenge') {
       this.challengeCounter += 1
-      return json(route, {
+      const response: VaultPasskeyChallengeResponse = {
         challengeId: `challenge-${this.challengeCounter}`,
         challenge: this.challengeCounter.toString(16).padStart(2, '0').repeat(32),
-        ...(body?.vaultId === VAULT_ID && this.proposed?.credentialId
-          ? { allowCredentialId: this.proposed.credentialId }
-          : {}),
-      })
+        allowCredentialId: body?.vaultId === VAULT_ID ? this.proposed?.credentialId || '' : '',
+        expiresInSeconds: 120,
+      }
+      return json(route, response)
     }
     if (path === '/v1/passkey/binding' && body) {
       const binding = this.recoveryBinding({
@@ -303,7 +311,8 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         bindingPhoneSig: body.bindingPhoneSig,
       }
       this.passkeyLoginAvailable = true
-      return json(route, {})
+      const response: VaultMutationSuccess = { ok: true }
+      return json(route, response)
     }
     if (path === '/v1/passkey/recover') {
       this.recoverSeen?.resolve()
