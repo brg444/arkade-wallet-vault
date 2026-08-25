@@ -33,6 +33,16 @@ const enrollment: VaultEnrollmentRequest = {
 
 describe('VaultCosignerClient route compatibility', () => {
   it('groups the exact existing HTTP API into enrollment, recovery, and Spending capabilities', async () => {
+    const operationWire = {
+      operationId: '11'.repeat(16),
+      bundleDigest: '22'.repeat(32),
+      state: 'reserved',
+      feeSats: 123,
+      feePolicyDigest: '33'.repeat(32),
+      changeSats: 456,
+      changeVout: 1,
+      changeScript: `5120${'44'.repeat(32)}`,
+    }
     const fetchMock = vi.fn(async (...args: [RequestInfo | URL, RequestInit?]) => {
       const [input] = args
       const path = String(input)
@@ -53,12 +63,42 @@ describe('VaultCosignerClient route compatibility', () => {
         return new Response(
           JSON.stringify({
             enrolled: false,
+            network: 'mutinynet',
+            clientOrigin: 'https://vault.example',
+            rpId: 'vault.example',
             vaultId: 'vault a',
             templateVersion: SAVINGS_TEMPLATE,
             policyVersion: POLICY_VERSION,
+            arkadeCosignerOrigin: 'https://mutinynet.arkade.sh',
+            arkadeCosignerVersion: '0.4.65',
+            savingsAddress: 'tb1ptest',
+            savingsScript: `5120${'aa'.repeat(32)}`,
+            passkeyLoginAvailable: false,
+            enrollmentMode: 'invite',
+            periodAllowance: 100_000,
+            periodSpent: 0,
+            periodRemaining: 100_000,
+            txCap: 50_000,
+            absoluteFeeCap: 5_000,
+            feerateCapSatVb: 10,
+            vtxoVaultCosignerPub: `02${'11'.repeat(32)}`,
+            vtxoExitDelay: 4608,
+            vtxoExitDelayUnit: 'seconds',
+            spendingArkAddress: 'tark1spending',
+            spendingArkScript: `5120${'22'.repeat(32)}`,
+            vtxoDelegatePub: `02${'33'.repeat(32)}`,
+            vtxoBoardingActive: true,
+            vtxoBoardingProgram: 'vault-board-v1',
+            vtxoBoardingAddress: 'tb1pboarding',
+            vtxoBoardingScript: `5120${'44'.repeat(32)}`,
+            vtxoBoardingExitDelay: 604672,
+            vtxoBoardingExitDelayUnit: 'seconds',
           }),
           { status: 200 },
         )
+      }
+      if (path === '/v1/vtxo/operation?vaultId=vault%20a&operationId=operation%2F1') {
+        return new Response(JSON.stringify(operationWire), { status: 200 })
       }
       return new Response('{}', { status: 200 })
     })
@@ -86,8 +126,18 @@ describe('VaultCosignerClient route compatibility', () => {
     })
     await vaultCosignerClient.enrollment.recover({ vaultId: 'vault a', ...session })
     await vaultCosignerClient.recovery.challenge({ purpose: 'recover', vaultId: 'vault a' })
-    await vaultCosignerClient.recovery.initiate({ vaultId: 'vault a', psbt: 'cHNidP8=' })
-    await vaultCosignerClient.recovery.clawback({ vaultId: 'vault a', psbt: 'cHNidP8=' })
+    await vaultCosignerClient.recovery.initiate({
+      vaultId: 'vault a',
+      purpose: 'initiate',
+      psbt: 'cHNidP8=',
+      ...session,
+    })
+    await vaultCosignerClient.recovery.clawback({
+      vaultId: 'vault a',
+      purpose: 'clawback',
+      psbt: 'cHNidP8=',
+      ...session,
+    })
     await vaultCosignerClient.recovery.readMap('vault a')
     await vaultCosignerClient.recovery.writeMap({
       vaultId: 'vault a',
@@ -127,7 +177,7 @@ describe('VaultCosignerClient route compatibility', () => {
       bundleDigest: '22'.repeat(32),
       arkTxid: '33'.repeat(32),
     })
-    await vaultCosignerClient.spending.operation('vault a', 'operation/1')
+    await expect(vaultCosignerClient.spending.operation('vault a', 'operation/1')).resolves.toEqual(operationWire)
 
     expect(fetchMock.mock.calls.map(([path, init]) => `${(init as RequestInit).method} ${String(path)}`)).toEqual([
       'GET /v1/status',
@@ -159,7 +209,7 @@ describe('VaultCosignerClient route compatibility', () => {
       headers: { 'X-Vault-Enrollment-Token': 'invite-a' },
     })
     expect(fetchMock.mock.calls[10]?.[1]).toMatchObject({
-      body: JSON.stringify({ vaultId: 'vault a', psbt: 'cHNidP8=' }),
+      body: JSON.stringify({ vaultId: 'vault a', purpose: 'initiate', psbt: 'cHNidP8=', ...session }),
     })
   })
 })

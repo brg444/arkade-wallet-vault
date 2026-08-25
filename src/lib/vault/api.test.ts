@@ -64,7 +64,7 @@ describe('Vault HTTP compatibility boundary', () => {
   it('surfaces a 4xx JSON error field exactly', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse({ error: 'reservation already exists' }, 409)),
+      vi.fn(async () => jsonResponse({ error: 'reservation already exists', code: 'RESERVATION_EXISTS' }, 409)),
     )
 
     await expect(vaultPost('/v1/vtxo/reserve', {})).rejects.toThrow('reservation already exists')

@@ -2,7 +2,7 @@ import { readBounded } from './bounded'
 import { POLICY_VERSION } from './constants'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
-import type { VaultStatus } from './types'
+import type { VaultStatus, VaultStatusWire } from './types'
 
 export function authorizerBase(): string {
   // Production talks same-origin only. A VITE_ value is compiled into the
@@ -83,16 +83,21 @@ export async function fetchVaultStatus(signal: AbortSignal | undefined, expected
   if (!res.ok) {
     throw new Error(`authorizer status ${res.status}`)
   }
-  const body = requireStatusIdentity(parseJsonObject<VaultStatus>(text, 'status'), id)
+  const body = requireStatusIdentity(parseJsonObject<VaultStatusWire & { recoveryPub?: string }>(text, 'status'), id)
   return bindStatusToLocalPin(body)
 }
 
 export function parseStatusJson(raw: string, expectedVaultId: string): VaultStatus {
-  const body = JSON.parse(raw) as VaultStatus
+  const body = JSON.parse(raw) as VaultStatusWire & { recoveryPub?: string }
   return requireStatusIdentity(body, requestedVaultId(expectedVaultId))
 }
 
-export function requireStatusIdentity(status: VaultStatus, expectedVaultId: string): VaultStatus {
+// Bind the exact wire status to the selected vault and add the wallet-only
+// recoveryPub compatibility alias without adding it to VaultStatusWire.
+export function requireStatusIdentity(
+  status: VaultStatusWire & { recoveryPub?: string },
+  expectedVaultId: string,
+): VaultStatus {
   const expected = requestedVaultId(expectedVaultId)
   if (!status || typeof status !== 'object') throw new Error('status is not an object')
   if (!status.vaultId || String(status.vaultId).trim() === '') throw new Error('vault id required')
@@ -108,5 +113,5 @@ export function requireStatusIdentity(status: VaultStatus, expectedVaultId: stri
     throw new Error('status recovery key fields do not match')
   }
   const recovery = recoveryKeyPub || recoveryPub
-  return recovery ? { ...status, recoveryPub: recovery, recoveryKeyPub: recovery } : status
+  return (recovery ? { ...status, recoveryPub: recovery, recoveryKeyPub: recovery } : status) as VaultStatus
 }

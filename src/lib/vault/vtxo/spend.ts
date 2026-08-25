@@ -16,6 +16,7 @@ import { base64, hex } from '@scure/base'
 import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth'
 import {
   vaultCosignerClient,
+  vtxoOperationViewFromWire,
   type VtxoAuthorizeRequest,
   type VtxoAuthorizeResponse,
   type VtxoCheckpointAuthorizeResponse,
@@ -584,8 +585,9 @@ export function buildReservedVtxoSpend(
     if (reserve.changeAddress !== status.spendingArkAddress) throw new Error('change address is not vault-policy-v1')
     outputs.push({ script: requireHex(reserve.changeScript, 34, 'change script'), amount: BigInt(reserve.changeSats) })
   }
+  const checkpointTapscript = reserve.checkpointTapscript as string
   const unroll = CSVMultisigTapscript.decode(
-    requireHex(reserve.checkpointTapscript, reserve.checkpointTapscript.length / 2, 'checkpoint tapscript'),
+    requireHex(checkpointTapscript, checkpointTapscript.length / 2, 'checkpoint tapscript'),
   )
   return buildOffchainTx(
     reserve.inputs.map((input) => ({
@@ -1106,7 +1108,7 @@ export async function withVtxoSendLock<T>(
 }
 
 export function fetchVtxoOperation(vaultId: string, operationId: string): Promise<VtxoOperationView> {
-  return vaultCosignerClient.spending.operation(vaultId, operationId)
+  return vaultCosignerClient.spending.operation(vaultId, operationId).then(vtxoOperationViewFromWire)
 }
 
 function operationNotFound(err: unknown): boolean {
@@ -1255,7 +1257,7 @@ async function reservePersistedVtxoSpend(
     feePolicyDigest: reserve.feePolicyDigest,
     feeSats: reserve.feeSats,
     changeSats: reserve.changeSats,
-    ...(reserve.changeVout === undefined ? {} : { changeVout: reserve.changeVout }),
+    ...(typeof reserve.changeVout === 'number' ? { changeVout: reserve.changeVout } : {}),
     sdkBundleVersion: 1,
     reservedInputs: reserve.inputs.map((input) => ({ ...input, scriptHex: input.scriptHex.toLowerCase() })),
     reservedOutputs: [
