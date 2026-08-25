@@ -3,8 +3,8 @@ import { authorizerBase } from './status'
 
 export { MAX_API_RESPONSE_BYTES, readBounded } from './bounded'
 
-export async function vaultGet<T>(path: string): Promise<T> {
-  return vaultRequest<T>(path)
+export async function vaultGet<T>(path: string, extraHeaders: Record<string, string> = {}): Promise<T> {
+  return vaultRequest<T>(path, undefined, extraHeaders)
 }
 
 export async function vaultPost<T>(path: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
