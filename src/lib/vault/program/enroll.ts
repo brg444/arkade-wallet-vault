@@ -26,7 +26,7 @@ function appendText(parts: Uint8Array[], value: string) {
   parts.push(bytes)
 }
 
-function compositeHash(descriptor: BoardingEnrollmentDescriptor): string {
+export function hashBoardingEnrollmentDescriptor(descriptor: BoardingEnrollmentDescriptor): string {
   const savingsHash = hashVaultProgramDescriptor(descriptor.savings)
   const fields = [
     descriptor.schema,
@@ -86,7 +86,7 @@ export function requireProposedBoardingDescriptor(
   }
   const boarding = requireBoardingDescriptor(composite.boarding, expected)
   const descriptor = { ...composite, savings, boarding }
-  if (compositeHash(descriptor) !== proposedHash) {
+  if (hashBoardingEnrollmentDescriptor(descriptor) !== proposedHash) {
     throw new Error('proposed vault-board-v1 descriptor hash does not match this client')
   }
   return descriptor

@@ -1,5 +1,8 @@
 import { expect, test as base, type BrowserContext, type CDPSession, type Page, type Route } from '@playwright/test'
-import { buildVaultProgramDescriptor, hashVaultProgramDescriptor } from '../../../lib/vault/program/descriptor'
+import { createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
+import { buildVaultProgramDescriptor } from '../../../lib/vault/program/descriptor'
+import { hashBoardingEnrollmentDescriptor } from '../../../lib/vault/program/enroll'
 import { PROGRAM_FIXTURE } from '../../../lib/vault/program/fixtures'
 import { recoveryBindingDigest } from '../../../lib/vault/passkeyBinding'
 import { bytesToHex } from '../../../lib/vault/hex'
@@ -10,12 +13,21 @@ import type {
   VaultMutationSuccess,
   VaultPasskeyChallengeResponse,
 } from '../../../lib/vault/cosignerClient'
-import type { VaultStatus } from '../../../lib/vault/types'
+import type { BoardingDescriptor, VaultStatus } from '../../../lib/vault/types'
+import {
+  BOARDING_EXIT_DELAY,
+  BOARDING_EXIT_DELAY_UNIT,
+  BOARDING_PROGRAM,
+  BOARDING_SCHEMA,
+  BOARDING_TEMPLATE,
+  MUTINYNET_OPERATOR_SIGNER_PUB,
+} from '../../../lib/vault/vtxo/board'
 
 const ORIGIN = 'http://localhost:3003'
 const RP_ID = 'localhost'
 const INVITE = 'e2e-passkey-invite-0000000000000000'
 const VAULT_ID = PROGRAM_FIXTURE.vaultId
+const AUTHORIZER_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_authorizer'
 
 type CDPCredential = {
   credentialId: string
@@ -95,6 +107,7 @@ function publicStatus() {
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
     enrollmentMode: 'token',
+    vtxoBoardingProgram: BOARDING_PROGRAM,
   }
 }
 
@@ -106,6 +119,8 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
   private passkeyLoginAvailable = false
   private proposed?: Record<string, string>
   private descriptor?: ReturnType<typeof buildVaultProgramDescriptor>
+  private boardingDescriptor?: BoardingDescriptor
+  private boardingDescriptorHash?: string
   private install?: PasskeyInstall
   private challengeCounter = 0
   private recoverGate?: { promise: Promise<void>; release: () => void }
@@ -185,12 +200,14 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       spendingArkAddress: 'tark1spending',
       spendingArkScript: `5120${'22'.repeat(32)}`,
       vtxoDelegatePub: PROGRAM_FIXTURE.arkadeCosignerBase,
-      vtxoBoardingActive: false,
-      vtxoBoardingProgram: 'vault-board-v1',
-      vtxoBoardingAddress: 'tb1pboarding',
-      vtxoBoardingScript: `5120${'33'.repeat(32)}`,
+      vtxoBoardingActive: Boolean(this.enrolled && this.boardingDescriptor),
+      vtxoBoardingProgram: BOARDING_PROGRAM,
+      vtxoBoardingAddress: this.boardingDescriptor?.address || '',
+      vtxoBoardingScript: this.boardingDescriptor?.script || '',
       vtxoBoardingExitDelay: 604_672,
       vtxoBoardingExitDelayUnit: 'seconds',
+      vtxoBoardingDescriptor: this.boardingDescriptor,
+      vtxoBoardingDescriptorHash: this.boardingDescriptorHash,
     }
   }
 
@@ -273,15 +290,53 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
         arkadeCosigner: PROGRAM_FIXTURE.arkadeCosigner,
       })
+      const boarding = createBoardingProgramScript(
+        {
+          name: BOARDING_PROGRAM,
+          boardingPubKey: hex.decode(body.vaultBoardingBip340Pub).slice(1),
+          cosignerPubKey: hex.decode(PROGRAM_FIXTURE.vaultCosignerBase).slice(1),
+          recoveryPubKey: hex.decode(body.phoneBip340Pub).slice(1),
+        },
+        hex.decode(MUTINYNET_OPERATOR_SIGNER_PUB).slice(1),
+        { type: BOARDING_EXIT_DELAY_UNIT, value: BigInt(BOARDING_EXIT_DELAY) },
+      )
+      this.boardingDescriptor = {
+        schema: BOARDING_SCHEMA,
+        program: BOARDING_PROGRAM,
+        template: BOARDING_TEMPLATE,
+        network: 'mutinynet',
+        boardingPub: body.vaultBoardingBip340Pub,
+        recoveryPhonePub: body.phoneBip340Pub,
+        vaultBoardCosignerPub: PROGRAM_FIXTURE.vaultCosignerBase,
+        operatorPub: MUTINYNET_OPERATOR_SIGNER_PUB,
+        exitDelay: BOARDING_EXIT_DELAY,
+        exitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
+        script: hex.encode(boarding.pkScript),
+        address: boarding.onchainAddress(getNetwork('mutinynet')),
+      }
+      const composite = {
+        schema: 'arkade-vault/enrollment-with-board-v1' as const,
+        vaultId: VAULT_ID,
+        savings: this.descriptor,
+        boarding: this.boardingDescriptor,
+      }
+      this.boardingDescriptorHash = hashBoardingEnrollmentDescriptor(composite)
       return json(route, {
         vaultId: VAULT_ID,
-        descriptorHash: hashVaultProgramDescriptor(this.descriptor),
-        descriptor: this.descriptor,
+        descriptorHash: this.boardingDescriptorHash,
+        descriptor: composite,
       })
     }
     if (path === '/v1/enroll/finish') {
       this.enrolled = true
-      return json(route, this.status())
+      const status = this.status()
+      const response = await fetch(AUTHORIZER_CONTROL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(status),
+      })
+      if (!response.ok) throw new Error(`Authorizer fixture reset failed: ${response.status}`)
+      return json(route, status)
     }
     if (path === '/v1/passkey/challenge') {
       this.challengeCounter += 1

@@ -18,8 +18,10 @@ function gitCommitShort(): string {
 
 function vaultAuthorizerProxy(): ProxyOptions {
   const gatewaySecret = process.env.VAULT_GATEWAY_SECRET?.trim()
+  const testTarget = process.env.VAULT_E2E_AUTHORIZER_PROXY_TARGET?.trim()
   return {
-    target: 'http://127.0.0.1:8787',
+    target: testTarget || 'http://127.0.0.1:8787',
+    ...(testTarget ? { secure: false } : {}),
     ...(gatewaySecret ? { headers: { 'X-Vault-Gateway-Secret': gatewaySecret } } : {}),
     configure(proxy) {
       proxy.on('error', (_err, _req, res) => {
@@ -43,6 +45,16 @@ function arkadeOperatorProxy(): ProxyOptions {
     changeOrigin: true,
     ...(testTarget ? { secure: false } : {}),
     rewrite: (path) => path.replace(/^\/arkade/, ''),
+  }
+}
+
+function esploraProxy(): ProxyOptions {
+  const testTarget = process.env.VAULT_E2E_ESPLORA_PROXY_TARGET?.trim()
+  return {
+    target: testTarget || 'https://mempool.mutinynet.arkade.sh',
+    changeOrigin: true,
+    ...(testTarget ? { secure: false } : {}),
+    rewrite: (path) => path.replace(/^\/esplora/, '/api'),
   }
 }
 
@@ -71,11 +83,7 @@ export default defineConfig({
     proxy: {
       '/v1': vaultAuthorizerProxy(),
       '/health': vaultAuthorizerProxy(),
-      '/esplora': {
-        target: 'https://mempool.mutinynet.arkade.sh',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/esplora/, '/api'),
-      },
+      '/esplora': esploraProxy(),
       '/arkade': {
         ...arkadeOperatorProxy(),
       },

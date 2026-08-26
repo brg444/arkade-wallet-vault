@@ -8,6 +8,8 @@ const ENROLLMENT_MODULE = '/src/lib/vault/enrollmentStore.ts'
 const HANDOFF_MODULE = '/src/lib/vault/savingsHandoff.ts'
 const SAVINGS_MODULE = '/src/lib/vault/savingsSpend.ts'
 const PROGRAM_FIXTURE_MODULE = '/src/lib/vault/program/fixtures.ts'
+const AUTHORIZER_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_authorizer'
+const ESPLORA_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_esplora'
 
 function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
@@ -45,6 +47,24 @@ async function openVault(page: Page): Promise<{ broadcastHex: () => string; stat
     const fixture = await import(/* @vite-ignore */ fixturePath)
     return fixture.installVaultUiSession()
   }, UI_FIXTURE)) as VaultStatus
+  const fixtureResponse = await fetch(AUTHORIZER_CONTROL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(status),
+  })
+  if (!fixtureResponse.ok) throw new Error(`Authorizer fixture reset failed: ${fixtureResponse.status}`)
+  const esploraResponse = await fetch(ESPLORA_CONTROL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      boardingAddress: status.vtxoBoardingAddress,
+      boardingUtxos: [],
+      savingsAddress: status.savingsAddress,
+      savingsTxs: [],
+      savingsUtxos: [],
+    }),
+  })
+  if (!esploraResponse.ok) throw new Error(`Esplora fixture reset failed: ${esploraResponse.status}`)
   await page.reload()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
   return { broadcastHex: () => broadcastHex, status }

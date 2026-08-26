@@ -1,10 +1,11 @@
 import http from 'node:http'
 import { CSVMultisigTapscript } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { MUTINYNET_OPERATOR_SIGNER_PUB } from '../../lib/vault/vtxo/board'
 
 const OPERATOR_PORT = 18_888
-const OPERATOR_XONLY = 'e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13'
-const OPERATOR_COMPRESSED = `02${OPERATOR_XONLY}`
+const OPERATOR_XONLY = MUTINYNET_OPERATOR_SIGNER_PUB.slice(2)
+const OPERATOR_COMPRESSED = MUTINYNET_OPERATOR_SIGNER_PUB
 const CHECKPOINT_TAPSCRIPT = hex.encode(
   CSVMultisigTapscript.encode({
     timelock: { type: 'seconds', value: 4096n },
@@ -17,6 +18,14 @@ type OperatorFixtureState = {
   info: Record<string, unknown>
   requests: string[]
   vtxos: Record<string, unknown>[]
+}
+
+type EsploraFixtureState = {
+  boardingAddress: string
+  boardingUtxos: Record<string, unknown>[]
+  savingsAddress: string
+  savingsTxs: Record<string, unknown>[]
+  savingsUtxos: Record<string, unknown>[]
 }
 
 const DEFAULT_INFO = {
@@ -75,8 +84,33 @@ async function listen(server: http.Server, port: number) {
 
 export default async function globalSetup() {
   let state = freshState()
+  let authorizerStatus: Record<string, unknown> | undefined
+  let esplora: EsploraFixtureState | undefined
   const operator = http.createServer(async (request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1')
+    if (url.pathname === '/__vault_e2e_authorizer') {
+      if (request.method === 'POST') {
+        authorizerStatus = JSON.parse((await readBody(request)) || '{}') as Record<string, unknown>
+        json(response, 200, authorizerStatus)
+        return
+      }
+      if (request.method === 'DELETE') {
+        authorizerStatus = undefined
+        json(response, 200, {})
+        return
+      }
+      json(response, 405, { error: 'fixture control requires POST or DELETE' })
+      return
+    }
+    if (url.pathname === '/__vault_e2e_esplora') {
+      if (request.method === 'POST') {
+        esplora = JSON.parse((await readBody(request)) || '{}') as EsploraFixtureState
+        json(response, 200, esplora)
+        return
+      }
+      json(response, 405, { error: 'fixture control requires POST' })
+      return
+    }
     if (url.pathname === '/__vault_e2e_operator') {
       if (request.method === 'GET') {
         json(response, 200, state)
@@ -112,6 +146,50 @@ export default async function globalSetup() {
     }
     if (url.pathname === '/v1/info') {
       json(response, 200, state.info)
+      return
+    }
+    if (url.pathname === '/v1/status') {
+      json(
+        response,
+        authorizerStatus ? 200 : 503,
+        authorizerStatus || { error: 'Authorizer fixture is not installed yet' },
+      )
+      return
+    }
+    if (url.pathname === '/api/blocks/tip/height') {
+      response.writeHead(200, { 'Content-Type': 'text/plain' })
+      response.end('1')
+      return
+    }
+    if (url.pathname === '/api/tx' && request.method === 'POST') {
+      response.writeHead(200, { 'Content-Type': 'text/plain' })
+      response.end('dd'.repeat(32))
+      return
+    }
+    if (url.pathname === '/api/fee-estimates') {
+      json(response, 200, { 1: 1 })
+      return
+    }
+    const addressUtxos = url.pathname.match(/^\/api\/address\/([^/]+)\/utxo$/)
+    if (addressUtxos) {
+      const address = decodeURIComponent(addressUtxos[1])
+      if (address === esplora?.boardingAddress) json(response, 200, esplora.boardingUtxos)
+      else if (address === esplora?.savingsAddress) json(response, 200, esplora.savingsUtxos)
+      else json(response, 200, [])
+      return
+    }
+    const addressTxs = url.pathname.match(/^\/api\/address\/([^/]+)\/txs(?:\/chain\/[^/]+)?$/)
+    if (addressTxs) {
+      const address = decodeURIComponent(addressTxs[1])
+      json(response, 200, address === esplora?.savingsAddress ? esplora.savingsTxs : [])
+      return
+    }
+    if (/^\/api\/tx\/[0-9a-f]+\/status$/.test(url.pathname)) {
+      json(response, 200, { confirmed: false })
+      return
+    }
+    if (/^\/api\/tx\/[0-9a-f]+\/outspends$/.test(url.pathname)) {
+      json(response, 200, [])
       return
     }
     if (url.pathname === '/v1/indexer/vtxos') {
