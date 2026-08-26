@@ -15,7 +15,7 @@ import {
 } from '@arkade-os/swap'
 import { hex } from '@scure/base'
 import { consoleError } from '../../logs'
-import { historyFromSdkActivities, type VaultHistoryItem } from '../history'
+import { historyFromBoardingUtxos, historyFromSdkActivities, type VaultHistoryItem } from '../history'
 import { tryVaultLightningLifecycleLock } from '../lightningLock'
 import {
   createVaultLightningObserver,
@@ -476,23 +476,31 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
     if (vtxo.arkTxId) commitmentIds.add(vtxo.arkTxId)
     for (const txid of vtxo.commitmentTxIds || []) commitmentIds.add(txid)
   }
-  const [activities, swapRecords, lightningRecords] = await Promise.all([
+  const [activities, swapRecords, lightningRecords, boardingUtxos, balance] = await Promise.all([
     current.wallet.getActivityHistory(),
     current.swapRepository.getAllRfqSwaps(),
     listVaultLightningActivityRecords(current.swapRepository),
+    current.wallet.getBoardingUtxos(),
+    current.wallet.getBalance(),
   ])
   const lightningRfqIds = new Set(
     swapRecords.filter((record) => record.kind === 'lightning_send').map((record) => record.rfqId),
   )
+  const activityHistory = historyFromSdkActivities(
+    activities,
+    { vaultTxids: commitmentIds, lightningRfqIds },
+    lightningRecords,
+    { includeBoarding: true },
+  )
+  const knownTransactions = new Set(activityHistory.map((item) => item.txid))
+  const detectedBoardingHistory = historyFromBoardingUtxos(boardingUtxos).filter(
+    (item) => !knownTransactions.has(item.txid),
+  )
   return {
     balance: vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0),
     commitmentIds: [...commitmentIds],
-    ...(await current.wallet.getBalance().then((balance) => ({
-      boardingBalance: balance.boarding.total,
-      boardingConfirmedBalance: balance.boarding.confirmed,
-    }))),
-    history: historyFromSdkActivities(activities, { vaultTxids: commitmentIds, lightningRfqIds }, lightningRecords, {
-      includeBoarding: true,
-    }),
+    boardingBalance: balance.boarding.total,
+    boardingConfirmedBalance: balance.boarding.confirmed,
+    history: [...detectedBoardingHistory, ...activityHistory],
   }
 }
