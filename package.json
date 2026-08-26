@@ -4,7 +4,7 @@
   "private": true,
   "homepage": ".",
   "dependencies": {
-    "@arkade-os/sdk": "github:arkade-os/ts-sdk#22660663&path:packages/ts-sdk",
+    "@arkade-os/sdk": "github:arkade-os/ts-sdk#d591459e&path:packages/ts-sdk",
     "@arkade-os/solver-discovery": "0.2.3",
     "@arkade-os/swap": "0.0.8",
     "@base-ui/react": "^1.4.1",
@@ -82,6 +82,7 @@
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "fake-indexeddb": "^6.2.5",
     "husky": "^8.0.3",
     "jsdom": "^26.1.0",
     "prettier": "^3.6.2",
@@ -99,8 +100,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@arkade-os/sdk": "github:arkade-os/ts-sdk#22660663&path:packages/ts-sdk",
-      "@arkade-os/swap>@arkade-os/sdk": "github:arkade-os/ts-sdk#22660663&path:packages/ts-sdk",
+      "@arkade-os/sdk": "github:arkade-os/ts-sdk#d591459e&path:packages/ts-sdk",
+      "@arkade-os/swap>@arkade-os/sdk": "github:arkade-os/ts-sdk#d591459e&path:packages/ts-sdk",
       "ws": "8.21.0"
     },
     "ignoredBuiltDependencies": [

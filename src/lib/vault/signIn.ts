@@ -11,7 +11,7 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeyBinding'
-import { pinFromEnrolledStatus } from './pin'
+import { pinEnrolledStatus, pinFromEnrolledStatus } from './pin'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 import { provisionVaultBoardV2Key } from './vtxo/boardV2'
@@ -185,6 +185,8 @@ export async function unlockLocalEnrollment(
   if (rpId !== location.hostname.toLowerCase()) {
     throw new Error('deployment RP ID does not match this signing client host')
   }
+  const live = await vaultCosignerClient.enrollment.status(rec.vaultId)
+  pinEnrolledStatus(live)
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const got = (await navigator.credentials.get({
     publicKey: passkeyGetOptions(
@@ -204,7 +206,6 @@ export async function unlockLocalEnrollment(
   try {
     const secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
     try {
-      const live = await vaultCosignerClient.enrollment.status(rec.vaultId)
       await provisionVaultBoardV2Key(secret, live)
       return { enrollment: rec, status: live }
     } finally {

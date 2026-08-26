@@ -1,12 +1,16 @@
+import 'fake-indexeddb/auto'
 import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { hex } from '@scure/base'
 import { createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
 import { describe, expect, it } from 'vitest'
 import type { VaultBoardV2Descriptor } from '../types'
 import {
+  activateVaultBoardV2Key,
+  deleteVaultBoardV2Key,
   deriveVaultBoardV2Key,
   MUTINYNET_OPERATOR_SIGNER_PUB,
   requireVaultBoardV2Descriptor,
+  stageVaultBoardV2Key,
   VAULT_BOARD_V2_EXIT_DELAY,
   VAULT_BOARD_V2_EXIT_DELAY_UNIT,
   VAULT_BOARD_V2_PROGRAM,
@@ -101,6 +105,34 @@ describe('vault-board-v2 program binding', () => {
       again.secret.fill(0)
       other.secret.fill(0)
       phoneSecret.fill(0)
+    }
+  })
+
+  it('accepts an already-active exact key but rejects an activation mismatch', async () => {
+    const vaultId = 'vault-board-activation'
+    const descriptorHash = 'ab'.repeat(32)
+    const phoneSecret = new Uint8Array(32)
+    phoneSecret[31] = 7
+    try {
+      const staged = await stageVaultBoardV2Key({ vaultId, phoneSecret, network: 'mutinynet' })
+      await activateVaultBoardV2Key({
+        vaultId,
+        descriptorHash,
+        expectedBoardingPub: staged.boardingPub,
+      })
+      await expect(
+        activateVaultBoardV2Key({ vaultId, descriptorHash, expectedBoardingPub: staged.boardingPub }),
+      ).resolves.toBeUndefined()
+      await expect(
+        activateVaultBoardV2Key({
+          vaultId,
+          descriptorHash: 'cd'.repeat(32),
+          expectedBoardingPub: staged.boardingPub,
+        }),
+      ).rejects.toThrow(/active vault-board-v2 key does not match descriptor/)
+    } finally {
+      phoneSecret.fill(0)
+      await deleteVaultBoardV2Key(vaultId)
     }
   })
 })
