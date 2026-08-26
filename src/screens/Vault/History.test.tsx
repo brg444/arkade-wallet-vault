@@ -69,10 +69,35 @@ describe('Vault history', () => {
     expect(screen.getByText('+50,000 SATS')).toBeTruthy()
   })
 
+  it('shows settled boarding activity as confirmed', () => {
+    renderHistory({
+      history: [
+        {
+          txid: 'settled-boarding-tx',
+          type: 'received',
+          amount: 50_000,
+          confirmed: true,
+          blockTime: 10,
+          account: 'spend',
+          activity: 'boarding',
+        },
+      ],
+    })
+
+    expect(screen.getByText(/^Confirmed/)).toBeTruthy()
+    expect(screen.queryByText('Pending')).toBeNull()
+  })
+
   it('does not show a false empty state while the first snapshot is loading', () => {
     renderHistory({ account: 'spend', balancesLoaded: false })
     expect(screen.getByText('Loading activity…')).toBeTruthy()
     expect(screen.queryByText(/No Spending activity/i)).toBeNull()
+  })
+
+  it('does not remain busy after a terminal activity error', () => {
+    renderHistory({ balancesLoaded: false, balanceError: 'Could not load activity' })
+    expect(screen.getByTestId('vault-history').getAttribute('aria-busy')).toBe('false')
+    expect(screen.getByText('Activity is unavailable. Refresh to try again.')).toBeTruthy()
   })
 
   it('uses the same pending language for Savings activity', () => {

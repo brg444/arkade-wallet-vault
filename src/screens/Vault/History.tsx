@@ -22,14 +22,14 @@ export default function VaultHistory() {
       <section
         className='vault-history'
         data-testid='vault-history'
-        aria-busy={!balancesLoaded}
+        aria-busy={!balancesLoaded && !balanceError}
         aria-labelledby='vault-activity-title'
       >
         <div className='vault-history-head'>
           <h2 id='vault-activity-title'>Activity</h2>
           <span>{refreshingBalance ? `Refreshing ${accountName}` : accountName}</span>
         </div>
-        <div className='vault-history-empty' role={!balancesLoaded ? 'status' : undefined}>
+        <div className='vault-history-empty' role={!balancesLoaded && !balanceError ? 'status' : undefined}>
           <Text color='neutral-600' tiny wrap>
             {!balancesLoaded
               ? balanceError
@@ -55,30 +55,27 @@ export default function VaultHistory() {
           <h3 className='vault-history-group-label'>{group.label}</h3>
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
-            const boarding = tx.activity === 'boarding'
             const lightning = tx.activity === 'lightning'
             const savingsHandoff = tx.activity === 'savings-handoff'
             const amount = tx.displayAmount ?? tx.amount
             const time = historyTime(tx.blockTime)
-            const state = boarding
-              ? 'Pending'
-              : savingsHandoff
-                ? 'Complete or cancel'
-                : lightning
-                  ? ['claimed', 'settled'].includes(tx.lightningState || '')
-                    ? 'Paid'
-                    : tx.lightningState === 'refunded'
-                      ? 'Refunded'
-                      : tx.lightningState === 'needs_counterparty'
-                        ? 'Ready to return'
-                        : tx.lightningState === 'failed'
-                          ? 'Needs recovery'
-                          : 'Processing'
-                  : tx.confirmed
-                    ? time
-                      ? `Confirmed · ${time}`
-                      : 'Confirmed'
-                    : 'Pending'
+            const state = savingsHandoff
+              ? 'Complete or cancel'
+              : lightning
+                ? ['claimed', 'settled'].includes(tx.lightningState || '')
+                  ? 'Paid'
+                  : tx.lightningState === 'refunded'
+                    ? 'Refunded'
+                    : tx.lightningState === 'needs_counterparty'
+                      ? 'Ready to return'
+                      : tx.lightningState === 'failed'
+                        ? 'Needs recovery'
+                        : 'Processing'
+                : tx.confirmed
+                  ? time
+                    ? `Confirmed · ${time}`
+                    : 'Confirmed'
+                  : 'Pending'
             return (
               <button
                 type='button'
