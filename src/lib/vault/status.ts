@@ -20,6 +20,7 @@ export type PublicAuthorizerStatus = {
   policyVersion: string
   enrollmentMode: string
   enrollmentExpiresAt?: string
+  vtxoBoardingProgram?: string
 }
 
 function requestedVaultId(expectedVaultId: string): string {
@@ -73,6 +74,14 @@ export async function pingVaultService(signal?: AbortSignal): Promise<boolean> {
 }
 
 export async function fetchVaultStatus(signal: AbortSignal | undefined, expectedVaultId: string): Promise<VaultStatus> {
+  return bindStatusToLocalPin(await fetchVaultStatusUnpinned(signal, expectedVaultId))
+}
+
+/** Worker-safe status read. Browser pinning remains a page/session concern. */
+export async function fetchVaultStatusUnpinned(
+  signal: AbortSignal | undefined,
+  expectedVaultId: string,
+): Promise<VaultStatus> {
   const base = authorizerBase()
   const id = requestedVaultId(expectedVaultId)
   const res = await fetch(`${base}${vaultStatusPath(id)}`, {
@@ -85,7 +94,7 @@ export async function fetchVaultStatus(signal: AbortSignal | undefined, expected
     throw new Error(`authorizer status ${res.status}`)
   }
   const body = requireStatusIdentity(parseJsonObject<VaultStatusWire & { recoveryPub?: string }>(text, 'status'), id)
-  return bindStatusToLocalPin(body)
+  return body
 }
 
 export function parseStatusJson(raw: string, expectedVaultId: string): VaultStatus {

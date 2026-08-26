@@ -35,6 +35,8 @@ export interface VaultEnrollmentRequest {
   recoveryKeyXOnly?: string
   vaultId?: string
   descriptorHash?: string
+  vtxoBoardingProgram?: 'vault-board-v2'
+  vaultBoardV2BoardingBip340Pub?: string
 }
 
 export interface VaultEnrollProposeResponse {
@@ -258,9 +260,85 @@ export interface VaultCosignerEnrollmentClient {
   start(token: string): Promise<VaultEnrollStartResponse>
   propose(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
   finish(token: string, request: VaultEnrollmentRequest): Promise<VaultStatusWire>
+  proposeBoardV2(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
+  finishBoardV2(token: string, request: VaultEnrollmentRequest): Promise<VaultStatusWire>
   binding(request: VaultRecoveryBindingRequest): Promise<VaultRecoveryBindingResponse>
   install(request: VaultInstallEnvelopeRequest): Promise<VaultMutationSuccess>
   recover(request: VaultRecoverEnvelopeRequest): Promise<VaultRecoverEnvelopeResponse>
+}
+
+export interface VaultBoardV2OutpointWire {
+  txid: string
+  vout: number
+}
+
+export interface VaultBoardV2RecipientWire {
+  address: string
+  amountSats: number
+}
+
+export interface VaultBoardV2PrepareRequest {
+  vaultId: string
+  inputs: VaultBoardV2OutpointWire[]
+  recipients: VaultBoardV2RecipientWire[]
+}
+
+export type VaultBoardV2PrepareResponse =
+  | { status: 'ready'; handle: string; registerExpireAt: number }
+  | { status: 'release_required'; handle: string; deleteExpireAt: number }
+  | { status: 'blocked'; reason: string }
+  | { status: 'finalized'; commitmentTxid: string }
+
+export type VaultBoardV2RegisterMessageWire = {
+  type: 'register'
+  onchain_output_indexes: number[]
+  valid_at: number
+  expire_at: number
+  cosigners_public_keys: string[]
+}
+
+export type VaultBoardV2DeleteMessageWire = { type: 'delete'; expire_at: number }
+
+export interface VaultBoardV2PhaseRequest<Message> {
+  handle: string
+  psbt: string
+  inputIndexes: number[]
+  message: Message
+}
+
+export type VaultBoardV2RegisterResponse =
+  | { status: 'registered'; intentId: string }
+  | { status: 'definitely_not_submitted' }
+  | { status: 'ambiguous' }
+
+export type VaultBoardV2ReleaseResponse = { status: 'released' } | { status: 'ambiguous' }
+export type VaultBoardV2FinalResponse = { status: 'submitted' } | { status: 'ambiguous' }
+
+export interface VaultBoardV2TreeNodeWire {
+  txid: string
+  tx: string
+  children: Record<number, string>
+}
+
+export interface VaultBoardV2FinalRequest {
+  handle: string
+  psbt: string
+  inputIndexes: number[]
+  signedForfeits: string[]
+  validatedBatch: {
+    batchId: string
+    batchExpiry: number
+    unsignedCommitmentTx: string
+    vtxoTree: VaultBoardV2TreeNodeWire[]
+    expectedRecipients: VaultBoardV2RecipientWire[]
+  }
+}
+
+export interface VaultCosignerBoardingClient {
+  prepare(request: VaultBoardV2PrepareRequest): Promise<VaultBoardV2PrepareResponse>
+  register(request: VaultBoardV2PhaseRequest<VaultBoardV2RegisterMessageWire>): Promise<VaultBoardV2RegisterResponse>
+  release(request: VaultBoardV2PhaseRequest<VaultBoardV2DeleteMessageWire>): Promise<VaultBoardV2ReleaseResponse>
+  final(request: VaultBoardV2FinalRequest): Promise<VaultBoardV2FinalResponse>
 }
 
 export interface VaultCosignerRecoveryClient {
@@ -283,6 +361,7 @@ export interface VaultCosignerClient {
   enrollment: VaultCosignerEnrollmentClient
   recovery: VaultCosignerRecoveryClient
   spending: VaultCosignerSpendingClient
+  boarding: VaultCosignerBoardingClient
 }
 
 export const vaultCosignerClient: VaultCosignerClient = {
@@ -304,6 +383,12 @@ export const vaultCosignerClient: VaultCosignerClient = {
     },
     finish(token, request) {
       return vaultPost('/v1/enroll/finish', request, enrollmentHeader(token))
+    },
+    proposeBoardV2(token, request) {
+      return vaultPost('/v1/vtxo/board/enroll/propose', request, enrollmentHeader(token))
+    },
+    finishBoardV2(token, request) {
+      return vaultPost('/v1/vtxo/board/enroll/finish', request, enrollmentHeader(token))
     },
     binding(request) {
       return vaultPost('/v1/passkey/binding', request)
@@ -349,6 +434,20 @@ export const vaultCosignerClient: VaultCosignerClient = {
       return vaultGet(
         `/v1/vtxo/operation?vaultId=${encodeURIComponent(vaultId)}&operationId=${encodeURIComponent(operationId)}`,
       )
+    },
+  },
+  boarding: {
+    prepare(request) {
+      return vaultPost('/v1/vtxo/board/prepare', request)
+    },
+    register(request) {
+      return vaultPost('/v1/vtxo/board/register', request)
+    },
+    release(request) {
+      return vaultPost('/v1/vtxo/board/release', request)
+    },
+    final(request) {
+      return vaultPost('/v1/vtxo/board/final', request)
     },
   },
 }

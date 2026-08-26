@@ -15,6 +15,10 @@ export function vaultReadonlyWorkerPath(value: string) {
   return `/vault-wallet-service-worker.mjs?vault=${vaultReadonlyNamespace(value)}`
 }
 
+export function vaultBoardV2WorkerPath(value: string) {
+  return `/vault-wallet-v2-service-worker.mjs?vault=${vaultReadonlyNamespace(value)}`
+}
+
 export function vaultReadonlyWalletDatabase(value: string) {
   return vaultReadonlyWalletDatabaseForNamespace(vaultReadonlyNamespace(value))
 }

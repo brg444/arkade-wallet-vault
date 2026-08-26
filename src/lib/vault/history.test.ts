@@ -73,6 +73,36 @@ describe('vault history', () => {
     ])
   })
 
+  it('uses the SDK boarding activity in the v2 feed without calling it confirmed early', () => {
+    const boarding = sdkTx('boarding', TxType.TxReceived, 40_000, true)
+    boarding.key.arkTxid = ''
+    boarding.key.boardingTxid = 'boarding'
+    const activity: Activity = {
+      id: 'boarding:boarding',
+      intent: { kind: 'boarding', label: 'Deposit' },
+      txs: [boarding],
+      amount: 40_000,
+      createdAt: boarding.createdAt,
+      settled: true,
+    }
+
+    const rows = historyFromSdkActivities([activity], { vaultTxids: new Set(), lightningRfqIds: new Set() }, [], {
+      includeBoarding: true,
+    })
+    expect(rows).toEqual([
+      {
+        txid: 'boarding',
+        type: 'received',
+        amount: 40_000,
+        confirmed: true,
+        blockTime: 1_700_000_000,
+        account: 'spend',
+        activity: 'boarding',
+      },
+    ])
+    expect(groupVaultHistory(rows)[0].label).toBe('Pending')
+  })
+
   it('admits only this vault’s RFQ group and preserves its package outcome', () => {
     const funding = sdkTx('funding', TxType.TxSent, 2_107)
     const refund = sdkTx('refund', TxType.TxReceived, 2_100)

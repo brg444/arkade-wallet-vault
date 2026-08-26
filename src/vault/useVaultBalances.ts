@@ -24,6 +24,7 @@ import {
   subscribeVaultReadonlyEvents,
 } from '../lib/vault/vtxo/readonlyWorker'
 import { reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+import { VAULT_BOARD_V2_PROGRAM } from '../lib/vault/vtxo/boardV2'
 
 interface VaultBalancesOptions {
   addressPin: AddressPin | null
@@ -206,8 +207,17 @@ export function useVaultBalances({
             : Promise.resolve({ balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }),
           spendingAddress && liveStatus.enrolled
             ? fetchVaultReadonlyVtxoSnapshot(liveStatus)
-            : Promise.resolve({ balance: 0, commitmentIds: [] as string[], history: [] as VaultHistoryItem[] }),
-          boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
+            : Promise.resolve({
+                balance: 0,
+                boardingBalance: undefined,
+                boardingConfirmedBalance: undefined,
+                commitmentIds: [] as string[],
+                history: [] as VaultHistoryItem[],
+              }),
+          boardingAddress &&
+          liveStatus.enrolled &&
+          liveStatus.vtxoBoardingActive &&
+          liveStatus.vtxoBoardingProgram !== VAULT_BOARD_V2_PROGRAM
             ? fetchVaultBoardingFunds(liveStatus)
             : Promise.resolve({
                 total: 0,
@@ -217,11 +227,17 @@ export function useVaultBalances({
               }),
         ])
         if (version !== refreshVersion.current) return
+        const boardV2 = liveStatus.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
+        const nextBoardingBalance = boardV2 ? spending.boardingBalance || 0 : boarding.total
+        const nextBoardingConfirmed = boardV2 ? spending.boardingConfirmedBalance || 0 : boarding.confirmed
         setStatus(liveStatus)
         setSnapshot((previous) => ({
-          boardingBalance: boardingVersion === boardingFetchVersion.current ? boarding.total : previous.boardingBalance,
+          boardingBalance:
+            boardingVersion === boardingFetchVersion.current ? nextBoardingBalance : previous.boardingBalance,
           boardingConfirmedBalance:
-            boardingVersion === boardingFetchVersion.current ? boarding.confirmed : previous.boardingConfirmedBalance,
+            boardingVersion === boardingFetchVersion.current
+              ? nextBoardingConfirmed
+              : previous.boardingConfirmedBalance,
           boardingSettleableOutpoints:
             boardingVersion === boardingFetchVersion.current
               ? boarding.settleableOutpoints
@@ -245,7 +261,13 @@ export function useVaultBalances({
 
   const pollBoardingFunds = useCallback(async () => {
     const current = statusRef.current
-    if (boardingPollRun.current || !current?.enrolled || !current.vtxoBoardingActive || !current.vtxoBoardingAddress) {
+    if (
+      boardingPollRun.current ||
+      !current?.enrolled ||
+      current.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM ||
+      !current.vtxoBoardingActive ||
+      !current.vtxoBoardingAddress
+    ) {
       return
     }
     const version = ++boardingFetchVersion.current
@@ -271,7 +293,13 @@ export function useVaultBalances({
   const boardingAttemptKey = boardingSettlementAttemptKey(status?.vaultId || '', boardingSettleableOutpoints)
 
   const settleConfirmedBoarding = useCallback(async () => {
-    if (boardingRun.current || !status?.enrolled || !enrollment) return
+    if (
+      boardingRun.current ||
+      !status?.enrolled ||
+      status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM ||
+      !enrollment
+    )
+      return
     if (!status.vtxoBoardingActive || !status.vtxoBoardingAddress) return
     const action = nextVaultBoardingAction({ settleableOutpoints: boardingSettleableOutpoints, total: boardingBalance })
     if (action !== 'settle') return
@@ -327,7 +355,16 @@ export function useVaultBalances({
   ])
 
   useEffect(() => {
-    if (busy || boardingInProgress || locked || !enrollment || !status?.enrolled || !status.vtxoBoardingActive) return
+    if (
+      busy ||
+      boardingInProgress ||
+      locked ||
+      !enrollment ||
+      !status?.enrolled ||
+      status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM ||
+      !status.vtxoBoardingActive
+    )
+      return
     const action = nextVaultBoardingAction({ settleableOutpoints: boardingSettleableOutpoints, total: boardingBalance })
     if (action === 'idle' || action === 'wait') {
       boardingAttempt.current = ''
@@ -409,7 +446,9 @@ export function useVaultBalances({
     }
     const onOnline = () => onFocus()
     const timer =
-      status?.enrolled && status.vtxoBoardingActive ? window.setInterval(poll, BOARDING_RECONCILIATION_INTERVAL_MS) : 0
+      status?.enrolled && status.vtxoBoardingActive && status.vtxoBoardingProgram !== VAULT_BOARD_V2_PROGRAM
+        ? window.setInterval(poll, BOARDING_RECONCILIATION_INTERVAL_MS)
+        : 0
     window.addEventListener('focus', onFocus)
     window.addEventListener('online', onOnline)
     return () => {
@@ -426,6 +465,7 @@ export function useVaultBalances({
     refreshVaultId,
     status?.enrolled,
     status?.vtxoBoardingActive,
+    status?.vtxoBoardingProgram,
   ])
 
   useEffect(

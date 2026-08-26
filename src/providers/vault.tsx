@@ -49,6 +49,8 @@ import {
   vaultArkServer,
 } from '../lib/vault/vtxo/spend'
 import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
+import { deleteVaultBoardV2Key, requireVaultBoardV2Status, VAULT_BOARD_V2_PROGRAM } from '../lib/vault/vtxo/boardV2'
+import { shutdownVaultBoardV2Worker } from '../lib/vault/vtxo/readonlyWorker'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -626,7 +628,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const coins = confirmedSpendables(utxos, need)
     if (coins.length === 0) throw new Error('Confirmed Savings funds do not cover this transfer.')
     const leaf = 'admin' as const
-    if (spend.address === status.vtxoBoardingAddress) await verifyVaultBoarding(status)
+    if (spend.address === status.vtxoBoardingAddress) {
+      if (status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
+        requireVaultBoardV2Status(status, String(status.vtxoBoardingDescriptor?.boardingPub || ''))
+      } else {
+        await verifyVaultBoarding(status)
+      }
+    }
     const unsigned = buildSavingsPsbt({
       status,
       phonePub: enrollment.phoneBip340Pub,
@@ -871,6 +879,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   ])
 
   const reset = useCallback(() => {
+    if (status?.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM && status.vaultId) {
+      void shutdownVaultBoardV2Worker(status.vaultId)
+        .then(() => deleteVaultBoardV2Key(status.vaultId))
+        .catch(() => undefined)
+    }
     setSessionLocked(true)
     setLocked(true)
     setError('')
@@ -884,7 +897,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScanOnSend(false)
     setHandoffPsbt('')
     setScreen('welcome')
-  }, [])
+  }, [status])
 
   const retryLightningRefund = useCallback(
     async (rfqId: string) => {
