@@ -198,6 +198,10 @@ export async function beginTenantEnrollment(
           }
         : {}),
     }
+    // The network and descriptor-validation phases need only public facts.
+    // Restore the original short secret lifetime before yielding to either.
+    prf.fill(0)
+    phoneSecret.fill(0)
     proposed = boardV2
       ? await vaultCosignerClient.enrollment.proposeBoardV2(token, enrollmentRequest)
       : await vaultCosignerClient.enrollment.propose(token, enrollmentRequest)
