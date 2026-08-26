@@ -291,26 +291,74 @@ export async function activateVaultBoardV2Key(input: {
 }): Promise<void> {
   if (!/^[0-9a-f]{64}$/.test(input.descriptorHash)) throw new Error('vault-board-v2 descriptor hash required')
   const db = await openKeyDatabase(input.vaultId)
+  let staged: VaultBoardV2KeyRecord | undefined
+  let active: VaultBoardV2KeyRecord | undefined
   try {
     const transaction = db.transaction(KEY_STORE, 'readwrite')
     const store = transaction.objectStore(KEY_STORE)
-    const staged = (await requestResult(store.get('staged'))) as VaultBoardV2KeyRecord | undefined
-    if (!staged || staged.vaultId !== input.vaultId || staged.programDigest !== VAULT_BOARD_V2_PROGRAM_DIGEST) {
-      transaction.abort()
-      throw new Error('staged vault-board-v2 key required')
+    staged = (await requestResult(store.get('staged'))) as VaultBoardV2KeyRecord | undefined
+    if (!staged) {
+      active = (await requestResult(store.get('active'))) as VaultBoardV2KeyRecord | undefined
+      try {
+        requireStoredVaultBoardV2Key(active, 'active', input, false)
+      } catch (error) {
+        transaction.abort()
+        throw error
+      }
+      await transactionDone(transaction)
+      return
     }
-    if (staged.boardingPub !== input.expectedBoardingPub) {
-      staged.secret.fill(0)
+    try {
+      requireStoredVaultBoardV2Key(staged, 'staged', input, true)
+    } catch (error) {
       transaction.abort()
-      throw new Error('staged vault-board-v2 key does not match descriptor')
+      throw error
     }
     store.put({ ...staged, state: 'active', descriptorHash: input.descriptorHash }, 'active')
     store.delete('staged')
     await transactionDone(transaction)
-    staged.secret.fill(0)
   } finally {
+    if (ArrayBuffer.isView(staged?.secret)) staged.secret.fill(0)
+    if (ArrayBuffer.isView(active?.secret)) active.secret.fill(0)
     db.close()
   }
+}
+
+function requireStoredVaultBoardV2Key(
+  record: VaultBoardV2KeyRecord | undefined,
+  state: VaultBoardV2KeyRecord['state'],
+  input: { vaultId: string; descriptorHash: string; expectedBoardingPub: string },
+  allowEmptyDescriptorHash: boolean,
+): asserts record is VaultBoardV2KeyRecord {
+  const mismatch = (field: string) => new Error(`${state} vault-board-v2 key does not match descriptor (${field})`)
+  if (!record || record.state !== state) throw mismatch('state')
+  if (
+    record.vaultId !== input.vaultId ||
+    record.network !== 'mutinynet' ||
+    record.programDigest !== VAULT_BOARD_V2_PROGRAM_DIGEST ||
+    record.boardingPub !== input.expectedBoardingPub
+  ) {
+    throw mismatch('binding')
+  }
+  if (
+    (!allowEmptyDescriptorHash && record.descriptorHash !== input.descriptorHash) ||
+    (allowEmptyDescriptorHash && record.descriptorHash !== '' && record.descriptorHash !== input.descriptorHash)
+  ) {
+    throw mismatch('descriptor')
+  }
+  if (!ArrayBuffer.isView(record.secret) || record.secret.BYTES_PER_ELEMENT !== 1 || record.secret.length !== 32) {
+    throw mismatch('secret')
+  }
+  const secret = Uint8Array.from(record.secret)
+  let storedPub: string
+  try {
+    storedPub = hex.encode(secp256k1.getPublicKey(secret, true))
+  } catch {
+    throw mismatch('secret')
+  } finally {
+    secret.fill(0)
+  }
+  if (storedPub !== input.expectedBoardingPub) throw mismatch('public key')
 }
 
 export async function provisionVaultBoardV2Key(phoneSecret: Uint8Array, status: VaultStatus): Promise<void> {

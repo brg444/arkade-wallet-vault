@@ -165,7 +165,6 @@ export function groupVaultHistory(
 }
 
 function historyGroup(item: VaultHistoryItem, today: Date, yesterday: Date): Pick<VaultHistoryGroup, 'key' | 'label'> {
-  if (item.activity === 'boarding') return { key: 'pending', label: 'Pending' }
   if (!item.confirmed) return { key: 'pending', label: 'Pending' }
   if (!item.blockTime) return { key: 'earlier', label: 'Earlier' }
   const date = new Date(item.blockTime * 1000)

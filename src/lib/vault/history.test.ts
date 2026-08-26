@@ -73,7 +73,7 @@ describe('vault history', () => {
     ])
   })
 
-  it('uses the SDK boarding activity in the v2 feed without calling it confirmed early', () => {
+  it('uses a settled SDK boarding activity in the v2 dated feed', () => {
     const boarding = sdkTx('boarding', TxType.TxReceived, 40_000, true)
     boarding.key.arkTxid = ''
     boarding.key.boardingTxid = 'boarding'
@@ -100,7 +100,33 @@ describe('vault history', () => {
         activity: 'boarding',
       },
     ])
-    expect(groupVaultHistory(rows)[0].label).toBe('Pending')
+    expect(groupVaultHistory(rows, 1_700_000_000)[0].label).toBe('Today')
+  })
+
+  it('keeps an unsettled SDK boarding activity pending', () => {
+    const boarding = sdkTx('boarding-pending', TxType.TxReceived, 40_000, false)
+    boarding.key.arkTxid = ''
+    boarding.key.boardingTxid = 'boarding-pending'
+    const activity: Activity = {
+      id: 'boarding:boarding-pending',
+      intent: { kind: 'boarding', label: 'Deposit' },
+      txs: [boarding],
+      amount: 40_000,
+      createdAt: boarding.createdAt,
+      settled: false,
+    }
+
+    const rows = historyFromSdkActivities([activity], { vaultTxids: new Set(), lightningRfqIds: new Set() }, [], {
+      includeBoarding: true,
+    })
+    expect(rows).toEqual([
+      expect.objectContaining({
+        txid: 'boarding-pending',
+        confirmed: false,
+        activity: 'boarding',
+      }),
+    ])
+    expect(groupVaultHistory(rows, 1_700_000_000)[0].label).toBe('Pending')
   })
 
   it('admits only this vault’s RFQ group and preserves its package outcome', () => {
