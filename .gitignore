@@ -2,6 +2,7 @@
 
 /public/wallet-service-worker.mjs
 /public/vault-wallet-service-worker.mjs
+/public/vault-wallet-v2-service-worker.mjs
 
 # dependencies
 /node_modules

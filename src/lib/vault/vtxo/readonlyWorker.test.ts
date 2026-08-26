@@ -1,4 +1,4 @@
-import { ReadonlySingleKey } from '@arkade-os/sdk'
+import { ReadonlySingleKey, ServiceWorkerReadonlyWallet } from '@arkade-os/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import type { VaultStatus } from '../types'
 import {
@@ -6,11 +6,13 @@ import {
   isolateVaultReadonlyBaselineContracts,
   isVaultReadonlyStateUpdate,
   registerVaultReadonlyServiceWorker,
+  shutdownVaultBoardV2Worker,
   subscribeVaultLightningObserver,
   vaultReadonlyIdentity,
   vaultReadonlyRuntimeKey,
 } from './readonlyWorker'
-import { vaultReadonlyUpdaterTag, vaultReadonlyWorkerScope } from './readonlyWorkerNames'
+import { vaultBoardV2WorkerPath, vaultReadonlyUpdaterTag, vaultReadonlyWorkerScope } from './readonlyWorkerNames'
+import { VAULT_BOARD_V2_PROGRAM } from './boardV2'
 
 function activatedWorker(name: string) {
   return { name, state: 'activated' } as unknown as ServiceWorker
@@ -23,6 +25,7 @@ describe('readonly Vault service-worker isolation', () => {
   })
 
   it('keeps A → B → A registrations on their distinct scope and worker', async () => {
+    const stop = vi.spyOn(ServiceWorkerReadonlyWallet, 'stop')
     const workers = new Map([
       [vaultReadonlyWorkerScope('vault-a'), activatedWorker('a')],
       [vaultReadonlyWorkerScope('vault-b'), activatedWorker('b')],
@@ -48,6 +51,52 @@ describe('readonly Vault service-worker isolation', () => {
       vaultReadonlyWorkerScope('vault-a'),
     ])
     expect(register.mock.calls.every(([, options]) => options?.type === undefined)).toBe(true)
+    expect(stop).not.toHaveBeenCalled()
+    stop.mockRestore()
+  })
+
+  it('stops an initialized v2 worker after reload before unregistering it', async () => {
+    const worker = activatedWorker('v2')
+    const unregister = vi.fn().mockResolvedValue(true)
+    const registration = { active: worker, waiting: null, installing: null, unregister }
+    const previous = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { getRegistration: vi.fn().mockResolvedValue(registration) },
+    })
+    const stop = vi.spyOn(ServiceWorkerReadonlyWallet, 'stop').mockResolvedValue(undefined)
+
+    try {
+      await shutdownVaultBoardV2Worker('vault-reloaded')
+      expect(stop).toHaveBeenCalledWith(worker, 60_000)
+      expect(stop.mock.invocationCallOrder[0]).toBeLessThan(unregister.mock.invocationCallOrder[0])
+    } finally {
+      stop.mockRestore()
+      if (previous) Object.defineProperty(navigator, 'serviceWorker', previous)
+      else delete (navigator as { serviceWorker?: unknown }).serviceWorker
+    }
+  })
+
+  it('retains the v2 registration when acknowledged worker teardown fails', async () => {
+    const worker = activatedWorker('v2')
+    const unregister = vi.fn().mockResolvedValue(true)
+    const previous = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: {
+        getRegistration: vi.fn().mockResolvedValue({ active: worker, waiting: null, installing: null, unregister }),
+      },
+    })
+    const stop = vi.spyOn(ServiceWorkerReadonlyWallet, 'stop').mockRejectedValue(new Error('worker still draining'))
+
+    try {
+      await expect(shutdownVaultBoardV2Worker('vault-reloaded')).rejects.toThrow('worker still draining')
+      expect(unregister).not.toHaveBeenCalled()
+    } finally {
+      stop.mockRestore()
+      if (previous) Object.defineProperty(navigator, 'serviceWorker', previous)
+      else delete (navigator as { serviceWorker?: unknown }).serviceWorker
+    }
   })
 
   it('keeps simultaneous A/B registration and update tags disjoint', async () => {
@@ -70,6 +119,25 @@ describe('readonly Vault service-worker isolation', () => {
     expect(isVaultReadonlyStateUpdate({ tag: tagA, type: 'UTXO_UPDATE' }, tagA)).toBe(true)
     expect(isVaultReadonlyStateUpdate({ tag: tagA, type: 'VTXO_UPDATE' }, tagA)).toBe(true)
     expect(isVaultReadonlyStateUpdate({ tag: tagA, type: 'UTXO_UPDATE' }, tagB)).toBe(false)
+  })
+
+  it('selects the dedicated v2 worker without changing the scoped registration', async () => {
+    const register = vi.fn(async () => ({
+      active: activatedWorker('v2'),
+      installing: null,
+      waiting: null,
+      update: vi.fn().mockResolvedValue(undefined),
+    }))
+    await registerVaultReadonlyServiceWorker(
+      'vault-v2',
+      { register } as unknown as Pick<ServiceWorkerContainer, 'register'>,
+      undefined,
+      VAULT_BOARD_V2_PROGRAM,
+    )
+    expect(register).toHaveBeenCalledWith(vaultBoardV2WorkerPath('vault-v2'), {
+      scope: vaultReadonlyWorkerScope('vault-v2'),
+      updateViaCache: 'none',
+    })
   })
 
   it('serializes same-vault worker updates across simultaneous tabs', async () => {

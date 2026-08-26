@@ -55,19 +55,21 @@ export function historyFromSdkActivities(
   activities: readonly Activity[],
   scope: VaultActivityScope,
   lightningRecords: readonly VaultLightningActivityRecord[] = [],
+  options: { includeBoarding?: boolean } = {},
 ): VaultHistoryItem[] {
   const rows: VaultHistoryItem[] = []
   const groupedLightning = new Set<string>()
   const lightningByRfqId = new Map(lightningRecords.map((record) => [record.rfqId, record]))
   for (const activity of activities) {
-    if (activity.intent?.kind === 'boarding') continue
+    const boarding = activity.intent?.kind === 'boarding'
+    if (boarding && !options.includeBoarding) continue
     const rfqId = typeof activity.intent?.metadata?.rfqId === 'string' ? activity.intent.metadata.rfqId : undefined
     const lightning =
       activity.intent?.metadata?.swapKind === 'lightning_send' && Boolean(rfqId && scope.lightningRfqIds.has(rfqId))
     const scopedTransactions = activity.txs.filter((transaction) => scope.vaultTxids.has(sdkTransactionId(transaction)))
-    if (!lightning && scopedTransactions.length === 0) continue
+    if (!lightning && !boarding && scopedTransactions.length === 0) continue
 
-    const candidates = lightning ? activity.txs : scopedTransactions
+    const candidates = lightning || boarding ? activity.txs : scopedTransactions
     const sent = activity.amount < 0
     const anchor =
       candidates.find((transaction) => transaction.type === (sent ? TxType.TxSent : TxType.TxReceived)) || candidates[0]
@@ -93,14 +95,16 @@ export function historyFromSdkActivities(
       confirmed: lightningRecord ? lightningRecord.terminal : activity.settled,
       blockTime: unixSeconds(activity.createdAt),
       account: 'spend',
-      ...(lightning
-        ? {
-            activity: 'lightning' as const,
-            ...(lightningRecord ? { displayAmount: lightningRecord.displayAmount, fee: lightningFee } : {}),
-            lightningState: lightningOutcome,
-            lightningRfqId: rfqId,
-          }
-        : {}),
+      ...(boarding
+        ? { activity: 'boarding' as const }
+        : lightning
+          ? {
+              activity: 'lightning' as const,
+              ...(lightningRecord ? { displayAmount: lightningRecord.displayAmount, fee: lightningFee } : {}),
+              lightningState: lightningOutcome,
+              lightningRfqId: rfqId,
+            }
+          : {}),
     })
     if (lightning && rfqId) groupedLightning.add(rfqId)
   }

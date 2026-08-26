@@ -434,6 +434,42 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.boardingConfirmedBalance).toBe(1_000)
   })
 
+  it('takes v2 boarding balance and activity only from the persistent SDK worker', async () => {
+    const active = {
+      ...STATUS,
+      vtxoBoardingActive: true,
+      vtxoBoardingProgram: 'vault-board-v2' as const,
+    }
+    mockedStatus.mockResolvedValue(active)
+    mockedSnapshot.mockResolvedValue({
+      balance: 30_000,
+      boardingBalance: 48_000,
+      boardingConfirmedBalance: 48_000,
+      history: [
+        {
+          txid: 'v2-boarding',
+          type: 'received',
+          amount: 48_000,
+          confirmed: true,
+          account: 'spend',
+          activity: 'boarding',
+        },
+      ],
+    })
+    const { result } = setupHook(true, active)
+
+    await act(async () => result.current.refreshBalance())
+
+    expect(result.current.vtxoSpendingSats).toBe(30_000)
+    expect(result.current.boardingBalance).toBe(48_000)
+    expect(result.current.boardingConfirmedBalance).toBe(48_000)
+    expect(result.current.history.map((item) => item.txid)).toEqual(['v2-boarding'])
+    expect(mockedBoardingFunds).not.toHaveBeenCalled()
+    expect(mockedBoardingPlan).not.toHaveBeenCalled()
+    expect(mockedUnlockPhone).not.toHaveBeenCalled()
+    expect(mockedSettleBoarding).not.toHaveBeenCalled()
+  })
+
   it('settles one eligible boarding outpoint instead of aggregating every confirmed input', async () => {
     const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
     const blocked = `${'11'.repeat(32)}:0`

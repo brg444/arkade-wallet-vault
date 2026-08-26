@@ -10,13 +10,19 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollmentStore'
-import { requireProposedProgramDescriptor } from './program/enroll'
+import { requireProposedProgramDescriptor, requireProposedVaultBoardV2Descriptor } from './program/enroll'
 import { saveLocalKit } from './program/kitStore'
 import { buildRecoveryKit } from './program/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
 import type { VaultStatus } from './types'
 import type { VaultProgramDescriptor } from './program/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
+import {
+  activateVaultBoardV2Key,
+  requireVaultBoardV2Status,
+  stageVaultBoardV2Key,
+  VAULT_BOARD_V2_PROGRAM,
+} from './vtxo/boardV2'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -143,42 +149,71 @@ export async function beginTenantEnrollment(
   const direct = await deriveDirectP256(prf)
   const phoneSecret = crypto.getRandomValues(new Uint8Array(32))
   const phoneBip340Pub = secp256k1.getPublicKey(phoneSecret, true)
-  const kek = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
-    await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt'],
-  )
-  const nonce = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneSecret))
-  const enrollment: EnrollmentSecrets = {
-    vaultId: start.vaultId,
-    credId: bytesToHex(new Uint8Array(cred.rawId)),
-    webauthnP256: bytesToHex(webauthnP256),
-    phoneDirectP256: bytesToHex(direct.pub),
-    phoneBip340Pub: bytesToHex(phoneBip340Pub),
-    nonce: bytesToHex(nonce),
-    ciphertext: bytesToHex(ciphertext),
-  }
-  prf.fill(0)
-  phoneSecret.fill(0)
+  const boardV2 = publicStatus.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
   const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
-  const proposed = await vaultCosignerClient.enrollment.propose(token, {
-    handle: start.handle,
-    userHandle: start.userId,
-    clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
-    authenticatorData: bytesToHex(authData),
-    attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
-    credentialId: enrollment.credId,
-    webauthnP256: enrollment.webauthnP256,
-    phoneDirectP256: enrollment.phoneDirectP256,
-    phoneBip340Pub: enrollment.phoneBip340Pub,
-    vaultId: start.vaultId,
-    externalOwnerWalletXOnly: hardwareXOnly,
-    ...(recoveryXOnly ? { recoveryXOnly } : {}),
-  })
-  const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
+  let enrollment!: EnrollmentSecrets
+  let stagedBoard: Awaited<ReturnType<typeof stageVaultBoardV2Key>> | undefined
+  let proposed!: Awaited<ReturnType<typeof vaultCosignerClient.enrollment.propose>>
+  let composite: ReturnType<typeof requireProposedVaultBoardV2Descriptor> | undefined
+  let descriptor!: VaultProgramDescriptor
+  try {
+    stagedBoard = boardV2
+      ? await stageVaultBoardV2Key({ vaultId: start.vaultId, phoneSecret, network: publicStatus.network })
+      : undefined
+    const kek = await crypto.subtle.deriveKey(
+      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
+      await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt'],
+    )
+    const nonce = crypto.getRandomValues(new Uint8Array(12))
+    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, kek, phoneSecret))
+    enrollment = {
+      vaultId: start.vaultId,
+      credId: bytesToHex(new Uint8Array(cred.rawId)),
+      webauthnP256: bytesToHex(webauthnP256),
+      phoneDirectP256: bytesToHex(direct.pub),
+      phoneBip340Pub: bytesToHex(phoneBip340Pub),
+      nonce: bytesToHex(nonce),
+      ciphertext: bytesToHex(ciphertext),
+    }
+    const enrollmentRequest = {
+      handle: start.handle,
+      userHandle: start.userId,
+      clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+      authenticatorData: bytesToHex(authData),
+      attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+      credentialId: enrollment.credId,
+      webauthnP256: enrollment.webauthnP256,
+      phoneDirectP256: enrollment.phoneDirectP256,
+      phoneBip340Pub: enrollment.phoneBip340Pub,
+      vaultId: start.vaultId,
+      externalOwnerWalletXOnly: hardwareXOnly,
+      ...(recoveryXOnly ? { recoveryXOnly } : {}),
+      ...(stagedBoard
+        ? {
+            vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
+            vaultBoardV2BoardingBip340Pub: stagedBoard.boardingPub,
+          }
+        : {}),
+    }
+    proposed = boardV2
+      ? await vaultCosignerClient.enrollment.proposeBoardV2(token, enrollmentRequest)
+      : await vaultCosignerClient.enrollment.propose(token, enrollmentRequest)
+    composite = stagedBoard
+      ? requireProposedVaultBoardV2Descriptor(proposed.descriptor, proposed.descriptorHash, {
+          vaultId: start.vaultId,
+          phonePub: enrollment.phoneBip340Pub,
+          boardingPub: stagedBoard.boardingPub,
+          network: publicStatus.network,
+        })
+      : undefined
+    descriptor = composite?.savings || requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
+  } finally {
+    prf.fill(0)
+    phoneSecret.fill(0)
+  }
   if (wantRecovery) {
     if (xOnly(descriptor.keys.recovery || '') !== recoveryXOnly) {
       throw new Error('proposed recovery key does not match this client')
@@ -200,6 +235,14 @@ export async function beginTenantEnrollment(
     ...(recoveryXOnly ? { recoveryXOnly } : {}),
     inviteToken: token,
     descriptorHash: proposed.descriptorHash,
+    ...(composite && stagedBoard
+      ? {
+          vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
+          vaultBoardV2BoardingPub: stagedBoard.boardingPub,
+          vaultBoardV2Descriptor: composite.boarding,
+          vaultBoardV2DescriptorHash: proposed.descriptorHash,
+        }
+      : {}),
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
   }
@@ -216,7 +259,7 @@ export async function finishTenantEnrollment(
   if (!token) throw new Error('setup code required')
   const staged = loadStagedEnrollment(storage)
   if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
-  await vaultCosignerClient.enrollment.finish(token, {
+  const finishRequest = {
     handle: staged.handle,
     userHandle: staged.userHandle,
     clientDataJSON: staged.clientDataJSON,
@@ -230,8 +273,27 @@ export async function finishTenantEnrollment(
     externalOwnerWalletXOnly: staged.hardwareXOnly,
     ...(staged.recoveryXOnly ? { recoveryXOnly: staged.recoveryXOnly } : {}),
     descriptorHash: staged.descriptorHash,
-  })
+    ...(staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
+      ? {
+          vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
+          vaultBoardV2BoardingBip340Pub: staged.vaultBoardV2BoardingPub,
+        }
+      : {}),
+  }
+  if (staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
+    await vaultCosignerClient.enrollment.finishBoardV2(token, finishRequest)
+  } else {
+    await vaultCosignerClient.enrollment.finish(token, finishRequest)
+  }
   const live = await vaultCosignerClient.enrollment.status(staged.vaultId)
+  if (staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
+    requireVaultBoardV2Status(live, String(staged.vaultBoardV2BoardingPub || ''))
+    await activateVaultBoardV2Key({
+      vaultId: staged.vaultId,
+      descriptorHash: String(live.vtxoBoardingDescriptorHash || staged.vaultBoardV2DescriptorHash || ''),
+      expectedBoardingPub: String(staged.vaultBoardV2BoardingPub || ''),
+    })
+  }
   const pin = pinFromEnrolledStatus({
     ...live,
     savingsAddress: staged.savingsAddress || live.savingsAddress,
@@ -251,6 +313,14 @@ export async function reconcileStagedEnrollment(
   if (!staged?.vaultId) return null
   const live = await vaultCosignerClient.enrollment.status(staged.vaultId)
   if (!live.enrolled) return null
+  if (staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
+    requireVaultBoardV2Status(live, String(staged.vaultBoardV2BoardingPub || ''))
+    await activateVaultBoardV2Key({
+      vaultId: staged.vaultId,
+      descriptorHash: String(live.vtxoBoardingDescriptorHash || staged.vaultBoardV2DescriptorHash || ''),
+      expectedBoardingPub: String(staged.vaultBoardV2BoardingPub || ''),
+    })
+  }
   if (staged.savingsAddress) {
     const pin = pinFromEnrolledStatus({
       ...live,
