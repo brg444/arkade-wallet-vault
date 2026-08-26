@@ -47,24 +47,31 @@ Intent state uses a separate per-vault database. Ordinary send recovery uses a
 versioned local record bound to the same vault, destination, amount, and
 operation ID.
 
-VTXO observation follows the official SDK worker architecture. Each enrolled
-vault has an opaque service-worker scope and message tag, plus isolated wallet,
-contract, and intent databases. The worker uses `ReadonlySingleKey` with the
-device public key, registers the exact `vault-policy-v1` contract, and publishes
-contract and UTXO updates to the page. It cannot sign, settle, or obtain a PRF
-result.
+VTXO state follows the official SDK worker architecture. Each enrolled vault
+has an opaque service-worker scope and message tag, plus isolated wallet,
+contract, and intent databases. The worker registers the exact
+`vault-policy-v1` Spending contract and publishes contract, balance, activity,
+and UTXO updates to the page.
 
-Face ID unlocks the wrapped device scalar only for a foreground operation. A
-per-vault Web Lock serializes that operation across tabs. The temporary signing
-wallet and its repositories close before the source scalar is zeroed. Reloading
-or terminating the page during signing loses the session and requires another
-Face ID ceremony; no unlocked identity or MuSig session is persisted for
-background continuation.
+The sole `vault-board-v1` program uses the SDK's worker-owned identity mode. A
+deterministic boarding key is derived only after the existing PRF unlock
+succeeds, bound to the vault, network, and named program, and stored in a
+separate per-vault IndexedDB database. The key never crosses `postMessage`.
+Inside the worker, the official SDK owns Wallet, Contract Manager, VtxoManager,
+intent persistence, batch participation, settlement, polling, and retry. The
+page owns no parallel boarding lifecycle.
 
 The SDK's generic spend, renewal, and sweep paths cannot select
 `vault-policy-v1` VTXOs. A custom Contract Manager handler reconstructs the
 enrolled script and declares it unavailable for generic spending. Vault sends
 continue through the transaction-bound VaultCosigner authorization flow.
+
+The boarding adapter is narrower than the Spending cosigner API. It prepares
+one exact confirmed input and fixed Spending recipient, verifies and submits
+registration or release proofs, and verifies SDK-validated final batch
+evidence. The Vault service never returns its boarding signature. It calls only
+the stock public Operator endpoints, so the architecture requires no modified
+`arkd` or private Operator lifecycle API.
 
 Onchain Savings and recovery use `@scure/btc-signer` for Bitcoin addresses,
 Taproot, PSBTs, signing, and finalization. A narrow Esplora adapter discovers
