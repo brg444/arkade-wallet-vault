@@ -52,8 +52,10 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
   cover those shapes, reloads, dropped Vault-service responses, ambiguous
   Operator submissions, empty and mismatched pending lookups, checkpoint
   reordering, and concurrent attempts before the mainnet pins are frozen.
-- The phone-plus-Operator boarding intermediate remains an explicit trust
-  assumption until value reaches `vault-policy-v1`.
+- `vault-board-v1` uses a worker boarding key and VaultBoardCosigner in the
+  cooperative leaf, fixes settlement to the enrolled `vault-policy-v1`
+  recipient, and keeps phone-only delayed recovery. Mainnet requires a separate
+  per-device key registration and revocation decision.
 - Mainnet pins must match `arkade.computer`, including its network, signer,
   checkpoint policy, delays, and fee bounds. The confirmed mainnet Emulator at
   `https://emulator.arkade.computer` advertises signer
@@ -62,16 +64,14 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
   Contract Pack binding remain required.
 - The wallet uses the official SDK lifecycle without custom registration,
   deletion, replay, event-stream, or Operator-status extensions.
-- Automatic boarding passes the authoritative confirmed onchain input and exact
-  `vault-policy-v1` destination to the official SDK under an exclusive per-vault
-  Web Lock. The SDK's isolated intent repository records lifecycle state. A
-  bounded local grace suppresses duplicate Face ID prompts but does not claim
-  that the Operator request expired. SDK duplicate recovery must pass crash,
-  missed-event, and two-context qualification on the deployed mainnet stack.
-- The persistent worker is read-only. It receives the device public key and
-  cannot sign. Page or process loss during a Face ID-authorized settlement must
-  require reauthorization. Browser storage remains free of the scalar,
-  unlocked identity, and resumable MuSig session.
+- Boarding uses one persistent SDK Wallet in a dedicated service worker. Its
+  scoped board key is provisioned only after PRF unlock and never crosses
+  `postMessage`. The SDK owns intents, batch participation, settlement,
+  persistence, and retries; Vault code supplies only the exact named program,
+  fixed Spending destination, and typed VaultBoardCosigner phases.
+- Response-loss recovery must pass prepare, register, release, and final
+  interruption, worker suspension and wake, missed-event, retained-intent, and
+  two-context qualification against the deployed public Operator API.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.
