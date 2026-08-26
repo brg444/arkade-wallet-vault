@@ -11,6 +11,7 @@ import Padded from '../../components/Padded'
 import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
+import { prettyAmount } from '../../lib/format'
 import { broadcastTx, fetchAddressUtxos } from '../../lib/vault/esplora'
 import { parseIncomingPsbt, psbtFile } from '../../lib/vault/savingsSpend'
 import { CLAIMANTS, SAVINGS_TEMPLATE, type Claimant } from '../../lib/vault/program/constants'
@@ -25,6 +26,7 @@ import {
 import { inspectRecoveryKit, parseRecoveryKit } from '../../lib/vault/program/kit'
 import { planClaim, planClawback, planInitiate } from '../../lib/vault/program/recoverFlow'
 import { buildGuardianExitPsbt } from '../../lib/vault/program/spend'
+import { findMatureBoardingInputs } from '../../lib/vault/vtxo/boardingRecovery'
 import { VaultContext } from '../../vault/context'
 import { KeyCard, Reveal } from './ui'
 import { ChoiceCard } from './onboard/Layout'
@@ -65,9 +67,11 @@ export default function VaultRecover() {
     navigate,
     recoverEntry,
     recoverExit,
+    recoverMatureBoarding,
     restoreRecoveryKit,
     savingsAddress,
     signGuardianExitWithDevice,
+    status,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [view, setView] = useState<'kit' | 'lost'>(recoverEntry)
@@ -86,6 +90,24 @@ export default function VaultRecover() {
   const [cancelSigners, setCancelSigners] = useState<Claimant[]>([])
   const [cancelHave, setCancelHave] = useState<Claimant[]>([])
   const [signedCancelPsbt, setSignedCancelPsbt] = useState('')
+  const [matureBoardingSats, setMatureBoardingSats] = useState(0)
+  const [confirmBoardingRecovery, setConfirmBoardingRecovery] = useState(false)
+  const [recoveringBoarding, setRecoveringBoarding] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    setMatureBoardingSats(0)
+    setConfirmBoardingRecovery(false)
+    if (view !== 'kit' || !status?.enrolled) return () => undefined
+    void findMatureBoardingInputs(status)
+      .then(({ totalSats }) => {
+        if (active) setMatureBoardingSats(totalSats)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [status, view])
 
   const kitJson = useMemo(() => {
     try {
@@ -471,6 +493,45 @@ export default function VaultRecover() {
                 setView('lost')
               }}
             />
+            {matureBoardingSats > 0 ? (
+              <>
+                <KeyCard
+                  title='Recover received Bitcoin'
+                  role='These funds have waited long enough to return onchain with this device.'
+                  amount={prettyAmount(matureBoardingSats)}
+                  testId='recover-mature-boarding'
+                  onClick={() => setConfirmBoardingRecovery(true)}
+                />
+                {confirmBoardingRecovery ? (
+                  <>
+                    <Text wrap>
+                      Face ID will authorize a one-time recovery to this device. A network fee is deducted before the
+                      transaction is sent.
+                    </Text>
+                    <Button
+                      label={recoveringBoarding ? 'Recovering…' : 'Recover to this device'}
+                      testId='recover-mature-boarding-confirm'
+                      disabled={recoveringBoarding}
+                      onClick={() => {
+                        if (recoveringBoarding) return
+                        setRecoveringBoarding(true)
+                        setLocalError('')
+                        void recoverMatureBoarding()
+                          .then((txid) => {
+                            setMatureBoardingSats(0)
+                            setConfirmBoardingRecovery(false)
+                            toast(`Recovery sent ${txid.slice(0, 8)}…`)
+                          })
+                          .catch((err) => {
+                            setLocalError(err instanceof Error ? err.message : 'Could not recover received Bitcoin')
+                          })
+                          .finally(() => setRecoveringBoarding(false))
+                      }}
+                    />
+                  </>
+                ) : null}
+              </>
+            ) : null}
             <ErrorMessage error={Boolean(error || localError)} text={error || localError} />
           </FlexCol>
         </Padded>

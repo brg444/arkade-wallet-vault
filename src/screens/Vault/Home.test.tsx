@@ -65,7 +65,7 @@ describe('Vault home account boundaries', () => {
   })
 
   it('does not expose background boarding state on Home', () => {
-    renderHome({ account: 'spend', boardingInProgress: true })
+    renderHome({ account: 'spend' })
     expect(screen.queryByText(/boarding|processing|Moving received Bitcoin|Face ID/i)).toBeNull()
   })
 

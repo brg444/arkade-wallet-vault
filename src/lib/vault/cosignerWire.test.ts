@@ -74,8 +74,8 @@ type ExpectedVaultEnrollmentRequest = {
   recoveryKeyXOnly?: string
   vaultId?: string
   descriptorHash?: string
-  vtxoBoardingProgram?: 'vault-board-v2'
-  vaultBoardV2BoardingBip340Pub?: string
+  vtxoBoardingProgram?: 'vault-board-v1'
+  vaultBoardingBip340Pub?: string
 }
 
 type ExpectedVaultTransitionRequest = {

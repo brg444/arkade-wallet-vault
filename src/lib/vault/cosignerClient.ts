@@ -35,8 +35,8 @@ export interface VaultEnrollmentRequest {
   recoveryKeyXOnly?: string
   vaultId?: string
   descriptorHash?: string
-  vtxoBoardingProgram?: 'vault-board-v2'
-  vaultBoardV2BoardingBip340Pub?: string
+  vtxoBoardingProgram?: 'vault-board-v1'
+  vaultBoardingBip340Pub?: string
 }
 
 export interface VaultEnrollProposeResponse {
@@ -260,36 +260,34 @@ export interface VaultCosignerEnrollmentClient {
   start(token: string): Promise<VaultEnrollStartResponse>
   propose(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
   finish(token: string, request: VaultEnrollmentRequest): Promise<VaultStatusWire>
-  proposeBoardV2(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
-  finishBoardV2(token: string, request: VaultEnrollmentRequest): Promise<VaultStatusWire>
   binding(request: VaultRecoveryBindingRequest): Promise<VaultRecoveryBindingResponse>
   install(request: VaultInstallEnvelopeRequest): Promise<VaultMutationSuccess>
   recover(request: VaultRecoverEnvelopeRequest): Promise<VaultRecoverEnvelopeResponse>
 }
 
-export interface VaultBoardV2OutpointWire {
+export interface BoardingOutpointWire {
   txid: string
   vout: number
 }
 
-export interface VaultBoardV2RecipientWire {
+export interface BoardingRecipientWire {
   address: string
   amountSats: number
 }
 
-export interface VaultBoardV2PrepareRequest {
+export interface BoardingPrepareRequest {
   vaultId: string
-  inputs: VaultBoardV2OutpointWire[]
-  recipients: VaultBoardV2RecipientWire[]
+  inputs: BoardingOutpointWire[]
+  recipients: BoardingRecipientWire[]
 }
 
-export type VaultBoardV2PrepareResponse =
+export type BoardingPrepareResponse =
   | { status: 'ready'; handle: string; registerExpireAt: number }
   | { status: 'release_required'; handle: string; deleteExpireAt: number }
   | { status: 'blocked'; reason: string }
   | { status: 'finalized'; commitmentTxid: string }
 
-export type VaultBoardV2RegisterMessageWire = {
+export type BoardingRegisterMessageWire = {
   type: 'register'
   onchain_output_indexes: number[]
   valid_at: number
@@ -297,30 +295,30 @@ export type VaultBoardV2RegisterMessageWire = {
   cosigners_public_keys: string[]
 }
 
-export type VaultBoardV2DeleteMessageWire = { type: 'delete'; expire_at: number }
+export type BoardingDeleteMessageWire = { type: 'delete'; expire_at: number }
 
-export interface VaultBoardV2PhaseRequest<Message> {
+export interface BoardingPhaseRequest<Message> {
   handle: string
   psbt: string
   inputIndexes: number[]
   message: Message
 }
 
-export type VaultBoardV2RegisterResponse =
+export type BoardingRegisterResponse =
   | { status: 'registered'; intentId: string }
   | { status: 'definitely_not_submitted' }
   | { status: 'ambiguous' }
 
-export type VaultBoardV2ReleaseResponse = { status: 'released' } | { status: 'ambiguous' }
-export type VaultBoardV2FinalResponse = { status: 'submitted' } | { status: 'ambiguous' }
+export type BoardingReleaseResponse = { status: 'released' } | { status: 'ambiguous' }
+export type BoardingFinalResponse = { status: 'submitted' } | { status: 'ambiguous' }
 
-export interface VaultBoardV2TreeNodeWire {
+export interface BoardingTreeNodeWire {
   txid: string
   tx: string
   children: Record<number, string>
 }
 
-export interface VaultBoardV2FinalRequest {
+export interface BoardingFinalRequest {
   handle: string
   psbt: string
   inputIndexes: number[]
@@ -329,16 +327,16 @@ export interface VaultBoardV2FinalRequest {
     batchId: string
     batchExpiry: number
     unsignedCommitmentTx: string
-    vtxoTree: VaultBoardV2TreeNodeWire[]
-    expectedRecipients: VaultBoardV2RecipientWire[]
+    vtxoTree: BoardingTreeNodeWire[]
+    expectedRecipients: BoardingRecipientWire[]
   }
 }
 
 export interface VaultCosignerBoardingClient {
-  prepare(request: VaultBoardV2PrepareRequest): Promise<VaultBoardV2PrepareResponse>
-  register(request: VaultBoardV2PhaseRequest<VaultBoardV2RegisterMessageWire>): Promise<VaultBoardV2RegisterResponse>
-  release(request: VaultBoardV2PhaseRequest<VaultBoardV2DeleteMessageWire>): Promise<VaultBoardV2ReleaseResponse>
-  final(request: VaultBoardV2FinalRequest): Promise<VaultBoardV2FinalResponse>
+  prepare(request: BoardingPrepareRequest): Promise<BoardingPrepareResponse>
+  register(request: BoardingPhaseRequest<BoardingRegisterMessageWire>): Promise<BoardingRegisterResponse>
+  release(request: BoardingPhaseRequest<BoardingDeleteMessageWire>): Promise<BoardingReleaseResponse>
+  final(request: BoardingFinalRequest): Promise<BoardingFinalResponse>
 }
 
 export interface VaultCosignerRecoveryClient {
@@ -383,12 +381,6 @@ export const vaultCosignerClient: VaultCosignerClient = {
     },
     finish(token, request) {
       return vaultPost('/v1/enroll/finish', request, enrollmentHeader(token))
-    },
-    proposeBoardV2(token, request) {
-      return vaultPost('/v1/vtxo/board/enroll/propose', request, enrollmentHeader(token))
-    },
-    finishBoardV2(token, request) {
-      return vaultPost('/v1/vtxo/board/enroll/finish', request, enrollmentHeader(token))
     },
     binding(request) {
       return vaultPost('/v1/passkey/binding', request)

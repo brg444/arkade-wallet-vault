@@ -98,10 +98,9 @@ export type StagedEnrollment = EnrollmentSecrets & {
   recoveryXOnly?: string
   inviteToken?: string
   descriptorHash?: string
-  vtxoBoardingProgram?: 'vault-board-v2'
-  vaultBoardV2BoardingPub?: string
-  vaultBoardV2Descriptor?: unknown
-  vaultBoardV2DescriptorHash?: string
+  boardingPub?: string
+  boardingDescriptor?: unknown
+  boardingDescriptorHash?: string
   savingsAddress?: string
   savingsScript?: string
 }

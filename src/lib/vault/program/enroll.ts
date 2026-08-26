@@ -2,16 +2,16 @@ import { PROGRAM_SCHEMA } from './constants'
 import { hashVaultProgramDescriptor, validateVaultProgramDescriptor, type VaultProgramDescriptor } from './descriptor'
 import { bytesToHex, encodeUtf8 } from '../hex'
 import { sha256 } from '@noble/hashes/sha2.js'
-import { requireVaultBoardV2Descriptor } from '../vtxo/boardV2'
-import type { VaultBoardV2Descriptor } from '../types'
+import { requireBoardingDescriptor } from '../vtxo/board'
+import type { BoardingDescriptor } from '../types'
 
-const BOARD_V2_ENROLLMENT_SCHEMA = 'arkade-vault/enrollment-with-board-v2'
+const BOARDING_ENROLLMENT_SCHEMA = 'arkade-vault/enrollment-with-board-v1'
 
-export interface VaultBoardV2EnrollmentDescriptor {
-  schema: typeof BOARD_V2_ENROLLMENT_SCHEMA
+export interface BoardingEnrollmentDescriptor {
+  schema: typeof BOARDING_ENROLLMENT_SCHEMA
   vaultId: string
   savings: VaultProgramDescriptor
-  boarding: VaultBoardV2Descriptor
+  boarding: BoardingDescriptor
 }
 
 function appendLE32(parts: Uint8Array[], value: number) {
@@ -26,7 +26,7 @@ function appendText(parts: Uint8Array[], value: string) {
   parts.push(bytes)
 }
 
-function compositeHash(descriptor: VaultBoardV2EnrollmentDescriptor): string {
+function compositeHash(descriptor: BoardingEnrollmentDescriptor): string {
   const savingsHash = hashVaultProgramDescriptor(descriptor.savings)
   const fields = [
     descriptor.schema,
@@ -70,24 +70,24 @@ export function requireProposedProgramDescriptor(raw: unknown, proposedHash: str
   return descriptor
 }
 
-export function requireProposedVaultBoardV2Descriptor(
+export function requireProposedBoardingDescriptor(
   raw: unknown,
   proposedHash: string,
   expected: { vaultId: string; phonePub: string; boardingPub: string; network: string },
-): VaultBoardV2EnrollmentDescriptor {
-  if (!raw || typeof raw !== 'object') throw new Error('enroll needs the vault-board-v2 descriptor')
-  const composite = raw as VaultBoardV2EnrollmentDescriptor
-  if (composite.schema !== BOARD_V2_ENROLLMENT_SCHEMA || composite.vaultId !== expected.vaultId) {
-    throw new Error('enroll needs the current vault-board-v2 descriptor')
+): BoardingEnrollmentDescriptor {
+  if (!raw || typeof raw !== 'object') throw new Error('enroll needs the vault-board-v1 descriptor')
+  const composite = raw as BoardingEnrollmentDescriptor
+  if (composite.schema !== BOARDING_ENROLLMENT_SCHEMA || composite.vaultId !== expected.vaultId) {
+    throw new Error('enroll needs the current vault-board-v1 descriptor')
   }
   const savings = validateVaultProgramDescriptor(composite.savings)
   if (savings.vaultId !== expected.vaultId || savings.network !== expected.network) {
-    throw new Error('vault-board-v2 Savings descriptor does not match enrollment')
+    throw new Error('vault-board-v1 Savings descriptor does not match enrollment')
   }
-  const boarding = requireVaultBoardV2Descriptor(composite.boarding, expected)
+  const boarding = requireBoardingDescriptor(composite.boarding, expected)
   const descriptor = { ...composite, savings, boarding }
   if (compositeHash(descriptor) !== proposedHash) {
-    throw new Error('proposed vault-board-v2 descriptor hash does not match this client')
+    throw new Error('proposed vault-board-v1 descriptor hash does not match this client')
   }
   return descriptor
 }

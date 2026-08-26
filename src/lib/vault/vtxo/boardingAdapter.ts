@@ -2,14 +2,14 @@ import type { BoardingSigningAdapter, Recipient, ValidatedBoardingBatch, Intent 
 import { hex } from '@scure/base'
 import {
   vaultCosignerClient,
-  type VaultBoardV2DeleteMessageWire,
-  type VaultBoardV2RecipientWire,
-  type VaultBoardV2RegisterMessageWire,
+  type BoardingDeleteMessageWire,
+  type BoardingRecipientWire,
+  type BoardingRegisterMessageWire,
 } from '../cosignerClient'
 import { hexToBytes } from '../hex'
-import type { VaultBoardV2Descriptor } from '../types'
+import type { BoardingDescriptor } from '../types'
 
-function exactRecipient(recipient: Recipient): VaultBoardV2RecipientWire {
+function exactRecipient(recipient: Recipient): BoardingRecipientWire {
   if (
     recipient.assets?.length ||
     recipient.extensions?.length ||
@@ -18,17 +18,17 @@ function exactRecipient(recipient: Recipient): VaultBoardV2RecipientWire {
     Number(recipient.amount) <= 0 ||
     !recipient.address
   ) {
-    throw new Error('vault-board-v2 requires one BTC-only recipient')
+    throw new Error('vault-board-v1 requires one BTC-only recipient')
   }
   return { address: recipient.address, amountSats: Number(recipient.amount) }
 }
 
 function safeBatchExpiry(value: bigint): number {
-  if (value <= 0n || value > BigInt(0xffffffff)) throw new Error('vault-board-v2 batch expiry is invalid')
+  if (value <= 0n || value > BigInt(0xffffffff)) throw new Error('vault-board-v1 batch expiry is invalid')
   return Number(value)
 }
 
-function registerMessage(message: Intent.RegisterMessage): VaultBoardV2RegisterMessageWire {
+function registerMessage(message: Intent.RegisterMessage): BoardingRegisterMessageWire {
   if (
     message.type !== 'register' ||
     !Array.isArray(message.onchain_output_indexes) ||
@@ -36,7 +36,7 @@ function registerMessage(message: Intent.RegisterMessage): VaultBoardV2RegisterM
     !Number.isSafeInteger(message.valid_at) ||
     !Number.isSafeInteger(message.expire_at)
   ) {
-    throw new Error('vault-board-v2 register message is invalid')
+    throw new Error('vault-board-v1 register message is invalid')
   }
   return {
     type: 'register',
@@ -47,16 +47,16 @@ function registerMessage(message: Intent.RegisterMessage): VaultBoardV2RegisterM
   }
 }
 
-function deleteMessage(message: Intent.DeleteMessage): VaultBoardV2DeleteMessageWire {
+function deleteMessage(message: Intent.DeleteMessage): BoardingDeleteMessageWire {
   if (message.type !== 'delete' || !Number.isSafeInteger(message.expire_at)) {
-    throw new Error('vault-board-v2 delete message is invalid')
+    throw new Error('vault-board-v1 delete message is invalid')
   }
   return { type: 'delete', expire_at: message.expire_at }
 }
 
 function finalBatch(batch: ValidatedBoardingBatch) {
   const recipients = batch.expectedRecipients.map(exactRecipient)
-  if (recipients.length !== 1) throw new Error('vault-board-v2 requires one validated recipient')
+  if (recipients.length !== 1) throw new Error('vault-board-v1 requires one validated recipient')
   return {
     batchId: batch.batchId,
     batchExpiry: safeBatchExpiry(batch.batchExpiry),
@@ -70,23 +70,20 @@ function finalBatch(batch: ValidatedBoardingBatch) {
   }
 }
 
-export function createVaultBoardV2SigningAdapter(
-  vaultId: string,
-  descriptor: VaultBoardV2Descriptor,
-): BoardingSigningAdapter {
+export function createBoardingSigningAdapter(vaultId: string, descriptor: BoardingDescriptor): BoardingSigningAdapter {
   const publicKey = hexToBytes(descriptor.vaultBoardCosignerPub).slice(1)
   if (publicKey.length !== 32 || hex.encode(publicKey) !== descriptor.vaultBoardCosignerPub.slice(2)) {
-    throw new Error('vault-board-v2 cosigner key is invalid')
+    throw new Error('vault-board-v1 cosigner key is invalid')
   }
   return {
     publicKey,
     async prepareRegistration(request) {
       if (request.inputs.length !== 1 || request.recipients.length !== 1) {
-        throw new Error('vault-board-v2 requires one boarding input and one recipient')
+        throw new Error('vault-board-v1 requires one boarding input and one recipient')
       }
       const input = request.inputs[0]
       if (!/^[0-9a-f]{64}$/.test(input.txid) || !Number.isSafeInteger(input.vout) || input.vout < 0) {
-        throw new Error('vault-board-v2 outpoint is invalid')
+        throw new Error('vault-board-v1 outpoint is invalid')
       }
       return vaultCosignerClient.boarding.prepare({
         vaultId,

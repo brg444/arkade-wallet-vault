@@ -1,8 +1,6 @@
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 
-// Mirrors arkade-os/wallet's SDK worker build: one fully bundled file in public
-// so the browser can use the default classic registration mode.
 export default defineConfig({
   build: {
     lib: {

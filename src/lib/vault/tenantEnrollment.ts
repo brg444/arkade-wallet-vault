@@ -10,19 +10,14 @@ import {
   saveStagedEnrollment,
   type StagedEnrollment,
 } from './enrollmentStore'
-import { requireProposedProgramDescriptor, requireProposedVaultBoardV2Descriptor } from './program/enroll'
+import { requireProposedBoardingDescriptor } from './program/enroll'
 import { saveLocalKit } from './program/kitStore'
 import { buildRecoveryKit } from './program/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
 import type { VaultStatus } from './types'
 import type { VaultProgramDescriptor } from './program/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
-import {
-  activateVaultBoardV2Key,
-  requireVaultBoardV2Status,
-  stageVaultBoardV2Key,
-  VAULT_BOARD_V2_PROGRAM,
-} from './vtxo/boardV2'
+import { activateBoardingKey, requireBoardingStatus, stageBoardingKey, BOARDING_PROGRAM } from './vtxo/board'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -103,6 +98,9 @@ export async function beginTenantEnrollment(
   if (!token) throw new Error('setup code required')
   const wantRecovery = Boolean(roles.recoveryPub)
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
+  if (publicStatus.vtxoBoardingProgram !== BOARDING_PROGRAM) {
+    throw new Error('vault service does not advertise the required boarding program')
+  }
   const hardwareXOnly = xOnly(roles.hardwarePub)
   const recoveryXOnly = wantRecovery ? xOnly(roles.recoveryPub || '') : ''
   if (wantRecovery && hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
@@ -149,17 +147,14 @@ export async function beginTenantEnrollment(
   const direct = await deriveDirectP256(prf)
   const phoneSecret = crypto.getRandomValues(new Uint8Array(32))
   const phoneBip340Pub = secp256k1.getPublicKey(phoneSecret, true)
-  const boardV2 = publicStatus.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
   const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
   let enrollment!: EnrollmentSecrets
-  let stagedBoard: Awaited<ReturnType<typeof stageVaultBoardV2Key>> | undefined
+  let stagedBoard!: Awaited<ReturnType<typeof stageBoardingKey>>
   let proposed!: Awaited<ReturnType<typeof vaultCosignerClient.enrollment.propose>>
-  let composite: ReturnType<typeof requireProposedVaultBoardV2Descriptor> | undefined
+  let composite!: ReturnType<typeof requireProposedBoardingDescriptor>
   let descriptor!: VaultProgramDescriptor
   try {
-    stagedBoard = boardV2
-      ? await stageVaultBoardV2Key({ vaultId: start.vaultId, phoneSecret, network: publicStatus.network })
-      : undefined
+    stagedBoard = await stageBoardingKey({ vaultId: start.vaultId, phoneSecret, network: publicStatus.network })
     const kek = await crypto.subtle.deriveKey(
       { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
       await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
@@ -191,29 +186,21 @@ export async function beginTenantEnrollment(
       vaultId: start.vaultId,
       externalOwnerWalletXOnly: hardwareXOnly,
       ...(recoveryXOnly ? { recoveryXOnly } : {}),
-      ...(stagedBoard
-        ? {
-            vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
-            vaultBoardV2BoardingBip340Pub: stagedBoard.boardingPub,
-          }
-        : {}),
+      vtxoBoardingProgram: BOARDING_PROGRAM,
+      vaultBoardingBip340Pub: stagedBoard.boardingPub,
     }
     // The network and descriptor-validation phases need only public facts.
     // Restore the original short secret lifetime before yielding to either.
     prf.fill(0)
     phoneSecret.fill(0)
-    proposed = boardV2
-      ? await vaultCosignerClient.enrollment.proposeBoardV2(token, enrollmentRequest)
-      : await vaultCosignerClient.enrollment.propose(token, enrollmentRequest)
-    composite = stagedBoard
-      ? requireProposedVaultBoardV2Descriptor(proposed.descriptor, proposed.descriptorHash, {
-          vaultId: start.vaultId,
-          phonePub: enrollment.phoneBip340Pub,
-          boardingPub: stagedBoard.boardingPub,
-          network: publicStatus.network,
-        })
-      : undefined
-    descriptor = composite?.savings || requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
+    proposed = await vaultCosignerClient.enrollment.propose(token, enrollmentRequest)
+    composite = requireProposedBoardingDescriptor(proposed.descriptor, proposed.descriptorHash, {
+      vaultId: start.vaultId,
+      phonePub: enrollment.phoneBip340Pub,
+      boardingPub: stagedBoard.boardingPub,
+      network: publicStatus.network,
+    })
+    descriptor = composite.savings
   } finally {
     prf.fill(0)
     phoneSecret.fill(0)
@@ -239,14 +226,9 @@ export async function beginTenantEnrollment(
     ...(recoveryXOnly ? { recoveryXOnly } : {}),
     inviteToken: token,
     descriptorHash: proposed.descriptorHash,
-    ...(composite && stagedBoard
-      ? {
-          vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
-          vaultBoardV2BoardingPub: stagedBoard.boardingPub,
-          vaultBoardV2Descriptor: composite.boarding,
-          vaultBoardV2DescriptorHash: proposed.descriptorHash,
-        }
-      : {}),
+    boardingPub: stagedBoard.boardingPub,
+    boardingDescriptor: composite.boarding,
+    boardingDescriptorHash: proposed.descriptorHash,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
   }
@@ -262,7 +244,9 @@ export async function finishTenantEnrollment(
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
   const staged = loadStagedEnrollment(storage)
-  if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
+  if (!staged?.vaultId || !staged.descriptorHash || !staged.boardingPub || !staged.boardingDescriptorHash) {
+    throw new Error('finish setup first')
+  }
   const finishRequest = {
     handle: staged.handle,
     userHandle: staged.userHandle,
@@ -277,27 +261,17 @@ export async function finishTenantEnrollment(
     externalOwnerWalletXOnly: staged.hardwareXOnly,
     ...(staged.recoveryXOnly ? { recoveryXOnly: staged.recoveryXOnly } : {}),
     descriptorHash: staged.descriptorHash,
-    ...(staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
-      ? {
-          vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
-          vaultBoardV2BoardingBip340Pub: staged.vaultBoardV2BoardingPub,
-        }
-      : {}),
+    vtxoBoardingProgram: BOARDING_PROGRAM,
+    vaultBoardingBip340Pub: staged.boardingPub,
   }
-  if (staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
-    await vaultCosignerClient.enrollment.finishBoardV2(token, finishRequest)
-  } else {
-    await vaultCosignerClient.enrollment.finish(token, finishRequest)
-  }
+  await vaultCosignerClient.enrollment.finish(token, finishRequest)
   const live = await vaultCosignerClient.enrollment.status(staged.vaultId)
-  if (staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
-    requireVaultBoardV2Status(live, String(staged.vaultBoardV2BoardingPub || ''))
-    await activateVaultBoardV2Key({
-      vaultId: staged.vaultId,
-      descriptorHash: String(live.vtxoBoardingDescriptorHash || staged.vaultBoardV2DescriptorHash || ''),
-      expectedBoardingPub: String(staged.vaultBoardV2BoardingPub || ''),
-    })
-  }
+  requireBoardingStatus(live, String(staged.boardingPub || ''))
+  await activateBoardingKey({
+    vaultId: staged.vaultId,
+    descriptorHash: String(live.vtxoBoardingDescriptorHash || staged.boardingDescriptorHash || ''),
+    expectedBoardingPub: String(staged.boardingPub || ''),
+  })
   const pin = pinFromEnrolledStatus({
     ...live,
     savingsAddress: staged.savingsAddress || live.savingsAddress,
@@ -315,16 +289,15 @@ export async function reconcileStagedEnrollment(
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets } | null> {
   const staged = loadStagedEnrollment(storage)
   if (!staged?.vaultId) return null
+  if (!staged.boardingPub || !staged.boardingDescriptorHash) throw new Error('staged boarding setup is incomplete')
   const live = await vaultCosignerClient.enrollment.status(staged.vaultId)
   if (!live.enrolled) return null
-  if (staged.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
-    requireVaultBoardV2Status(live, String(staged.vaultBoardV2BoardingPub || ''))
-    await activateVaultBoardV2Key({
-      vaultId: staged.vaultId,
-      descriptorHash: String(live.vtxoBoardingDescriptorHash || staged.vaultBoardV2DescriptorHash || ''),
-      expectedBoardingPub: String(staged.vaultBoardV2BoardingPub || ''),
-    })
-  }
+  requireBoardingStatus(live, String(staged.boardingPub || ''))
+  await activateBoardingKey({
+    vaultId: staged.vaultId,
+    descriptorHash: String(live.vtxoBoardingDescriptorHash || staged.boardingDescriptorHash || ''),
+    expectedBoardingPub: String(staged.boardingPub || ''),
+  })
   if (staged.savingsAddress) {
     const pin = pinFromEnrolledStatus({
       ...live,
