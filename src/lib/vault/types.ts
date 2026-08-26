@@ -40,10 +40,9 @@ export interface VaultStatusWire {
   vtxoBoardingScript: string
   vtxoBoardingExitDelay: number
   vtxoBoardingExitDelayUnit: string
-  // Present only for the explicitly gated vault-board-v2 release. The
-  // descriptor is enrollment-bound and is required to reconstruct a worker
-  // wallet in a fresh browser without trusting mutable client configuration.
-  vtxoBoardingDescriptor?: VaultBoardV2Descriptor
+  // Enrollment-bound facts used to reconstruct the worker wallet in a fresh
+  // browser without trusting mutable client configuration.
+  vtxoBoardingDescriptor?: BoardingDescriptor
   vtxoBoardingDescriptorHash?: string
 }
 
@@ -90,14 +89,14 @@ export interface VaultStatus {
   vtxoBoardingScript?: string
   vtxoBoardingExitDelay?: number
   vtxoBoardingExitDelayUnit?: string
-  vtxoBoardingDescriptor?: VaultBoardV2Descriptor
+  vtxoBoardingDescriptor?: BoardingDescriptor
   vtxoBoardingDescriptorHash?: string
 }
 
-export interface VaultBoardV2Descriptor {
-  schema: 'arkade-vault/board-v2'
-  program: 'vault-board-v2'
-  template: 'vault-board-v2-device-vault-and-operator'
+export interface BoardingDescriptor {
+  schema: 'arkade-vault/board-v1'
+  program: 'vault-board-v1'
+  template: 'vault-board-v1-boarding-vault-and-operator'
   network: 'mutinynet'
   boardingPub: string
   recoveryPhonePub: string

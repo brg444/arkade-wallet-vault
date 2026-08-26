@@ -10,23 +10,23 @@ import { requireProposedProgramDescriptor } from './program/enroll'
 import type { VaultStatus } from './types'
 import { reconcileStagedEnrollment } from './tenantEnrollment'
 import {
-  activateVaultBoardV2Key,
-  deleteVaultBoardV2Key,
+  activateBoardingKey,
+  deleteBoardingKey,
   MUTINYNET_OPERATOR_SIGNER_PUB,
-  stageVaultBoardV2Key,
-  VAULT_BOARD_V2_EXIT_DELAY,
-  VAULT_BOARD_V2_EXIT_DELAY_UNIT,
-  VAULT_BOARD_V2_PROGRAM,
-  VAULT_BOARD_V2_SCHEMA,
-  VAULT_BOARD_V2_TEMPLATE,
-} from './vtxo/boardV2'
+  stageBoardingKey,
+  BOARDING_EXIT_DELAY,
+  BOARDING_EXIT_DELAY_UNIT,
+  BOARDING_PROGRAM,
+  BOARDING_SCHEMA,
+  BOARDING_TEMPLATE,
+} from './vtxo/board'
 
 const CRASH_VAULT_ID = 'vault-crash-window'
 
 afterEach(async () => {
   localStorage.clear()
   vi.restoreAllMocks()
-  await deleteVaultBoardV2Key(CRASH_VAULT_ID).catch(() => undefined)
+  await deleteBoardingKey(CRASH_VAULT_ID).catch(() => undefined)
 })
 
 describe('tenant enrollment identity', () => {
@@ -44,7 +44,7 @@ describe('tenant enrollment identity', () => {
     const phoneSecret = new Uint8Array(32)
     phoneSecret[31] = 7
     const phonePub = hex.encode(secp256k1.getPublicKey(phoneSecret, true))
-    const stagedKey = await stageVaultBoardV2Key({
+    const stagedKey = await stageBoardingKey({
       vaultId: CRASH_VAULT_ID,
       phoneSecret,
       network: 'mutinynet',
@@ -56,30 +56,30 @@ describe('tenant enrollment identity', () => {
     cosignerSecret.fill(0)
     const program = createBoardingProgramScript(
       {
-        name: VAULT_BOARD_V2_PROGRAM,
+        name: BOARDING_PROGRAM,
         boardingPubKey: hex.decode(stagedKey.boardingPub).slice(1),
         cosignerPubKey: hex.decode(cosignerPub).slice(1),
         recoveryPubKey: hex.decode(phonePub).slice(1),
       },
       hex.decode(MUTINYNET_OPERATOR_SIGNER_PUB).slice(1),
-      { type: 'seconds', value: BigInt(VAULT_BOARD_V2_EXIT_DELAY) },
+      { type: 'seconds', value: BigInt(BOARDING_EXIT_DELAY) },
     )
     const descriptorHash = 'ab'.repeat(32)
     const descriptor = {
-      schema: VAULT_BOARD_V2_SCHEMA,
-      program: VAULT_BOARD_V2_PROGRAM,
-      template: VAULT_BOARD_V2_TEMPLATE,
+      schema: BOARDING_SCHEMA,
+      program: BOARDING_PROGRAM,
+      template: BOARDING_TEMPLATE,
       network: 'mutinynet' as const,
       boardingPub: stagedKey.boardingPub,
       recoveryPhonePub: phonePub,
       vaultBoardCosignerPub: cosignerPub,
       operatorPub: MUTINYNET_OPERATOR_SIGNER_PUB,
-      exitDelay: VAULT_BOARD_V2_EXIT_DELAY,
-      exitDelayUnit: VAULT_BOARD_V2_EXIT_DELAY_UNIT,
+      exitDelay: BOARDING_EXIT_DELAY,
+      exitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
       script: hex.encode(program.pkScript),
       address: program.onchainAddress(getNetwork('mutinynet')),
     }
-    await activateVaultBoardV2Key({
+    await activateBoardingKey({
       vaultId: CRASH_VAULT_ID,
       descriptorHash,
       expectedBoardingPub: stagedKey.boardingPub,
@@ -99,9 +99,9 @@ describe('tenant enrollment identity', () => {
       attestationObject: '08',
       hardwareXOnly: '09',
       descriptorHash,
-      vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
-      vaultBoardV2BoardingPub: stagedKey.boardingPub,
-      vaultBoardV2DescriptorHash: descriptorHash,
+      boardingPub: stagedKey.boardingPub,
+      boardingDescriptor: descriptor,
+      boardingDescriptorHash: descriptorHash,
     })
     const status: VaultStatus = {
       enrolled: true,
@@ -127,11 +127,11 @@ describe('tenant enrollment identity', () => {
       spendingArkScript: `5120${'33'.repeat(32)}`,
       vtxoDelegatePub: `02${'44'.repeat(32)}`,
       vtxoBoardingActive: true,
-      vtxoBoardingProgram: VAULT_BOARD_V2_PROGRAM,
+      vtxoBoardingProgram: BOARDING_PROGRAM,
       vtxoBoardingAddress: descriptor.address,
       vtxoBoardingScript: descriptor.script,
-      vtxoBoardingExitDelay: VAULT_BOARD_V2_EXIT_DELAY,
-      vtxoBoardingExitDelayUnit: VAULT_BOARD_V2_EXIT_DELAY_UNIT,
+      vtxoBoardingExitDelay: BOARDING_EXIT_DELAY,
+      vtxoBoardingExitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
       vtxoBoardingDescriptor: descriptor,
       vtxoBoardingDescriptorHash: descriptorHash,
     }

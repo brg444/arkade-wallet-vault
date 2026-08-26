@@ -14,7 +14,7 @@ import {
 import { pinEnrolledStatus, pinFromEnrolledStatus } from './pin'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
-import { provisionVaultBoardV2Key } from './vtxo/boardV2'
+import { provisionBoardingKey } from './vtxo/board'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -170,7 +170,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     // on durable browser storage. The session coordinator persists it after
     // the verified session is already live.
     pinFromEnrolledStatus(live)
-    await provisionVaultBoardV2Key(phoneSecret, live)
+    await provisionBoardingKey(phoneSecret, live)
     return live
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
@@ -206,7 +206,7 @@ export async function unlockLocalEnrollment(
   try {
     const secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
     try {
-      await provisionVaultBoardV2Key(secret, live)
+      await provisionBoardingKey(secret, live)
       return { enrollment: rec, status: live }
     } finally {
       zeroBytes(secret)
@@ -284,7 +284,7 @@ export async function signInWithPasskey(
     // their pin shape here; persistence is best effort in the coordinator so
     // private browsing cannot turn a valid recovery into a failed login.
     pinFromEnrolledStatus(status)
-    await provisionVaultBoardV2Key(phoneSecret, status)
+    await provisionBoardingKey(phoneSecret, status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)

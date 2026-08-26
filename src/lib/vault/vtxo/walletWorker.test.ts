@@ -1,34 +1,26 @@
-import { ReadonlySingleKey, ServiceWorkerReadonlyWallet } from '@arkade-os/sdk'
+import { ServiceWorkerWallet } from '@arkade-os/sdk'
 import { describe, expect, it, vi } from 'vitest'
 import type { VaultStatus } from '../types'
 import {
   createVaultLightningObserverScheduler,
-  isolateVaultReadonlyBaselineContracts,
-  isVaultReadonlyStateUpdate,
-  registerVaultReadonlyServiceWorker,
-  shutdownVaultBoardV2Worker,
+  isVaultWalletStateUpdate,
+  registerVaultWalletServiceWorker,
+  shutdownVaultWalletWorker,
   subscribeVaultLightningObserver,
-  vaultReadonlyIdentity,
-  vaultReadonlyRuntimeKey,
-} from './readonlyWorker'
-import { vaultBoardV2WorkerPath, vaultReadonlyUpdaterTag, vaultReadonlyWorkerScope } from './readonlyWorkerNames'
-import { VAULT_BOARD_V2_PROGRAM } from './boardV2'
+  vaultWalletRuntimeKey,
+} from './walletWorker'
+import { vaultWalletUpdaterTag, vaultWalletWorkerPath, vaultWalletWorkerScope } from './walletWorkerNames'
 
 function activatedWorker(name: string) {
   return { name, state: 'activated' } as unknown as ServiceWorker
 }
 
-describe('readonly Vault service-worker isolation', () => {
-  it('constructs only a public-key identity for the persistent worker', () => {
-    const status = { phoneBip340Pub: `02${'11'.repeat(32)}` } as VaultStatus
-    expect(vaultReadonlyIdentity(status)).toBeInstanceOf(ReadonlySingleKey)
-  })
-
+describe('Vault service-worker isolation', () => {
   it('keeps A → B → A registrations on their distinct scope and worker', async () => {
-    const stop = vi.spyOn(ServiceWorkerReadonlyWallet, 'stop')
+    const stop = vi.spyOn(ServiceWorkerWallet, 'stop')
     const workers = new Map([
-      [vaultReadonlyWorkerScope('vault-a'), activatedWorker('a')],
-      [vaultReadonlyWorkerScope('vault-b'), activatedWorker('b')],
+      [vaultWalletWorkerScope('vault-a'), activatedWorker('a')],
+      [vaultWalletWorkerScope('vault-b'), activatedWorker('b')],
     ])
     const register = vi.fn(async (_path: string, options?: RegistrationOptions) => ({
       active: workers.get(String(options?.scope)),
@@ -38,25 +30,25 @@ describe('readonly Vault service-worker isolation', () => {
     }))
     const serviceWorkers = { register } as unknown as Pick<ServiceWorkerContainer, 'register'>
 
-    const firstA = await registerVaultReadonlyServiceWorker('vault-a', serviceWorkers)
-    const b = await registerVaultReadonlyServiceWorker('vault-b', serviceWorkers)
-    const secondA = await registerVaultReadonlyServiceWorker('vault-a', serviceWorkers)
+    const firstA = await registerVaultWalletServiceWorker('vault-a', serviceWorkers)
+    const b = await registerVaultWalletServiceWorker('vault-b', serviceWorkers)
+    const secondA = await registerVaultWalletServiceWorker('vault-a', serviceWorkers)
 
     expect((firstA.worker as unknown as { name: string }).name).toBe('a')
     expect((b.worker as unknown as { name: string }).name).toBe('b')
     expect(secondA.worker).toBe(firstA.worker)
     expect(register.mock.calls.map(([, options]) => options?.scope)).toEqual([
-      vaultReadonlyWorkerScope('vault-a'),
-      vaultReadonlyWorkerScope('vault-b'),
-      vaultReadonlyWorkerScope('vault-a'),
+      vaultWalletWorkerScope('vault-a'),
+      vaultWalletWorkerScope('vault-b'),
+      vaultWalletWorkerScope('vault-a'),
     ])
     expect(register.mock.calls.every(([, options]) => options?.type === undefined)).toBe(true)
     expect(stop).not.toHaveBeenCalled()
     stop.mockRestore()
   })
 
-  it('stops an initialized v2 worker after reload before unregistering it', async () => {
-    const worker = activatedWorker('v2')
+  it('stops an initialized worker after reload before unregistering it', async () => {
+    const worker = activatedWorker('wallet')
     const unregister = vi.fn().mockResolvedValue(true)
     const registration = { active: worker, waiting: null, installing: null, unregister }
     const previous = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
@@ -64,10 +56,10 @@ describe('readonly Vault service-worker isolation', () => {
       configurable: true,
       value: { getRegistration: vi.fn().mockResolvedValue(registration) },
     })
-    const stop = vi.spyOn(ServiceWorkerReadonlyWallet, 'stop').mockResolvedValue(undefined)
+    const stop = vi.spyOn(ServiceWorkerWallet, 'stop').mockResolvedValue(undefined)
 
     try {
-      await shutdownVaultBoardV2Worker('vault-reloaded')
+      await shutdownVaultWalletWorker('vault-reloaded')
       expect(stop).toHaveBeenCalledWith(worker, 60_000)
       expect(stop.mock.invocationCallOrder[0]).toBeLessThan(unregister.mock.invocationCallOrder[0])
     } finally {
@@ -77,8 +69,8 @@ describe('readonly Vault service-worker isolation', () => {
     }
   })
 
-  it('retains the v2 registration when acknowledged worker teardown fails', async () => {
-    const worker = activatedWorker('v2')
+  it('retains the registration when acknowledged worker teardown fails', async () => {
+    const worker = activatedWorker('wallet')
     const unregister = vi.fn().mockResolvedValue(true)
     const previous = Object.getOwnPropertyDescriptor(navigator, 'serviceWorker')
     Object.defineProperty(navigator, 'serviceWorker', {
@@ -87,10 +79,10 @@ describe('readonly Vault service-worker isolation', () => {
         getRegistration: vi.fn().mockResolvedValue({ active: worker, waiting: null, installing: null, unregister }),
       },
     })
-    const stop = vi.spyOn(ServiceWorkerReadonlyWallet, 'stop').mockRejectedValue(new Error('worker still draining'))
+    const stop = vi.spyOn(ServiceWorkerWallet, 'stop').mockRejectedValue(new Error('worker still draining'))
 
     try {
-      await expect(shutdownVaultBoardV2Worker('vault-reloaded')).rejects.toThrow('worker still draining')
+      await expect(shutdownVaultWalletWorker('vault-reloaded')).rejects.toThrow('worker still draining')
       expect(unregister).not.toHaveBeenCalled()
     } finally {
       stop.mockRestore()
@@ -109,33 +101,30 @@ describe('readonly Vault service-worker isolation', () => {
     const serviceWorkers = { register } as unknown as Pick<ServiceWorkerContainer, 'register'>
 
     const [a, b] = await Promise.all([
-      registerVaultReadonlyServiceWorker('vault-a', serviceWorkers),
-      registerVaultReadonlyServiceWorker('vault-b', serviceWorkers),
+      registerVaultWalletServiceWorker('vault-a', serviceWorkers),
+      registerVaultWalletServiceWorker('vault-b', serviceWorkers),
     ])
 
     expect(a.worker).not.toBe(b.worker)
-    const tagA = vaultReadonlyUpdaterTag('vault-a')
-    const tagB = vaultReadonlyUpdaterTag('vault-b')
-    expect(isVaultReadonlyStateUpdate({ tag: tagA, type: 'UTXO_UPDATE' }, tagA)).toBe(true)
-    expect(isVaultReadonlyStateUpdate({ tag: tagA, type: 'VTXO_UPDATE' }, tagA)).toBe(true)
-    expect(isVaultReadonlyStateUpdate({ tag: tagA, type: 'UTXO_UPDATE' }, tagB)).toBe(false)
+    const tagA = vaultWalletUpdaterTag('vault-a')
+    const tagB = vaultWalletUpdaterTag('vault-b')
+    expect(isVaultWalletStateUpdate({ tag: tagA, type: 'UTXO_UPDATE' }, tagA)).toBe(true)
+    expect(isVaultWalletStateUpdate({ tag: tagA, type: 'VTXO_UPDATE' }, tagA)).toBe(true)
+    expect(isVaultWalletStateUpdate({ tag: tagA, type: 'UTXO_UPDATE' }, tagB)).toBe(false)
   })
 
-  it('selects the dedicated v2 worker without changing the scoped registration', async () => {
+  it('uses the sole wallet worker for the scoped registration', async () => {
     const register = vi.fn(async () => ({
-      active: activatedWorker('v2'),
+      active: activatedWorker('wallet'),
       installing: null,
       waiting: null,
       update: vi.fn().mockResolvedValue(undefined),
     }))
-    await registerVaultReadonlyServiceWorker(
-      'vault-v2',
-      { register } as unknown as Pick<ServiceWorkerContainer, 'register'>,
-      undefined,
-      VAULT_BOARD_V2_PROGRAM,
-    )
-    expect(register).toHaveBeenCalledWith(vaultBoardV2WorkerPath('vault-v2'), {
-      scope: vaultReadonlyWorkerScope('vault-v2'),
+    await registerVaultWalletServiceWorker('vault-a', {
+      register,
+    } as unknown as Pick<ServiceWorkerContainer, 'register'>)
+    expect(register).toHaveBeenCalledWith(vaultWalletWorkerPath('vault-a'), {
+      scope: vaultWalletWorkerScope('vault-a'),
       updateViaCache: 'none',
     })
   })
@@ -166,18 +155,18 @@ describe('readonly Vault service-worker isolation', () => {
     }))
 
     await Promise.all([
-      registerVaultReadonlyServiceWorker('vault-a', { register } as never, { request } as never),
-      registerVaultReadonlyServiceWorker('vault-a', { register } as never, { request } as never),
+      registerVaultWalletServiceWorker('vault-a', { register } as never, { request } as never),
+      registerVaultWalletServiceWorker('vault-a', { register } as never, { request } as never),
     ])
 
     expect(maxActiveUpdates).toBe(1)
     expect(request.mock.calls.map(([name]) => name)).toEqual([
-      `arkade-vault-wallet-worker:${vaultReadonlyUpdaterTag('vault-a')}`,
-      `arkade-vault-wallet-worker:${vaultReadonlyUpdaterTag('vault-a')}`,
+      `arkade-vault-wallet-worker:${vaultWalletUpdaterTag('vault-a')}`,
+      `arkade-vault-wallet-worker:${vaultWalletUpdaterTag('vault-a')}`,
     ])
   })
 
-  it('recreates readonly state when a pinned deployment input changes', () => {
+  it('recreates wallet state when a pinned deployment input changes', () => {
     const base = {
       enrolled: true,
       vaultId: 'vault-a',
@@ -188,7 +177,7 @@ describe('readonly Vault service-worker isolation', () => {
       vtxoBoardingScript: 'bb',
       vtxoBoardingAddress: 'tb1pboarding',
     } as VaultStatus
-    const key = vaultReadonlyRuntimeKey(base)
+    const key = vaultWalletRuntimeKey(base)
     for (const changed of [
       { network: 'bitcoin' },
       { phoneBip340Pub: `03${'22'.repeat(32)}` },
@@ -197,7 +186,7 @@ describe('readonly Vault service-worker isolation', () => {
       { vtxoBoardingScript: 'dd' },
       { vtxoBoardingAddress: 'bc1pother' },
     ]) {
-      expect(vaultReadonlyRuntimeKey({ ...base, ...changed } as VaultStatus)).not.toBe(key)
+      expect(vaultWalletRuntimeKey({ ...base, ...changed } as VaultStatus)).not.toBe(key)
     }
   })
 
@@ -215,7 +204,7 @@ describe('readonly Vault service-worker isolation', () => {
       waiting: null,
       update,
     })
-    const pending = registerVaultReadonlyServiceWorker('vault-a', {
+    const pending = registerVaultWalletServiceWorker('vault-a', {
       register,
     } as unknown as Pick<ServiceWorkerContainer, 'register'>)
 
@@ -231,93 +220,7 @@ describe('readonly Vault service-worker isolation', () => {
     await expect(pending).resolves.toMatchObject({ worker: { state: 'activated' } })
   })
 
-  it('retains an unused SDK default while keeping a coalesced boarding default active', async () => {
-    const setContractState = vi.fn().mockResolvedValue(undefined)
-    const setContractWatchState = vi.fn().mockResolvedValue(undefined)
-    await isolateVaultReadonlyBaselineContracts(
-      {
-        getContracts: vi.fn().mockResolvedValue([
-          {
-            type: 'default',
-            script: 'unused',
-            address: 'unused',
-            params: {},
-            state: 'active',
-            createdAt: 1,
-          },
-          {
-            type: 'default',
-            script: 'boarding',
-            address: 'boarding',
-            params: {},
-            state: 'inactive',
-            watch: 'retained',
-            createdAt: 2,
-          },
-        ]),
-        setContractState,
-        setContractWatchState,
-      },
-      { vtxoBoardingScript: 'boarding' },
-    )
-
-    expect(setContractState.mock.calls).toEqual([
-      ['unused', 'inactive'],
-      ['boarding', 'active'],
-    ])
-    expect(setContractWatchState.mock.calls).toEqual([
-      ['unused', 'retained'],
-      ['boarding', 'watched'],
-    ])
-  })
-
-  it('retains every baseline default while keeping a distinct boarding contract active', async () => {
-    const setContractState = vi.fn().mockResolvedValue(undefined)
-    const setContractWatchState = vi.fn().mockResolvedValue(undefined)
-    await isolateVaultReadonlyBaselineContracts(
-      {
-        getContracts: vi.fn().mockResolvedValue([
-          {
-            type: 'default',
-            script: 'unused',
-            address: 'unused',
-            params: {},
-            state: 'active',
-            createdAt: 1,
-          },
-          {
-            type: 'boarding',
-            script: 'boarding',
-            address: 'boarding',
-            params: {},
-            state: 'active',
-            createdAt: 2,
-          },
-        ]),
-        setContractState,
-        setContractWatchState,
-      },
-      { vtxoBoardingScript: 'boarding' },
-    )
-
-    expect(setContractState).toHaveBeenCalledExactlyOnceWith('unused', 'inactive')
-    expect(setContractWatchState).toHaveBeenCalledExactlyOnceWith('unused', 'retained')
-  })
-
-  it('fails closed when the SDK default contracts omit the pinned boarding script', async () => {
-    await expect(
-      isolateVaultReadonlyBaselineContracts(
-        {
-          getContracts: vi.fn().mockResolvedValue([]),
-          setContractState: vi.fn(),
-          setContractWatchState: vi.fn(),
-        },
-        { vtxoBoardingScript: 'boarding' },
-      ),
-    ).rejects.toThrow(/pinned boarding contract/)
-  })
-
-  it('wakes readonly history when the package observer changes a swap state', () => {
+  it('wakes history when the package observer changes a swap state', () => {
     const callbacks: (() => void)[] = []
     const unsubscribers = [vi.fn(), vi.fn(), vi.fn()]
     const manager = {

@@ -11,11 +11,7 @@ import { SAVINGS_TEMPLATE } from '../../../lib/vault/program/constants'
 import { saveSetupPlan } from '../../../lib/vault/setupPlan'
 import type { VaultStatus } from '../../../lib/vault/types'
 import { vaultAddressNetwork } from '../../../lib/vault/bitcoin'
-import {
-  VAULT_BOARD_V1,
-  VAULT_BOARD_V1_EXIT_DELAY,
-  VAULT_BOARD_V1_EXIT_DELAY_UNIT,
-} from '../../../lib/vault/vtxo/board'
+import { BOARDING_EXIT_DELAY, BOARDING_EXIT_DELAY_UNIT, BOARDING_PROGRAM } from '../../../lib/vault/vtxo/board'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
   VAULT_POLICY_V1_EXIT_DELAY_UNIT,
@@ -53,7 +49,7 @@ export function vaultUiStatus(origin = location.origin, hostname = location.host
   const boarding = new DefaultVtxo.Script({
     pubKey: xonly(descriptor.keys.phoneBip340),
     serverPubKey: hex.decode(OPERATOR_XONLY),
-    csvTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
+    csvTimelock: { type: BOARDING_EXIT_DELAY_UNIT, value: BigInt(BOARDING_EXIT_DELAY) },
   })
   return {
     enrolled: true,
@@ -87,11 +83,11 @@ export function vaultUiStatus(origin = location.origin, hostname = location.host
     spendingArkScript: hex.encode(spending.pkScript),
     vtxoDelegatePub: delegatePub,
     vtxoBoardingActive: true,
-    vtxoBoardingProgram: VAULT_BOARD_V1,
+    vtxoBoardingProgram: BOARDING_PROGRAM,
     vtxoBoardingAddress: boarding.onchainAddress(vaultAddressNetwork('mutinynet')),
     vtxoBoardingScript: hex.encode(boarding.pkScript),
-    vtxoBoardingExitDelay: Number(VAULT_BOARD_V1_EXIT_DELAY),
-    vtxoBoardingExitDelayUnit: VAULT_BOARD_V1_EXIT_DELAY_UNIT,
+    vtxoBoardingExitDelay: Number(BOARDING_EXIT_DELAY),
+    vtxoBoardingExitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
   }
 }
 

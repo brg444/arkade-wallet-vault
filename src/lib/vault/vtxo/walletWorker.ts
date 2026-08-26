@@ -4,7 +4,6 @@ import {
   ReadonlySingleKey,
   RestIndexerProvider,
   ServiceWorkerWallet,
-  ServiceWorkerReadonlyWallet,
   hasTerminalSpend,
   type IContractManager,
 } from '@arkade-os/sdk'
@@ -25,24 +24,22 @@ import {
   vaultLightningSwapStorageName,
 } from '../lightningLifecycle'
 import type { VaultStatus } from '../types'
-import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './contractHandler'
+import { registerVaultPolicyV1ContractHandler } from './contractHandler'
 import { browserVaultLockManager, type VaultLockManager } from './lock'
 import {
-  vaultReadonlyUpdaterTag,
-  vaultBoardV2WorkerPath,
-  vaultReadonlyWalletDatabase,
-  vaultReadonlyWorkerPath,
-  vaultReadonlyWorkerScope,
-} from './readonlyWorkerNames'
-import { vaultArkServer, vaultPolicyV1ScriptFromStatus } from './spend'
-import { requireVaultBoardV2Status, VAULT_BOARD_V2_PROGRAM } from './boardV2'
+  vaultWalletUpdaterTag,
+  vaultWalletDatabase,
+  vaultWalletWorkerPath,
+  vaultWalletWorkerScope,
+} from './walletWorkerNames'
+import { vaultArkServer } from './spend'
+import { requireBoardingStatus } from './board'
 
-type ReadonlyRuntime = {
+type WalletRuntime = {
   key: string
   vaultId: string
-  isBoardV2: boolean
   registration: ServiceWorkerRegistration
-  wallet: ServiceWorkerReadonlyWallet | ServiceWorkerWallet
+  wallet: ServiceWorkerWallet
   walletRepository: IndexedDBWalletRepository
   contractRepository: IndexedDBContractRepository
   swapRepository: IndexedDbAssetSwapRepository
@@ -54,11 +51,11 @@ type ReadonlyRuntime = {
   lightningObserver: VaultLightningObserverScheduler
 }
 
-let runtime: ReadonlyRuntime | undefined
-let initialization: Promise<ReadonlyRuntime> | undefined
+let runtime: WalletRuntime | undefined
+let initialization: Promise<WalletRuntime> | undefined
 
 const VAULT_LIGHTNING_OBSERVER_INTERVAL_MS = 15_000
-const VAULT_BOARD_V2_WORKER_STOP_TIMEOUT_MS = 60_000
+const VAULT_WORKER_STOP_TIMEOUT_MS = 60_000
 
 export interface VaultLightningObserverScheduler {
   refresh: () => Promise<void>
@@ -113,7 +110,7 @@ export function createVaultLightningObserverScheduler(
   }
 }
 
-export function isVaultReadonlyStateUpdate(message: unknown, updaterTag: string): boolean {
+export function isVaultWalletStateUpdate(message: unknown, updaterTag: string): boolean {
   const value = message as { tag?: string; type?: string } | null
   return value?.tag === updaterTag && (value.type === 'VTXO_UPDATE' || value.type === 'UTXO_UPDATE')
 }
@@ -135,12 +132,12 @@ export async function waitForVaultWorkerActivation(
   timeoutMs = 15_000,
 ): Promise<ServiceWorker> {
   const worker = registration.installing || registration.waiting || registration.active
-  if (!worker) throw new Error('Vault readonly worker did not install')
+  if (!worker) throw new Error('Vault wallet worker did not install')
   if (worker.state === 'activated') return worker
   return new Promise<ServiceWorker>((resolve, reject) => {
     const timeout = window.setTimeout(() => {
       worker.removeEventListener('statechange', onStateChange)
-      reject(new Error('Vault readonly worker activation timed out'))
+      reject(new Error('Vault wallet worker activation timed out'))
     }, timeoutMs)
     const onStateChange = () => {
       if (worker.state === 'activated') {
@@ -150,24 +147,21 @@ export async function waitForVaultWorkerActivation(
       } else if (worker.state === 'redundant') {
         window.clearTimeout(timeout)
         worker.removeEventListener('statechange', onStateChange)
-        reject(new Error('Vault readonly worker became redundant before activation'))
+        reject(new Error('Vault wallet worker became redundant before activation'))
       }
     }
     worker.addEventListener('statechange', onStateChange)
   })
 }
 
-export async function registerVaultReadonlyServiceWorker(
+export async function registerVaultWalletServiceWorker(
   vaultId: string,
   serviceWorkers: Pick<ServiceWorkerContainer, 'register'> = navigator.serviceWorker,
   locks: VaultLockManager | undefined = browserVaultLockManager(),
-  boardingProgram = 'vault-board-v1',
 ): Promise<{ registration: ServiceWorkerRegistration; worker: ServiceWorker }> {
   const register = async () => {
-    const path =
-      boardingProgram === VAULT_BOARD_V2_PROGRAM ? vaultBoardV2WorkerPath(vaultId) : vaultReadonlyWorkerPath(vaultId)
-    const registration = await serviceWorkers.register(path, {
-      scope: vaultReadonlyWorkerScope(vaultId),
+    const registration = await serviceWorkers.register(vaultWalletWorkerPath(vaultId), {
+      scope: vaultWalletWorkerScope(vaultId),
       updateViaCache: 'none',
     })
     await registration.update()
@@ -175,7 +169,7 @@ export async function registerVaultReadonlyServiceWorker(
   }
   if (!locks) return register()
   return locks.request(
-    `arkade-vault-wallet-worker:${vaultReadonlyUpdaterTag(vaultId)}`,
+    `arkade-vault-wallet-worker:${vaultWalletUpdaterTag(vaultId)}`,
     { mode: 'exclusive' },
     async (lock) => {
       if (!lock) throw new Error('Web Locks API returned no Vault wallet worker lock')
@@ -184,29 +178,13 @@ export async function registerVaultReadonlyServiceWorker(
   )
 }
 
-function compressedPhonePublicKey(status: VaultStatus): Uint8Array {
-  let key: Uint8Array
-  try {
-    key = hex.decode(String(status.phoneBip340Pub || ''))
-  } catch {
-    throw new Error('Phone public key is not hex')
-  }
-  if (key.length !== 33 || (key[0] !== 2 && key[0] !== 3)) {
-    throw new Error('Phone public key must be compressed')
-  }
-  return key
+export function vaultWalletIdentity(status: VaultStatus) {
+  const advertised = status.vtxoBoardingDescriptor?.boardingPub || ''
+  const descriptor = requireBoardingStatus(status, advertised)
+  return ReadonlySingleKey.fromPublicKey(hex.decode(descriptor.boardingPub))
 }
 
-export function vaultReadonlyIdentity(status: VaultStatus) {
-  if (status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM) {
-    const advertised = status.vtxoBoardingDescriptor?.boardingPub || ''
-    const descriptor = requireVaultBoardV2Status(status, advertised)
-    return ReadonlySingleKey.fromPublicKey(hex.decode(descriptor.boardingPub))
-  }
-  return ReadonlySingleKey.fromPublicKey(compressedPhonePublicKey(status))
-}
-
-export function vaultReadonlyRuntimeKey(status: VaultStatus) {
+export function vaultWalletRuntimeKey(status: VaultStatus) {
   if (!status.enrolled || !status.vaultId) throw new Error('Enrolled vault required for VTXO state')
   return JSON.stringify([
     status.vaultId,
@@ -221,13 +199,9 @@ export function vaultReadonlyRuntimeKey(status: VaultStatus) {
   ])
 }
 
-function contractParams(status: VaultStatus) {
-  const script = vaultPolicyV1ScriptFromStatus(status)
-  return vaultPolicyV1Contract(script, String(status.spendingArkAddress || ''))
-}
-
-async function disposeRuntime(current: ReadonlyRuntime | undefined) {
+async function disposeRuntime(current: WalletRuntime | undefined) {
   if (!current) return
+  await current.wallet.dispose()
   current.unsubscribeContract()
   current.unsubscribeSwap()
   navigator.serviceWorker.removeEventListener('message', current.onWorkerMessage)
@@ -238,118 +212,71 @@ async function disposeRuntime(current: ReadonlyRuntime | undefined) {
     current.contractRepository[Symbol.asyncDispose](),
     current.swapRepository[Symbol.asyncDispose](),
   ])
+  await current.registration.unregister()
 }
 
-export async function shutdownVaultBoardV2Worker(vaultId: string): Promise<void> {
+export async function shutdownVaultWalletWorker(vaultId: string): Promise<void> {
   const id = String(vaultId || '').trim()
   if (!id) return
   const pending = initialization
   if (pending) await pending.catch(() => undefined)
   const current = runtime?.vaultId === id ? runtime : undefined
-  if (current) {
-    if (!current.isBoardV2) throw new Error('refusing to stop a legacy Vault wallet worker')
-    await current.wallet.dispose()
-  }
-  if (current) runtime = undefined
-  await disposeRuntime(current)
-  const registration =
-    current?.registration || (await navigator.serviceWorker.getRegistration(vaultReadonlyWorkerScope(id)))
+  if (current) await disposeRuntime(current)
+  if (runtime === current) runtime = undefined
+  if (current) return
+  const registration = await navigator.serviceWorker.getRegistration(vaultWalletWorkerScope(id))
   if (!registration) return
-  if (!current) {
-    const worker = registration.active || registration.waiting || registration.installing
-    if (worker) await ServiceWorkerReadonlyWallet.stop(worker, VAULT_BOARD_V2_WORKER_STOP_TIMEOUT_MS)
-  }
+  const worker = registration.active || registration.waiting || registration.installing
+  if (worker) await ServiceWorkerWallet.stop(worker, VAULT_WORKER_STOP_TIMEOUT_MS)
   await registration.unregister()
 }
 
-/**
- * The SDK creates a baseline default contract for its public identity. Vault
- * Spending must never watch or display that ordinary phone+Operator address.
- * When the SDK default script is exactly the pinned boarding script, however,
- * it is the real boarding destination and remains active and watched.
- */
-export async function isolateVaultReadonlyBaselineContracts(
-  manager: Pick<IContractManager, 'getContracts' | 'setContractState' | 'setContractWatchState'>,
-  status: Pick<VaultStatus, 'vtxoBoardingScript'>,
-): Promise<void> {
-  const boardingScript = String(status.vtxoBoardingScript || '').toLowerCase()
-  if (!boardingScript) throw new Error('Pinned boarding script required for readonly wallet state')
-  const contracts = await manager.getContracts()
-  const boardingContract = contracts.find((contract) => contract.script.toLowerCase() === boardingScript)
-  if (!boardingContract) {
-    throw new Error('Readonly SDK worker did not register the pinned boarding contract')
-  }
-  for (const contract of contracts.filter((candidate) => candidate.type === 'default')) {
-    if (contract.script.toLowerCase() === boardingScript) continue
-    if (contract.state !== 'inactive') await manager.setContractState(contract.script, 'inactive')
-    if ((contract.watch || 'watched') !== 'retained') {
-      await manager.setContractWatchState(contract.script, 'retained')
-    }
-  }
-  if (boardingContract.state !== 'active') await manager.setContractState(boardingContract.script, 'active')
-  if ((boardingContract.watch || 'watched') !== 'watched') {
-    await manager.setContractWatchState(boardingContract.script, 'watched')
-  }
-}
-
-async function createRuntime(status: VaultStatus): Promise<ReadonlyRuntime> {
+async function createRuntime(status: VaultStatus): Promise<WalletRuntime> {
   registerVaultPolicyV1ContractHandler()
-  const key = vaultReadonlyRuntimeKey(status)
-  const walletDatabase = vaultReadonlyWalletDatabase(status.vaultId)
+  const key = vaultWalletRuntimeKey(status)
+  const walletDatabase = vaultWalletDatabase(status.vaultId)
   const walletRepository = new IndexedDBWalletRepository(walletDatabase)
   const contractRepository = new IndexedDBContractRepository(walletDatabase)
   const swapRepository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(status.vaultId))
+  let registration: ServiceWorkerRegistration | undefined
+  let wallet: ServiceWorkerWallet | undefined
   let swapManager: RfqSwapManager | undefined
   try {
-    const { registration, worker: serviceWorker } = await registerVaultReadonlyServiceWorker(
+    const registered = await registerVaultWalletServiceWorker(
       status.vaultId,
       navigator.serviceWorker,
       browserVaultLockManager(),
-      status.vtxoBoardingProgram,
     )
-    const updaterTag = vaultReadonlyUpdaterTag(status.vaultId)
+    registration = registered.registration
+    const serviceWorker = registered.worker
+    const updaterTag = vaultWalletUpdaterTag(status.vaultId)
     const common = {
       serviceWorker,
-      identity: vaultReadonlyIdentity(status),
+      identity: vaultWalletIdentity(status),
       arkServerUrl: vaultArkServer(),
       esploraUrl: '/esplora',
       walletMode: 'static' as const,
       walletUpdaterTag: updaterTag,
       storage: { walletRepository, contractRepository },
     }
-    const isBoardV2 = status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
-    const wallet = isBoardV2
-      ? await ServiceWorkerWallet.create({
-          ...common,
-          workerOwnedIdentity: true,
-          messageBusTimeoutMs: VAULT_BOARD_V2_WORKER_STOP_TIMEOUT_MS,
-        })
-      : await ServiceWorkerReadonlyWallet.create({ ...common, settlementConfig: false })
+    wallet = await ServiceWorkerWallet.create({
+      ...common,
+      workerOwnedIdentity: true,
+      messageBusTimeoutMs: VAULT_WORKER_STOP_TIMEOUT_MS,
+    })
     if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
-      throw new Error('Readonly SDK worker derived a different boarding address')
+      throw new Error('SDK worker derived a different boarding address')
     }
     const manager = await wallet.getContractManager()
-    if (!isBoardV2) {
-      await isolateVaultReadonlyBaselineContracts(manager, status)
-    }
-    const contract = isBoardV2
-      ? (await manager.getContracts()).find(
-          (candidate) => candidate.script === String(status.spendingArkScript || '').toLowerCase(),
-        )
-      : await manager.createContract(contractParams(status))
+    const contract = (await manager.getContracts()).find(
+      (candidate) => candidate.script === String(status.spendingArkScript || '').toLowerCase(),
+    )
     if (!contract) throw new Error('SDK worker did not register the Spending contract')
     if (contract.script !== String(status.spendingArkScript || '').toLowerCase()) {
-      throw new Error('Readonly SDK worker registered a different Spending contract')
+      throw new Error('SDK worker registered a different Spending contract')
     }
-    if (isBoardV2) {
-      if (contract.state !== 'active' || (contract.watch || 'watched') !== 'watched') {
-        throw new Error('SDK worker did not activate the Spending contract')
-      }
-    } else {
-      if (contract.state !== 'active') await manager.setContractState(contract.script, 'active')
-      if ((contract.watch || 'watched') !== 'watched') {
-        await manager.setContractWatchState(contract.script, 'watched')
-      }
+    if (contract.state !== 'active' || (contract.watch || 'watched') !== 'watched') {
+      throw new Error('SDK worker did not activate the Spending contract')
     }
     const activityIndexer = new RestIndexerProvider(vaultArkServer())
     wallet.activity.use(
@@ -383,8 +310,8 @@ async function createRuntime(status: VaultStatus): Promise<ReadonlyRuntime> {
       const initialMaintenance = await tryVaultLightningLifecycleLock(status.vaultId, maintainLightning)
       if (initialMaintenance.held) logMaintenanceFailures(initialMaintenance.value)
     } catch (error) {
-      // Lightning observation is auxiliary to the readonly Spending state
-      // plane. A busy/unavailable observer is retried by focus and the bounded
+      // Lightning observation is auxiliary to Spending state. A busy or
+      // unavailable observer is retried by focus and the bounded
       // visible timer; it must not strand Home balance initialization.
       consoleError(error, 'Lightning observer initial refresh')
     }
@@ -407,7 +334,7 @@ async function createRuntime(status: VaultStatus): Promise<ReadonlyRuntime> {
       lightningObserver.schedule()
     })
     const onWorkerMessage = (event: MessageEvent) => {
-      if (!isVaultReadonlyStateUpdate(event.data, updaterTag)) return
+      if (!isVaultWalletStateUpdate(event.data, updaterTag)) return
       notify()
       lightningObserver.schedule()
     }
@@ -415,7 +342,6 @@ async function createRuntime(status: VaultStatus): Promise<ReadonlyRuntime> {
     return {
       key,
       vaultId: status.vaultId,
-      isBoardV2,
       registration,
       wallet,
       walletRepository,
@@ -429,28 +355,40 @@ async function createRuntime(status: VaultStatus): Promise<ReadonlyRuntime> {
       lightningObserver,
     }
   } catch (error) {
+    let teardownError: unknown
+    if (wallet) {
+      try {
+        await wallet.dispose()
+      } catch (failure) {
+        teardownError = failure
+      }
+    }
     await swapManager?.stop().catch(() => undefined)
     await Promise.allSettled([
       walletRepository[Symbol.asyncDispose](),
       contractRepository[Symbol.asyncDispose](),
       swapRepository[Symbol.asyncDispose](),
     ])
+    if (!teardownError) await registration?.unregister().catch(() => undefined)
+    if (teardownError) {
+      throw new AggregateError([error, teardownError], 'Vault wallet initialization and teardown failed')
+    }
     throw error
   }
 }
 
-export interface VaultReadonlyStateSession {
-  wallet: ServiceWorkerReadonlyWallet | ServiceWorkerWallet
+export interface VaultWalletStateSession {
+  wallet: ServiceWorkerWallet
   contracts: IContractManager
   swapRepository: IndexedDbAssetSwapRepository
   swapManager: RfqSwapManager
 }
 
-export async function withVaultReadonlyState<T>(
+export async function withVaultWalletState<T>(
   status: VaultStatus,
-  run: (session: VaultReadonlyStateSession) => Promise<T>,
+  run: (session: VaultWalletStateSession) => Promise<T>,
 ): Promise<T> {
-  const current = await ensureVaultReadonlyWorker(status)
+  const current = await ensureVaultWalletWorker(status)
   return run({
     wallet: current.wallet,
     contracts: await current.wallet.getContractManager(),
@@ -459,9 +397,9 @@ export async function withVaultReadonlyState<T>(
   })
 }
 
-export async function withActiveVaultReadonlyState<T>(
+export async function withActiveVaultWalletState<T>(
   vaultId: string,
-  run: (session: VaultReadonlyStateSession) => Promise<T>,
+  run: (session: VaultWalletStateSession) => Promise<T>,
 ): Promise<T> {
   const id = String(vaultId || '').trim()
   if (!id || runtime?.vaultId !== id) throw new Error('Vault wallet state is not ready for this vault')
@@ -473,8 +411,8 @@ export async function withActiveVaultReadonlyState<T>(
   })
 }
 
-export async function ensureVaultReadonlyWorker(status: VaultStatus): Promise<ReadonlyRuntime> {
-  const key = vaultReadonlyRuntimeKey(status)
+export async function ensureVaultWalletWorker(status: VaultStatus): Promise<WalletRuntime> {
+  const key = vaultWalletRuntimeKey(status)
   if (runtime?.key === key) return runtime
   if (initialization) {
     const pending = await initialization
@@ -483,8 +421,8 @@ export async function ensureVaultReadonlyWorker(status: VaultStatus): Promise<Re
   initialization = (async () => {
     if (runtime?.key === key) return runtime
     const previous = runtime
-    runtime = undefined
     await disposeRuntime(previous)
+    if (runtime === previous) runtime = undefined
     const next = await createRuntime(status)
     runtime = next
     return next
@@ -496,10 +434,10 @@ export async function ensureVaultReadonlyWorker(status: VaultStatus): Promise<Re
   }
 }
 
-export function subscribeVaultReadonlyEvents(status: VaultStatus, listener: () => void): () => void {
+export function subscribeVaultWalletEvents(status: VaultStatus, listener: () => void): () => void {
   let active = true
-  let current: ReadonlyRuntime | undefined
-  void ensureVaultReadonlyWorker(status)
+  let current: WalletRuntime | undefined
+  void ensureVaultWalletWorker(status)
     .then((next) => {
       if (!active) return
       current = next
@@ -512,13 +450,13 @@ export function subscribeVaultReadonlyEvents(status: VaultStatus, listener: () =
   }
 }
 
-export async function reloadVaultReadonlyWorker(status: VaultStatus) {
-  const current = await ensureVaultReadonlyWorker(status)
+export async function reloadVaultWalletWorker(status: VaultStatus) {
+  const current = await ensureVaultWalletWorker(status)
   await current.lightningObserver.refresh()
   await current.wallet.reload()
 }
 
-export interface VaultReadonlyVtxoSnapshot {
+export interface VaultWalletVtxoSnapshot {
   balance: number
   boardingBalance?: number
   boardingConfirmedBalance?: number
@@ -526,8 +464,8 @@ export interface VaultReadonlyVtxoSnapshot {
   history: VaultHistoryItem[]
 }
 
-export async function fetchVaultReadonlyVtxoSnapshot(status: VaultStatus): Promise<VaultReadonlyVtxoSnapshot> {
-  const current = await ensureVaultReadonlyWorker(status)
+export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise<VaultWalletVtxoSnapshot> {
+  const current = await ensureVaultWalletWorker(status)
   const manager = await current.wallet.getContractManager()
   const script = String(status.spendingArkScript || '').toLowerCase()
   const contracts = await manager.getContractsWithVtxos({ script })
@@ -549,14 +487,12 @@ export async function fetchVaultReadonlyVtxoSnapshot(status: VaultStatus): Promi
   return {
     balance: vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0),
     commitmentIds: [...commitmentIds],
-    ...(status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM
-      ? await current.wallet.getBalance().then((balance) => ({
-          boardingBalance: balance.boarding.total,
-          boardingConfirmedBalance: balance.boarding.confirmed,
-        }))
-      : {}),
+    ...(await current.wallet.getBalance().then((balance) => ({
+      boardingBalance: balance.boarding.total,
+      boardingConfirmedBalance: balance.boarding.confirmed,
+    }))),
     history: historyFromSdkActivities(activities, { vaultTxids: commitmentIds, lightningRfqIds }, lightningRecords, {
-      includeBoarding: status.vtxoBoardingProgram === VAULT_BOARD_V2_PROGRAM,
+      includeBoarding: true,
     }),
   }
 }

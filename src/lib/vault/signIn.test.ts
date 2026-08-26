@@ -15,8 +15,8 @@ vi.mock('./pin', () => ({
   pinEnrolledStatus: mocks.pin,
   pinFromEnrolledStatus: vi.fn(),
 }))
-vi.mock('./vtxo/boardV2', () => ({
-  provisionVaultBoardV2Key: mocks.provision,
+vi.mock('./vtxo/board', () => ({
+  provisionBoardingKey: mocks.provision,
 }))
 
 import { unlockLocalEnrollment } from './signIn'
