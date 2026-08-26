@@ -177,7 +177,9 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
   }
 }
 
-export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<EnrollmentSecrets> {
+export async function unlockLocalEnrollment(
+  rec: EnrollmentSecrets,
+): Promise<{ enrollment: EnrollmentSecrets; status: VaultStatus }> {
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
   if (rpId !== location.hostname.toLowerCase()) {
@@ -204,7 +206,7 @@ export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<Enr
     try {
       const live = await vaultCosignerClient.enrollment.status(rec.vaultId)
       await provisionVaultBoardV2Key(secret, live)
-      return rec
+      return { enrollment: rec, status: live }
     } finally {
       zeroBytes(secret)
     }
