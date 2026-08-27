@@ -543,14 +543,48 @@ export const test = base.extend<Fixtures>({
         const audit = await page.evaluate(
           () => (globalThis as typeof globalThis & { __vaultSecretAudit: SecretAuditSnapshot }).__vaultSecretAudit,
         )
-        const persistent = JSON.stringify(await persistentBrowserState(page)).toLowerCase()
+        const state = await persistentBrowserState(page)
+        const allowedBoardingSecrets = new Set<string>()
+        for (const [name, stores] of Object.entries(state.databases)) {
+          if (!name.startsWith('arkade-vault-board-v1-key:')) continue
+          const rows = (stores as Record<string, unknown[]>).key || []
+          for (const row of rows) {
+            const record = row as { secret?: unknown; state?: unknown }
+            if (
+              (record.state === 'staged' || record.state === 'active') &&
+              typeof record.secret === 'string' &&
+              /^[0-9a-f]{64}$/i.test(record.secret)
+            ) {
+              allowedBoardingSecrets.add(record.secret.toLowerCase())
+            }
+          }
+        }
+        expect(allowedBoardingSecrets.size).toBeLessThanOrEqual(1)
+        const curveOrder = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141')
+        const hkdfCandidates = audit.hkdfOutputs.map((value) => value.toLowerCase())
+        for (const secret of allowedBoardingSecrets) {
+          expect(
+            hkdfCandidates.some((candidate) => {
+              if (candidate === secret) return true
+              const scalar = BigInt(`0x${candidate}`)
+              return scalar > 0n && scalar < curveOrder
+                ? (curveOrder - scalar).toString(16).padStart(64, '0') === secret
+                : false
+            }),
+          ).toBe(true)
+          expect(audit.hkdfInputs.map((value) => value.toLowerCase())).not.toContain(secret)
+          expect(audit.generated32.map((value) => value.toLowerCase())).not.toContain(secret)
+        }
+        const persistent = JSON.stringify(state).toLowerCase()
         const messages = JSON.stringify(audit.serviceWorkerMessages).toLowerCase()
         const secrets = [...audit.generated32, ...audit.hkdfInputs, ...audit.hkdfOutputs].filter(
           (secret) => secret.length === 64 && !/^0+$/.test(secret),
         )
         expect(secrets.length).toBeGreaterThan(0)
         for (const secret of new Set(secrets)) {
-          expect(persistent).not.toContain(secret.toLowerCase())
+          if (!allowedBoardingSecrets.has(secret.toLowerCase())) {
+            expect(persistent).not.toContain(secret.toLowerCase())
+          }
           expect(messages).not.toContain(secret.toLowerCase())
         }
         expect(messages).not.toMatch(/phone.?secret|phone.?scalar|private.?key|prf.?secret|session.?scalar/)

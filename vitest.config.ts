@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  define: {
+    __VAULT_E2E_OPERATOR_ORIGIN__: JSON.stringify(''),
+  },
   plugins: [react()],
   resolve: {
     alias: {
