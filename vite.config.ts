@@ -16,6 +16,11 @@ function gitCommitShort(): string {
   }
 }
 
+function vaultE2eOperatorOrigin(): string {
+  if (process.env.VAULT_E2E_BUILD !== 'arkade-vault-e2e-only') return ''
+  return process.env.VAULT_E2E_OPERATOR_ORIGIN?.trim() || ''
+}
+
 function vaultAuthorizerProxy(): ProxyOptions {
   const gatewaySecret = process.env.VAULT_GATEWAY_SECRET?.trim()
   const testTarget = process.env.VAULT_E2E_AUTHORIZER_PROXY_TARGET?.trim()
@@ -35,16 +40,6 @@ function vaultAuthorizerProxy(): ProxyOptions {
         }
       })
     },
-  }
-}
-
-function arkadeOperatorProxy(): ProxyOptions {
-  const testTarget = process.env.VAULT_E2E_ARKADE_PROXY_TARGET?.trim()
-  return {
-    target: testTarget || 'https://mutinynet.arkade.sh',
-    changeOrigin: true,
-    ...(testTarget ? { secure: false } : {}),
-    rewrite: (path) => path.replace(/^\/arkade/, ''),
   }
 }
 
@@ -84,13 +79,11 @@ export default defineConfig({
       '/v1': vaultAuthorizerProxy(),
       '/health': vaultAuthorizerProxy(),
       '/esplora': esploraProxy(),
-      '/arkade': {
-        ...arkadeOperatorProxy(),
-      },
     },
   },
   define: {
     'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(gitCommitShort()),
+    __VAULT_E2E_OPERATOR_ORIGIN__: JSON.stringify(vaultE2eOperatorOrigin()),
   },
   build: {
     emptyOutDir: true,
