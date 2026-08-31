@@ -147,7 +147,10 @@ export function wireVaultVtxo(
     isSpent: input.isSpent === true,
     ...(input.spentBy ? { spentBy: input.spentBy } : {}),
     ...(input.arkTxid ? { arkTxid: input.arkTxid } : {}),
-    commitmentTxids: input.commitmentTxids || [],
+    // A settled VTXO is a leaf of a Batch Output. The SDK activity builder
+    // keys that receive by its commitment transaction, so every settled test
+    // fixture must carry the same graph fact the real indexer supplies.
+    commitmentTxids: input.commitmentTxids || [input.txid],
   }
 }
 

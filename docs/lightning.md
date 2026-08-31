@@ -51,30 +51,33 @@ Emulator to return value directly to `vault-policy-v1`. Package-level tests
 rebuild the persisted contract and verify that this leaf contains the exact
 Spending script.
 
-The package manager uses the published Arkade refunder for unresolved funded
-records. Mainnet enablement still requires real immediate-failure and delayed
-refund tests against the approved service and solver configuration.
+Reload and focus reconciliation are watch-only. They can recognize settlement
+or show that a refund is available, but they cannot sign one. Returning an
+expired payment to Spending requires a separate Face ID approval; only that
+bounded operation installs the package refunder. Mainnet enablement still
+requires real immediate-failure and delayed-refund tests against the approved
+service and solver configuration.
 
 ## Lightning receive
 
-Lightning receive is not part of this release. The published package contains
-the client primitives, but the production solver registry currently exposes no
-mainnet market for the route. The production covenant claim service is not
-available through `arkade.computer`, and the online phone-plus-Operator claim
-does not itself constrain the destination to `vault-policy-v1`. The official
-wallet flow also does not provide the reload-safe receive lifecycle required by
-a vault.
+Lightning receive is not part of this release. Arkade Wallet PR 918 is the
+reference integration for persisted receive claims and cross-tab ownership,
+but its reload, claim, and refund behavior has not completed live Mutinynet
+qualification for the Vault.
 
 Receive remains disabled until a published package contains the current
 receive fixes, the solver route and covenant claim service are deployed, and a
 low-value proof confirms payment to the exact Spending script through reload,
 underfunding, Operator outage, claim, solver refund, and unilateral recovery.
 
-## Release gate
+## Release gates
 
-The module is disabled unless `VITE_VAULT_LIGHTNING_SEND` is exactly `true`,
-and no production UI currently consumes it. Enabling it requires all of the
-following:
+The Mutinynet send UI is disabled unless `VITE_VAULT_LIGHTNING_SEND` is exactly
+`true`. Its first deployment uses the bundled, signature-verified Mutinynet
+solver card and the published SDK and swap packages. Lightning receive remains
+disabled independently.
+
+Mainnet send enablement requires all of the following:
 
 1. ordinary mainnet VTXO Spending is qualified against `arkade.computer`;
 2. the mainnet Emulator and Vault Program pins are frozen;

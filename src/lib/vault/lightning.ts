@@ -1,17 +1,17 @@
 import {
   ArkAddress,
-  IndexedDBContractRepository,
-  IndexedDBWalletRepository,
   RestArkProvider,
   RestIndexerProvider,
   SingleKey,
-  Wallet,
+  type Identity,
+  type IContractManager,
   type IWallet,
   type NetworkName,
 } from '@arkade-os/sdk'
 import {
   IndexedDbAssetSwapRepository,
   RfqSwapManager,
+  arkadeRefunder,
   newRfqId,
   requestLightningSend,
   type AssetSwapRepository,
@@ -20,24 +20,33 @@ import {
 } from '@arkade-os/swap'
 import { nostrRfqTransport } from '@arkade-os/swap/nostr'
 import { hex } from '@scure/base'
-import { vaultLightningSendEnabled, type VaultLightningSolverProfile } from './lightningConfig'
+import {
+  vaultLightningFundingForInvoice,
+  vaultLightningSendEnabled,
+  type VaultLightningSolverProfile,
+} from './lightningConfig'
 import { decodeVaultLightningInvoice } from './lightningInvoice'
-import { registeredContractScript, validateVaultLightningRequestResult } from './lightningValidation'
+import { withVaultLightningLifecycleLock } from './lightningLock'
+import { readRegisteredLightningContractParams, registeredContractScript } from './lightningValidation'
 import {
   discardUnexposedVaultLightningQuote,
   persistVaultLightningQuote,
+  maintainVaultLightningObserver,
   restoreMatchingVaultLightningQuote,
+  restoreMatchingVaultLightningFundingQuote,
   restorePersistedVaultLightningQuote,
-  startVaultLightningLifecycle,
-  vaultLightningSwapStorageName,
+  withAuthenticatedVaultLightningRefund,
   type VaultLightningQuote,
   type VaultLightningSession,
+  type VaultLightningVtxoProof,
 } from './lightningLifecycle'
 import type { VaultStatus } from './types'
-import { disposeVaultBoardingResources } from './vtxo/board'
+import { withActiveVaultReadonlyState, withVaultReadonlyState } from './vtxo/readonlyWorker'
+import { vaultArkServer } from './vtxo/spend'
 
 export {
   isVaultLightningInput,
+  discoverVaultLightningSolver,
   MUTINYNET_LIGHTNING_SOLVER,
   vaultLightningSendEnabled,
   vaultLightningSolverProfile,
@@ -49,33 +58,17 @@ export {
   beginVaultLightningFunding,
   cancelVaultLightningQuote,
   getVaultLightningStatus,
-  listVaultLightningHistory,
   recordVaultLightningFundingTxid,
+  resumeVaultLightningFunding,
   retireAbandonedVaultLightningQuotes,
-  startVaultLightningLifecycle,
   vaultLightningSwapStorageName,
   type VaultLightningFundingTarget,
-  type VaultLightningHistoryMetadata,
+  type VaultLightningFundingProof,
   type VaultLightningQuote,
   type VaultLightningSession,
+  VaultLightningFundingNotStartedError,
 } from './lightningLifecycle'
-
-/**
- * Keep the SDK wallet intact and substitute only its receive address. The
- * stock wallet still owns the identity, descriptor checks, contract manager,
- * IndexedDB repositories and every other method used by @arkade-os/swap.
- */
-export function withVaultRefundAddress(wallet: IWallet, refundAddress: string): IWallet {
-  ArkAddress.decode(refundAddress)
-  const getAddress = async () => refundAddress
-  return new Proxy(wallet, {
-    get(target, property) {
-      if (property === 'getAddress') return getAddress
-      const value = Reflect.get(target, property, target)
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
-}
+export { withVaultLightningLifecycleLock } from './lightningLock'
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
@@ -103,110 +96,105 @@ export function validateVaultLightningRefund(
   return refund
 }
 
-type VaultSdkWalletResources = {
-  walletRepository: IndexedDBWalletRepository
-  contractRepository: IndexedDBContractRepository
-}
-
-function createVaultLightningSdkStorage(vaultId: string): VaultSdkWalletResources {
-  const id = String(vaultId || '').trim()
-  if (!id) throw new Error('Vault ID is required for Lightning storage.')
-  const database = `arkade-vault-v2:${encodeURIComponent(id)}:wallet`
-  return {
-    walletRepository: new IndexedDBWalletRepository(database),
-    contractRepository: new IndexedDBContractRepository(database),
-  }
-}
-
 export async function withVaultLightningSdkWallet<T>(
   phoneSecret: Uint8Array,
   status: VaultStatus,
-  arkServerUrl: string,
   run: (session: VaultLightningSession) => Promise<T>,
+  options: { refundRfqId?: string } = {},
+): Promise<T> {
+  return withVaultLightningLifecycleLock(status.vaultId, () =>
+    withUnlockedVaultLightningSdkWallet(phoneSecret, status, run, options),
+  )
+}
+
+async function withUnlockedVaultLightningSdkWallet<T>(
+  phoneSecret: Uint8Array,
+  status: VaultStatus,
+  run: (session: VaultLightningSession) => Promise<T>,
+  options: { refundRfqId?: string },
 ): Promise<T> {
   if (!status.spendingArkAddress) throw new Error('Vault has no Spending address.')
   const identity = SingleKey.fromPrivateKey(phoneSecret)
   if (hex.encode(await identity.compressedPublicKey()) !== String(status.phoneBip340Pub || '')) {
     throw new Error('Phone key does not match this vault.')
   }
-  const storage = createVaultLightningSdkStorage(status.vaultId)
-  const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(status.vaultId))
+  const arkServerUrl = vaultArkServer()
   const operator = new RestArkProvider(arkServerUrl)
   const indexer = new RestIndexerProvider(arkServerUrl)
-  let wallet: Wallet | undefined
-  let lifecycle: Omit<VaultLightningSession, 'wallet' | 'repository'> | undefined
-  let primaryError: unknown
-  try {
-    const info = await operator.getInfo()
-    if (info.network !== status.network) throw new Error('Vault and Arkade Operator networks do not match.')
-    validateVaultLightningRefund(status, info.network as NetworkName, info.signerPubkey)
-    wallet = await Wallet.create({
-      identity,
-      arkServerUrl,
-      arkProvider: operator,
-      indexerProvider: indexer,
-      settlementConfig: false,
-      storage,
-    })
-    const adaptedWallet = withVaultRefundAddress(wallet, status.spendingArkAddress)
-    lifecycle = await startVaultLightningLifecycle({
-      wallet: adaptedWallet,
-      ark: operator,
-      indexer,
-      repository,
-    })
-    const lifecycleErrors = [
-      ...lifecycle.restoreFailures.map(({ error }) => error),
-      ...lifecycle.retirementFailures.map(({ error }) => error),
-    ]
-    if (lifecycleErrors.length > 0) {
-      throw new AggregateError(lifecycleErrors, 'Lightning recovery state could not be restored safely')
+  const info = await operator.getInfo()
+  if (info.network !== status.network) throw new Error('Vault and Arkade Operator networks do not match.')
+  validateVaultLightningRefund(status, info.network as NetworkName, info.signerPubkey)
+  return withVaultReadonlyState(status, async ({ contracts, swapRepository, swapManager }) => {
+    const requestWallet = vaultLightningRequestWallet(identity, status.spendingArkAddress!, contracts)
+    const session: VaultLightningSession = {
+      wallet: requestWallet,
+      repository: swapRepository,
+      contracts,
+      manager: swapManager,
+      restoreFailures: [],
+      retiredQuoteIds: [],
+      retirementFailures: [],
     }
-    return await run({ wallet: adaptedWallet, repository, ...lifecycle })
-  } catch (error) {
-    primaryError = error
-    throw error
-  } finally {
-    const cleanupErrors: unknown[] = []
-    if (lifecycle) {
-      try {
-        await lifecycle.manager.stop()
-      } catch (error) {
-        cleanupErrors.push(error)
-      }
+    if (!options.refundRfqId) {
+      await maintainVaultLightningObserver({
+        manager: swapManager,
+        contracts,
+        indexer,
+        repository: swapRepository,
+      })
+      return run(session)
     }
-    try {
-      await repository[Symbol.asyncDispose]()
-    } catch (error) {
-      cleanupErrors.push(error)
-    }
-    try {
-      await disposeVaultBoardingResources(wallet, storage)
-    } catch (error) {
-      cleanupErrors.push(error)
-    }
-    if (cleanupErrors.length > 0) {
-      if (primaryError !== undefined) {
-        throw new AggregateError([primaryError, ...cleanupErrors], 'Lightning request and SDK cleanup failed')
-      }
-      if (cleanupErrors.length === 1) throw cleanupErrors[0]
-      throw new AggregateError(cleanupErrors, 'Lightning SDK cleanup failed')
-    }
-  }
+    if (!/^[0-9a-f]{64}$/.test(options.refundRfqId)) throw new Error('Lightning refund id is invalid.')
+
+    // The persistent observer never holds a signer. Only this explicitly
+    // reauthenticated operation installs the package refunder, drives one
+    // pass, and then returns the manager to a fail-closed callback.
+    return withAuthenticatedVaultLightningRefund(
+      swapManager,
+      options.refundRfqId,
+      arkadeRefunder({ ark: operator, indexer, wallet: requestWallet, repository: swapRepository }),
+      () => run(session),
+    )
+  })
 }
 
 type LightningRequester = typeof requestLightningSend
+
+const OPTIONAL_SDK_CAPABILITY_PROBES = new Set([
+  'getNextSigningDescriptor',
+  'advanceSigningDescriptorWatermark',
+  'getCurrentSigningDescriptor',
+  'getUsedSigningDescriptors',
+  'signerForDescriptor',
+])
+
+/** The exact public wallet surface used by @arkade-os/swap quote creation. */
+export function vaultLightningRequestWallet(
+  identity: Identity,
+  refundAddress: string,
+  contracts: IContractManager,
+): IWallet {
+  ArkAddress.decode(refundAddress)
+  const capabilities: Record<string, unknown> = {
+    identity,
+    getAddress: async () => refundAddress,
+    getContractManager: async () => contracts,
+  }
+  return new Proxy(capabilities, {
+    get(target, property) {
+      if (typeof property !== 'string') return Reflect.get(target, property)
+      if (property in target) return target[property]
+      if (OPTIONAL_SDK_CAPABILITY_PROBES.has(property)) return undefined
+      throw new Error(`Lightning quote attempted unsupported wallet capability: ${property}`)
+    },
+  }) as unknown as IWallet
+}
 
 export async function withVaultLightningRepository<T>(
   vaultId: string,
   run: (repository: IndexedDbAssetSwapRepository) => Promise<T>,
 ): Promise<T> {
-  const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(vaultId))
-  try {
-    return await run(repository)
-  } finally {
-    await repository[Symbol.asyncDispose]()
-  }
+  return withActiveVaultReadonlyState(vaultId, ({ swapRepository }) => run(swapRepository))
 }
 
 export async function requestVaultLightningQuote({
@@ -219,6 +207,7 @@ export async function requestVaultLightningQuote({
   contracts,
   manager,
   profile,
+  resumeVtxo,
   rfqId,
   requester = requestLightningSend,
   nowSeconds = Math.floor(Date.now() / 1000),
@@ -233,6 +222,7 @@ export async function requestVaultLightningQuote({
   contracts: SwapContractRegistry
   manager: RfqSwapManager
   profile: VaultLightningSolverProfile
+  resumeVtxo?: VaultLightningVtxoProof
   rfqId?: string
   requester?: LightningRequester
   nowSeconds?: number
@@ -256,8 +246,10 @@ export async function requestVaultLightningQuote({
   if (
     !Number.isSafeInteger(profile.minSats) ||
     !Number.isSafeInteger(profile.maxSats) ||
+    !Number.isSafeInteger(profile.maxFundingSats) ||
     profile.minSats < 1 ||
-    profile.maxSats < profile.minSats
+    profile.maxSats < profile.minSats ||
+    profile.maxFundingSats < profile.maxSats
   ) {
     throw new Error('Lightning solver amount limits are invalid.')
   }
@@ -270,9 +262,21 @@ export async function requestVaultLightningQuote({
   if (rfqId !== undefined && !/^[0-9a-f]{64}$/.test(rfqId)) {
     throw new Error('Lightning RFQ id must be 32 bytes of lowercase hex.')
   }
+  if (resumeVtxo) {
+    const resumed = await restoreMatchingVaultLightningFundingQuote(
+      repository,
+      contracts,
+      manager,
+      facts.raw,
+      network,
+      resumeVtxo,
+      nowSeconds,
+    )
+    if (resumed) return resumed
+  }
   const existing = rfqId
-    ? await restorePersistedVaultLightningQuote(repository, contracts, manager, rfqId, facts.raw, network)
-    : await restoreMatchingVaultLightningQuote(repository, contracts, manager, facts.raw, network)
+    ? await restorePersistedVaultLightningQuote(repository, contracts, manager, rfqId, facts.raw, network, nowSeconds)
+    : await restoreMatchingVaultLightningQuote(repository, contracts, manager, facts.raw, network, nowSeconds)
   if (existing) return existing
 
   const requestId = rfqId ?? newRfqId()
@@ -280,19 +284,23 @@ export async function requestVaultLightningQuote({
   const result = await requester(wallet, arkServerUrl, transport, { invoice: facts, rfqId: requestId })
   const contractScript = registeredContractScript(result)
   try {
-    const { contractParams, refundLocktime } = await validateVaultLightningRequestResult({
-      result,
-      rfqId: requestId,
-      facts,
-      wallet,
-      contracts,
-      nowSeconds,
-    })
+    if (!Number.isSafeInteger(result.fundAmount) || result.fundAmount > profile.maxFundingSats) {
+      throw new Error(
+        `Lightning funding amount exceeds the solver profile’s ${profile.maxFundingSats.toLocaleString()} sat limit.`,
+      )
+    }
+    const fundingCeiling = vaultLightningFundingForInvoice(facts.amountSats, profile)
+    if (result.fundAmount > fundingCeiling) {
+      throw new Error(
+        `Lightning quote asks ${result.fundAmount.toLocaleString()} sats; the pinned solver fee allows at most ${fundingCeiling.toLocaleString()} sats.`,
+      )
+    }
+    const contractParams = await readRegisteredLightningContractParams({ result, contracts })
 
     return await persistVaultLightningQuote({
       result,
       facts,
-      refundLocktime,
+      refundLocktime: result.quote.refund_locktime!,
       contractParams,
       repository,
       manager,

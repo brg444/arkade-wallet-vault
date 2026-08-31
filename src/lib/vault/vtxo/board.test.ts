@@ -1,4 +1,10 @@
-import { DefaultVtxo, SingleKey, type ExtendedCoin } from '@arkade-os/sdk'
+import {
+  DefaultVtxo,
+  InMemoryContractRepository,
+  InMemoryWalletRepository,
+  SingleKey,
+  type ExtendedCoin,
+} from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
@@ -12,6 +18,7 @@ import {
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
   classifyVaultBoardingOutpoint,
+  createBoardingOperationStorage,
   disposeVaultBoardingResources,
   excludeSettledBoardingCoins,
   findConfirmedBoardingCoins,
@@ -67,6 +74,13 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
 }
 
 describe('vault-board-v1', () => {
+  it('keeps the transient signer cache out of the persistent readonly wallet state plane', async () => {
+    const storage = createBoardingOperationStorage('vault-a')
+    expect(storage.walletRepository).toBeInstanceOf(InMemoryWalletRepository)
+    expect(storage.contractRepository).toBeInstanceOf(InMemoryContractRepository)
+    await disposeVaultBoardingResources(undefined, storage)
+  })
+
   it('disposes the wallet before both boarding repositories', async () => {
     const disposed: string[] = []
     const repository = (name: string) => ({

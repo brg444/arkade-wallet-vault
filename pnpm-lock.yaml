@@ -14,6 +14,9 @@ importers:
       '@arkade-os/sdk':
         specifier: 0.4.65
         version: 0.4.65
+      '@arkade-os/solver-discovery':
+        specifier: 0.2.3
+        version: 0.2.3
       '@arkade-os/swap':
         specifier: 0.0.8
         version: 0.0.8(nostr-tools@2.17.2(typescript@5.9.3))
