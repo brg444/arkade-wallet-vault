@@ -14,6 +14,7 @@ import {
   saveStagedEnrollment,
   setSessionLocked,
 } from './enrollmentStore'
+import { defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
 const VAULT_ID = 'vault-test-current'
 function memoryStorage(): Storage {
   const data = new Map<string, string>()
@@ -42,6 +43,7 @@ const sample = {
   nonce: 'ee'.repeat(12),
   ciphertext: 'ff'.repeat(48),
 }
+const spendingPolicy = defaultSpendingPolicy()
 
 describe('namespaced enrollment store', () => {
   it('does not let a second vault read the first vault secrets', () => {
@@ -117,6 +119,8 @@ describe('namespaced enrollment store', () => {
         authenticatorData: 'dd',
         attestationObject: 'ee',
         hardwareXOnly: '11'.repeat(32),
+        spendingPolicy,
+        spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
       },
       storage,
     )

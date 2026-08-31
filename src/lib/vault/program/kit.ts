@@ -9,6 +9,7 @@ export interface RecoveryKit {
   version: typeof RECOVERY_KIT_VERSION
   descriptor: VaultProgramDescriptor
   descriptorHash: string
+  spendingPolicyDigest: string
 }
 
 export interface RecoveryKitReport {
@@ -25,6 +26,7 @@ export function buildRecoveryKit(descriptor: VaultProgramDescriptor): RecoveryKi
     version: RECOVERY_KIT_VERSION,
     descriptor: d,
     descriptorHash: hashVaultProgramDescriptor(d),
+    spendingPolicyDigest: d.policy.digest,
   }
 }
 
@@ -35,6 +37,9 @@ export function parseRecoveryKit(raw: unknown): RecoveryKit {
   const built = buildRecoveryKit(kit.descriptor)
   if (kit.descriptorHash && kit.descriptorHash !== built.descriptorHash) {
     throw new Error('Recovery Kit hash does not match the rebuilt descriptor')
+  }
+  if (kit.spendingPolicyDigest !== built.spendingPolicyDigest) {
+    throw new Error('Recovery Kit spending policy digest does not match the rebuilt descriptor')
   }
   return built
 }

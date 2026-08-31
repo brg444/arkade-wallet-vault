@@ -14,7 +14,7 @@ import {
   signInWithPasskey,
   unlockLocalEnrollment,
 } from '../lib/vault/signIn'
-import { planReady, sameBip340Key, type VaultSetupPlan } from '../lib/vault/setupPlan'
+import { planReady, sameBip340Key, setupSpendingPolicy, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import { enrollWithPasskey, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/program/kitBackup'
@@ -97,6 +97,7 @@ export function useVaultSession({
         const result = await enrollWithPasskey(token, {
           hardwarePub: setup.hardwarePub,
           ...(setup.recoveryPub ? { recoveryPub: setup.recoveryPub } : {}),
+          spendingPolicy: setupSpendingPolicy(setup),
         })
         setEnrollment(result.enrollment)
         saveEnrollment(result.enrollment)

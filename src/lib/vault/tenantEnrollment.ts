@@ -18,6 +18,7 @@ import type { VaultStatus } from './types'
 import type { VaultProgramDescriptor } from './program/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 import { activateBoardingKey, requireBoardingStatus, stageBoardingKey, BOARDING_PROGRAM } from './vtxo/board'
+import { sameSpendingPolicy, spendingPolicyDigest, validateSpendingPolicy, type SpendingPolicy } from './spendingPolicy'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -77,6 +78,7 @@ async function deriveDirectP256(prf: Uint8Array<ArrayBuffer>): Promise<{ pub: Ui
 export interface EnrollmentRoles {
   hardwarePub: string
   recoveryPub?: string
+  spendingPolicy: SpendingPolicy
 }
 
 export async function enrollWithPasskey(
@@ -97,6 +99,8 @@ export async function beginTenantEnrollment(
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
   const wantRecovery = Boolean(roles.recoveryPub)
+  const selectedPolicy = validateSpendingPolicy(roles.spendingPolicy)
+  const selectedPolicyDigest = spendingPolicyDigest(selectedPolicy)
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   if (publicStatus.vtxoBoardingProgram !== BOARDING_PROGRAM) {
     throw new Error('vault service does not advertise the required boarding program')
@@ -105,9 +109,18 @@ export async function beginTenantEnrollment(
   const recoveryXOnly = wantRecovery ? xOnly(roles.recoveryPub || '') : ''
   if (wantRecovery && hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
   const rpId = requireRPID(publicStatus)
-  const start = await vaultCosignerClient.enrollment.start(token)
+  const start = await vaultCosignerClient.enrollment.start(token, {
+    spendingPolicy: selectedPolicy,
+    spendingPolicyDigest: selectedPolicyDigest,
+  })
   if (!start.vaultId || !start.challenge || !start.handle || !start.userId) {
     throw new Error('authorizer did not assign a vault')
+  }
+  if (
+    !sameSpendingPolicy(start.spendingPolicy, selectedPolicy) ||
+    start.spendingPolicyDigest !== selectedPolicyDigest
+  ) {
+    throw new Error('vault service changed the selected spending policy')
   }
   const cred = (await navigator.credentials.create({
     publicKey: passkeyCreateOptions({
@@ -188,6 +201,8 @@ export async function beginTenantEnrollment(
       ...(recoveryXOnly ? { recoveryXOnly } : {}),
       vtxoBoardingProgram: BOARDING_PROGRAM,
       vaultBoardingBip340Pub: xOnly(stagedBoard.boardingPub),
+      spendingPolicy: selectedPolicy,
+      spendingPolicyDigest: selectedPolicyDigest,
     }
     // The network and descriptor-validation phases need only public facts.
     // Restore the original short secret lifetime before yielding to either.
@@ -215,6 +230,18 @@ export async function beginTenantEnrollment(
   if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
     throw new Error('proposed hardware key does not match this client')
   }
+  const proposedPolicy = validateSpendingPolicy({
+    program: descriptor.policy.program,
+    schema: descriptor.policy.schema,
+    period: descriptor.policy.period,
+    periodAllowanceSats: descriptor.policy.periodAllowanceSats,
+    txRecipientCapSats: descriptor.policy.recipientCapSats,
+    absoluteFeeCapSats: descriptor.policy.absoluteFeeCapSats,
+    feerateCapSatPerV: descriptor.policy.feerateCapSatVb,
+  })
+  if (!sameSpendingPolicy(proposedPolicy, selectedPolicy) || descriptor.policy.digest !== selectedPolicyDigest) {
+    throw new Error('proposed spending policy does not match this setup')
+  }
   const staged: StagedEnrollment = {
     ...enrollment,
     handle: start.handle,
@@ -231,6 +258,8 @@ export async function beginTenantEnrollment(
     boardingDescriptorHash: proposed.descriptorHash,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
+    spendingPolicy: selectedPolicy,
+    spendingPolicyDigest: selectedPolicyDigest,
   }
   saveStagedEnrollment(staged)
   saveLocalKit(buildRecoveryKit(descriptor))
@@ -263,6 +292,8 @@ export async function finishTenantEnrollment(
     descriptorHash: staged.descriptorHash,
     vtxoBoardingProgram: BOARDING_PROGRAM,
     vaultBoardingBip340Pub: xOnly(staged.boardingPub),
+    spendingPolicy: staged.spendingPolicy,
+    spendingPolicyDigest: staged.spendingPolicyDigest,
   }
   await vaultCosignerClient.enrollment.finish(token, finishRequest)
   const live = await vaultCosignerClient.enrollment.status(staged.vaultId)

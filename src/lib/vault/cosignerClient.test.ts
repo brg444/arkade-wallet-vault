@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from './constants'
 import { vaultCosignerClient, type VaultEnrollmentRequest, type VaultSessionAssertion } from './cosignerClient'
 import { SAVINGS_TEMPLATE } from './program/constants'
+import { CURRENT_SPENDING_POLICY_CAPABILITIES, defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
+
+const spendingPolicy = defaultSpendingPolicy()
+const policyDigest = spendingPolicyDigest(spendingPolicy)
 
 afterEach(() => {
   localStorage.clear()
@@ -29,6 +33,8 @@ const enrollment: VaultEnrollmentRequest = {
   phoneBip340Pub: '02' + '77'.repeat(32),
   vaultId: 'vault a',
   externalOwnerWalletXOnly: '88'.repeat(32),
+  spendingPolicy,
+  spendingPolicyDigest: policyDigest,
 }
 
 describe('VaultCosignerClient route compatibility', () => {
@@ -55,6 +61,7 @@ describe('VaultCosignerClient route compatibility', () => {
             templateVersion: SAVINGS_TEMPLATE,
             policyVersion: POLICY_VERSION,
             enrollmentMode: 'invite',
+            spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
           }),
           { status: 200 },
         )
@@ -81,6 +88,8 @@ describe('VaultCosignerClient route compatibility', () => {
             txCap: 50_000,
             absoluteFeeCap: 5_000,
             feerateCapSatVb: 10,
+            spendingPolicy,
+            spendingPolicyDigest: policyDigest,
             vtxoVaultCosignerPub: `02${'11'.repeat(32)}`,
             vtxoExitDelay: 4608,
             vtxoExitDelayUnit: 'seconds',
@@ -107,7 +116,10 @@ describe('VaultCosignerClient route compatibility', () => {
     await vaultCosignerClient.enrollment.publicStatus()
     await vaultCosignerClient.enrollment.status('vault a')
     await vaultCosignerClient.enrollment.invite('invite-a')
-    await vaultCosignerClient.enrollment.start('invite-a')
+    await vaultCosignerClient.enrollment.start('invite-a', {
+      spendingPolicy,
+      spendingPolicyDigest: policyDigest,
+    })
     await vaultCosignerClient.enrollment.propose('invite-a', enrollment)
     await vaultCosignerClient.enrollment.finish('invite-a', { ...enrollment, descriptorHash: 'aa'.repeat(32) })
     await vaultCosignerClient.enrollment.binding({
@@ -205,7 +217,7 @@ describe('VaultCosignerClient route compatibility', () => {
       headers: { Accept: 'application/json', 'X-Vault-Enrollment-Token': 'invite-a' },
     })
     expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
-      body: '{}',
+      body: JSON.stringify({ spendingPolicy, spendingPolicyDigest: policyDigest }),
       headers: { 'X-Vault-Enrollment-Token': 'invite-a' },
     })
     expect(fetchMock.mock.calls[10]?.[1]).toMatchObject({

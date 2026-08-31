@@ -44,4 +44,6 @@ export const PROGRAM_FIXTURE_FAMILY = {
   arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
   network: PROGRAM_FIXTURE.network,
   templateVersion: PROGRAM_FIXTURE.templateVersion,
+  absoluteFeeCapSats: 5_000,
+  feerateCapSatPerV: 10,
 }

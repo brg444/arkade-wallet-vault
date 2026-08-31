@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FORBIDDEN_PUBLIC_KEY_2G } from '../setupPlan'
+import { defaultSpendingPolicy, spendingPolicyDigest } from '../spendingPolicy'
 import { FAMILY_KEYS, PROGRAM_CSV, PROGRAM_SCHEMA, SAVINGS_TEMPLATE } from './constants'
 import { buildVaultProgramDescriptor, hashVaultProgramDescriptor, validateVaultProgramDescriptor } from './descriptor'
 import { PROGRAM_FIXTURE } from './fixtures'
@@ -37,5 +38,30 @@ describe('Savings program descriptor', () => {
     expect(() => buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, hardwarePub: FORBIDDEN_PUBLIC_KEY_2G })).toThrow(
       /forbidden/,
     )
+  })
+
+  it('binds selected fee policy into every Savings transition tree', () => {
+    const standard = fixtureDescriptor()
+    const flexiblePolicy = {
+      ...defaultSpendingPolicy(),
+      txRecipientCapSats: 250_000,
+      periodAllowanceSats: 1_000_000,
+      absoluteFeeCapSats: 10_000,
+      feerateCapSatPerV: 20,
+    }
+    const flexible = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, spendingPolicy: flexiblePolicy })
+
+    expect(flexible.savings).not.toEqual(standard.savings)
+    expect(flexible.policy.absoluteFeeCapSats).toBe(10_000)
+    expect(flexible.policy.feerateCapSatVb).toBe(20)
+    expect(hashVaultProgramDescriptor(flexible)).toBe(
+      'cf5fb73ae35ce6b4c857a6ca79c4e872809ab9514e968afd1151b5bc091cf31e',
+    )
+
+    const tampered = structuredClone(flexible)
+    const changedPolicy = { ...flexiblePolicy, absoluteFeeCapSats: 9_000 }
+    tampered.policy.absoluteFeeCapSats = changedPolicy.absoluteFeeCapSats
+    tampered.policy.digest = spendingPolicyDigest(changedPolicy)
+    expect(() => validateVaultProgramDescriptor(tampered)).toThrow(/derived authorization scripts/)
   })
 })

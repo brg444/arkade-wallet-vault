@@ -17,7 +17,7 @@ async function setupToThisDevice(page: Page) {
   await expect(page.getByText(/waiting period/i)).toBeVisible()
   await page.getByRole('button', { name: 'Skip for now' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Daily limits' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Spending limits' })).toBeVisible()
   await page.getByRole('button', { name: 'Review setup' }).click()
 
   await expect(page.getByRole('heading', { name: 'Your setup' })).toBeVisible()

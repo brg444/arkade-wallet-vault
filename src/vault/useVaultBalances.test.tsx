@@ -5,6 +5,7 @@ import { pinFromEnrolledStatus, saveAddressPin } from '../lib/vault/pin'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
+import { defaultSpendingPolicy, spendingPolicyDigest } from '../lib/vault/spendingPolicy'
 import {
   fetchVaultWalletVtxoSnapshot,
   reloadVaultWalletWorker,
@@ -26,6 +27,7 @@ vi.mock('../lib/vault/vtxo/walletWorker', () => ({
   subscribeVaultWalletEvents: vi.fn().mockReturnValue(() => undefined),
 }))
 
+const spendingPolicy = defaultSpendingPolicy()
 const STATUS: VaultStatus = {
   enrolled: true,
   network: 'mutinynet',
@@ -42,6 +44,8 @@ const STATUS: VaultStatus = {
   txCap: 50_000,
   absoluteFeeCap: 1_500,
   feerateCapSatVb: 10,
+  spendingPolicy,
+  spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
   vtxoVaultCosignerPub: `02${'11'.repeat(32)}`,
   vtxoExitDelay: 4608,
   vtxoExitDelayUnit: 'seconds',

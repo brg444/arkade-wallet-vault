@@ -13,6 +13,7 @@ import {
 import { POLICY_VERSION } from './constants'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { requireStatusIdentity } from './status'
+import { defaultSpendingPolicy, spendingPolicyDigest, type SpendingPolicy } from './spendingPolicy'
 import type { VaultStatusWire } from './types'
 
 type ExpectedVaultStatusWire = {
@@ -40,6 +41,8 @@ type ExpectedVaultStatusWire = {
   txCap: number
   absoluteFeeCap: number
   feerateCapSatVb: number
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
   phoneBip340Pub?: string
   phoneDirectP256?: string
   warnings?: string[]
@@ -76,6 +79,8 @@ type ExpectedVaultEnrollmentRequest = {
   descriptorHash?: string
   vtxoBoardingProgram?: 'vault-board-v1'
   vaultBoardingBip340Pub?: string
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
 }
 
 type ExpectedVaultTransitionRequest = {
@@ -122,6 +127,7 @@ type ExpectedVtxoOperationWireView = {
 }
 
 function statusWire(): VaultStatusWire {
+  const spendingPolicy = defaultSpendingPolicy()
   return {
     enrolled: true,
     network: 'mutinynet',
@@ -143,6 +149,8 @@ function statusWire(): VaultStatusWire {
     txCap: 50_000,
     absoluteFeeCap: 5_000,
     feerateCapSatVb: 10,
+    spendingPolicy,
+    spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
     vtxoVaultCosignerPub: `02${'cc'.repeat(32)}`,
     vtxoExitDelay: 4608,
     vtxoExitDelayUnit: 'seconds',

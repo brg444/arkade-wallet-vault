@@ -1,4 +1,5 @@
 import type { EnrollmentSecrets } from './tenantEnrollment'
+import type { SpendingPolicy } from './spendingPolicy'
 
 export const ENROLL_STORE = 'arkade-vault-v2:enrollment'
 export const SELECTED_VAULT_STORE = 'arkade-vault-v2:selected-vault'
@@ -103,11 +104,21 @@ export type StagedEnrollment = EnrollmentSecrets & {
   boardingDescriptorHash?: string
   savingsAddress?: string
   savingsScript?: string
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
 }
 
 export function loadStagedEnrollment(storage: Storage = localStorage): StagedEnrollment | null {
   const rec = parseEnrollment(storage.getItem(ENROLL_STAGE_STORE)) as StagedEnrollment | null
-  if (!rec?.vaultId || !rec.handle || !rec.credId || !rec.ciphertext) return null
+  if (
+    !rec?.vaultId ||
+    !rec.handle ||
+    !rec.credId ||
+    !rec.ciphertext ||
+    !rec.spendingPolicy ||
+    !rec.spendingPolicyDigest
+  )
+    return null
   return rec
 }
 

@@ -50,6 +50,10 @@ export default function VaultPlan() {
         hardwareRecoveryBlocks={PROGRAM_CSV.hardware}
         network={liveNetwork ? 'mutinynet' : undefined}
       />
+      <Text color='neutral-600' tiny wrap>
+        Fees are capped at {prettyAmount(setup.absoluteFeeCapSats)} and {setup.feerateCapSatPerV} sat/vB. These spending
+        conditions are bound to this vault and cannot be changed after setup.
+      </Text>
     </OnboardLayout>
   )
 }

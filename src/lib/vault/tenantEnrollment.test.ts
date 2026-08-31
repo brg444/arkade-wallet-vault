@@ -9,6 +9,7 @@ import { vaultStatusPath } from './status'
 import { requireProposedProgramDescriptor } from './program/enroll'
 import type { VaultStatus } from './types'
 import { reconcileStagedEnrollment } from './tenantEnrollment'
+import { defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
 import {
   activateBoardingKey,
   deleteBoardingKey,
@@ -65,6 +66,7 @@ describe('tenant enrollment identity', () => {
       { type: 'seconds', value: BigInt(BOARDING_EXIT_DELAY) },
     )
     const descriptorHash = 'ab'.repeat(32)
+    const spendingPolicy = defaultSpendingPolicy()
     const descriptor = {
       schema: BOARDING_SCHEMA,
       program: BOARDING_PROGRAM,
@@ -98,6 +100,8 @@ describe('tenant enrollment identity', () => {
       authenticatorData: '07',
       attestationObject: '08',
       hardwareXOnly: '09',
+      spendingPolicy,
+      spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
       descriptorHash,
       boardingPub: stagedKey.boardingPub,
       boardingDescriptor: descriptor,
@@ -119,6 +123,8 @@ describe('tenant enrollment identity', () => {
       txCap: 50_000,
       absoluteFeeCap: 5_000,
       feerateCapSatVb: 10,
+      spendingPolicy,
+      spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
       phoneBip340Pub: phonePub,
       vtxoVaultCosignerPub: `02${'22'.repeat(32)}`,
       vtxoExitDelay: 4608,
