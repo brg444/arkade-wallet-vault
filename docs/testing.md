@@ -30,7 +30,7 @@ reloads on both sides of PRF derivation. Its secret audit rejects any
 PRF-derived scalar found in local storage, session storage, IndexedDB, Cache
 Storage, or messages sent to the service worker.
 
-The same suite installs the production classic service worker and exercises
+The same suite installs the production scoped service worker and exercises
 per-vault scopes, two simultaneous vaults, offline recovery, missed events,
 persisted SDK intent states, and the transition from a visible boarding output
 to an indexed VTXO without double counting. Rendered-wallet tests cover the
@@ -41,6 +41,13 @@ The deterministic Operator fixture implements public read-only responses only.
 It does not emulate registration, MuSig2, settlement, or batch finalization.
 Those behaviors remain owned by the published SDK and deployed Arkade
 Operator, and they are qualified on Mutinynet.
+
+The boarding unit boundary reconstructs the exact named tree and rejects
+mutations to every key, role, delay, script, address, recipient, input count,
+Batch Output expiry, tree node, and phase outcome. Worker tests cover the
+dedicated bundle, worker-owned identity, page-proxy ownership, 60-second
+acknowledged shutdown, no-runtime reload cleanup, A-to-B-to-A switching, and
+failure that retains the worker registration and key.
 
 ## Face ID gate
 
@@ -57,15 +64,17 @@ must also pass on a physical iPhone in Safari and as an installed PWA:
 5. Interrupt the page before PRF completion and retry. No session may appear.
 6. Interrupt the page after PRF completion but before the Vault service
    responds. Reloading must remain locked and require Face ID again.
-7. Start boarding in two tabs. Only the tab holding the per-vault lock may ask
-   for Face ID or create a signing wallet.
-8. Background, terminate, and reopen the PWA during observation. The read-only
-   worker may recover state without Face ID, but signing must require a new
-   ceremony.
+7. Open the same vault in two tabs. Both pages must use the same scoped worker
+   and neither may request Face ID for boarding settlement.
+8. Background, terminate, and reopen the PWA during boarding. The persistent
+   SDK repository must resume the same lifecycle without a new ceremony.
+9. Enroll a fresh vault, delete its local board-key database, then unlock
+   with the same passkey. The exact enrolled key must be reproduced only after
+   PRF success, without changing the ceremony options.
 
-The worker must receive only the compressed device public key. Any private
-scalar, unlocked signer, resumable MuSig2 session, or biometric-bypass behavior
-in worker or persistent storage blocks release.
+The page-to-worker channel must not carry a private scalar, unlocked signer,
+resumable MuSig2 session, or biometric-bypass capability. The boarding key may
+exist only in its scoped worker database and worker runtime.
 
 ## Live Mutinynet gate
 
@@ -76,11 +85,11 @@ The current deployed Arkade Operator and published SDK are authoritative.
    the Bitcoin boarding address.
 2. Confirm that an onchain deposit appears immediately as pending Spending,
    contributes to the displayed balance, and cannot fund a payment.
-3. Leave the wallet open through settlement. Confirm that Face ID is requested
-   only for the foreground signing attempt and that the indexed VTXO replaces
-   the boarding value exactly once.
-4. Repeat with reload, offline and reconnect, PWA backgrounding, two tabs, a
-   missed worker event, and process termination before and after signing.
+3. Confirm that no new Face ID ceremony is required after the Savings
+   transaction or onchain receive has funded the exact boarding address.
+4. Repeat settlement with reload, offline and reconnect, PWA backgrounding,
+   two tabs, a missed worker event, and process termination before and after
+   registration.
 5. Exercise both propagation orders: destination VTXO first and spent boarding
    output first. Balance and history must remain stable in either order.
 6. Move Savings to Spending with the persisted phone-signed PSBT, complete it
@@ -89,9 +98,19 @@ The current deployed Arkade Operator and published SDK are authoritative.
 7. Send VTXOs with exact input, change, no-change, fragmented input, ambiguous
    response, reload, and completed-change-already-spent cases. Only indexed
    VTXOs count as spendable.
-8. Exercise outbound Lightning quote, payment, ambiguous funding, expiry, and
-   refund after the Lightning release gate is enabled. Funding and refunds must
-   remain bound to the enrolled Spending program.
+8. Drop each Vault response after prepare, register, release, and final.
+   Reload and require the SDK plus service ledger to reconcile the same input
+   without allocating a second attempt.
+9. Hold a retained intent, require its acknowledged release through the stock
+   Operator API, then complete the replacement attempt. Repeat immediately
+   before and after the 604672-second recovery cutoff.
+10. After the cutoff, recover an exact current boarding output through the
+    SDK helper. Refuse immature, foreign, spent, fee-cap-breaking, and
+    Face-ID-cancelled attempts, then verify the returned transaction ID and
+    refreshed balance.
+11. Exercise outbound Lightning quote, payment, ambiguous funding, expiry, and
+    refund after the Lightning release gate is enabled. Funding and refunds must
+    remain bound to the enrolled Spending program.
 
 No successful local simulation can waive a failed live settlement, worker
 recovery, physical Face ID, or balance-convergence case.

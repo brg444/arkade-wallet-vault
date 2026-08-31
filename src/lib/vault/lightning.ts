@@ -41,7 +41,7 @@ import {
   type VaultLightningVtxoProof,
 } from './lightningLifecycle'
 import type { VaultStatus } from './types'
-import { withActiveVaultReadonlyState, withVaultReadonlyState } from './vtxo/readonlyWorker'
+import { withActiveVaultWalletState, withVaultWalletState } from './vtxo/walletWorker'
 import { vaultArkServer } from './vtxo/spend'
 
 export {
@@ -124,7 +124,7 @@ async function withUnlockedVaultLightningSdkWallet<T>(
   const info = await operator.getInfo()
   if (info.network !== status.network) throw new Error('Vault and Arkade Operator networks do not match.')
   validateVaultLightningRefund(status, info.network as NetworkName, info.signerPubkey)
-  return withVaultReadonlyState(status, async ({ contracts, swapRepository, swapManager }) => {
+  return withVaultWalletState(status, async ({ contracts, swapRepository, swapManager }) => {
     const requestWallet = vaultLightningRequestWallet(identity, status.spendingArkAddress!, contracts)
     const session: VaultLightningSession = {
       wallet: requestWallet,
@@ -194,7 +194,7 @@ export async function withVaultLightningRepository<T>(
   vaultId: string,
   run: (repository: IndexedDbAssetSwapRepository) => Promise<T>,
 ): Promise<T> {
-  return withActiveVaultReadonlyState(vaultId, ({ swapRepository }) => run(swapRepository))
+  return withActiveVaultWalletState(vaultId, ({ swapRepository }) => run(swapRepository))
 }
 
 export async function requestVaultLightningQuote({

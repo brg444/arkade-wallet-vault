@@ -6,11 +6,11 @@ updates, settlement, intents, and Operator communication.
 
 The architecture review used these exact sources:
 
-| Source                  | Reviewed revision                          | Vault dependency         |
-| ----------------------- | ------------------------------------------ | ------------------------ |
-| `arkade-os/wallet`      | `60cc144604db0c835888977548c7f7c8a330d765` | Reference implementation |
-| `arkade-os/ts-sdk`      | `57d517b1fa85d3a32736215ecf9fed86c43e25eb` | `@arkade-os/sdk` 0.4.65  |
-| `arkade-os/ts-swap-sdk` | Published package                          | `@arkade-os/swap` 0.0.8  |
+| Source                  | Reviewed revision                            | Vault dependency                                   |
+| ----------------------- | -------------------------------------------- | -------------------------------------------------- |
+| `arkade-os/wallet`      | `9e57e8ef2d05eb1f0831ccf91b4e98cc199ba3a9`   | Reference implementation                           |
+| `arkade-os/ts-sdk`      | Runtime `27f5c758`; PR validation `6e2b9ff1` | One exact Git-pinned `@arkade-os/sdk` 0.4.66 graph |
+| `arkade-os/ts-swap-sdk` | Published package                            | `@arkade-os/swap` 0.0.8 using the same SDK graph   |
 
 Unmerged Wallet branches can inform tests and future compatibility work. The
 release baseline remains the official revision in the table. Each dependency
@@ -21,15 +21,19 @@ integration and the Vault-specific invariants below.
 
 The Vault Program uses `vault-policy-v1`, which is not the SDK's default VTXO
 contract. A small custom Contract Manager handler reconstructs that exact
-script and declares it unavailable for generic spending. Boarding calls the
-published `Wallet.settle()` interface with an explicit policy destination and
-`settlementConfig: false`.
+script and declares it unavailable for generic spending.
 
-The official worker architecture is retained with a stricter identity boundary.
-The Vault worker uses `ServiceWorkerReadonlyWallet` and `ReadonlySingleKey`, so
-it can observe public contract state without storing the Face ID-protected
-device scalar. Signing uses a short-lived foreground `Wallet` under a per-vault
-Web Lock.
+The wallet uses the official SDK's named boarding-program and
+worker-owned-identity seams. The persistent SDK Wallet,
+Contract Manager, VtxoManager, repositories, batch lifecycle, settlement, and
+retry loop live in the dedicated worker. Vault code adds deterministic key
+provisioning, exact program reconstruction, a fixed Spending destination, and
+one typed VaultBoardCosigner phase adapter.
+
+The candidate SDK seam is maintained in
+[`arkade-os/ts-sdk#802`](https://github.com/arkade-os/ts-sdk/pull/802). The wallet
+pins commit `27f5c758` until that work is merged and released. Both the direct
+SDK dependency and the swap package resolve to that same build.
 
 Per-vault worker scopes, message tags, and IndexedDB names prevent two enrolled
 vaults from sharing identity or lifecycle state. These are isolation adapters
@@ -40,12 +44,12 @@ around published SDK primitives, not a fork of the Operator protocol.
 An SDK or Wallet update is accepted only after tests confirm:
 
 1. the custom contract remains excluded from generic spend, renewal, and sweep;
-2. `ReadonlySingleKey` never exposes a signing path;
+2. the worker-owned identity never crosses `postMessage`;
 3. worker messages and storage remain isolated across vaults and tabs;
-4. `Wallet.settle()` preserves the explicit `vault-policy-v1` destination;
+4. the SDK settlement path preserves the exact `vault-policy-v1` destination;
 5. intent persistence and duplicate cleanup require no private Operator API;
-6. the SDK does not copy or persist the PRF-derived scalar beyond the bounded
-   foreground operation;
+6. the SDK does not receive or persist the PRF-derived phone scalar, and the
+   boarding key remains scoped to its vault, network, and named program;
 7. pending boarding value is displayed once, while only indexed VTXOs are
    spendable.
 

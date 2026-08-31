@@ -27,6 +27,8 @@ const FLAT_VTXO_PATHS: Record<string, string> = {
   '/api/v1/vtxo-finalize': '/v1/vtxo/finalize',
 }
 
+const BOARD_PHASES = new Set(['prepare', 'register', 'release', 'final'])
+
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
 function authorizerOrigin(): string {
@@ -38,7 +40,7 @@ function gatewaySecret(): string {
 }
 
 export function allowAuthorizerPath(path: string): boolean {
-  return path === '/health' || path === '/v1' || path.startsWith('/v1/')
+  return path === '/health' || path === '/ready' || path === '/v1' || path.startsWith('/v1/')
 }
 
 function requestHost(hostHeader: string | string[] | undefined): string {
@@ -107,9 +109,19 @@ export function publicAuthorizerPath(url = ''): string {
   const q = url.includes('?') ? url.slice(url.indexOf('?')) : ''
   const raw = (url.split('?')[0] || '/').replace(/\/+$/, '') || '/'
   if (raw === '/api/health' || raw === '/health') return '/health' + q
+  if (raw === '/api/ready' || raw === '/ready') return '/ready' + q
   if (FLAT_VTXO_PATHS[raw]) return FLAT_VTXO_PATHS[raw] + q
   if (raw.startsWith('/api/authorizer/')) return raw.slice('/api/authorizer'.length) + q
   if (raw === '/api/authorizer') return '/' + q
+  if (raw === '/api/gateway') {
+    const params = new URLSearchParams(q)
+    const route = params.get('route') || ''
+    if (route === 'health') return '/health'
+    if (route === 'ready') return '/ready'
+    const phase = params.get('phase') || ''
+    if (route === 'board' && BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
+    return raw + q
+  }
   if (raw.startsWith('/api/v1')) return raw.slice('/api'.length) + q
   return raw + q
 }
@@ -205,7 +217,7 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 403, 'cross-origin authorizer access denied')
     return
   }
-  if (pathOnly !== '/health' && !allowGatewayRate(clientAddress(req.headers))) {
+  if (pathOnly !== '/health' && pathOnly !== '/ready' && !allowGatewayRate(clientAddress(req.headers))) {
     jsonError(res, 429, 'too many requests')
     return
   }

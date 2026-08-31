@@ -40,6 +40,10 @@ export interface VaultStatusWire {
   vtxoBoardingScript: string
   vtxoBoardingExitDelay: number
   vtxoBoardingExitDelayUnit: string
+  // Enrollment-bound facts used to reconstruct the worker wallet in a fresh
+  // browser without trusting mutable client configuration.
+  vtxoBoardingDescriptor?: BoardingDescriptor
+  vtxoBoardingDescriptorHash?: string
 }
 
 // Wallet domain view. recoveryPub is a normalized compatibility alias and is
@@ -85,4 +89,21 @@ export interface VaultStatus {
   vtxoBoardingScript?: string
   vtxoBoardingExitDelay?: number
   vtxoBoardingExitDelayUnit?: string
+  vtxoBoardingDescriptor?: BoardingDescriptor
+  vtxoBoardingDescriptorHash?: string
+}
+
+export interface BoardingDescriptor {
+  schema: 'arkade-vault/board-v1'
+  program: 'vault-board-v1'
+  template: 'vault-board-v1-boarding-vault-and-operator'
+  network: 'mutinynet'
+  boardingPub: string
+  recoveryPhonePub: string
+  vaultBoardCosignerPub: string
+  operatorPub: string
+  exitDelay: number
+  exitDelayUnit: 'seconds'
+  script: string
+  address: string
 }

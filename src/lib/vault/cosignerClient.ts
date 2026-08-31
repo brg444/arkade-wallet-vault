@@ -35,6 +35,8 @@ export interface VaultEnrollmentRequest {
   recoveryKeyXOnly?: string
   vaultId?: string
   descriptorHash?: string
+  vtxoBoardingProgram?: 'vault-board-v1'
+  vaultBoardingBip340Pub?: string
 }
 
 export interface VaultEnrollProposeResponse {
@@ -263,6 +265,80 @@ export interface VaultCosignerEnrollmentClient {
   recover(request: VaultRecoverEnvelopeRequest): Promise<VaultRecoverEnvelopeResponse>
 }
 
+export interface BoardingOutpointWire {
+  txid: string
+  vout: number
+}
+
+export interface BoardingRecipientWire {
+  address: string
+  amountSats: number
+}
+
+export interface BoardingPrepareRequest {
+  vaultId: string
+  inputs: BoardingOutpointWire[]
+  recipients: BoardingRecipientWire[]
+}
+
+export type BoardingPrepareResponse =
+  | { status: 'ready'; handle: string; registerExpireAt: number }
+  | { status: 'release_required'; handle: string; deleteExpireAt: number }
+  | { status: 'blocked'; reason: string }
+  | { status: 'finalized'; commitmentTxid: string }
+
+export type BoardingRegisterMessageWire = {
+  type: 'register'
+  onchain_output_indexes: number[]
+  valid_at: number
+  expire_at: number
+  cosigners_public_keys: string[]
+}
+
+export type BoardingDeleteMessageWire = { type: 'delete'; expire_at: number }
+
+export interface BoardingPhaseRequest<Message> {
+  handle: string
+  psbt: string
+  inputIndexes: number[]
+  message: Message
+}
+
+export type BoardingRegisterResponse =
+  | { status: 'registered'; intentId: string }
+  | { status: 'definitely_not_submitted' }
+  | { status: 'ambiguous' }
+
+export type BoardingReleaseResponse = { status: 'released' } | { status: 'ambiguous' }
+export type BoardingFinalResponse = { status: 'submitted' } | { status: 'ambiguous' }
+
+export interface BoardingTreeNodeWire {
+  txid: string
+  tx: string
+  children: Record<number, string>
+}
+
+export interface BoardingFinalRequest {
+  handle: string
+  psbt: string
+  inputIndexes: number[]
+  signedForfeits: string[]
+  validatedBatch: {
+    batchId: string
+    batchExpiry: number
+    unsignedCommitmentTx: string
+    vtxoTree: BoardingTreeNodeWire[]
+    expectedRecipients: BoardingRecipientWire[]
+  }
+}
+
+export interface VaultCosignerBoardingClient {
+  prepare(request: BoardingPrepareRequest): Promise<BoardingPrepareResponse>
+  register(request: BoardingPhaseRequest<BoardingRegisterMessageWire>): Promise<BoardingRegisterResponse>
+  release(request: BoardingPhaseRequest<BoardingDeleteMessageWire>): Promise<BoardingReleaseResponse>
+  final(request: BoardingFinalRequest): Promise<BoardingFinalResponse>
+}
+
 export interface VaultCosignerRecoveryClient {
   challenge(request: VaultPasskeyChallengeRequest): Promise<VaultPasskeyChallengeResponse>
   initiate(request: VaultInitiateRequest): Promise<VaultTransitionResponse>
@@ -283,6 +359,7 @@ export interface VaultCosignerClient {
   enrollment: VaultCosignerEnrollmentClient
   recovery: VaultCosignerRecoveryClient
   spending: VaultCosignerSpendingClient
+  boarding: VaultCosignerBoardingClient
 }
 
 export const vaultCosignerClient: VaultCosignerClient = {
@@ -349,6 +426,20 @@ export const vaultCosignerClient: VaultCosignerClient = {
       return vaultGet(
         `/v1/vtxo/operation?vaultId=${encodeURIComponent(vaultId)}&operationId=${encodeURIComponent(operationId)}`,
       )
+    },
+  },
+  boarding: {
+    prepare(request) {
+      return vaultPost('/v1/vtxo/board/prepare', request)
+    },
+    register(request) {
+      return vaultPost('/v1/vtxo/board/register', request)
+    },
+    release(request) {
+      return vaultPost('/v1/vtxo/board/release', request)
+    },
+    final(request) {
+      return vaultPost('/v1/vtxo/board/final', request)
     },
   },
 }

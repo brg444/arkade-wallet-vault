@@ -9,7 +9,6 @@ import { useVaultSession } from './useVaultSession'
 const mocks = vi.hoisted(() => ({
   discover: vi.fn(),
   enable: vi.fn(),
-  fetchStatus: vi.fn(),
   loadPin: vi.fn(),
   makePin: vi.fn(),
   pullMap: vi.fn(),
@@ -31,8 +30,6 @@ vi.mock('../lib/vault/signIn', () => ({
   signInWithPasskey: mocks.recover,
   unlockLocalEnrollment: mocks.unlock,
 }))
-
-vi.mock('../lib/vault/status', () => ({ fetchVaultStatus: mocks.fetchStatus }))
 
 vi.mock('../lib/vault/program/kitBackup', () => ({
   kitFromFacts: vi.fn().mockReturnValue(null),
@@ -84,13 +81,12 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   mocks.discover.mockResolvedValue('vault-a')
-  mocks.fetchStatus.mockResolvedValue(status)
   mocks.enable.mockResolvedValue(status)
   mocks.pullMap.mockResolvedValue(null)
   mocks.recover.mockResolvedValue({ enrollment, status })
   mocks.makePin.mockReturnValue(pin)
   mocks.savePin.mockReturnValue(pin)
-  mocks.unlock.mockResolvedValue(enrollment)
+  mocks.unlock.mockResolvedValue({ enrollment, status })
 })
 
 describe('Vault session program-pin recovery', () => {
@@ -115,7 +111,7 @@ describe('Vault session program-pin recovery', () => {
 
     expect(mocks.unlock).toHaveBeenCalledExactlyOnceWith(enrollment)
     expect(mocks.recover).not.toHaveBeenCalled()
-    expect(mocks.fetchStatus).toHaveBeenCalledExactlyOnceWith(undefined, 'vault-a')
+    expect(hook.setStatus).toHaveBeenCalledWith(status)
     expect(hook.setScreen).toHaveBeenCalledWith('home')
   })
 

@@ -1,20 +1,25 @@
-import { ArkAddress, DefaultVtxo } from '@arkade-os/sdk'
+import { ArkAddress, createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { POLICY_VERSION } from '../../../lib/vault/constants'
 import { saveEnrollment, saveSelectedVaultId } from '../../../lib/vault/enrollmentStore'
 import { pinFromEnrolledStatus, saveAddressPin } from '../../../lib/vault/pin'
 import { buildVaultProgramDescriptor } from '../../../lib/vault/program/descriptor'
-import { PROGRAM_FIXTURE } from '../../../lib/vault/program/fixtures'
+import { PROGRAM_FIXTURE, scalarSecret } from '../../../lib/vault/program/fixtures'
+import { hashBoardingEnrollmentDescriptor } from '../../../lib/vault/program/enroll'
 import { buildRecoveryKit } from '../../../lib/vault/program/kit'
 import { saveLocalKit } from '../../../lib/vault/program/kitStore'
 import { SAVINGS_TEMPLATE } from '../../../lib/vault/program/constants'
 import { saveSetupPlan } from '../../../lib/vault/setupPlan'
 import type { VaultStatus } from '../../../lib/vault/types'
-import { vaultAddressNetwork } from '../../../lib/vault/bitcoin'
 import {
-  VAULT_BOARD_V1,
-  VAULT_BOARD_V1_EXIT_DELAY,
-  VAULT_BOARD_V1_EXIT_DELAY_UNIT,
+  activateBoardingKey,
+  stageBoardingKey,
+  BOARDING_EXIT_DELAY,
+  BOARDING_EXIT_DELAY_UNIT,
+  BOARDING_PROGRAM,
+  BOARDING_SCHEMA,
+  BOARDING_TEMPLATE,
+  MUTINYNET_OPERATOR_SIGNER_PUB,
 } from '../../../lib/vault/vtxo/board'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
@@ -25,7 +30,7 @@ import {
 import { persistVtxoSpend, type PersistedVtxoSpend } from '../../../lib/vault/vtxo/spend'
 
 export const VAULT_UI_ID = 'e2e-vault-ui'
-export const OPERATOR_XONLY = 'e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13'
+export const OPERATOR_XONLY = MUTINYNET_OPERATOR_SIGNER_PUB.slice(2)
 export const VAULT_UI_DESTINATION = new ArkAddress(
   hex.decode(OPERATOR_XONLY),
   hex.decode('5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc'),
@@ -36,7 +41,7 @@ function xonly(compressed: string): Uint8Array {
   return hex.decode(compressed).subarray(1)
 }
 
-export function vaultUiStatus(origin = location.origin, hostname = location.hostname): VaultStatus {
+export async function vaultUiStatus(origin = location.origin, hostname = location.hostname): Promise<VaultStatus> {
   const descriptor = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, vaultId: VAULT_UI_ID })
   const delegatePub = VAULT_POLICY_V1_PINNED_DELEGATE
   const spending = new VaultPolicyV1Script({
@@ -50,10 +55,43 @@ export function vaultUiStatus(origin = location.origin, hostname = location.host
     exitHardwarePub: xonly(descriptor.keys.hardware),
     exitRecoveryPub: xonly(descriptor.keys.recovery!),
   })
-  const boarding = new DefaultVtxo.Script({
-    pubKey: xonly(descriptor.keys.phoneBip340),
-    serverPubKey: hex.decode(OPERATOR_XONLY),
-    csvTimelock: { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY },
+  const phoneSecret = scalarSecret(3)
+  const staged = await stageBoardingKey({ vaultId: VAULT_UI_ID, phoneSecret, network: 'mutinynet' })
+  phoneSecret.fill(0)
+  const boarding = createBoardingProgramScript(
+    {
+      name: BOARDING_PROGRAM,
+      boardingPubKey: xonly(staged.boardingPub),
+      cosignerPubKey: xonly(descriptor.keys.vaultCosignerBase),
+      recoveryPubKey: xonly(descriptor.keys.phoneBip340),
+    },
+    xonly(MUTINYNET_OPERATOR_SIGNER_PUB),
+    { type: BOARDING_EXIT_DELAY_UNIT, value: BigInt(BOARDING_EXIT_DELAY) },
+  )
+  const boardingDescriptor = {
+    schema: BOARDING_SCHEMA,
+    program: BOARDING_PROGRAM,
+    template: BOARDING_TEMPLATE,
+    network: 'mutinynet' as const,
+    boardingPub: staged.boardingPub,
+    recoveryPhonePub: descriptor.keys.phoneBip340,
+    vaultBoardCosignerPub: descriptor.keys.vaultCosignerBase,
+    operatorPub: MUTINYNET_OPERATOR_SIGNER_PUB,
+    exitDelay: BOARDING_EXIT_DELAY,
+    exitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
+    script: hex.encode(boarding.pkScript),
+    address: boarding.onchainAddress(getNetwork('mutinynet')),
+  }
+  const boardingDescriptorHash = hashBoardingEnrollmentDescriptor({
+    schema: 'arkade-vault/enrollment-with-board-v1',
+    vaultId: VAULT_UI_ID,
+    savings: descriptor,
+    boarding: boardingDescriptor,
+  })
+  await activateBoardingKey({
+    vaultId: VAULT_UI_ID,
+    descriptorHash: boardingDescriptorHash,
+    expectedBoardingPub: staged.boardingPub,
   })
   return {
     enrolled: true,
@@ -87,16 +125,18 @@ export function vaultUiStatus(origin = location.origin, hostname = location.host
     spendingArkScript: hex.encode(spending.pkScript),
     vtxoDelegatePub: delegatePub,
     vtxoBoardingActive: true,
-    vtxoBoardingProgram: VAULT_BOARD_V1,
-    vtxoBoardingAddress: boarding.onchainAddress(vaultAddressNetwork('mutinynet')),
+    vtxoBoardingProgram: BOARDING_PROGRAM,
+    vtxoBoardingAddress: boardingDescriptor.address,
     vtxoBoardingScript: hex.encode(boarding.pkScript),
-    vtxoBoardingExitDelay: Number(VAULT_BOARD_V1_EXIT_DELAY),
-    vtxoBoardingExitDelayUnit: VAULT_BOARD_V1_EXIT_DELAY_UNIT,
+    vtxoBoardingExitDelay: Number(BOARDING_EXIT_DELAY),
+    vtxoBoardingExitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
+    vtxoBoardingDescriptor: boardingDescriptor,
+    vtxoBoardingDescriptorHash: boardingDescriptorHash,
   }
 }
 
-export function installVaultUiSession() {
-  const status = vaultUiStatus()
+export async function installVaultUiSession() {
+  const status = await vaultUiStatus()
   const descriptor = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, vaultId: VAULT_UI_ID })
   saveSelectedVaultId(VAULT_UI_ID)
   saveEnrollment({

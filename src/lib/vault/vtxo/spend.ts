@@ -50,8 +50,10 @@ const MUTINYNET_OPERATOR_ORIGIN = 'https://mutinynet.arkade.sh'
 const VTXO_DUST_SATS = 330
 const MAX_VTXO_INPUTS = 50
 
-export function vaultArkServer(production = import.meta.env.PROD): string {
-  return production ? '/arkade' : MUTINYNET_OPERATOR_ORIGIN
+declare const __VAULT_E2E_OPERATOR_ORIGIN__: string
+
+export function vaultArkServer(): string {
+  return __VAULT_E2E_OPERATOR_ORIGIN__ || MUTINYNET_OPERATOR_ORIGIN
 }
 
 export interface VaultVtxoSpendResult {

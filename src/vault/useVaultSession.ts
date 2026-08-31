@@ -15,7 +15,6 @@ import {
   unlockLocalEnrollment,
 } from '../lib/vault/signIn'
 import { planReady, sameBip340Key, type VaultSetupPlan } from '../lib/vault/setupPlan'
-import { fetchVaultStatus } from '../lib/vault/status'
 import { enrollWithPasskey, type EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { kitFromFacts, pullMapBackup, pushMapBackup } from '../lib/vault/program/kitBackup'
@@ -158,16 +157,16 @@ export function useVaultSession({
       const localPin = local ? loadAddressPin(localStorage, local.vaultId) : null
       if (local && localPin) {
         const unlocked = await unlockLocalEnrollment(local)
-        setEnrollment(unlocked)
+        setEnrollment(unlocked.enrollment)
         setLocked(false)
-        const live = await fetchVaultStatus(undefined, unlocked.vaultId)
+        const live = unlocked.status
         setStatus(live)
         setAddressPin(localPin)
         setScreen('home')
-        bestEffortBrowserWrite(() => saveEnrollment(unlocked))
-        bestEffortBrowserWrite(() => saveSelectedVaultId(unlocked.vaultId))
+        bestEffortBrowserWrite(() => saveEnrollment(unlocked.enrollment))
+        bestEffortBrowserWrite(() => saveSelectedVaultId(unlocked.enrollment.vaultId))
         bestEffortBrowserWrite(() => setSessionLocked(false))
-        void restoreMap(unlocked, live, setup)
+        void restoreMap(unlocked.enrollment, live, setup)
         return
       }
       if (local) {
