@@ -177,7 +177,10 @@ export function useVaultBalances({
         setBalancesLoaded(true)
         setBalanceError('')
       } catch (error) {
-        if (version === refreshVersion.current) setBalanceError(humanizeVaultError(error))
+        if (version === refreshVersion.current) {
+          consoleError(error, 'Vault balance refresh')
+          setBalanceError(humanizeVaultError(error))
+        }
       } finally {
         if (version === refreshVersion.current) setRefreshingBalance(false)
       }
