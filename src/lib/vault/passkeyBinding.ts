@@ -6,7 +6,7 @@ import type { EnrollmentSecrets } from './tenantEnrollment'
 import type { VaultStatus } from './types'
 
 const encoder = new TextEncoder()
-const BINDING_DOMAIN = encoder.encode('arkade-vault/recovery-binding/v2')
+const BINDING_DOMAIN = encoder.encode('arkade-vault/recovery-binding/v3')
 const PROOF_DOMAIN = encoder.encode('arkade-2fa-vault/passkey-proof/v1')
 const ZERO = Uint8Array.of(0)
 
@@ -38,9 +38,11 @@ export function recoveryBindingDigest(binding: string): Uint8Array {
   return sha256(concat(BINDING_DOMAIN, ZERO, encoder.encode(binding)))
 }
 
-export function parseRecoveryBinding(binding: string): Record<string, string | number> {
+type RecoveryBinding = Record<string, string | number | boolean>
+
+export function parseRecoveryBinding(binding: string): RecoveryBinding {
   if (!binding || binding.length > 16 * 1024) throw new Error('recovery binding')
-  const value = JSON.parse(binding) as Record<string, string | number>
+  const value = JSON.parse(binding) as RecoveryBinding
   const expected = [
     'version',
     'credentialId',
@@ -60,6 +62,18 @@ export function parseRecoveryBinding(binding: string): Record<string, string | n
     'policyVersion',
     'savingsAddress',
     'savingsScript',
+    'vtxoVaultCosignerPub',
+    'vtxoExitDelay',
+    'vtxoExitDelayUnit',
+    'spendingArkAddress',
+    'spendingArkScript',
+    'vtxoDelegatePub',
+    'vtxoBoardingActive',
+    'vtxoBoardingProgram',
+    'vtxoBoardingAddress',
+    'vtxoBoardingScript',
+    'vtxoBoardingExitDelay',
+    'vtxoBoardingExitDelayUnit',
     'recipientDustSats',
     'txRecipientCapSats',
     'periodAllowanceSats',
@@ -72,14 +86,11 @@ export function parseRecoveryBinding(binding: string): Record<string, string | n
   if (got.length !== expected.length || expected.some((field, i) => got[i] !== field)) {
     throw new Error('recovery binding fields or order')
   }
-  if (value.version !== 2) throw new Error('recovery binding version')
+  if (value.version !== 3) throw new Error('recovery binding version')
   return value
 }
 
-export function assertRecoveryBindingMatchesStatus(
-  binding: string | Record<string, string | number>,
-  status: VaultStatus,
-) {
+export function assertRecoveryBindingMatchesStatus(binding: string | RecoveryBinding, status: VaultStatus) {
   const value = typeof binding === 'string' ? parseRecoveryBinding(binding) : binding
   const pairs: [string, keyof VaultStatus][] = [
     ['phoneDirectP256', 'phoneDirectP256'],
@@ -97,6 +108,18 @@ export function assertRecoveryBindingMatchesStatus(
     ['policyVersion', 'policyVersion'],
     ['savingsAddress', 'savingsAddress'],
     ['savingsScript', 'savingsScript'],
+    ['vtxoVaultCosignerPub', 'vtxoVaultCosignerPub'],
+    ['vtxoExitDelay', 'vtxoExitDelay'],
+    ['vtxoExitDelayUnit', 'vtxoExitDelayUnit'],
+    ['spendingArkAddress', 'spendingArkAddress'],
+    ['spendingArkScript', 'spendingArkScript'],
+    ['vtxoDelegatePub', 'vtxoDelegatePub'],
+    ['vtxoBoardingActive', 'vtxoBoardingActive'],
+    ['vtxoBoardingProgram', 'vtxoBoardingProgram'],
+    ['vtxoBoardingAddress', 'vtxoBoardingAddress'],
+    ['vtxoBoardingScript', 'vtxoBoardingScript'],
+    ['vtxoBoardingExitDelay', 'vtxoBoardingExitDelay'],
+    ['vtxoBoardingExitDelayUnit', 'vtxoBoardingExitDelayUnit'],
     ['txRecipientCapSats', 'txCap'],
     ['periodAllowanceSats', 'periodAllowance'],
     ['absoluteFeeCapSats', 'absoluteFeeCap'],
@@ -137,7 +160,7 @@ export function verifyRecoveryBindingSignatures(input: {
   return value
 }
 
-export function recordFromRecoveryBinding(value: Record<string, string | number>): EnrollmentSecrets {
+export function recordFromRecoveryBinding(value: RecoveryBinding): EnrollmentSecrets {
   const vaultId = String(value.vaultId || '').trim()
   if (!vaultId) throw new Error('vault id required')
   return {

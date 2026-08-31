@@ -2,12 +2,16 @@ import {
   ArkAddress,
   buildOffchainTx,
   CSVMultisigTapscript,
+  hasTerminalSpend,
   Intent,
+  isRetryableProviderError,
   RestArkProvider,
   RestIndexerProvider,
   SingleKey,
   Transaction,
   type ArkProvider,
+  type IndexerProvider,
+  type VirtualCoin,
   verifyTapscriptSignatures,
 } from '@arkade-os/sdk'
 import { SigHash } from '@scure/btc-signer'
@@ -84,10 +88,21 @@ export interface VaultVtxoSpendResult {
 
 export interface VaultVtxoSpendQuote {
   operationId: string
+  bundleDigest: string
+  destAddress: string
+  amountSats: number
   feeSats: number
   feePolicyDigest: string
+  reservationExpires: string
   changeSats: number
   changeVout?: number
+}
+
+export class VtxoReviewedReservationError extends Error {
+  constructor() {
+    super('This fee quote expired or changed. Review the send again.')
+    this.name = 'VtxoReviewedReservationError'
+  }
 }
 
 export class VtxoReceiptPendingError extends Error {
@@ -140,6 +155,10 @@ export function isVtxoSpendUnresolvedError(err: unknown): err is VtxoSpendUnreso
   return err instanceof VtxoSpendUnresolvedError
 }
 
+export function isVtxoReviewedReservationError(err: unknown): err is VtxoReviewedReservationError {
+  return err instanceof VtxoReviewedReservationError
+}
+
 export type PersistedVtxoSpendStage =
   | 'pre-reserve'
   | 'reserved'
@@ -156,6 +175,10 @@ export interface VtxoOperationView {
   state: VtxoOperationState
   arkTxid?: string
   expiresAt?: string
+  feeSats?: number
+  feePolicyDigest?: string
+  changeSats?: number
+  changeVout?: number
   authorizedPsbt?: string
   authorizedPendingProof?: string
   checkpointPsbts?: string[]
@@ -286,7 +309,7 @@ export function clearPersistedVtxoSpend(vaultId: string) {
   localStorage.removeItem(vtxoSpendStorageKey(vaultId))
 }
 
-function requireHex(value: string | undefined, bytes: number, name: string): Uint8Array {
+function requireHex(value: string | undefined, bytes: number, name: string): Uint8Array<ArrayBuffer> {
   let decoded: Uint8Array
   try {
     decoded = hex.decode(String(value || '').toLowerCase())
@@ -294,7 +317,7 @@ function requireHex(value: string | undefined, bytes: number, name: string): Uin
     throw new Error(`${name} is not hex`)
   }
   if (decoded.length !== bytes) throw new Error(`${name} must be ${bytes} bytes`)
-  return decoded
+  return decoded as Uint8Array<ArrayBuffer>
 }
 
 function xOnly(value: string | undefined, name: string): Uint8Array {
@@ -412,7 +435,7 @@ async function authorizeWithPasskey(
       await crypto.subtle.decrypt(
         { name: 'AES-GCM', iv: requireHex(enrollment.nonce, 12, 'enrollment nonce') },
         kek,
-        hex.decode(enrollment.ciphertext),
+        hex.decode(enrollment.ciphertext) as BufferSource,
       ),
     )
     const identity = SingleKey.fromPrivateKey(phoneSecret)
@@ -432,7 +455,7 @@ async function authorizeWithPasskey(
       phoneSecret,
     }
   } finally {
-    zeroBytes(prf, scalar)
+    zeroBytes(prf, scalar as Uint8Array)
   }
 }
 
@@ -1048,20 +1071,71 @@ async function reservePersistedVtxoSpend(
 
 function quoteFromPersistedVtxoSpend(pending: PersistedVtxoSpend): VaultVtxoSpendQuote {
   if (
+    !/^[0-9a-f]{64}$/.test(pending.bundleDigest) ||
     !pending.feePolicyDigest ||
     pending.feeSats === undefined ||
+    !pending.reservationExpires ||
+    !Number.isFinite(Date.parse(pending.reservationExpires)) ||
     pending.changeSats === undefined ||
     !persistedReservationFactsAreValid(pending)
   ) {
-    throw new Error('persisted VTXO reservation is missing fee or change facts')
+    throw new Error('persisted VTXO reservation is missing review facts')
   }
   return {
     operationId: pending.operationId,
+    bundleDigest: pending.bundleDigest,
+    destAddress: pending.destAddress,
+    amountSats: pending.amountSats,
     feeSats: pending.feeSats,
     feePolicyDigest: pending.feePolicyDigest,
+    reservationExpires: pending.reservationExpires,
     changeSats: pending.changeSats,
     ...(pending.changeVout === undefined ? {} : { changeVout: pending.changeVout }),
   }
+}
+
+function reviewedReservationError(): never {
+  throw new VtxoReviewedReservationError()
+}
+
+function sameExpiry(left: string | undefined, right: string): boolean {
+  const leftMs = Date.parse(String(left || ''))
+  const rightMs = Date.parse(right)
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs === rightMs
+}
+
+/** Verify the durable and server-side facts shown on Review before any passkey prompt. */
+export function requireReviewedVtxoReservation(
+  pending: PersistedVtxoSpend | undefined,
+  view: VtxoOperationView,
+  reviewed: VaultVtxoSpendQuote,
+  nowMs = Date.now(),
+): PersistedVtxoSpend {
+  if (
+    !pending ||
+    pending.stage === 'pre-reserve' ||
+    pending.operationId !== reviewed.operationId ||
+    pending.bundleDigest !== reviewed.bundleDigest ||
+    pending.destAddress.trim() !== reviewed.destAddress.trim() ||
+    pending.amountSats !== reviewed.amountSats ||
+    pending.feeSats !== reviewed.feeSats ||
+    pending.feePolicyDigest !== reviewed.feePolicyDigest ||
+    !sameExpiry(pending.reservationExpires, reviewed.reservationExpires) ||
+    view.operationId !== reviewed.operationId ||
+    view.bundleDigest !== reviewed.bundleDigest ||
+    view.feeSats !== reviewed.feeSats ||
+    view.feePolicyDigest !== reviewed.feePolicyDigest ||
+    pending.changeSats !== reviewed.changeSats ||
+    pending.changeVout !== reviewed.changeVout ||
+    view.changeSats !== reviewed.changeSats ||
+    view.changeVout !== reviewed.changeVout ||
+    !sameExpiry(view.expiresAt, reviewed.reservationExpires) ||
+    view.state === 'aborted' ||
+    (view.state === 'reserved' && Date.parse(reviewed.reservationExpires) <= nowMs)
+  ) {
+    reviewedReservationError()
+  }
+  return pending
 }
 
 async function prepareVtxoSpendLocked(
@@ -1399,35 +1473,36 @@ async function continueSameVtxoSpend(
 export async function sendVaultVtxo(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
-  destAddress: string,
-  amountSats: number,
+  reviewed: VaultVtxoSpendQuote,
 ): Promise<VaultVtxoSpendResult> {
   requireMutinynetStatus(status)
-  if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
-  return withVtxoSendLock(status.vaultId, async () => {
-    const pending = await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats)
-    return continueSameVtxoSpend(enrollment, status, pending)
-  })
-}
-
-export async function fetchVaultVtxoFunds(status: VaultStatus): Promise<{ balance: number }> {
-  requireMutinynetStatus(status)
-  const script = vaultPolicyV1ScriptFromStatus(status)
-  const provider = new RestIndexerProvider(vaultArkServer())
-  const scripts = [hex.encode(script.pkScript)]
-  const vtxos = uniqueVtxosByOutpoint(
-    await collectPagedVtxos((pageIndex) =>
-      provider.getVtxos({ scripts, spendableOnly: true, ...vaultVtxoPage(pageIndex) }),
-    ),
-  )
-  return {
-    balance: vtxos.reduce((sum, vtxo) => sum + vtxo.value, 0),
+  if (!Number.isSafeInteger(reviewed.amountSats) || reviewed.amountSats < VTXO_DUST_SATS) {
+    throw new VtxoReviewedReservationError()
   }
+  return withVtxoSendLock(status.vaultId, async () => {
+    const pending = loadPersistedVtxoSpend(status.vaultId)
+    if (!pending) throw new VtxoReviewedReservationError()
+    let view: VtxoOperationView
+    try {
+      view = await fetchVtxoOperation(status.vaultId, reviewed.operationId)
+    } catch (err) {
+      if (operationNotFound(err) || (err instanceof Error && err.message.toLowerCase().includes('expired'))) {
+        clearPersistedVtxoSpend(status.vaultId)
+        throw new VtxoReviewedReservationError()
+      }
+      throw err
+    }
+    requireReviewedVtxoReservation(pending, view, reviewed)
+    const synced = applyVtxoOperationView(pending, view)
+    if (!synced) throw new VtxoReviewedReservationError()
+    return continueSameVtxoSpend(enrollment, status, synced)
+  })
 }
 
 export type VtxoIndexerPage = { current: number; next: number; total: number }
 
 const MAX_VTXO_HISTORY_PAGES = 256
+const VTXO_TX_TIME_BATCH_SIZE = 64
 export const VAULT_VTXO_PAGE_SIZE = 100
 
 export function vaultVtxoPage(pageIndex: number): { pageIndex: number; pageSize: number } {
@@ -1447,23 +1522,70 @@ export async function collectPagedVtxos<T>(
   const seen = new Set<number>()
   let pageIndex = 0
   for (;;) {
-    if (seen.has(pageIndex) || seen.size >= MAX_VTXO_HISTORY_PAGES) break
+    if (seen.has(pageIndex)) break
     seen.add(pageIndex)
     const { vtxos, page } = await fetchPage(pageIndex)
     all.push(...vtxos)
     if (!page || page.current + 1 >= page.total || page.next <= page.current) break
+    if (seen.size >= MAX_VTXO_HISTORY_PAGES) {
+      throw new Error('VTXO indexer pagination exceeds the safety limit')
+    }
     pageIndex = page.next
   }
   return all
 }
 
-export async function fetchVaultVtxoHistory(status: VaultStatus): Promise<VaultHistoryItem[]> {
+type VaultVtxoIndexer = Pick<IndexerProvider, 'getVtxos'>
+
+async function fetchMissingVtxoCreatedAt(
+  provider: VaultVtxoIndexer,
+  vtxos: VirtualCoin[],
+): Promise<ReadonlyMap<string, number>> {
+  const walletTxids = new Set(vtxos.map((vtxo) => vtxo.txid))
+  const missing = [
+    ...new Set(
+      vtxos
+        .filter(hasTerminalSpend)
+        .map((vtxo) => vtxo.arkTxId || '')
+        .filter((txid) => txid && !walletTxids.has(txid)),
+    ),
+  ]
+  const createdAt = new Map<string, number>()
+  for (let offset = 0; offset < missing.length; offset += VTXO_TX_TIME_BATCH_SIZE) {
+    const txids = missing.slice(offset, offset + VTXO_TX_TIME_BATCH_SIZE)
+    try {
+      const { vtxos: resolved } = await provider.getVtxos({
+        outpoints: txids.map((txid) => ({ txid, vout: 0 })),
+        pageSize: VAULT_VTXO_PAGE_SIZE,
+      })
+      for (const vtxo of resolved) createdAt.set(vtxo.txid, vtxo.createdAt.getTime())
+    } catch (error) {
+      if (!isRetryableProviderError(error)) throw error
+    }
+  }
+  return createdAt
+}
+
+export interface VaultVtxoSnapshot {
+  balance: number
+  history: VaultHistoryItem[]
+}
+
+export async function fetchVaultVtxoSnapshot(
+  status: VaultStatus,
+  provider: VaultVtxoIndexer = new RestIndexerProvider(vaultArkServer()),
+): Promise<VaultVtxoSnapshot> {
   requireMutinynetStatus(status)
   const script = vaultPolicyV1ScriptFromStatus(status)
-  const provider = new RestIndexerProvider(vaultArkServer())
   const scripts = [hex.encode(script.pkScript)]
-  const vtxos = await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) }))
-  return historyFromVtxos(vtxos.map(vaultVtxoHistoryCoin))
+  const vtxos = uniqueVtxosByOutpoint(
+    await collectPagedVtxos((pageIndex) => provider.getVtxos({ scripts, ...vaultVtxoPage(pageIndex) })),
+  )
+  const resolvedCreatedAt = await fetchMissingVtxoCreatedAt(provider, vtxos)
+  return {
+    balance: vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0),
+    history: historyFromVtxos(vtxos.map(vaultVtxoHistoryCoin), 'spend', resolvedCreatedAt),
+  }
 }
 
 export function vaultVtxoHistoryCoin(vtxo: {

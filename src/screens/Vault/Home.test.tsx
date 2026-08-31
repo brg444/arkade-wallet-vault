@@ -74,4 +74,14 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
     expect(screen.getByText('Loading Spending balance…')).toBeTruthy()
   })
+
+  it('replaces terminal loading with a clear balance retry action', async () => {
+    const user = userEvent.setup()
+    const value = renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
+
+    expect(screen.queryByText('Loading Spending balance…')).toBeNull()
+    expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(value.refreshBalance).toHaveBeenCalledTimes(1)
+  })
 })

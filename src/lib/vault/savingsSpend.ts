@@ -156,7 +156,7 @@ export function psbtHexToBase64(psbtHex: string): string {
 
 export function psbtFile(psbtHex: string, name = 'arkade-savings.psbt'): File {
   const bytes = hex.decode(parseIncomingPsbt(psbtHex))
-  return new File([bytes], name, { type: 'application/octet-stream' })
+  return new File([bytes as BlobPart], name, { type: 'application/octet-stream' })
 }
 
 export function parseIncomingPsbt(raw: string): string {

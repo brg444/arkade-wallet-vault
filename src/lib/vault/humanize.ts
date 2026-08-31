@@ -27,6 +27,9 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('vtxo spend is unresolved') || msg.includes('vtxo reservation expired')) {
     return 'This send did not finish. Refresh your balance before trying again.'
   }
+  if (msg.includes('fee quote expired or changed')) {
+    return 'This fee quote expired or changed. Review the send again.'
+  }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
     msg.includes('vtxo finalization receipt') ||
@@ -95,7 +98,8 @@ export function humanizeVaultError(err: unknown): string {
   if (
     msg.includes('template version') ||
     msg.includes('policy version') ||
-    msg.includes('current vault program descriptor')
+    msg.includes('current vault program descriptor') ||
+    msg.includes('tree does not match this vault')
   ) {
     return 'This app doesn’t match the vault. Update and try again.'
   }
@@ -129,7 +133,7 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('different key') || msg.includes('must be different')) {
     return 'Use a different hardware key.'
   }
-  return raw.charAt(0).toUpperCase() + raw.slice(1)
+  return 'Something went wrong. Try again.'
 }
 
 export function isRecoverableVaultBoardingError(err: unknown): boolean {

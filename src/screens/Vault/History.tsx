@@ -55,9 +55,16 @@ export default function VaultHistory() {
           <h3 className='vault-history-group-label'>{group.label}</h3>
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
+            const lightning = tx.activity === 'lightning'
+            const amount = tx.displayAmount ?? tx.amount
             const time = historyTime(tx.blockTime)
-            const state =
-              tx.account === 'spend'
+            const state = lightning
+              ? ['claimed', 'settled'].includes(tx.lightningState || '')
+                ? 'Paid'
+                : tx.lightningState === 'refunded'
+                  ? 'Refunded'
+                  : 'Processing'
+              : tx.account === 'spend'
                 ? tx.confirmed
                   ? time
                     ? `Settled · ${time}`
@@ -74,7 +81,7 @@ export default function VaultHistory() {
                 key={`${tx.account}:${tx.txid}:${tx.type}`}
                 className='vault-history-row'
                 data-testid={`vault-tx-${tx.txid}`}
-                aria-label={`${sent ? 'Sent' : 'Received'} ${prettyAmount(tx.amount)}. ${state}.`}
+                aria-label={`${lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} ${prettyAmount(amount)}. ${state}.`}
                 onClick={() => {
                   hapticSubtle()
                   openTx(tx)
@@ -85,7 +92,7 @@ export default function VaultHistory() {
                 </span>
                 <span className='vault-history-copy'>
                   <Text small bold>
-                    {sent ? 'Sent' : 'Received'}
+                    {lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'}
                   </Text>
                   <Text color='neutral-600' tiny>
                     {state}
@@ -93,7 +100,7 @@ export default function VaultHistory() {
                 </span>
                 <span className={sent ? 'vault-history-amt' : 'vault-history-amt is-in'}>
                   {sent ? '−' : '+'}
-                  {prettyAmount(tx.amount)}
+                  {prettyAmount(amount)}
                 </span>
               </button>
             )

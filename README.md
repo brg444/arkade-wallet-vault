@@ -48,6 +48,17 @@ pnpm start
 The development server listens on
 [http://localhost:3003](http://localhost:3003).
 
+When the local Vault service has a gateway secret, pass the same value only to
+the Vite process:
+
+```bash
+VAULT_GATEWAY_SECRET=<local-gateway-secret> pnpm start
+```
+
+The development proxy adds the private header to `/v1` requests. Never expose
+this value through a `VITE_` variable; variables with that prefix are compiled
+into browser code.
+
 Run the release checks with:
 
 ```bash
@@ -66,7 +77,11 @@ the official SDK pending-transaction interface. Mainnet remains blocked on
 live lifecycle qualification, browser concurrency tests, production key
 isolation, mainnet-specific program pins, and the private mainnet Emulator
 endpoint. Vault Program and policy adjustments begin after the Mutinynet
-lifecycle is stable. The complete release gate is in
+lifecycle is stable. A disabled outbound BOLT11 lifecycle delegates RFQ,
+VHTLC, persistence, restart, and refund handling to the published swap package,
+then funds through the ordinary VTXO send path. Its solver, refund, expiry, and
+live-payment gates are recorded in [docs/lightning.md](docs/lightning.md). The
+complete release gate is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.

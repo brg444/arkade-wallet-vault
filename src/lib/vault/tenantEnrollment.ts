@@ -57,7 +57,7 @@ async function compressedES256(response: AuthenticatorAttestationResponse): Prom
   return out
 }
 
-async function deriveDirectP256(prf: Uint8Array): Promise<{ pub: Uint8Array }> {
+async function deriveDirectP256(prf: Uint8Array<ArrayBuffer>): Promise<{ pub: Uint8Array }> {
   const key = await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveBits'])
   for (let counter = 0; counter <= 255; counter++) {
     const info = new Uint8Array(DIRECT_INFO.length + 4)

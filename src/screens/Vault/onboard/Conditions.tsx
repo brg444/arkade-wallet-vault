@@ -9,10 +9,10 @@ import { PolicyTimeline } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultConditions() {
-  const { confirmConditions, navigate, setup, status } = useContext(VaultContext)
+  const { confirmConditions, liveNetwork, navigate, setup, status } = useContext(VaultContext)
   const txCap = status?.txCap || setup.txCapSats
   const daily = status?.periodAllowance || setup.dailyLimitSats
-  const network = status?.network || 'mutinynet'
+  const network = liveNetwork ? 'mutinynet' : undefined
 
   return (
     <OnboardLayout

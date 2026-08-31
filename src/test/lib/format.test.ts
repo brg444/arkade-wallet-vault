@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   prettyAmount,
   prettyAgo,
@@ -89,6 +89,13 @@ describe('format utilities', () => {
     const minute = 60 * 1000
     const hour = 60 * minute
     const day = 24 * hour
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(now)
+    })
+
+    afterEach(() => vi.useRealTimers())
 
     it('should format recent times', () => {
       expect(prettyAgo(now)).toBe('just now')

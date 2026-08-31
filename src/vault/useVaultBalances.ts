@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { consoleError } from '../lib/logs'
 import { fetchAddressTxs, fetchAddressUtxos, type EsploraUtxo } from '../lib/vault/esplora'
-import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
+import { applyLightningHistoryMetadata, historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import { humanizeVaultError } from '../lib/vault/humanize'
+import { vaultLightningSendEnabled } from '../lib/vault/lightningConfig'
 import { loadAddressPin, type AddressPin } from '../lib/vault/pin'
 import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import { fetchVaultStatus } from '../lib/vault/status'
@@ -17,11 +18,26 @@ import {
   withVaultBoardingLock,
   withVaultBoardingSecret,
 } from '../lib/vault/vtxo/board'
-import { fetchVaultVtxoFunds, fetchVaultVtxoHistory, reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+import { fetchVaultVtxoSnapshot, reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+
+async function loadVaultLightningHistory(vaultId: string) {
+  if (!vaultLightningSendEnabled()) return []
+  try {
+    const lightning = await import('../lib/vault/lightning')
+    return await lightning.withVaultLightningRepository(vaultId, lightning.listVaultLightningHistory)
+  } catch (error) {
+    // This local database only decorates transaction history. Authoritative
+    // balances must remain available if browser metadata cannot be opened.
+    consoleError(error, 'could not load Lightning history metadata')
+    return []
+  }
+}
+
 interface VaultBalancesOptions {
   addressPin: AddressPin | null
   busy: boolean
   enrollment: EnrollmentSecrets | null
+  initialStatusChecked: boolean
   locked: boolean
   reportError: (message: string) => void
   setStatus: Dispatch<SetStateAction<VaultStatus | null>>
@@ -62,6 +78,7 @@ export function useVaultBalances({
   addressPin,
   busy,
   enrollment,
+  initialStatusChecked,
   locked,
   onBoarded,
   reportError,
@@ -82,8 +99,12 @@ export function useVaultBalances({
   const refreshVersion = useRef(0)
   const statusRef = useRef(status)
   const addressPinRef = useRef(addressPin)
+  const enrollmentRef = useRef(enrollment)
   statusRef.current = status
   addressPinRef.current = addressPin
+  enrollmentRef.current = enrollment
+
+  const refreshVaultId = status?.vaultId || enrollment?.vaultId || addressPin?.vaultId || ''
 
   const { boardingBalance, boardingConfirmedBalance, history, savingsSats, vtxoSpendingSats } = snapshot
 
@@ -93,7 +114,13 @@ export function useVaultBalances({
       const boardingVersion = ++boardingFetchVersion.current
       setRefreshingBalance(true)
       try {
-        const id = String(vaultId || statusRef.current?.vaultId || addressPinRef.current?.vaultId || '').trim()
+        const id = String(
+          vaultId ||
+            statusRef.current?.vaultId ||
+            enrollmentRef.current?.vaultId ||
+            addressPinRef.current?.vaultId ||
+            '',
+        ).trim()
         if (!id) {
           if (version !== refreshVersion.current) return
           setSnapshot(EMPTY_BALANCES)
@@ -124,8 +151,11 @@ export function useVaultBalances({
               )
             : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           spendingAddress && liveStatus.enrolled
-            ? Promise.all([fetchVaultVtxoFunds(liveStatus), fetchVaultVtxoHistory(liveStatus)]).then(
-                ([funds, spendingHistory]) => ({ ...funds, history: spendingHistory }),
+            ? Promise.all([fetchVaultVtxoSnapshot(liveStatus), loadVaultLightningHistory(liveStatus.vaultId)]).then(
+                ([vtxos, lightning]) => ({
+                  ...vtxos,
+                  history: applyLightningHistoryMetadata(vtxos.history, lightning),
+                }),
               )
             : Promise.resolve({ balance: 0, history: [] as VaultHistoryItem[] }),
           boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
@@ -253,38 +283,39 @@ export function useVaultBalances({
     setBalancesLoaded(false)
     setBalanceError('')
     setRefreshingBalance(false)
-  }, [status?.vaultId])
+  }, [refreshVaultId])
 
   useEffect(() => {
-    if (locked || !status?.enrolled || !status.vaultId) return
-    void refreshBalance(status.vaultId)
-  }, [locked, refreshBalance, status?.enrolled, status?.vaultId])
+    if (locked || !initialStatusChecked || !refreshVaultId) return
+    void refreshBalance(refreshVaultId)
+  }, [initialStatusChecked, locked, refreshBalance, refreshVaultId])
 
   useEffect(() => {
-    if (locked || !status?.enrolled) return
-    void recoverVtxoSpend()
+    if (locked || !initialStatusChecked || !refreshVaultId) return
+    if (status?.enrolled) void recoverVtxoSpend()
     const poll = () => {
       if (document.visibilityState === 'hidden') return
       void pollBoardingFunds()
     }
     const onFocus = () => {
       boardingAttempt.current = ''
-      void recoverVtxoSpend()
-      void refreshBalance(status.vaultId)
+      if (status?.enrolled) void recoverVtxoSpend()
+      void refreshBalance(refreshVaultId)
     }
-    const timer = status.vtxoBoardingActive ? window.setInterval(poll, 15_000) : 0
+    const timer = status?.enrolled && status.vtxoBoardingActive ? window.setInterval(poll, 15_000) : 0
     window.addEventListener('focus', onFocus)
     return () => {
       if (timer) window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
   }, [
+    initialStatusChecked,
     locked,
     pollBoardingFunds,
     recoverVtxoSpend,
     refreshBalance,
+    refreshVaultId,
     status?.enrolled,
-    status?.vaultId,
     status?.vtxoBoardingActive,
   ])
 
