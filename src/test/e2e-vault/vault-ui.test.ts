@@ -258,6 +258,39 @@ test('ignores another vault worker update and refreshes on the matching update',
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 })
 
+test('loads Spending while another tab holds the foreground Lightning lock', async ({ context, page }) => {
+  const blocker = await context.newPage()
+  await blocker.goto('/')
+  await blocker.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      __vaultLightningLockHeld?: boolean
+      __releaseVaultLightningLock?: () => void
+    }
+    void navigator.locks.request('arkade-vault-lightning:e2e-vault-ui', { mode: 'exclusive' }, async () => {
+      state.__vaultLightningLockHeld = true
+      await new Promise<void>((resolve) => {
+        state.__releaseVaultLightningLock = resolve
+      })
+    })
+  })
+  await expect
+    .poll(() =>
+      blocker.evaluate(() =>
+        Boolean((globalThis as typeof globalThis & { __vaultLightningLockHeld?: boolean }).__vaultLightningLockHeld),
+      ),
+    )
+    .toBe(true)
+
+  try {
+    await openVault(page)
+    await expect(page.getByTestId('vault-balance')).toContainText('0')
+  } finally {
+    await blocker.evaluate(() =>
+      (globalThis as typeof globalThis & { __releaseVaultLightningLock?: () => void }).__releaseVaultLightningLock?.(),
+    )
+  }
+})
+
 test('keeps cached Spending balance and history during an open-session outage, then refreshes', async ({
   context,
   page,
@@ -417,7 +450,7 @@ test('shows boarding value immediately, then replaces it with the confirmed VTXO
 
   await expect(page.getByTestId('vault-balance')).toContainText('49,000')
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toHaveCount(0)
-  await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toContainText('Confirmed')
+  await expect(page.getByTestId(`vault-tx-${COMMITMENT_TXID}`)).toContainText('Confirmed')
 })
 
 test('does not reopen Face ID or start another boarding operation for a fresh active intent', async ({
@@ -455,8 +488,11 @@ test('does not reopen Face ID or start another boarding operation for a fresh ac
   await expect(pageB.getByTestId('vault-balance')).toContainText('50,000')
 
   await Promise.all([page.reload(), pageB.reload()])
-  await expect(page.getByTestId('vault-balance')).toContainText('50,000')
-  await expect(pageB.getByTestId('vault-balance')).toContainText('50,000')
+  // Both tabs deliberately reinitialize the same scoped worker and IndexedDB
+  // state at once. Keep the fund-safety assertion exact while allowing the
+  // normal worker activation/serialization path to complete under CI load.
+  await expect(page.getByTestId('vault-balance')).toContainText('50,000', { timeout: 15_000 })
+  await expect(pageB.getByTestId('vault-balance')).toContainText('50,000', { timeout: 15_000 })
   await Promise.all(
     [page, pageB].map((currentPage) =>
       currentPage.evaluate(

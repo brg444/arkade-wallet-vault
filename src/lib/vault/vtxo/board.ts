@@ -1,9 +1,9 @@
 import {
   DefaultVtxo,
   Estimator,
-  IndexedDBContractRepository,
   IndexedDBIntentRepository,
-  IndexedDBWalletRepository,
+  InMemoryContractRepository,
+  InMemoryWalletRepository,
   RestArkProvider,
   RestIndexerProvider,
   SingleKey,
@@ -20,7 +20,7 @@ import { fetchAddressUtxos } from '../esplora'
 import { historyFromBoardingUtxos, type VaultHistoryItem } from '../history'
 import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './contractHandler'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
-import { vaultReadonlyIntentDatabase, vaultReadonlyWalletDatabase } from './readonlyWorkerNames'
+import { vaultReadonlyIntentDatabase } from './readonlyWorkerNames'
 import { vaultArkServer, vaultPolicyV1ScriptFromStatus } from './spend'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
@@ -280,10 +280,12 @@ export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<Vaul
 }
 
 export function createBoardingOperationStorage(vaultId: string) {
-  const walletDatabase = vaultReadonlyWalletDatabase(vaultId)
   return {
-    walletRepository: new IndexedDBWalletRepository(walletDatabase),
-    contractRepository: new IndexedDBContractRepository(walletDatabase),
+    // Wallet.create is the SDK's public boarding signer seam. Keep its default
+    // contract and VTXO cache operation-local; only the intent lifecycle is
+    // durable and shared with the persistent readonly wallet.
+    walletRepository: new InMemoryWalletRepository(),
+    contractRepository: new InMemoryContractRepository(),
     intentRepository: new IndexedDBIntentRepository(vaultReadonlyIntentDatabase(vaultId)),
   }
 }

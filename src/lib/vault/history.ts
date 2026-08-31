@@ -1,3 +1,4 @@
+import { TxType, type Activity, type ArkTransaction } from '@arkade-os/sdk'
 import type { EsploraTx, EsploraUtxo } from './esplora'
 import { RECENT_HISTORY_LIMIT } from './constants'
 
@@ -14,12 +15,119 @@ export interface VaultHistoryItem {
   displayAmount?: number
   fee?: number
   lightningState?: string
+  lightningRfqId?: string
 }
 
 export interface VaultHistoryGroup {
   key: string
   label: string
   items: VaultHistoryItem[]
+}
+
+export interface VaultActivityScope {
+  /** Transaction ids proven by the script-filtered vault-policy-v1 snapshot. */
+  vaultTxids: ReadonlySet<string>
+  /** RFQ records read from this vault's isolated package repository. */
+  lightningRfqIds: ReadonlySet<string>
+}
+
+export interface VaultLightningActivityRecord {
+  rfqId: string
+  fundingTxid: string
+  state: string
+  amount: number
+  displayAmount: number
+  fee: number
+  createdAt: number
+  terminal: boolean
+}
+
+function sdkTransactionId(transaction: ArkTransaction): string {
+  return transaction.key.arkTxid || transaction.key.commitmentTxid || transaction.key.boardingTxid
+}
+
+/**
+ * Project the SDK's logical activity feed without admitting the persistent
+ * wallet's baseline default contract. Boarding stays on the existing explicit
+ * reconciliation feed until that lifecycle is replaced deliberately.
+ */
+export function historyFromSdkActivities(
+  activities: readonly Activity[],
+  scope: VaultActivityScope,
+  lightningRecords: readonly VaultLightningActivityRecord[] = [],
+): VaultHistoryItem[] {
+  const rows: VaultHistoryItem[] = []
+  const groupedLightning = new Set<string>()
+  const lightningByRfqId = new Map(lightningRecords.map((record) => [record.rfqId, record]))
+  for (const activity of activities) {
+    if (activity.intent?.kind === 'boarding') continue
+    const rfqId = typeof activity.intent?.metadata?.rfqId === 'string' ? activity.intent.metadata.rfqId : undefined
+    const lightning =
+      activity.intent?.metadata?.swapKind === 'lightning_send' && Boolean(rfqId && scope.lightningRfqIds.has(rfqId))
+    const scopedTransactions = activity.txs.filter((transaction) => scope.vaultTxids.has(sdkTransactionId(transaction)))
+    if (!lightning && scopedTransactions.length === 0) continue
+
+    const candidates = lightning ? activity.txs : scopedTransactions
+    const sent = activity.amount < 0
+    const anchor =
+      candidates.find((transaction) => transaction.type === (sent ? TxType.TxSent : TxType.TxReceived)) || candidates[0]
+    if (!anchor) continue
+    const txid = sdkTransactionId(anchor)
+    if (!txid) continue
+    const amount = Math.abs(activity.amount)
+    if (!lightning && amount === 0) continue
+    const lightningRecord = lightning && rfqId ? lightningByRfqId.get(rfqId) : undefined
+    const lightningOutcome = activity.intent?.outcome || (activity.settled ? 'settled' : 'pending')
+    const lightningFee = lightningRecord
+      ? lightningOutcome === 'refunded'
+        ? amount
+        : Math.max(lightningRecord.fee, amount - lightningRecord.displayAmount)
+      : undefined
+    rows.push({
+      txid: lightningRecord?.fundingTxid || txid,
+      type: sent ? 'sent' : 'received',
+      amount,
+      // The funding transaction can be settled before the RFQ has paid or
+      // refunded. Keep the one logical Lightning row Pending until the
+      // package lifecycle itself reaches a terminal outcome.
+      confirmed: lightningRecord ? lightningRecord.terminal : activity.settled,
+      blockTime: unixSeconds(activity.createdAt),
+      account: 'spend',
+      ...(lightning
+        ? {
+            activity: 'lightning' as const,
+            ...(lightningRecord ? { displayAmount: lightningRecord.displayAmount, fee: lightningFee } : {}),
+            lightningState: lightningOutcome,
+            lightningRfqId: rfqId,
+          }
+        : {}),
+    })
+    if (lightning && rfqId) groupedLightning.add(rfqId)
+  }
+
+  // A Lightning funding transaction can net to zero in SDK history because
+  // its VHTLC is a wallet-registered contract. Preserve the package record's
+  // pending row until a later claim/refund makes the resolver group visible.
+  // Both forms use the same funding txid and RFQ id, so the real group replaces
+  // this row instead of duplicating it.
+  for (const record of lightningRecords) {
+    if (!scope.lightningRfqIds.has(record.rfqId) || groupedLightning.has(record.rfqId)) continue
+    if (!/^[0-9a-f]{64}$/.test(record.fundingTxid)) continue
+    rows.push({
+      txid: record.fundingTxid,
+      type: 'sent',
+      amount: record.amount,
+      confirmed: record.terminal,
+      blockTime: record.createdAt,
+      account: 'spend',
+      activity: 'lightning',
+      displayAmount: record.displayAmount,
+      fee: record.fee,
+      lightningState: record.state,
+      lightningRfqId: record.rfqId,
+    })
+  }
+  return rows.sort(sortVaultHistory)
 }
 
 export function recentAccountHistory(
@@ -132,153 +240,6 @@ export function historyFromTxs(txs: EsploraTx[], address: string, account: 'spen
     if (!previous || (!previous.confirmed && next.confirmed)) byTxid.set(item.txid, next)
   }
   return [...byTxid.values()].sort(sortVaultHistory)
-}
-
-export interface VaultVtxoHistoryCoin {
-  txid: string
-  vout: number
-  value: number
-  createdAtMs: number
-  isSpent: boolean
-  arkTxId?: string
-  commitmentTxIds?: string[]
-  isLeaf?: boolean
-  settledBy?: string
-}
-
-export interface VaultLightningHistoryMetadata {
-  txid: string
-  invoiceAmountSats: number
-  state: string
-}
-
-export function applyLightningHistoryMetadata(
-  rows: VaultHistoryItem[],
-  payments: readonly VaultLightningHistoryMetadata[],
-): VaultHistoryItem[] {
-  const byTxid = new Map(payments.map((payment) => [payment.txid, payment]))
-  return rows.map((row) => {
-    const payment = row.type === 'sent' ? byTxid.get(row.txid) : undefined
-    if (!payment) return row
-    return {
-      ...row,
-      activity: 'lightning',
-      displayAmount: payment.invoiceAmountSats,
-      fee: Math.max(0, row.amount - payment.invoiceAmountSats),
-      lightningState: payment.state,
-    }
-  })
-}
-
-/** Indexer VTXOs for the spending script: receives, sends, and change-aware net amounts. */
-export function historyFromVtxos(
-  coins: VaultVtxoHistoryCoin[],
-  account: 'spend' | 'savings' = 'spend',
-  resolvedCreatedAt: ReadonlyMap<string, number> = new Map(),
-): VaultHistoryItem[] {
-  const unique = uniqueHistoryCoins(coins)
-  const rows: VaultHistoryItem[] = []
-  const arkInputs = new Map<string, VaultVtxoHistoryCoin[]>()
-  const outputs = new Map<string, VaultVtxoHistoryCoin[]>()
-  const terminalArkInputs = new Map<string, VaultVtxoHistoryCoin>()
-  const settledCommitments = new Set<string>()
-
-  for (const coin of unique) {
-    addHistoryCoin(outputs, coin.txid, coin)
-    if (coin.arkTxId) {
-      addHistoryCoin(arkInputs, coin.arkTxId, coin)
-      if (coin.isSpent && !terminalArkInputs.has(coin.arkTxId)) terminalArkInputs.set(coin.arkTxId, coin)
-    }
-    if (coin.settledBy) settledCommitments.add(coin.settledBy)
-  }
-
-  for (const coin of unique) {
-    const createdAsChange = arkInputs.has(coin.txid)
-    const settlementCommitment = coin.isLeaf ? coin.commitmentTxIds?.[0] : undefined
-    // Match the SDK history transition: a batch leaf that replaces VTXOs
-    // forfeited into the same commitment settles the original receive; it is
-    // not a second incoming payment.
-    const settlementReplacement = Boolean(settlementCommitment && settledCommitments.has(settlementCommitment))
-    if (!createdAsChange && !settlementReplacement && coin.value > 0) {
-      rows.push({
-        txid: coin.txid,
-        type: 'received',
-        amount: coin.value,
-        // Reaching the pinned script in the Operator indexer is the completed
-        // Spending receive. `isLeaf` describes the VTXO graph shape, not
-        // whether the wallet has received the VTXO.
-        confirmed: true,
-        blockTime: unixSeconds(coin.createdAtMs),
-        account,
-      })
-    }
-  }
-
-  for (const [arkTxId, terminalInput] of terminalArkInputs) {
-    const spent = arkInputs.get(arkTxId) || []
-    const change = outputs.get(arkTxId) || []
-    const amount =
-      spent.reduce((sum, other) => sum + other.value, 0) - change.reduce((sum, other) => sum + other.value, 0)
-    if (amount <= 0) continue
-    rows.push({
-      txid: arkTxId,
-      type: 'sent',
-      amount,
-      confirmed: true,
-      blockTime: unixSeconds(change[0]?.createdAtMs || resolvedCreatedAt.get(arkTxId) || terminalInput.createdAtMs + 1),
-      account,
-    })
-  }
-  return mergeHistoryRows(rows).sort(sortVaultHistory)
-}
-
-function addHistoryCoin(index: Map<string, VaultVtxoHistoryCoin[]>, key: string, coin: VaultVtxoHistoryCoin): void {
-  const current = index.get(key)
-  if (current) current.push(coin)
-  else index.set(key, [coin])
-}
-
-function uniqueHistoryCoins(coins: VaultVtxoHistoryCoin[]): VaultVtxoHistoryCoin[] {
-  const byOutpoint = new Map<string, VaultVtxoHistoryCoin>()
-  for (const coin of coins) {
-    const key = `${coin.txid}:${coin.vout}`
-    const previous = byOutpoint.get(key)
-    byOutpoint.set(
-      key,
-      previous
-        ? {
-            ...previous,
-            ...coin,
-            arkTxId: coin.arkTxId || previous.arkTxId,
-            commitmentTxIds: coin.commitmentTxIds?.length ? coin.commitmentTxIds : previous.commitmentTxIds,
-            isLeaf: Boolean(previous.isLeaf || coin.isLeaf),
-            isSpent: previous.isSpent || coin.isSpent,
-            settledBy: coin.settledBy || previous.settledBy,
-          }
-        : coin,
-    )
-  }
-  return [...byOutpoint.values()]
-}
-
-function mergeHistoryRows(rows: VaultHistoryItem[]): VaultHistoryItem[] {
-  const merged = new Map<string, VaultHistoryItem>()
-  for (const row of rows) {
-    const key = `${row.account}:${row.txid}:${row.type}`
-    const previous = merged.get(key)
-    merged.set(
-      key,
-      previous
-        ? {
-            ...previous,
-            amount: previous.amount + row.amount,
-            blockTime: Math.max(previous.blockTime || 0, row.blockTime || 0) || undefined,
-            confirmed: previous.confirmed && row.confirmed,
-          }
-        : row,
-    )
-  }
-  return [...merged.values()]
 }
 
 function unixSeconds(ms: number): number | undefined {

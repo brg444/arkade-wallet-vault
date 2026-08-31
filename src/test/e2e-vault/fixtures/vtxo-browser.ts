@@ -1,5 +1,4 @@
 import { IndexedDBIntentRepository, type ArkIntentState } from '@arkade-os/sdk'
-import { historyFromVtxos } from '../../../lib/vault/history'
 import type { VaultStatus } from '../../../lib/vault/types'
 import {
   fetchVaultBoardingFunds,
@@ -42,6 +41,14 @@ export function dispatchReadonlyUtxoUpdate(vaultId: string) {
   navigator.serviceWorker.dispatchEvent(
     new MessageEvent('message', {
       data: { tag: vaultReadonlyUpdaterTag(vaultId), type: 'UTXO_UPDATE' },
+    }),
+  )
+}
+
+export function dispatchReadonlyVtxoUpdate(vaultId: string) {
+  navigator.serviceWorker.dispatchEvent(
+    new MessageEvent('message', {
+      data: { tag: vaultReadonlyUpdaterTag(vaultId), type: 'VTXO_UPDATE' },
     }),
   )
 }
@@ -101,15 +108,17 @@ export async function boardingSnapshot(vaultId: string, boardingAddress: string)
 }
 
 export function issuedVtxoSnapshot(amount: number, commitmentTransactionId: string) {
-  const history = historyFromVtxos([
-    {
-      txid: commitmentTransactionId,
-      vout: 0,
-      value: amount,
-      createdAtMs: Date.now(),
-      isSpent: false,
-      isLeaf: false,
-    },
-  ])
-  return { balance: amount, history }
+  return {
+    balance: amount,
+    history: [
+      {
+        txid: commitmentTransactionId,
+        type: 'received' as const,
+        amount,
+        confirmed: true,
+        blockTime: Math.floor(Date.now() / 1_000),
+        account: 'spend' as const,
+      },
+    ],
+  }
 }

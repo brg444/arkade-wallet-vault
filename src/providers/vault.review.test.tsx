@@ -5,7 +5,7 @@ import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../lib/vault/constants'
 import { ENROLL_STORE, SELECTED_VAULT_STORE, SESSION_LOCK_STORE } from '../lib/vault/enrollmentStore'
-import { MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
+import { INVOICE_TIMESTAMP, MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
 import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
@@ -14,13 +14,17 @@ import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/v
 import { VaultContext, VaultProvider } from './vault'
 
 const mocks = vi.hoisted(() => ({
+  FundingNotStartedError: class FundingNotStartedError extends Error {},
   fetchStatus: vi.fn(),
   reserve: vi.fn(),
   send: vi.fn(),
+  sdkWallet: vi.fn(),
   unlock: vi.fn(),
   requestLightning: vi.fn(),
   beginLightningFunding: vi.fn(),
+  resumeLightningFunding: vi.fn(),
   recordLightningFunding: vi.fn(),
+  getLightningStatus: vi.fn(),
   loadHandoff: vi.fn(),
 }))
 
@@ -53,12 +57,16 @@ vi.mock('../lib/vault/savingsHandoff', async (importOriginal) => ({
 }))
 
 vi.mock('../lib/vault/lightning', () => ({
+  VaultLightningFundingNotStartedError: mocks.FundingNotStartedError,
   assertVaultLightningQuoteCurrent: vi.fn(),
   beginVaultLightningFunding: mocks.beginLightningFunding,
+  resumeVaultLightningFunding: mocks.resumeLightningFunding,
   recordVaultLightningFundingTxid: mocks.recordLightningFunding,
+  getVaultLightningStatus: mocks.getLightningStatus,
   requestVaultLightningQuote: mocks.requestLightning,
   withVaultLightningRepository: vi.fn(async (_vaultId, run) => run({})),
-  withVaultLightningSdkWallet: vi.fn(async (_secret, _status, _origin, run) => run({})),
+  withVaultLightningLifecycleLock: vi.fn(async (_vaultId, run) => run()),
+  withVaultLightningSdkWallet: mocks.sdkWallet,
   withVaultLightningTransport: vi.fn(async (_profile, run) => run({})),
 }))
 
@@ -161,6 +169,9 @@ function Probe() {
       <button type='button' onClick={() => vault.history[0] && vault.openTx(vault.history[0])}>
         Open first activity
       </button>
+      <button type='button' onClick={() => vault.retryLightningRefund('44'.repeat(32))}>
+        Return Lightning
+      </button>
     </div>
   )
 }
@@ -187,13 +198,16 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.loadHandoff.mockReturnValue(null)
     mocks.reserve.mockResolvedValue(reviewed)
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
+    mocks.sdkWallet.mockImplementation(async (_secret, _status, run) => run({ repository: {} }))
     mocks.unlock.mockResolvedValue(new Uint8Array(32).fill(7))
     mocks.beginLightningFunding.mockResolvedValue({
       rfqId: '44'.repeat(32),
       address: destination,
       amountSats: 2_125,
     })
+    mocks.resumeLightningFunding.mockRejectedValue(new mocks.FundingNotStartedError('not started'))
     mocks.recordLightningFunding.mockResolvedValue(undefined)
+    mocks.getLightningStatus.mockResolvedValue({ state: 'refunded' })
     mocks.requestLightning.mockResolvedValue({
       kind: 'lightning',
       invoice: MUTINYNET_INVOICE,
@@ -263,6 +277,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
 
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
     vi.stubEnv('VITE_VAULT_LIGHTNING_SEND', 'true')
+    vi.spyOn(Date, 'now').mockReturnValue((INVOICE_TIMESTAMP + 1) * 1_000)
     const lightningFunding = { ...reviewed, destAddress: destination, amountSats: 2_125, feeSats: 50 }
     mocks.reserve.mockResolvedValue(lightningFunding)
     mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 50 })
@@ -283,9 +298,21 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
     expect(screen.getByTestId('kind')).toHaveTextContent('lightning')
-    expect(mocks.beginLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
+    expect(mocks.beginLightningFunding).toHaveBeenCalledWith(
+      expect.any(Object),
+      '44'.repeat(32),
+      expect.objectContaining({
+        rfqId: '44'.repeat(32),
+        address: destination,
+        amountSats: 2_125,
+        operationId: lightningFunding.operationId,
+        bundleDigest: lightningFunding.bundleDigest,
+        fundingFeeSats: 50,
+      }),
+    )
     expect(mocks.recordLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32), '55'.repeat(32))
     expect(mocks.send).toHaveBeenCalledWith(expect.any(Object), status, lightningFunding)
+    expect(mocks.sdkWallet.mock.calls[0]?.[3]).toBeUndefined()
   })
 
   it('restores a pending Savings handoff and reopens its hardware step', async () => {
@@ -313,5 +340,25 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open first activity' }))
     expect(screen.getByTestId('screen')).toHaveTextContent('handoff')
     expect(screen.getByTestId('fee')).toHaveTextContent('1500')
+  })
+
+  it('reacquires and clears the phone key for a package-managed refund retry', async () => {
+    vi.stubEnv('VITE_VAULT_LIGHTNING_SEND', 'true')
+    const phoneSecret = new Uint8Array(32).fill(7)
+    mocks.unlock.mockResolvedValueOnce(phoneSecret)
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Return Lightning' })))
+
+    expect(mocks.getLightningStatus).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
+    expect(mocks.sdkWallet.mock.calls.at(-1)?.[3]).toEqual({ refundRfqId: '44'.repeat(32) })
+    expect(phoneSecret).toEqual(new Uint8Array(32))
+    expect(screen.getByTestId('error')).toHaveTextContent('')
   })
 })

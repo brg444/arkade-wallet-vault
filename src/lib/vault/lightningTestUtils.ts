@@ -18,8 +18,9 @@ import {
   type SwapContractRegistry,
 } from '@arkade-os/swap'
 import { hex } from '@scure/base'
+import type { Market } from '@arkade-os/solver-discovery'
 import { vi } from 'vitest'
-import { requestVaultLightningQuote, withVaultRefundAddress, type VaultLightningSolverProfile } from './lightning'
+import { requestVaultLightningQuote, vaultLightningRequestWallet, type VaultLightningSolverProfile } from './lightning'
 
 export const MAINNET_TEST_PROFILE: VaultLightningSolverProfile = {
   network: 'bitcoin',
@@ -27,6 +28,18 @@ export const MAINNET_TEST_PROFILE: VaultLightningSolverProfile = {
   relays: ['wss://nostr.test'],
   minSats: 500,
   maxSats: 50_000,
+  maxFundingSats: 100_000,
+  market: {
+    pair: 'BTC/lightning:BTC',
+    base_asset: { id: 'btc', name: 'Bitcoin', ticker: 'BTC', decimals: 8 },
+    quote_asset: { id: 'btc', name: 'Bitcoin', ticker: 'BTC', decimals: 8 },
+    quote_corridor: 'lightning',
+    fee_bps: 115,
+    min_base_amount: '500',
+    max_base_amount: '100000',
+    min_quote_amount: '500',
+    max_quote_amount: '50000',
+  } as Market,
 }
 
 export const MAINNET_INVOICE =
@@ -164,13 +177,10 @@ export async function lightningQuoteHarness(options: { validUntil?: number; rfqI
   const { contracts, rows } = memoryContracts()
   const repository = new InMemoryAssetSwapRepository()
   const { manager } = quoteManager(repository, contracts)
-  const wallet = withVaultRefundAddress(
-    {
-      identity: SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
-      getAddress: async () => 'ark1wrong',
-      getContractManager: async () => contracts,
-    } as unknown as IWallet,
+  const wallet = vaultLightningRequestWallet(
+    SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0'))),
     vaultAddress,
+    contracts as never,
   )
   const result = await completeRequestResult(wallet, contracts, options)
   const requester = vi.fn(async () => result)
