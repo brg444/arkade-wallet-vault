@@ -1,5 +1,8 @@
 import { expect, test as base, type BrowserContext, type CDPSession, type Page, type Route } from '@playwright/test'
-import { buildVaultProgramDescriptor, hashVaultProgramDescriptor } from '../../../lib/vault/program/descriptor'
+import { createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
+import { buildVaultProgramDescriptor } from '../../../lib/vault/program/descriptor'
+import { hashBoardingEnrollmentDescriptor } from '../../../lib/vault/program/enroll'
 import { PROGRAM_FIXTURE } from '../../../lib/vault/program/fixtures'
 import { recoveryBindingDigest } from '../../../lib/vault/passkeyBinding'
 import { bytesToHex } from '../../../lib/vault/hex'
@@ -10,12 +13,21 @@ import type {
   VaultMutationSuccess,
   VaultPasskeyChallengeResponse,
 } from '../../../lib/vault/cosignerClient'
-import type { VaultStatus } from '../../../lib/vault/types'
+import type { BoardingDescriptor, VaultStatus } from '../../../lib/vault/types'
+import {
+  BOARDING_EXIT_DELAY,
+  BOARDING_EXIT_DELAY_UNIT,
+  BOARDING_PROGRAM,
+  BOARDING_SCHEMA,
+  BOARDING_TEMPLATE,
+  MUTINYNET_OPERATOR_SIGNER_PUB,
+} from '../../../lib/vault/vtxo/board'
 
 const ORIGIN = 'http://localhost:3003'
 const RP_ID = 'localhost'
 const INVITE = 'e2e-passkey-invite-0000000000000000'
 const VAULT_ID = PROGRAM_FIXTURE.vaultId
+const AUTHORIZER_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_authorizer'
 
 type CDPCredential = {
   credentialId: string
@@ -95,6 +107,7 @@ function publicStatus() {
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
     enrollmentMode: 'token',
+    vtxoBoardingProgram: BOARDING_PROGRAM,
   }
 }
 
@@ -106,6 +119,8 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
   private passkeyLoginAvailable = false
   private proposed?: Record<string, string>
   private descriptor?: ReturnType<typeof buildVaultProgramDescriptor>
+  private boardingDescriptor?: BoardingDescriptor
+  private boardingDescriptorHash?: string
   private install?: PasskeyInstall
   private challengeCounter = 0
   private recoverGate?: { promise: Promise<void>; release: () => void }
@@ -185,12 +200,14 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       spendingArkAddress: 'tark1spending',
       spendingArkScript: `5120${'22'.repeat(32)}`,
       vtxoDelegatePub: PROGRAM_FIXTURE.arkadeCosignerBase,
-      vtxoBoardingActive: false,
-      vtxoBoardingProgram: 'vault-board-v1',
-      vtxoBoardingAddress: 'tb1pboarding',
-      vtxoBoardingScript: `5120${'33'.repeat(32)}`,
+      vtxoBoardingActive: Boolean(this.enrolled && this.boardingDescriptor),
+      vtxoBoardingProgram: BOARDING_PROGRAM,
+      vtxoBoardingAddress: this.boardingDescriptor?.address || '',
+      vtxoBoardingScript: this.boardingDescriptor?.script || '',
       vtxoBoardingExitDelay: 604_672,
       vtxoBoardingExitDelayUnit: 'seconds',
+      vtxoBoardingDescriptor: this.boardingDescriptor,
+      vtxoBoardingDescriptorHash: this.boardingDescriptorHash,
     }
   }
 
@@ -262,6 +279,9 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       return json(route, response)
     }
     if (path === '/v1/enroll/propose' && body) {
+      if (!/^[0-9a-f]{64}$/.test(body.vaultBoardingBip340Pub)) {
+        return json(route, { code: 'REJECTED', error: 'boarding key must be BIP340 x-only' }, 400)
+      }
       this.proposed = body
       this.descriptor = buildVaultProgramDescriptor({
         vaultId: VAULT_ID,
@@ -273,15 +293,53 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
         arkadeCosigner: PROGRAM_FIXTURE.arkadeCosigner,
       })
+      const boarding = createBoardingProgramScript(
+        {
+          name: BOARDING_PROGRAM,
+          boardingPubKey: hex.decode(body.vaultBoardingBip340Pub),
+          cosignerPubKey: hex.decode(PROGRAM_FIXTURE.vaultCosignerBase).slice(1),
+          recoveryPubKey: hex.decode(body.phoneBip340Pub).slice(1),
+        },
+        hex.decode(MUTINYNET_OPERATOR_SIGNER_PUB).slice(1),
+        { type: BOARDING_EXIT_DELAY_UNIT, value: BigInt(BOARDING_EXIT_DELAY) },
+      )
+      this.boardingDescriptor = {
+        schema: BOARDING_SCHEMA,
+        program: BOARDING_PROGRAM,
+        template: BOARDING_TEMPLATE,
+        network: 'mutinynet',
+        boardingPub: `02${body.vaultBoardingBip340Pub}`,
+        recoveryPhonePub: body.phoneBip340Pub,
+        vaultBoardCosignerPub: PROGRAM_FIXTURE.vaultCosignerBase,
+        operatorPub: MUTINYNET_OPERATOR_SIGNER_PUB,
+        exitDelay: BOARDING_EXIT_DELAY,
+        exitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
+        script: hex.encode(boarding.pkScript),
+        address: boarding.onchainAddress(getNetwork('mutinynet')),
+      }
+      const composite = {
+        schema: 'arkade-vault/enrollment-with-board-v1' as const,
+        vaultId: VAULT_ID,
+        savings: this.descriptor,
+        boarding: this.boardingDescriptor,
+      }
+      this.boardingDescriptorHash = hashBoardingEnrollmentDescriptor(composite)
       return json(route, {
         vaultId: VAULT_ID,
-        descriptorHash: hashVaultProgramDescriptor(this.descriptor),
-        descriptor: this.descriptor,
+        descriptorHash: this.boardingDescriptorHash,
+        descriptor: composite,
       })
     }
     if (path === '/v1/enroll/finish') {
       this.enrolled = true
-      return json(route, this.status())
+      const status = this.status()
+      const response = await fetch(AUTHORIZER_CONTROL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(status),
+      })
+      if (!response.ok) throw new Error(`Authorizer fixture reset failed: ${response.status}`)
+      return json(route, status)
     }
     if (path === '/v1/passkey/challenge') {
       this.challengeCounter += 1
@@ -488,14 +546,48 @@ export const test = base.extend<Fixtures>({
         const audit = await page.evaluate(
           () => (globalThis as typeof globalThis & { __vaultSecretAudit: SecretAuditSnapshot }).__vaultSecretAudit,
         )
-        const persistent = JSON.stringify(await persistentBrowserState(page)).toLowerCase()
+        const state = await persistentBrowserState(page)
+        const allowedBoardingSecrets = new Set<string>()
+        for (const [name, stores] of Object.entries(state.databases)) {
+          if (!name.startsWith('arkade-vault-board-v1-key:')) continue
+          const rows = (stores as Record<string, unknown[]>).key || []
+          for (const row of rows) {
+            const record = row as { secret?: unknown; state?: unknown }
+            if (
+              (record.state === 'staged' || record.state === 'active') &&
+              typeof record.secret === 'string' &&
+              /^[0-9a-f]{64}$/i.test(record.secret)
+            ) {
+              allowedBoardingSecrets.add(record.secret.toLowerCase())
+            }
+          }
+        }
+        expect(allowedBoardingSecrets.size).toBeLessThanOrEqual(1)
+        const curveOrder = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141')
+        const hkdfCandidates = audit.hkdfOutputs.map((value) => value.toLowerCase())
+        for (const secret of allowedBoardingSecrets) {
+          expect(
+            hkdfCandidates.some((candidate) => {
+              if (candidate === secret) return true
+              const scalar = BigInt(`0x${candidate}`)
+              return scalar > 0n && scalar < curveOrder
+                ? (curveOrder - scalar).toString(16).padStart(64, '0') === secret
+                : false
+            }),
+          ).toBe(true)
+          expect(audit.hkdfInputs.map((value) => value.toLowerCase())).not.toContain(secret)
+          expect(audit.generated32.map((value) => value.toLowerCase())).not.toContain(secret)
+        }
+        const persistent = JSON.stringify(state).toLowerCase()
         const messages = JSON.stringify(audit.serviceWorkerMessages).toLowerCase()
         const secrets = [...audit.generated32, ...audit.hkdfInputs, ...audit.hkdfOutputs].filter(
           (secret) => secret.length === 64 && !/^0+$/.test(secret),
         )
         expect(secrets.length).toBeGreaterThan(0)
         for (const secret of new Set(secrets)) {
-          expect(persistent).not.toContain(secret.toLowerCase())
+          if (!allowedBoardingSecrets.has(secret.toLowerCase())) {
+            expect(persistent).not.toContain(secret.toLowerCase())
+          }
           expect(messages).not.toContain(secret.toLowerCase())
         }
         expect(messages).not.toMatch(/phone.?secret|phone.?scalar|private.?key|prf.?secret|session.?scalar/)

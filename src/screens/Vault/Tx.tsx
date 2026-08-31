@@ -24,21 +24,19 @@ export default function VaultTx() {
       )
     : null
   const status = selectedTx
-    ? boarding
-      ? 'Pending'
-      : lightning
-        ? ['claimed', 'settled'].includes(selectedTx.lightningState || '')
-          ? 'Paid'
-          : selectedTx.lightningState === 'refunded'
-            ? 'Refunded'
-            : selectedTx.lightningState === 'needs_counterparty'
-              ? 'Ready to return'
-              : selectedTx.lightningState === 'failed'
-                ? 'Needs recovery'
-                : 'Processing'
-        : selectedTx.confirmed
-          ? 'Confirmed'
-          : 'Pending'
+    ? lightning
+      ? ['claimed', 'settled'].includes(selectedTx.lightningState || '')
+        ? 'Paid'
+        : selectedTx.lightningState === 'refunded'
+          ? 'Refunded'
+          : selectedTx.lightningState === 'needs_counterparty'
+            ? 'Ready to return'
+            : selectedTx.lightningState === 'failed'
+              ? 'Needs recovery'
+              : 'Processing'
+      : selectedTx.confirmed
+        ? 'Confirmed'
+        : 'Pending'
     : 'Unknown'
 
   return (

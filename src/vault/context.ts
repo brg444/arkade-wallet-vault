@@ -44,7 +44,6 @@ export interface VaultContextProps {
   balanceError: string
   balancesLoaded: boolean
   boardingAddress: string
-  boardingInProgress: boolean
   restoreRecoveryKit: () => Promise<void>
   signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
   hasRecoveryKit: boolean
@@ -78,6 +77,7 @@ export interface VaultContextProps {
   openRecover: (view?: 'kit' | 'lost', exit?: VaultScreen) => void
   recoverEntry: 'kit' | 'lost'
   recoverExit: VaultScreen
+  recoverMatureBoarding: () => Promise<string>
   networkLabel: string
   spendingArkAddress: string
   refreshBalance: () => Promise<void>
@@ -115,7 +115,6 @@ export const VaultContext = createContext<VaultContextProps>({
   balanceError: '',
   balancesLoaded: false,
   boardingAddress: '',
-  boardingInProgress: false,
   restoreRecoveryKit: async () => {},
   signGuardianExitWithDevice: async () => '',
   hasRecoveryKit: false,
@@ -149,6 +148,7 @@ export const VaultContext = createContext<VaultContextProps>({
   openRecover: () => {},
   recoverEntry: 'kit',
   recoverExit: 'keys',
+  recoverMatureBoarding: async () => '',
   networkLabel: 'Test network',
   spendingArkAddress: '',
   refreshBalance: async () => {},

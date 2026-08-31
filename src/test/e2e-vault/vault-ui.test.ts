@@ -7,6 +7,8 @@ import type { VaultStatus } from '../../lib/vault/types'
 const UI_FIXTURE = '/src/test/e2e-vault/fixtures/vault-ui.ts'
 const WORKER_FIXTURE = '/src/test/e2e-vault/fixtures/vtxo-browser.ts'
 const OPERATOR_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_operator'
+const AUTHORIZER_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_authorizer'
+const ESPLORA_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_esplora'
 const BOARDING_TXID = '11'.repeat(32)
 const VTXO_TXID = 'aa'.repeat(32)
 const COMMITMENT_TXID = 'cc'.repeat(32)
@@ -38,7 +40,6 @@ type OperatorFixtureState = {
 }
 
 type OpenVaultOptions = {
-  beforeReload?: (page: Page, status: VaultStatus) => Promise<void>
   operatorAvailable?: boolean
   operatorVtxos?: Record<string, unknown>[]
   waitForBalance?: boolean
@@ -61,10 +62,28 @@ async function setOperatorVtxos(vtxos: Record<string, unknown>[] = []) {
   await setOperatorState({ available: true, vtxos })
 }
 
-async function readOperatorState(): Promise<Required<OperatorFixtureState>> {
-  const response = await fetch(OPERATOR_CONTROL)
-  if (!response.ok) throw new Error(`Operator fixture read failed: ${response.status}`)
-  return response.json() as Promise<Required<OperatorFixtureState>>
+async function setAuthorizerStatus(status: VaultStatus) {
+  const response = await fetch(AUTHORIZER_CONTROL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(status),
+  })
+  if (!response.ok) throw new Error(`Authorizer fixture reset failed: ${response.status}`)
+}
+
+async function setEsploraState(status: VaultStatus, state: VaultUiState) {
+  const response = await fetch(ESPLORA_CONTROL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      boardingAddress: status.vtxoBoardingAddress,
+      boardingUtxos: state.boardingUtxos,
+      savingsAddress: status.savingsAddress,
+      savingsTxs: state.savingsTxs,
+      savingsUtxos: state.savingsUtxos,
+    }),
+  })
+  if (!response.ok) throw new Error(`Esplora fixture reset failed: ${response.status}`)
 }
 
 async function wireVtxo(page: Page, status: VaultStatus, input: Record<string, unknown>) {
@@ -77,24 +96,11 @@ async function wireVtxo(page: Page, status: VaultStatus, input: Record<string, u
   ) as Promise<Record<string, unknown>>
 }
 
-async function seedIntent(page: Page, state: string, commitmentTransactionId?: string) {
-  await page.evaluate(
-    async ({ fixturePath, input }) => {
-      const fixture = await import(/* @vite-ignore */ fixturePath)
-      await fixture.seedBoardingIntent(input)
-    },
-    {
-      fixturePath: WORKER_FIXTURE,
-      input: { vaultId: 'e2e-vault-ui', state, commitmentTransactionId },
-    },
-  )
-}
-
 async function dispatchUtxoUpdate(page: Page, vaultId: string) {
   await page.evaluate(
     async ({ fixturePath, id }) => {
       const fixture = await import(/* @vite-ignore */ fixturePath)
-      fixture.dispatchReadonlyUtxoUpdate(id)
+      fixture.dispatchWalletUtxoUpdate(id)
     },
     { fixturePath: WORKER_FIXTURE, id: vaultId },
   )
@@ -185,11 +191,12 @@ async function openVault(page: Page, initial: Partial<VaultUiState> = {}, option
   await page.goto('/')
   const installed = await page.evaluate(async (fixturePath) => {
     const fixture = await import(/* @vite-ignore */ fixturePath)
-    return { destination: fixture.VAULT_UI_DESTINATION, status: fixture.installVaultUiSession() }
+    return { destination: fixture.VAULT_UI_DESTINATION, status: await fixture.installVaultUiSession() }
   }, UI_FIXTURE)
   const currentStatus = installed.status as VaultStatus
   status = currentStatus
-  await options.beforeReload?.(page, currentStatus)
+  await setAuthorizerStatus(currentStatus)
+  await setEsploraState(currentStatus, state)
   await page.reload()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
   if (options.waitForBalance !== false) {
@@ -197,7 +204,21 @@ async function openVault(page: Page, initial: Partial<VaultUiState> = {}, option
       await expect(page.getByTestId('vault-balance')).not.toHaveText('—', { timeout: 15_000 })
     } catch (error) {
       const operator = await fetch(OPERATOR_CONTROL).then((response) => response.text())
-      throw new Error(`Vault Home did not finish loading. Operator fixture: ${operator}`, { cause: error })
+      const runtimeError = await page.evaluate(
+        async ({ currentStatus, workerPath }) => {
+          const worker = await import(/* @vite-ignore */ workerPath)
+          try {
+            await worker.ensureVaultWalletWorker(currentStatus)
+            return 'none'
+          } catch (failure) {
+            return failure instanceof Error ? failure.stack || failure.message : String(failure)
+          }
+        },
+        { currentStatus, workerPath: '/src/lib/vault/vtxo/walletWorker.ts' },
+      )
+      throw new Error(`Vault Home did not finish loading. Runtime: ${runtimeError}. Operator fixture: ${operator}`, {
+        cause: error,
+      })
     }
   }
   return { destination: installed.destination as string, state, status: currentStatus }
@@ -419,7 +440,7 @@ test('nets VTXO change into one rendered send and omits it as a receive', async 
   await expect(page.getByTestId(`vault-tx-${inputTxid}`)).toContainText('Received')
 })
 
-test('shows boarding value immediately, then replaces it with the confirmed VTXO without double counting', async ({
+test('shows a pending boarding deposit, then replaces it with the confirmed VTXO without double counting', async ({
   page,
 }) => {
   const pending: EsploraUtxo = {
@@ -433,12 +454,8 @@ test('shows boarding value immediately, then replaces it with the confirmed VTXO
   await expect(page.getByTestId('vault-balance')).toContainText('50,000')
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toContainText('Pending')
 
-  await seedIntent(page, 'waiting_for_batch')
-  state.boardingUtxos = [{ ...pending, status: { confirmed: true, block_height: 101 } }]
-  await refreshHome(page)
-  await expect(page.getByTestId('vault-balance')).toContainText('50,000')
-
-  await seedIntent(page, 'batch_succeeded', COMMITMENT_TXID)
+  state.boardingUtxos = []
+  await setEsploraState(status, state)
   await setOperatorVtxos([
     await wireVtxo(page, status, {
       amount: 49_000,
@@ -451,68 +468,6 @@ test('shows boarding value immediately, then replaces it with the confirmed VTXO
   await expect(page.getByTestId('vault-balance')).toContainText('49,000')
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toHaveCount(0)
   await expect(page.getByTestId(`vault-tx-${COMMITMENT_TXID}`)).toContainText('Confirmed')
-})
-
-test('does not reopen Face ID or start another boarding operation for a fresh active intent', async ({
-  context,
-  page,
-}) => {
-  await context.addInitScript(() => {
-    const tracked = globalThis as typeof globalThis & { __vaultCredentialGets?: number }
-    tracked.__vaultCredentialGets = 0
-    Object.defineProperty(navigator.credentials, 'get', {
-      configurable: true,
-      value: async () => {
-        tracked.__vaultCredentialGets = (tracked.__vaultCredentialGets || 0) + 1
-        throw new DOMException('Unexpected credential request', 'NotAllowedError')
-      },
-    })
-  })
-  const confirmed: EsploraUtxo = {
-    txid: BOARDING_TXID,
-    vout: 0,
-    value: 50_000,
-    status: { confirmed: true, block_height: 101 },
-  }
-  const { state, status } = await openVault(
-    page,
-    { boardingUtxos: [confirmed] },
-    { beforeReload: async (currentPage) => seedIntent(currentPage, 'waiting_for_batch') },
-  )
-  await expect(page.getByTestId('vault-balance')).toContainText('50,000')
-
-  const pageB = await context.newPage()
-  await installRoutes(pageB, () => status, state)
-  await pageB.goto('/')
-  await expect(pageB.getByTestId('account-switcher')).toBeVisible()
-  await expect(pageB.getByTestId('vault-balance')).toContainText('50,000')
-
-  await Promise.all([page.reload(), pageB.reload()])
-  // Both tabs deliberately reinitialize the same scoped worker and IndexedDB
-  // state at once. Keep the fund-safety assertion exact while allowing the
-  // normal worker activation/serialization path to complete under CI load.
-  await expect(page.getByTestId('vault-balance')).toContainText('50,000', { timeout: 15_000 })
-  await expect(pageB.getByTestId('vault-balance')).toContainText('50,000', { timeout: 15_000 })
-  await Promise.all(
-    [page, pageB].map((currentPage) =>
-      currentPage.evaluate(
-        () =>
-          new Promise<void>((resolve) => {
-            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-          }),
-      ),
-    ),
-  )
-  const credentialRequests = await Promise.all(
-    [page, pageB].map((currentPage) =>
-      currentPage.evaluate(
-        () => (globalThis as typeof globalThis & { __vaultCredentialGets?: number }).__vaultCredentialGets || 0,
-      ),
-    ),
-  )
-  expect(credentialRequests).toEqual([0, 0])
-  const operator = await readOperatorState()
-  expect(operator.requests.some((request) => request.includes('/v1/batch/registerIntent'))).toBe(false)
 })
 
 test('recovers a missed VTXO update after reconnect and updates the rendered Home balance', async ({

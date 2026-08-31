@@ -4,60 +4,38 @@ import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } 
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { loadAddressPin, requireStatusMatchesPin, type AddressPin } from '../lib/vault/pin'
-import { unlockPhoneBip340 } from '../lib/vault/savingsSpend'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import {
-  boardingAttemptKeyAfterLock,
-  boardingFailureHold,
-  fetchVaultBoardingFunds,
-  nextVaultBoardingAction,
-  planVaultBoarding,
-  settleVaultBoarding,
-  withVaultBoardingLock,
-  withVaultBoardingSecret,
-} from '../lib/vault/vtxo/board'
-import {
-  fetchVaultReadonlyVtxoSnapshot,
-  reloadVaultReadonlyWorker,
-  subscribeVaultReadonlyEvents,
-} from '../lib/vault/vtxo/readonlyWorker'
+  fetchVaultWalletVtxoSnapshot,
+  reloadVaultWalletWorker,
+  subscribeVaultWalletEvents,
+} from '../lib/vault/vtxo/walletWorker'
 import { reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
 
 interface VaultBalancesOptions {
   addressPin: AddressPin | null
-  busy: boolean
   enrollment: EnrollmentSecrets | null
   initialStatusChecked: boolean
   locked: boolean
-  reportError: (message: string) => void
   setStatus: Dispatch<SetStateAction<VaultStatus | null>>
   status: VaultStatus | null
-  onBoarded: (txid: string) => void
 }
 
 interface VaultBalanceSnapshot {
   boardingBalance: number
-  boardingConfirmedBalance: number
-  boardingSettleableOutpoints: string[]
   history: VaultHistoryItem[]
   savingsSats: number
   savingsSpendableSats: number
-  vtxoCommitmentIds: string[]
   vtxoSpendingSats: number
 }
 
-const BOARDING_RECONCILIATION_INTERVAL_MS = 15_000
-
 const EMPTY_BALANCES: VaultBalanceSnapshot = {
   boardingBalance: 0,
-  boardingConfirmedBalance: 0,
-  boardingSettleableOutpoints: [],
   history: [],
   savingsSats: 0,
   savingsSpendableSats: 0,
-  vtxoCommitmentIds: [],
   vtxoSpendingSats: 0,
 }
 
@@ -69,10 +47,6 @@ export function confirmedUtxoBalance(utxos: EsploraUtxo[]): number {
       total + (utxo.status.confirmed && Number.isSafeInteger(utxo.value) && utxo.value > 0 ? utxo.value : 0),
     0,
   )
-}
-
-export function boardingSettlementAttemptKey(vaultId: string, settleableOutpoints: string[]): string {
-  return `${vaultId}:settle:${[...settleableOutpoints].sort().join(',')}`
 }
 
 export interface SavingsBalance {
@@ -110,17 +84,13 @@ export function savingsUtxoBalance(
   return { total: spendable + pendingChange, spendable }
 }
 
-// useVaultBalances is the only coordinator allowed to refresh account funds,
-// resume a VTXO send, or settle a confirmed boarding output. UI components see
-// balances and history, never Operator or indexer calls.
+// UI components consume the persistent SDK worker's balance and activity
+// snapshots; they never own settlement, Operator, or indexer lifecycle.
 export function useVaultBalances({
   addressPin,
-  busy,
   enrollment,
   initialStatusChecked,
   locked,
-  onBoarded,
-  reportError,
   setStatus,
   status,
 }: VaultBalancesOptions) {
@@ -128,13 +98,6 @@ export function useVaultBalances({
   const [balanceError, setBalanceError] = useState('')
   const [balancesLoaded, setBalancesLoaded] = useState(false)
   const [refreshingBalance, setRefreshingBalance] = useState(false)
-  const [boardingInProgress, setBoardingInProgress] = useState(false)
-  const [boardingPulse, setBoardingPulse] = useState(0)
-  const boardingRun = useRef(false)
-  const boardingPollRun = useRef(false)
-  const boardingAttempt = useRef('')
-  const boardingRetryAfter = useRef(0)
-  const boardingFetchVersion = useRef(0)
   const refreshVersion = useRef(0)
   const statusRef = useRef(status)
   const addressPinRef = useRef(addressPin)
@@ -145,21 +108,11 @@ export function useVaultBalances({
 
   const refreshVaultId = status?.vaultId || enrollment?.vaultId || addressPin?.vaultId || ''
 
-  const {
-    boardingBalance,
-    boardingConfirmedBalance,
-    boardingSettleableOutpoints,
-    history,
-    savingsSats,
-    savingsSpendableSats,
-    vtxoCommitmentIds,
-    vtxoSpendingSats,
-  } = snapshot
+  const { boardingBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats } = snapshot
 
   const refreshBalance = useCallback(
     async (vaultId?: string) => {
       const version = ++refreshVersion.current
-      const boardingVersion = ++boardingFetchVersion.current
       setRefreshingBalance(true)
       try {
         const id = String(
@@ -191,7 +144,7 @@ export function useVaultBalances({
           setBalanceError('')
           return
         }
-        const [savings, spending, boarding] = await Promise.all([
+        const [savings, spending] = await Promise.all([
           savingsAddress
             ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)]).then(
                 ([utxos, transactions]) => {
@@ -205,151 +158,35 @@ export function useVaultBalances({
               )
             : Promise.resolve({ balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }),
           spendingAddress && liveStatus.enrolled
-            ? fetchVaultReadonlyVtxoSnapshot(liveStatus)
-            : Promise.resolve({ balance: 0, commitmentIds: [] as string[], history: [] as VaultHistoryItem[] }),
-          boardingAddress && liveStatus.enrolled && liveStatus.vtxoBoardingActive
-            ? fetchVaultBoardingFunds(liveStatus)
+            ? fetchVaultWalletVtxoSnapshot(liveStatus)
             : Promise.resolve({
-                total: 0,
-                confirmed: 0,
-                history: [],
-                settleableOutpoints: [] as string[],
+                balance: 0,
+                boardingBalance: undefined,
+                history: [] as VaultHistoryItem[],
               }),
         ])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
-        setSnapshot((previous) => ({
-          boardingBalance: boardingVersion === boardingFetchVersion.current ? boarding.total : previous.boardingBalance,
-          boardingConfirmedBalance:
-            boardingVersion === boardingFetchVersion.current ? boarding.confirmed : previous.boardingConfirmedBalance,
-          boardingSettleableOutpoints:
-            boardingVersion === boardingFetchVersion.current
-              ? boarding.settleableOutpoints
-              : previous.boardingSettleableOutpoints,
-          history: [...savings.history, ...spending.history, ...boarding.history],
+        setSnapshot({
+          boardingBalance: spending.boardingBalance || 0,
+          history: [...savings.history, ...spending.history],
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
-          vtxoCommitmentIds: spending.commitmentIds || [],
           vtxoSpendingSats: spending.balance,
-        }))
+        })
         setBalancesLoaded(true)
         setBalanceError('')
       } catch (error) {
-        if (version === refreshVersion.current) setBalanceError(humanizeVaultError(error))
+        if (version === refreshVersion.current) {
+          consoleError(error, 'Vault balance refresh')
+          setBalanceError(humanizeVaultError(error))
+        }
       } finally {
         if (version === refreshVersion.current) setRefreshingBalance(false)
       }
     },
     [setStatus],
   )
-
-  const pollBoardingFunds = useCallback(async () => {
-    const current = statusRef.current
-    if (boardingPollRun.current || !current?.enrolled || !current.vtxoBoardingActive || !current.vtxoBoardingAddress) {
-      return
-    }
-    const version = ++boardingFetchVersion.current
-    boardingPollRun.current = true
-    try {
-      const funds = await fetchVaultBoardingFunds(current)
-      if (version !== boardingFetchVersion.current) return
-      setSnapshot((previous) => ({
-        ...previous,
-        boardingBalance: funds.total,
-        boardingConfirmedBalance: funds.confirmed,
-        boardingSettleableOutpoints: funds.settleableOutpoints,
-        history: [...previous.history.filter((item) => item.activity !== 'boarding'), ...funds.history],
-      }))
-      setBoardingPulse((value) => value + 1)
-    } catch (error) {
-      if (version === boardingFetchVersion.current) consoleError(error, 'boarding funds poll')
-    } finally {
-      boardingPollRun.current = false
-    }
-  }, [])
-
-  const boardingAttemptKey = boardingSettlementAttemptKey(status?.vaultId || '', boardingSettleableOutpoints)
-
-  const settleConfirmedBoarding = useCallback(async () => {
-    if (boardingRun.current || !status?.enrolled || !enrollment) return
-    if (!status.vtxoBoardingActive || !status.vtxoBoardingAddress) return
-    const action = nextVaultBoardingAction({ settleableOutpoints: boardingSettleableOutpoints, total: boardingBalance })
-    if (action !== 'settle') return
-    boardingRun.current = true
-    reportError('')
-    try {
-      const settled = await withVaultBoardingLock(status.vaultId, async (boardingLock) => {
-        const plan = await planVaultBoarding(status.vaultId, boardingSettleableOutpoints, new Set(vtxoCommitmentIds))
-        const outpoint = plan.eligibleOutpoints[0]
-        if (!outpoint) return { kind: 'blocked' as const }
-        setBoardingInProgress(true)
-        const phoneSecret = await unlockPhoneBip340(enrollment, status)
-        const result = await withVaultBoardingSecret(phoneSecret, (liveSecret) =>
-          settleVaultBoarding(boardingLock, liveSecret, status, outpoint),
-        )
-        return { kind: 'submitted' as const, result }
-      })
-      if (!settled.held) {
-        boardingAttempt.current = boardingAttemptKeyAfterLock(false, '')
-        return
-      }
-      if (settled.value.kind === 'blocked') {
-        boardingAttempt.current = boardingAttemptKey
-        await refreshBalance(status.vaultId)
-        return
-      }
-      boardingAttempt.current = boardingAttemptKey
-      onBoarded(settled.value.result.txid)
-      boardingRetryAfter.current = 0
-      await refreshBalance(status.vaultId)
-    } catch (error) {
-      consoleError(error, 'automatic Spending transfer')
-      reportError('')
-      const hold = boardingFailureHold(error, boardingAttemptKey)
-      boardingAttempt.current = hold.attemptKey
-      boardingRetryAfter.current = Date.now() + hold.retryDelayMs
-      await refreshBalance(status.vaultId)
-    } finally {
-      boardingRun.current = false
-      setBoardingInProgress(false)
-    }
-  }, [
-    boardingAttemptKey,
-    boardingBalance,
-    boardingConfirmedBalance,
-    boardingSettleableOutpoints,
-    enrollment,
-    onBoarded,
-    refreshBalance,
-    reportError,
-    status,
-    vtxoCommitmentIds,
-  ])
-
-  useEffect(() => {
-    if (busy || boardingInProgress || locked || !enrollment || !status?.enrolled || !status.vtxoBoardingActive) return
-    const action = nextVaultBoardingAction({ settleableOutpoints: boardingSettleableOutpoints, total: boardingBalance })
-    if (action === 'idle' || action === 'wait') {
-      boardingAttempt.current = ''
-      return
-    }
-    if (Date.now() < boardingRetryAfter.current) return
-    const key = boardingAttemptKey
-    if (boardingAttempt.current === key) return
-    void settleConfirmedBoarding()
-  }, [
-    boardingBalance,
-    boardingAttemptKey,
-    boardingConfirmedBalance,
-    boardingSettleableOutpoints,
-    boardingInProgress,
-    boardingPulse,
-    busy,
-    enrollment,
-    locked,
-    settleConfirmedBoarding,
-    status,
-  ])
 
   const recoverVtxoSpend = useCallback(async () => {
     const current = statusRef.current
@@ -364,7 +201,6 @@ export function useVaultBalances({
 
   useEffect(() => {
     refreshVersion.current += 1
-    boardingFetchVersion.current += 1
     setSnapshot(EMPTY_BALANCES)
     setBalancesLoaded(false)
     setBalanceError('')
@@ -379,7 +215,7 @@ export function useVaultBalances({
   useEffect(() => {
     if (locked || !status?.enrolled || !status.spendingArkAddress) return
     let timer = 0
-    const unsubscribe = subscribeVaultReadonlyEvents(status, () => {
+    const unsubscribe = subscribeVaultWalletEvents(status, () => {
       window.clearTimeout(timer)
       timer = window.setTimeout(() => void refreshBalance(status.vaultId), 200)
     })
@@ -392,46 +228,28 @@ export function useVaultBalances({
   useEffect(() => {
     if (locked || !initialStatusChecked || !refreshVaultId) return
     if (status?.enrolled) void recoverVtxoSpend()
-    const poll = () => {
-      if (document.visibilityState === 'hidden') return
-      void pollBoardingFunds()
-    }
     const onFocus = () => {
-      boardingAttempt.current = ''
       if (status?.enrolled) void recoverVtxoSpend()
       if (status?.enrolled) {
-        void reloadVaultReadonlyWorker(status)
-          .catch((error) => consoleError(error, 'readonly VTXO worker reload'))
+        void reloadVaultWalletWorker(status)
+          .catch((error) => consoleError(error, 'wallet VTXO worker reload'))
           .finally(() => void refreshBalance(refreshVaultId))
       } else {
         void refreshBalance(refreshVaultId)
       }
     }
     const onOnline = () => onFocus()
-    const timer =
-      status?.enrolled && status.vtxoBoardingActive ? window.setInterval(poll, BOARDING_RECONCILIATION_INTERVAL_MS) : 0
     window.addEventListener('focus', onFocus)
     window.addEventListener('online', onOnline)
     return () => {
-      if (timer) window.clearInterval(timer)
       window.removeEventListener('focus', onFocus)
       window.removeEventListener('online', onOnline)
     }
-  }, [
-    initialStatusChecked,
-    locked,
-    pollBoardingFunds,
-    recoverVtxoSpend,
-    refreshBalance,
-    refreshVaultId,
-    status?.enrolled,
-    status?.vtxoBoardingActive,
-  ])
+  }, [initialStatusChecked, locked, recoverVtxoSpend, refreshBalance, refreshVaultId, status?.enrolled])
 
   useEffect(
     () => () => {
       refreshVersion.current += 1
-      boardingFetchVersion.current += 1
     },
     [],
   )
@@ -440,8 +258,6 @@ export function useVaultBalances({
     balanceError,
     balancesLoaded,
     boardingBalance,
-    boardingConfirmedBalance,
-    boardingInProgress,
     history,
     refreshBalance,
     refreshingBalance,

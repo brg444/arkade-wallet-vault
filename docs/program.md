@@ -35,10 +35,11 @@ Savings is the only L1 balance in a fresh vault. Its ordinary admin leaf
 requires the phone and hardware keys. The VaultCosigner has no routine path to
 pay an arbitrary Savings recipient.
 
-Moving Savings to Spending pays the exact `vault-board-v1` address. After the
-output confirms, the wallet settles it to the advertised `vault-policy-v1`
-Arkade address. A Savings withdrawal to another Bitcoin address remains an
-external PSBT workflow.
+Moving Savings to Spending pays the exact enrolled boarding address. The
+only supported program is `vault-board-v1`. After the output confirms, the
+official SDK settles it to the advertised `vault-policy-v1` Arkade address. A
+Savings withdrawal to another Bitcoin address remains an external PSBT
+workflow.
 
 ## Recovery
 

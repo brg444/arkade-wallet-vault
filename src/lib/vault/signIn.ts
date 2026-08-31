@@ -11,9 +11,10 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeyBinding'
-import { pinFromEnrolledStatus } from './pin'
+import { pinEnrolledStatus, pinFromEnrolledStatus } from './pin'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
+import { provisionBoardingKey } from './vtxo/board'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -169,18 +170,23 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     // on durable browser storage. The session coordinator persists it after
     // the verified session is already live.
     pinFromEnrolledStatus(live)
+    await provisionBoardingKey(phoneSecret, live)
     return live
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }
 
-export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<EnrollmentSecrets> {
+export async function unlockLocalEnrollment(
+  rec: EnrollmentSecrets,
+): Promise<{ enrollment: EnrollmentSecrets; status: VaultStatus }> {
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
   if (rpId !== location.hostname.toLowerCase()) {
     throw new Error('deployment RP ID does not match this signing client host')
   }
+  const live = await vaultCosignerClient.enrollment.status(rec.vaultId)
+  pinEnrolledStatus(live)
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const got = (await navigator.credentials.get({
     publicKey: passkeyGetOptions(
@@ -199,8 +205,12 @@ export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<Enr
   if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
   try {
     const secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
-    zeroBytes(secret)
-    return rec
+    try {
+      await provisionBoardingKey(secret, live)
+      return { enrollment: rec, status: live }
+    } finally {
+      zeroBytes(secret)
+    }
   } finally {
     zeroBytes(prf)
   }
@@ -274,6 +284,7 @@ export async function signInWithPasskey(
     // their pin shape here; persistence is best effort in the coordinator so
     // private browsing cannot turn a valid recovery into a failed login.
     pinFromEnrolledStatus(status)
+    await provisionBoardingKey(phoneSecret, status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)

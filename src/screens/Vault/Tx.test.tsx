@@ -85,6 +85,20 @@ describe('Vault transaction details', () => {
     )
   })
 
+  it('shows settled boarding activity as confirmed', () => {
+    renderTx({
+      txid: 'settled-boarding-transaction',
+      type: 'received',
+      amount: 50_000,
+      confirmed: true,
+      account: 'spend',
+      activity: 'boarding',
+    })
+
+    expect(screen.getByText('Confirmed')).toBeTruthy()
+    expect(screen.queryByText('Pending')).toBeNull()
+  })
+
   it('offers one passkey-backed return action only when the package says a refund is due', () => {
     const { retryLightningRefund } = renderTx({
       txid: 'ark-lightning-funding',

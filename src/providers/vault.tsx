@@ -48,7 +48,9 @@ import {
   type VaultVtxoSpendQuote,
   vaultArkServer,
 } from '../lib/vault/vtxo/spend'
-import { verifyVaultBoarding } from '../lib/vault/vtxo/board'
+import { deleteBoardingKey, requireBoardingStatus } from '../lib/vault/vtxo/board'
+import { recoverMatureBoardingInputs } from '../lib/vault/vtxo/boardingRecovery'
+import { shutdownVaultWalletWorker } from '../lib/vault/vtxo/walletWorker'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -253,15 +255,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [liveNetwork],
   )
   const reportError = useCallback((message: string) => setError(message), [])
-  const onBoarded = useCallback((txid: string) => {
-    setLastTxid(txid)
-    setLastTxKind('vtxo')
-  }, [])
   const {
     balanceError,
     balancesLoaded,
     boardingBalance,
-    boardingInProgress,
     history,
     refreshBalance,
     refreshingBalance,
@@ -270,12 +267,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     vtxoSpendingSats,
   } = useVaultBalances({
     addressPin,
-    busy,
     enrollment,
     initialStatusChecked,
     locked,
-    onBoarded,
-    reportError,
     setStatus,
     status,
   })
@@ -626,7 +620,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const coins = confirmedSpendables(utxos, need)
     if (coins.length === 0) throw new Error('Confirmed Savings funds do not cover this transfer.')
     const leaf = 'admin' as const
-    if (spend.address === status.vtxoBoardingAddress) await verifyVaultBoarding(status)
+    if (spend.address === status.vtxoBoardingAddress) {
+      requireBoardingStatus(status, String(status.vtxoBoardingDescriptor?.boardingPub || ''))
+    }
     const unsigned = buildSavingsPsbt({
       status,
       phonePub: enrollment.phoneBip340Pub,
@@ -733,10 +729,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         return
       }
       if (lightningQuote) {
-        if (boardingInProgress) {
-          setError('Spending is still boarding Bitcoin. Try again in a moment.')
-          return
-        }
         const lightning = await import('../lib/vault/lightning')
         lightning.assertVaultLightningQuoteCurrent(lightningQuote)
         const reviewed = reviewedVtxoQuote
@@ -811,10 +803,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
       }
       if (spendingArkAddress && isVaultArkAddress(spend.address, status.network) && vtxoSpendingSats >= spend.amount) {
-        if (boardingInProgress) {
-          setError('Spending is still boarding Bitcoin. Try again in a moment.')
-          return
-        }
         const reviewed = reviewedVtxoQuote
         if (!reviewed || !reviewedVtxoQuoteMatchesDraft(reviewed, spend)) {
           setReviewedVtxoQuote(null)
@@ -857,7 +845,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [
     account,
     approveSavingsSend,
-    boardingInProgress,
     enrollment,
     finishBroadcast,
     lightningQuote,
@@ -871,6 +858,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   ])
 
   const reset = useCallback(() => {
+    if (status?.vaultId) {
+      void shutdownVaultWalletWorker(status.vaultId)
+        .then(() => deleteBoardingKey(status.vaultId))
+        .catch(() => undefined)
+    }
     setSessionLocked(true)
     setLocked(true)
     setError('')
@@ -884,7 +876,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setScanOnSend(false)
     setHandoffPsbt('')
     setScreen('welcome')
-  }, [])
+  }, [status])
 
   const retryLightningRefund = useCallback(
     async (rfqId: string) => {
@@ -923,6 +915,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [enrollment, refreshBalance, status],
   )
 
+  const recoverMatureBoarding = useCallback(async () => {
+    if (!status?.enrolled || !enrollment) throw new Error('Sign in before recovering received Bitcoin.')
+    const txid = await recoverMatureBoardingInputs(enrollment, status)
+    await refreshBalance(status.vaultId)
+    return txid
+  }, [enrollment, refreshBalance, status])
+
   const value = useMemo<VaultContextProps>(
     () => ({
       acceptDesign,
@@ -936,7 +935,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       balanceError,
       balancesLoaded,
       boardingAddress,
-      boardingInProgress,
       restoreRecoveryKit,
       signGuardianExitWithDevice,
       hasRecoveryKit,
@@ -993,6 +991,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       },
       recoverEntry,
       recoverExit,
+      recoverMatureBoarding,
       networkLabel,
       spendingArkAddress,
       refreshBalance,
@@ -1033,7 +1032,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       balanceError,
       balancesLoaded,
       boardingAddress,
-      boardingInProgress,
       restoreRecoveryKit,
       signGuardianExitWithDevice,
       hasRecoveryKit,
@@ -1064,6 +1062,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       lastSend,
       recoverEntry,
       recoverExit,
+      recoverMatureBoarding,
       loaded,
       networkLabel,
       spendingArkAddress,

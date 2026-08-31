@@ -18,7 +18,8 @@ export default defineConfig({
     contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: {
-    command: 'NODE_ENV=production VAULT_E2E_ARKADE_PROXY_TARGET=http://127.0.0.1:18888 pnpm start',
+    command:
+      'NODE_ENV=production VAULT_E2E_BUILD=arkade-vault-e2e-only VAULT_E2E_OPERATOR_ORIGIN=http://127.0.0.1:18888 VAULT_E2E_AUTHORIZER_PROXY_TARGET=http://127.0.0.1:18888 VAULT_E2E_ESPLORA_PROXY_TARGET=http://127.0.0.1:18888 pnpm start',
     port: 3003,
     reuseExistingServer: false,
     timeout: 120000,
@@ -27,6 +28,11 @@ export default defineConfig({
     {
       name: 'Mobile Chrome',
       use: { ...devices['Pixel 7'] },
+    },
+    {
+      name: 'Mobile Safari service-worker smoke',
+      testMatch: '**/vtxo-worker.test.ts',
+      use: { ...devices['iPhone 13'] },
     },
   ],
 })
