@@ -116,7 +116,8 @@ export function publicAuthorizerPath(url = ''): string {
   if (raw === '/api/gateway') {
     const params = new URLSearchParams(q)
     const route = params.get('route') || ''
-    if (route === 'kit') return '/v1/kit'
+    if (route === 'health') return '/health'
+    if (route === 'ready') return '/ready'
     const phase = params.get('phase') || ''
     if (route === 'board' && BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
     return raw + q
