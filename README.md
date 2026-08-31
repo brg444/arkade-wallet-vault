@@ -25,6 +25,13 @@ The browser never receives the VaultCosigner key. Hardware and recovery
 private keys are not accepted by production screens; those workflows exchange
 PSBTs with an external signer.
 
+Enrollment instantiates one fixed `vault-policy-v1` program with the user's
+reviewed per-send, rolling 24-hour, absolute-fee, and feerate limits. The
+wallet accepts only the release-advertised schema and bounds, reconstructs the
+complete descriptor, and pins the canonical policy digest locally and in the
+Recovery Kit. These conditions are immutable after enrollment; choosing them
+does not install executable policy code or a different Vault Program.
+
 ## Components
 
 | Component                                                            | Responsibility                                                                                                          |
@@ -87,7 +94,7 @@ live lifecycle qualification, browser concurrency tests, production key
 isolation, and mainnet-specific program pins. The confirmed mainnet Emulator
 endpoint advertises the same signer already pinned by the official SDK, but it
 has not yet passed Vault release qualification. Vault Program and policy
-adjustments begin after the Mutinynet lifecycle is stable. A disabled outbound
+schema bounds require a separate mainnet release review. A disabled outbound
 BOLT11 lifecycle delegates RFQ, VHTLC, persistence, restart, and refund handling
 to the published swap package, then funds through the ordinary VTXO send path.
 Its solver, refund, expiry, and live-payment gates are recorded in

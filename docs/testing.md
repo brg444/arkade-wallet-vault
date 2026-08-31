@@ -30,6 +30,13 @@ reloads on both sides of PRF derivation. Its secret audit rejects any
 PRF-derived scalar found in local storage, session storage, IndexedDB, Cache
 Storage, or messages sent to the service worker.
 
+Enrollment coverage selects a non-default policy, verifies the exact request
+sent before passkey creation, reconstructs the proposed descriptor, and checks
+the immutable local pin. Cross-language conformance pins a custom-policy
+descriptor hash so fee ceilings cannot drift between the Go service and
+TypeScript wallet. Tampering, unknown fields, out-of-range values, policy
+digest substitution, restart, and cross-tenant isolation must all fail closed.
+
 The same suite installs the production scoped service worker and exercises
 per-vault scopes, two simultaneous vaults, offline recovery, missed events,
 persisted SDK intent states, and the transition from a visible boarding output
