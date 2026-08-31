@@ -187,7 +187,7 @@ export async function beginTenantEnrollment(
       externalOwnerWalletXOnly: hardwareXOnly,
       ...(recoveryXOnly ? { recoveryXOnly } : {}),
       vtxoBoardingProgram: BOARDING_PROGRAM,
-      vaultBoardingBip340Pub: stagedBoard.boardingPub,
+      vaultBoardingBip340Pub: xOnly(stagedBoard.boardingPub),
     }
     // The network and descriptor-validation phases need only public facts.
     // Restore the original short secret lifetime before yielding to either.
@@ -262,7 +262,7 @@ export async function finishTenantEnrollment(
     ...(staged.recoveryXOnly ? { recoveryXOnly: staged.recoveryXOnly } : {}),
     descriptorHash: staged.descriptorHash,
     vtxoBoardingProgram: BOARDING_PROGRAM,
-    vaultBoardingBip340Pub: staged.boardingPub,
+    vaultBoardingBip340Pub: xOnly(staged.boardingPub),
   }
   await vaultCosignerClient.enrollment.finish(token, finishRequest)
   const live = await vaultCosignerClient.enrollment.status(staged.vaultId)

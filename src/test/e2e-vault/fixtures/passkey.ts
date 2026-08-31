@@ -279,6 +279,9 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       return json(route, response)
     }
     if (path === '/v1/enroll/propose' && body) {
+      if (!/^[0-9a-f]{64}$/.test(body.vaultBoardingBip340Pub)) {
+        return json(route, { code: 'REJECTED', error: 'boarding key must be BIP340 x-only' }, 400)
+      }
       this.proposed = body
       this.descriptor = buildVaultProgramDescriptor({
         vaultId: VAULT_ID,
@@ -293,7 +296,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       const boarding = createBoardingProgramScript(
         {
           name: BOARDING_PROGRAM,
-          boardingPubKey: hex.decode(body.vaultBoardingBip340Pub).slice(1),
+          boardingPubKey: hex.decode(body.vaultBoardingBip340Pub),
           cosignerPubKey: hex.decode(PROGRAM_FIXTURE.vaultCosignerBase).slice(1),
           recoveryPubKey: hex.decode(body.phoneBip340Pub).slice(1),
         },
@@ -305,7 +308,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         program: BOARDING_PROGRAM,
         template: BOARDING_TEMPLATE,
         network: 'mutinynet',
-        boardingPub: body.vaultBoardingBip340Pub,
+        boardingPub: `02${body.vaultBoardingBip340Pub}`,
         recoveryPhonePub: body.phoneBip340Pub,
         vaultBoardCosignerPub: PROGRAM_FIXTURE.vaultCosignerBase,
         operatorPub: MUTINYNET_OPERATOR_SIGNER_PUB,
