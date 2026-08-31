@@ -13,10 +13,10 @@ export interface VaultLightningSolverProfile {
 /** Release-pinned Mutinynet solver. Discovery cannot redirect vault funds. */
 export const MUTINYNET_LIGHTNING_SOLVER: VaultLightningSolverProfile = {
   network: 'mutinynet',
-  pubkey: '11f0f8a9fd4f24b25a25075dcfc58f84162a75606ddcbe91cd1fe4f4fc737241',
+  pubkey: '3f831510a6d7678d0c90d7d6fbc4057720517e2e30681ef4c87cc57aaf57e8d5',
   relays: ['wss://nostr.arkade.sh'],
   minSats: 1_000,
-  maxSats: 50_000,
+  maxSats: 25_000,
 }
 
 export function vaultLightningSendEnabled(value = import.meta.env.VITE_VAULT_LIGHTNING_SEND): boolean {

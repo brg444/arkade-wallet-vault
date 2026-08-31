@@ -56,8 +56,8 @@ export function verifyDirectP256(pub: Uint8Array, digest: Uint8Array, signature:
   return p256.verify(compact, message, key, { prehash: false, lowS: true, format: 'compact' })
 }
 
-export function zeroBytes(...values: Uint8Array[]): void {
-  for (const value of values) value.fill(0)
+export function zeroBytes(...values: Array<Uint8Array | null | undefined>): void {
+  for (const value of values) value?.fill(0)
 }
 
 function requireBytes(value: Uint8Array | ArrayBuffer, name: string): Uint8Array {

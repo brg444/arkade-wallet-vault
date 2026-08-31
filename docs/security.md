@@ -34,6 +34,12 @@ remains out of scope.
   exposing a funding target and binds the refund to the exact
   `vault-policy-v1` script. Funding remains subject to the ordinary VTXO
   authorization policy.
+- The persistent VTXO worker holds only the compressed device public key. The
+  PRF-derived scalar remains in the foreground for one Face ID-authorized
+  operation, then the temporary SDK resources close and the source secret is
+  zeroed.
+- A custom SDK Contract Manager handler marks `vault-policy-v1` as unavailable
+  to generic spend, renewal, and sweep selection.
 
 ## Assumptions and open gates
 
@@ -46,11 +52,16 @@ remains out of scope.
   `vault-policy-v1`. Vault policy does not govern that intermediate.
 - Browser concurrency depends on Web Locks. Boarding and ordinary sends fail
   closed when that capability is unavailable.
+- A reload or process interruption during a Face ID-authorized settlement loses
+  the signing session. The wallet requires another Face ID ceremony rather
+  than persisting an unlocked identity or resumable signing secret.
 - Arkade transaction construction, intent handling, boarding, and settlement
   use the official SDK against `https://arkade.computer`. Vault code does not
   add Operator lifecycle endpoints or replay a lost MuSig2 signing session.
-- Boarding excludes outpoints held by a nonterminal SDK intent before creating
-  a new SDK wallet. Failure to read that lock set stops settlement.
+- Boarding attempts are serialized by a per-vault Web Lock. The confirmed
+  onchain input is then handed to the official SDK, whose per-vault intent
+  repository records lifecycle state. Vault code does not maintain a competing
+  registration protocol or infer an Operator-side expiry from local time.
 - An empty or mismatched pending-transaction lookup stays fail-closed and keeps
   the operation locked. Operator-side manual resolution is an availability
   requirement, not a reason to resubmit an ambiguous transaction.

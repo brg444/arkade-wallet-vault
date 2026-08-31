@@ -1,6 +1,6 @@
-import { DefaultVtxo, IndexedDBIntentRepository, SingleKey, Wallet, type ExtendedCoin } from '@arkade-os/sdk'
+import { DefaultVtxo, SingleKey, type ExtendedCoin } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { vaultAddressNetwork } from '../bitcoin'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
@@ -11,12 +11,12 @@ import {
   VAULT_BOARD_V1_EXIT_DELAY_UNIT,
   boardingAttemptKeyAfterLock,
   boardingFailureHold,
-  createVaultBoardingStorage,
+  classifyVaultBoardingOutpoint,
   disposeVaultBoardingResources,
+  excludeSettledBoardingCoins,
   findConfirmedBoardingCoins,
   nextVaultBoardingAction,
-  settleVaultBoarding,
-  vaultBoardingStorageNames,
+  settledBoardingOutpoints,
   vaultBoardScriptFromStatus,
   withVaultBoardingLock,
   withVaultBoardingSecret,
@@ -67,70 +67,7 @@ async function status(): Promise<{ current: VaultStatus; operatorPub: Uint8Array
 }
 
 describe('vault-board-v1', () => {
-  it('isolates SDK wallet, contract, and intent state by vault', async () => {
-    const databases = new Map<string, Set<string>>()
-    class FakeRepository {
-      private readonly rows: Set<string>
-
-      constructor(
-        readonly kind: string,
-        readonly dbName: string,
-      ) {
-        const key = `${kind}:${dbName}`
-        this.rows = databases.get(key) || new Set<string>()
-        databases.set(key, this.rows)
-      }
-
-      add(value: string) {
-        this.rows.add(value)
-      }
-
-      has(value: string) {
-        return this.rows.has(value)
-      }
-
-      clear() {
-        this.rows.clear()
-      }
-    }
-    const factories = {
-      walletRepository: (dbName: string) => new FakeRepository('wallet', dbName),
-      contractRepository: (dbName: string) => new FakeRepository('contract', dbName),
-      intentRepository: (dbName: string) => new FakeRepository('intent', dbName),
-    }
-
-    const vaultA = createVaultBoardingStorage('vault-a', factories)
-    const vaultB = createVaultBoardingStorage('vault-b', factories)
-    vaultA.walletRepository.add('cursor-a')
-    vaultA.contractRepository.add('contract-a')
-
-    expect(vaultB.walletRepository.has('cursor-a')).toBe(false)
-    expect(vaultB.contractRepository.has('contract-a')).toBe(false)
-    expect(vaultA.walletRepository.dbName).toBe(vaultA.contractRepository.dbName)
-    expect(vaultB.walletRepository.dbName).toBe(vaultB.contractRepository.dbName)
-    expect(vaultA.walletRepository.dbName).not.toBe(vaultB.walletRepository.dbName)
-    expect(vaultA.intentRepository.dbName).not.toBe(vaultA.walletRepository.dbName)
-
-    vaultB.walletRepository.add('cursor-b')
-    vaultB.contractRepository.add('contract-b')
-    vaultB.walletRepository.clear()
-    vaultB.contractRepository.clear()
-    const reopenedB = createVaultBoardingStorage('vault-b', factories)
-    expect(reopenedB.walletRepository.has('cursor-b')).toBe(false)
-    expect(reopenedB.contractRepository.has('contract-b')).toBe(false)
-    expect(vaultA.walletRepository.has('cursor-a')).toBe(true)
-    expect(vaultA.contractRepository.has('contract-a')).toBe(true)
-  })
-
-  it('uses explicit versioned storage names and rejects a missing vault id', () => {
-    expect(vaultBoardingStorageNames('vault-a')).toEqual({
-      wallet: 'arkade-vault-v2:vault-a:wallet',
-      intents: 'arkade-vault-v2:vault-a:intents',
-    })
-    expect(() => vaultBoardingStorageNames('')).toThrow(/vault id/)
-  })
-
-  it('disposes the wallet before all three boarding repositories', async () => {
+  it('disposes the wallet before both boarding repositories', async () => {
     const disposed: string[] = []
     const repository = (name: string) => ({
       async [Symbol.asyncDispose]() {
@@ -166,60 +103,103 @@ describe('vault-board-v1', () => {
     const storage = {
       walletRepository: repository('wallet', true),
       contractRepository: repository('contract'),
-      intentRepository: repository('intent'),
     }
 
     await expect(disposeVaultBoardingResources(undefined, storage)).rejects.toThrow(/wallet close failed/)
-    expect(new Set(disposed)).toEqual(new Set(['wallet', 'contract', 'intent']))
+    expect(new Set(disposed)).toEqual(new Set(['wallet', 'contract']))
   })
 
   it('settles only deposits already sent to the boarding address', () => {
-    expect(nextVaultBoardingAction({ confirmed: 0, total: 49_000 })).toBe('wait')
-    expect(nextVaultBoardingAction({ confirmed: 49_000, total: 49_000 })).toBe('settle')
-    expect(nextVaultBoardingAction({ confirmed: 0, total: 0 })).toBe('idle')
+    expect(nextVaultBoardingAction({ settleableOutpoints: [], total: 49_000 })).toBe('wait')
+    expect(nextVaultBoardingAction({ settleableOutpoints: ['11'.repeat(32) + ':0'], total: 49_000 })).toBe('settle')
+    expect(nextVaultBoardingAction({ settleableOutpoints: [], total: 0 })).toBe('idle')
   })
 
-  it('excludes a locked boarding outpoint while retaining another confirmed coin', async () => {
-    const locked = boardingCoin('11'.repeat(32), 0, 20_000)
+  it('returns confirmed, non-expired boarding coins for SDK settlement', async () => {
+    const first = boardingCoin('11'.repeat(32), 0, 20_000)
     const available = boardingCoin('22'.repeat(32), 1, 30_000)
     const unconfirmed = boardingCoin('33'.repeat(32), 2, 40_000, false)
-    const wallet = { getBoardingUtxos: async () => [locked, available, unconfirmed] }
-
-    await expect(findConfirmedBoardingCoins(wallet, new Set([`${locked.txid}:${locked.vout}`]))).resolves.toEqual([
-      available,
-    ])
-  })
-
-  it('returns no confirmed boarding coin when the only coin is locked', async () => {
-    const locked = boardingCoin('11'.repeat(32), 0, 20_000)
-    const wallet = { getBoardingUtxos: async () => [locked] }
-
-    await expect(findConfirmedBoardingCoins(wallet, new Set([`${locked.txid}:${locked.vout}`]))).resolves.toEqual([])
-  })
-
-  it('aborts before wallet creation when the intent-lock snapshot fails', async () => {
-    const { current } = await status()
-    const readLocks = vi
-      .spyOn(IndexedDBIntentRepository.prototype, 'getLockedVtxoOutpoints')
-      .mockRejectedValue(new Error('intent lock read failed'))
-    const createWallet = vi.spyOn(Wallet, 'create')
-    const locks: VaultLockManager = {
-      request: async <T>(
-        _name: string,
-        _options: { mode: 'exclusive'; ifAvailable?: boolean },
-        callback: (lock: unknown) => Promise<T>,
-      ) => callback({}),
+    const expired = {
+      ...boardingCoin('44'.repeat(32), 3, 50_000),
+      status: {
+        confirmed: true,
+        block_time: Math.floor(Date.now() / 1_000) - Number(VAULT_BOARD_V1_EXIT_DELAY) - 1,
+      },
     }
+    const wallet = { getBoardingUtxos: async () => [first, available, unconfirmed, expired] }
 
-    await expect(
-      withVaultBoardingLock(
-        current.vaultId,
-        (lock) => settleVaultBoarding(lock, hex.decode('01'.padStart(64, '0')), current),
-        locks,
+    await expect(findConfirmedBoardingCoins(wallet)).resolves.toEqual([available, first])
+  })
+
+  it('scopes an SDK settlement attempt to one exact boarding outpoint', async () => {
+    const first = boardingCoin('11'.repeat(32), 0, 20_000)
+    const selected = boardingCoin('22'.repeat(32), 1, 30_000)
+    const wallet = { getBoardingUtxos: async () => [first, selected] }
+
+    await expect(findConfirmedBoardingCoins(wallet, `${selected.txid}:${selected.vout}`)).resolves.toEqual([selected])
+  })
+
+  it('keeps active and retained Operator intents blocked without a local timeout', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    const intent = (state: string, cancellationReason?: string) =>
+      ({ state, cancellationReason, intentVtxos: [outpoint] }) as never
+
+    expect(classifyVaultBoardingOutpoint([intent('waiting_to_submit')], outpoint)).toBe('blocked')
+    expect(classifyVaultBoardingOutpoint([intent('waiting_for_batch')], outpoint)).toBe('blocked')
+    expect(classifyVaultBoardingOutpoint([intent('batch_in_progress')], outpoint)).toBe('blocked')
+    expect(
+      classifyVaultBoardingOutpoint(
+        [intent('cancelled', 'INVALID_INTENT_PROOF (23): no matching intents found')],
+        outpoint,
       ),
-    ).rejects.toThrow(/intent lock read failed/)
-    expect(readLocks).toHaveBeenCalledOnce()
-    expect(createWallet).not.toHaveBeenCalled()
+    ).toBe('blocked')
+  })
+
+  it('keeps unrelated rows eligible but fails closed on every cancelled matching request', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    const other = { txid: '22'.repeat(32), vout: 0 }
+    expect(
+      classifyVaultBoardingOutpoint([{ state: 'waiting_for_batch', intentVtxos: [other] } as never], outpoint),
+    ).toBe('eligible')
+    expect(
+      classifyVaultBoardingOutpoint(
+        [{ state: 'cancelled', cancellationReason: 'validation failed', intentVtxos: [outpoint] } as never],
+        outpoint,
+      ),
+    ).toBe('blocked')
+  })
+
+  it('lets settled destination evidence override stale local intent state', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    expect(
+      classifyVaultBoardingOutpoint(
+        [
+          {
+            state: 'waiting_for_batch',
+            commitmentTransactionId: 'commitment',
+            intentVtxos: [outpoint],
+          } as never,
+        ],
+        outpoint,
+        new Set(['commitment']),
+      ),
+    ).toBe('settled')
+  })
+
+  it('lets a succeeded destination VTXO suppress an Esplora-lagging boarding input', () => {
+    const outpoint = { txid: '11'.repeat(32), vout: 0 }
+    const settled = settledBoardingOutpoints([
+      { state: 'waiting_for_batch', intentVtxos: [outpoint] },
+      { state: 'batch_succeeded', intentVtxos: [outpoint] },
+    ] as never)
+    const laggingEsplora = [{ ...outpoint, value: 49_000 }]
+    const visibleDestinationVtxos = 48_300
+
+    expect(settled).toEqual(new Set([`${outpoint.txid}:0`]))
+    expect(
+      visibleDestinationVtxos +
+        excludeSettledBoardingCoins(laggingEsplora, settled).reduce((sum, coin) => sum + coin.value, 0),
+    ).toBe(visibleDestinationVtxos)
   })
 
   it('reconstructs the distinct standard boarding contract pinned by status', async () => {
@@ -258,6 +238,15 @@ describe('vault-board-v1', () => {
     finish()
     await expect(settlement).resolves.toBe('settled')
     expect(hex.encode(secret)).toBe('00'.repeat(32))
+  })
+
+  it('keeps the SDK signing identity on the same wipeable scalar buffer', () => {
+    const secret = hex.decode('01'.padStart(64, '0'))
+    const identity = SingleKey.fromPrivateKey(secret)
+
+    secret.fill(0)
+
+    expect(identity.toHex()).toBe('00'.repeat(32))
   })
 
   it('does not stick a boarding attempt when another tab already holds the lock', async () => {

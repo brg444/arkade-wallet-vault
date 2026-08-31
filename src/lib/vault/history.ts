@@ -1,4 +1,4 @@
-import type { EsploraTx } from './esplora'
+import type { EsploraTx, EsploraUtxo } from './esplora'
 import { RECENT_HISTORY_LIMIT } from './constants'
 
 export type VaultHistoryKind = 'sent' | 'received'
@@ -10,7 +10,7 @@ export interface VaultHistoryItem {
   confirmed: boolean
   blockTime?: number
   account: 'spend' | 'savings'
-  activity?: 'lightning'
+  activity?: 'boarding' | 'lightning' | 'savings-handoff'
   displayAmount?: number
   fee?: number
   lightningState?: string
@@ -53,11 +53,8 @@ export function groupVaultHistory(
 }
 
 function historyGroup(item: VaultHistoryItem, today: Date, yesterday: Date): Pick<VaultHistoryGroup, 'key' | 'label'> {
-  if (!item.confirmed) {
-    return item.account === 'spend'
-      ? { key: 'preconfirmed', label: 'Preconfirmed' }
-      : { key: 'pending', label: 'Pending' }
-  }
+  if (item.activity === 'boarding') return { key: 'pending', label: 'Pending' }
+  if (!item.confirmed) return { key: 'pending', label: 'Pending' }
   if (!item.blockTime) return { key: 'earlier', label: 'Earlier' }
   const date = new Date(item.blockTime * 1000)
   const key = localDateKey(date)
@@ -71,6 +68,31 @@ function historyGroup(item: VaultHistoryItem, today: Date, yesterday: Date): Pic
       ...(date.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
     }).format(date),
   }
+}
+
+/** Unspent boarding outputs belong to Spending, but are not VTXOs yet. */
+export function historyFromBoardingUtxos(utxos: EsploraUtxo[]): VaultHistoryItem[] {
+  const unique = new Map<string, EsploraUtxo>()
+  for (const utxo of utxos) unique.set(`${utxo.txid}:${utxo.vout}`, utxo)
+
+  const byTransaction = new Map<string, number>()
+  for (const utxo of unique.values()) {
+    if (!Number.isSafeInteger(utxo.value) || utxo.value <= 0) continue
+    byTransaction.set(utxo.txid, (byTransaction.get(utxo.txid) || 0) + utxo.value)
+  }
+
+  return [...byTransaction]
+    .map(([txid, amount]) => ({
+      txid,
+      type: 'received' as const,
+      amount,
+      // Pending describes the Spending lifecycle, even after the Bitcoin
+      // transaction confirms. It becomes settled only after VTXO issuance.
+      confirmed: false,
+      account: 'spend' as const,
+      activity: 'boarding' as const,
+    }))
+    .sort(sortVaultHistory)
 }
 
 function localDateKey(date: Date): string {
@@ -182,9 +204,10 @@ export function historyFromVtxos(
         txid: coin.txid,
         type: 'received',
         amount: coin.value,
-        // `isLeaf` is an indexer graph property, not a Bitcoin confirmation
-        // flag. The SDK keeps a spent receive settled after its VTXO moves.
-        confirmed: Boolean(coin.isLeaf || coin.isSpent),
+        // Reaching the pinned script in the Operator indexer is the completed
+        // Spending receive. `isLeaf` describes the VTXO graph shape, not
+        // whether the wallet has received the VTXO.
+        confirmed: true,
         blockTime: unixSeconds(coin.createdAtMs),
         account,
       })

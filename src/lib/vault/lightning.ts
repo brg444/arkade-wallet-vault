@@ -1,13 +1,12 @@
 import {
   ArkAddress,
+  IndexedDBContractRepository,
+  IndexedDBWalletRepository,
   RestArkProvider,
   RestIndexerProvider,
   SingleKey,
   Wallet,
   type IWallet,
-  type IndexedDBContractRepository,
-  type IndexedDBIntentRepository,
-  type IndexedDBWalletRepository,
   type NetworkName,
 } from '@arkade-os/sdk'
 import {
@@ -35,7 +34,7 @@ import {
   type VaultLightningSession,
 } from './lightningLifecycle'
 import type { VaultStatus } from './types'
-import { createVaultBoardingStorage, disposeVaultBoardingResources } from './vtxo/board'
+import { disposeVaultBoardingResources } from './vtxo/board'
 
 export {
   isVaultLightningInput,
@@ -107,7 +106,16 @@ export function validateVaultLightningRefund(
 type VaultSdkWalletResources = {
   walletRepository: IndexedDBWalletRepository
   contractRepository: IndexedDBContractRepository
-  intentRepository: IndexedDBIntentRepository
+}
+
+function createVaultLightningSdkStorage(vaultId: string): VaultSdkWalletResources {
+  const id = String(vaultId || '').trim()
+  if (!id) throw new Error('Vault ID is required for Lightning storage.')
+  const database = `arkade-vault-v2:${encodeURIComponent(id)}:wallet`
+  return {
+    walletRepository: new IndexedDBWalletRepository(database),
+    contractRepository: new IndexedDBContractRepository(database),
+  }
 }
 
 export async function withVaultLightningSdkWallet<T>(
@@ -121,7 +129,7 @@ export async function withVaultLightningSdkWallet<T>(
   if (hex.encode(await identity.compressedPublicKey()) !== String(status.phoneBip340Pub || '')) {
     throw new Error('Phone key does not match this vault.')
   }
-  const storage: VaultSdkWalletResources = createVaultBoardingStorage(status.vaultId)
+  const storage = createVaultLightningSdkStorage(status.vaultId)
   const repository = new IndexedDbAssetSwapRepository(vaultLightningSwapStorageName(status.vaultId))
   const operator = new RestArkProvider(arkServerUrl)
   const indexer = new RestIndexerProvider(arkServerUrl)

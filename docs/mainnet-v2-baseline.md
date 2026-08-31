@@ -32,9 +32,9 @@ boarding, and Operator communication remain inside the official SDK surface.
 
 1. Qualify ordinary VTXO receive and send, including reloads and lost responses.
 2. Qualify Savings-to-Spending boarding and recovery drills.
-3. Configure the private mainnet Emulator endpoint, freeze the program pins for
-   `arkade.computer`, then regenerate both Contract Packs and cross-language
-   vectors.
+3. Configure `https://mainnet-signer.invalid`, freeze its signer and the
+   program pins for `arkade.computer`, then regenerate both Contract Packs and
+   cross-language vectors.
 4. Deploy with production key isolation, independent rollback-control storage,
    and shared durable edge limits.
 5. Enable outbound BOLT11 after ordinary Spending is stable. The published
@@ -55,19 +55,23 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
 - The phone-plus-Operator boarding intermediate remains an explicit trust
   assumption until value reaches `vault-policy-v1`.
 - Mainnet pins must match `arkade.computer`, including its network, signer,
-  checkpoint policy, delays, and fee bounds. The private mainnet Emulator
-  endpoint is the remaining unavailable external dependency.
+  checkpoint policy, delays, and fee bounds. The confirmed mainnet Emulator at
+  `https://mainnet-signer.invalid` advertises signer
+  `0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`,
+  which matches the official SDK pin; release qualification and immutable
+  Contract Pack binding remain required.
 - The wallet uses the official SDK lifecycle without custom registration,
   deletion, replay, event-stream, or Operator-status extensions.
-- Automatic boarding excludes every outpoint held by the SDK intent
-  repository before wallet creation. A retained nonterminal intent stays
-  fail-closed when the deployed interface cannot prove completion or release;
-  live qualification must define the operational resolution path.
-- The stock SDK can record an intent as cancelled after an unacknowledged
-  delete. The current deployed Operator does not match that delete by boarding
-  input, which leaves automatic retry unable to distinguish a released intent
-  from a retained one. Mainnet boarding remains blocked until the deployed
-  cancellation path is qualified for boarding inputs.
+- Automatic boarding passes the authoritative confirmed onchain input and exact
+  `vault-policy-v1` destination to the official SDK under an exclusive per-vault
+  Web Lock. The SDK's isolated intent repository records lifecycle state. A
+  bounded local grace suppresses duplicate Face ID prompts but does not claim
+  that the Operator request expired. SDK duplicate recovery must pass crash,
+  missed-event, and two-context qualification on the deployed mainnet stack.
+- The persistent worker is read-only. It receives the device public key and
+  cannot sign. Page or process loss during a Face ID-authorized settlement must
+  require reauthorization. Browser storage remains free of the scalar,
+  unlocked identity, and resumable MuSig session.
 - Boarding and ordinary send require Web Locks and fail closed when the browser
   does not provide them. Mainnet qualification must define the supported
   browser boundary and cover deterministic two-context races.
@@ -76,6 +80,10 @@ are intentionally outside the current Mutinynet reliability and cleanup work.
 - Live Mutinynet qualification must cover reload, two-tab races, dropped
   reserve and authorization responses, missed event acknowledgements, lost
   finalization, and delayed recovery.
+- Deployed browser qualification must cover scoped worker installation and
+  updates, A-to-B-to-A vault switching, simultaneous vaults in separate tabs,
+  offline recovery, lost worker events, and both VTXO-first and Esplora-first
+  propagation.
 - Outbound BOLT11 is implemented as a disabled package-native lifecycle using
   the published RFQ repository, manager, contract registry, and refunder.
   Mainnet enablement still requires an approved signed solver card and rotation

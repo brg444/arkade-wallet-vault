@@ -8,6 +8,8 @@ import {
   RestIndexerProvider,
   SingleKey,
   Wallet,
+  hasBoardingTxExpired,
+  type ArkIntent,
   type ExtendedCoin,
 } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
@@ -15,14 +17,15 @@ import type { VaultStatus } from '../types'
 import { vaultAddressNetwork } from '../bitcoin'
 import { zeroBytes } from '../ceremony/directauth'
 import { fetchAddressUtxos } from '../esplora'
-import { vaultArkServer } from './spend'
+import { historyFromBoardingUtxos, type VaultHistoryItem } from '../history'
+import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './contractHandler'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
+import { vaultReadonlyIntentDatabase, vaultReadonlyWalletDatabase } from './readonlyWorkerNames'
+import { vaultArkServer, vaultPolicyV1ScriptFromStatus } from './spend'
 
 export const VAULT_BOARD_V1 = 'vault-board-v1'
 export const VAULT_BOARD_V1_EXIT_DELAY = 604672n
 export const VAULT_BOARD_V1_EXIT_DELAY_UNIT = 'seconds' as const
-
-const VAULT_SDK_STORAGE_PREFIX = 'arkade-vault-v2'
 
 const BOARDING_LOCK_BRAND: unique symbol = Symbol('vault-boarding-lock')
 const activeBoardingLocks = new WeakSet<object>()
@@ -124,66 +127,164 @@ export function vaultBoardScriptFromStatus(status: VaultStatus, operatorPub: Uin
 
 export interface VaultBoardingFunds {
   confirmed: number
+  history: VaultHistoryItem[]
+  settleableOutpoints: string[]
   unconfirmed: number
   total: number
 }
 
 export type VaultBoardingAction = 'settle' | 'wait' | 'idle'
 
+export function settledBoardingOutpoints(intents: Pick<ArkIntent, 'state' | 'intentVtxos'>[]): Set<string> {
+  const settled = new Set<string>()
+  for (const intent of intents) {
+    if (intent.state !== 'batch_succeeded') continue
+    for (const input of intent.intentVtxos) settled.add(`${input.txid}:${input.vout}`)
+  }
+  return settled
+}
+
+export function excludeSettledBoardingCoins<T extends { txid: string; vout: number }>(
+  coins: T[],
+  settled: ReadonlySet<string>,
+): T[] {
+  return coins.filter((coin) => !settled.has(`${coin.txid}:${coin.vout}`))
+}
+
+export type VaultBoardingOutpointState = 'eligible' | 'blocked' | 'settled'
+
+export interface VaultBoardingPlan {
+  blockedOutpoints: string[]
+  eligibleOutpoints: string[]
+  settledOutpoints: string[]
+}
+
+function parseBoardingOutpoint(outpoint: string) {
+  const separator = outpoint.lastIndexOf(':')
+  const txid = outpoint.slice(0, separator)
+  const vout = Number(outpoint.slice(separator + 1))
+  if (!/^[0-9a-f]{64}$/i.test(txid) || !Number.isSafeInteger(vout) || vout < 0) {
+    throw new Error('Invalid boarding outpoint')
+  }
+  return { txid, vout }
+}
+
+function intentContainsOutpoint(intent: Pick<ArkIntent, 'intentVtxos'>, outpoint: { txid: string; vout: number }) {
+  return intent.intentVtxos.some(
+    (candidate) => candidate.txid.toLowerCase() === outpoint.txid.toLowerCase() && candidate.vout === outpoint.vout,
+  )
+}
+
+export function classifyVaultBoardingOutpoint(
+  intents: Pick<ArkIntent, 'state' | 'intentVtxos' | 'commitmentTransactionId'>[],
+  outpoint: { txid: string; vout: number },
+  destinationCommitments: ReadonlySet<string> = new Set(),
+): VaultBoardingOutpointState {
+  const matching = intents.filter((intent) => intentContainsOutpoint(intent, outpoint))
+  if (
+    matching.some(
+      (intent) =>
+        intent.state === 'batch_succeeded' ||
+        Boolean(intent.commitmentTransactionId && destinationCommitments.has(intent.commitmentTransactionId)),
+    )
+  ) {
+    return 'settled'
+  }
+  if (
+    matching.some(
+      (intent) =>
+        intent.state === 'waiting_to_submit' ||
+        intent.state === 'waiting_for_batch' ||
+        intent.state === 'batch_in_progress' ||
+        intent.state === 'batch_failed' ||
+        intent.state === 'cancelled',
+    )
+  ) {
+    return 'blocked'
+  }
+  return 'eligible'
+}
+
+export async function planVaultBoarding(
+  vaultId: string,
+  outpoints: string[],
+  destinationCommitments: ReadonlySet<string> = new Set(),
+): Promise<VaultBoardingPlan> {
+  const parsed = outpoints.map((outpoint) => ({ key: outpoint, ...parseBoardingOutpoint(outpoint) }))
+  if (parsed.length === 0) return { blockedOutpoints: [], eligibleOutpoints: [], settledOutpoints: [] }
+  const repository = new IndexedDBIntentRepository(vaultReadonlyIntentDatabase(vaultId))
+  try {
+    const intents = await repository.getIntents({
+      containingInputs: parsed.map(({ txid, vout }) => ({ txid, vout })),
+    })
+    const plan: VaultBoardingPlan = { blockedOutpoints: [], eligibleOutpoints: [], settledOutpoints: [] }
+    for (const outpoint of parsed) {
+      const state = classifyVaultBoardingOutpoint(intents, outpoint, destinationCommitments)
+      if (state === 'blocked') plan.blockedOutpoints.push(outpoint.key)
+      else if (state === 'settled') plan.settledOutpoints.push(outpoint.key)
+      else plan.eligibleOutpoints.push(outpoint.key)
+    }
+    return plan
+  } finally {
+    await repository[Symbol.asyncDispose]()
+  }
+}
+
+async function loadSettledBoardingOutpoints(vaultId: string): Promise<Set<string>> {
+  const repository = new IndexedDBIntentRepository(vaultReadonlyIntentDatabase(vaultId))
+  try {
+    return settledBoardingOutpoints(await repository.getIntents({ states: ['batch_succeeded'] }))
+  } finally {
+    await repository[Symbol.asyncDispose]()
+  }
+}
+
 export function nextVaultBoardingAction(
-  boarding: Pick<VaultBoardingFunds, 'confirmed' | 'total'>,
+  boarding: Pick<VaultBoardingFunds, 'settleableOutpoints' | 'total'>,
 ): VaultBoardingAction {
-  if (boarding.confirmed > 0) return 'settle'
+  if (boarding.settleableOutpoints.length > 0) return 'settle'
   if (boarding.total > 0) return 'wait'
   return 'idle'
 }
 
 export async function fetchVaultBoardingFunds(status: VaultStatus): Promise<VaultBoardingFunds> {
   requireBoardingStatus(status)
-  const coins = await fetchAddressUtxos(status.vtxoBoardingAddress!)
-  const confirmed = coins.filter((coin) => coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
+  const [allCoins, settled] = await Promise.all([
+    fetchAddressUtxos(status.vtxoBoardingAddress!),
+    loadSettledBoardingOutpoints(status.vaultId),
+  ])
+  // The destination VTXO/batch result can arrive before Esplora drops the
+  // spent boarding UTXO. The durable SDK intent result wins so the UI never
+  // double-counts the same sats during that propagation window.
+  const coins = excludeSettledBoardingCoins(allCoins, settled)
+  const confirmedCoins = coins.filter((coin) => coin.status.confirmed)
+  const confirmed = confirmedCoins.reduce((sum, coin) => sum + coin.value, 0)
+  const settleableOutpoints = confirmedCoins
+    .filter(
+      (coin) =>
+        !hasBoardingTxExpired(coin as ExtendedCoin, {
+          type: VAULT_BOARD_V1_EXIT_DELAY_UNIT,
+          value: VAULT_BOARD_V1_EXIT_DELAY,
+        }),
+    )
+    .map((coin) => `${coin.txid}:${coin.vout}`)
+    .sort()
   const unconfirmed = coins.filter((coin) => !coin.status.confirmed).reduce((sum, coin) => sum + coin.value, 0)
-  return { confirmed, unconfirmed, total: confirmed + unconfirmed }
-}
-
-export function vaultBoardingStorageNames(vaultId: string): { wallet: string; intents: string } {
-  const id = String(vaultId || '').trim()
-  if (!id) throw new Error('vault id required for SDK storage')
-  const scope = encodeURIComponent(id)
   return {
-    wallet: `${VAULT_SDK_STORAGE_PREFIX}:${scope}:wallet`,
-    intents: `${VAULT_SDK_STORAGE_PREFIX}:${scope}:intents`,
+    confirmed,
+    history: historyFromBoardingUtxos(coins),
+    settleableOutpoints,
+    unconfirmed,
+    total: confirmed + unconfirmed,
   }
 }
 
-type BoardingStorageFactories<W, C, I> = {
-  walletRepository: (dbName: string) => W
-  contractRepository: (dbName: string) => C
-  intentRepository: (dbName: string) => I
-}
-
-export function createVaultBoardingStorage(vaultId: string): {
-  walletRepository: IndexedDBWalletRepository
-  contractRepository: IndexedDBContractRepository
-  intentRepository: IndexedDBIntentRepository
-}
-export function createVaultBoardingStorage<W, C, I>(
-  vaultId: string,
-  factories: BoardingStorageFactories<W, C, I>,
-): { walletRepository: W; contractRepository: C; intentRepository: I }
-export function createVaultBoardingStorage<W, C, I>(
-  vaultId: string,
-  factories: BoardingStorageFactories<W, C, I> = {
-    walletRepository: (dbName) => new IndexedDBWalletRepository(dbName) as W,
-    contractRepository: (dbName) => new IndexedDBContractRepository(dbName) as C,
-    intentRepository: (dbName) => new IndexedDBIntentRepository(dbName) as I,
-  },
-) {
-  const names = vaultBoardingStorageNames(vaultId)
+export function createBoardingOperationStorage(vaultId: string) {
+  const walletDatabase = vaultReadonlyWalletDatabase(vaultId)
   return {
-    walletRepository: factories.walletRepository(names.wallet),
-    contractRepository: factories.contractRepository(names.wallet),
-    intentRepository: factories.intentRepository(names.intents),
+    walletRepository: new IndexedDBWalletRepository(walletDatabase),
+    contractRepository: new IndexedDBContractRepository(walletDatabase),
+    intentRepository: new IndexedDBIntentRepository(vaultReadonlyIntentDatabase(vaultId)),
   }
 }
 
@@ -205,15 +306,12 @@ export async function verifyVaultBoarding(status: VaultStatus): Promise<void> {
 }
 
 async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus) {
+  registerVaultPolicyV1ContractHandler()
+  const spendingScript = vaultPolicyV1ScriptFromStatus(status)
   const identity = SingleKey.fromPrivateKey(phoneSecret)
-  const storage = createVaultBoardingStorage(status.vaultId)
+  const storage = createBoardingOperationStorage(status.vaultId)
   let wallet: Wallet | undefined
   try {
-    const lockedOutpoints = new Set(
-      (await storage.intentRepository.getLockedVtxoOutpoints()).map(({ txid, vout }) =>
-        boardingOutpointKey(txid, vout),
-      ),
-    )
     const { operator, info } = await liveBoardingOperator(status)
     wallet = await Wallet.create({
       identity,
@@ -228,7 +326,13 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
     if ((await wallet.getBoardingAddress()) !== status.vtxoBoardingAddress) {
       throw new Error('SDK derived a different vault-board-v1 address')
     }
-    return { wallet, info, storage, lockedOutpoints }
+    const contract = await (
+      await wallet.getContractManager()
+    ).createContract(vaultPolicyV1Contract(spendingScript, status.spendingArkAddress!))
+    if (contract.script !== String(status.spendingArkScript || '').toLowerCase()) {
+      throw new Error('SDK registered a different vault-policy-v1 Spending contract')
+    }
+    return { wallet, info, storage }
   } catch (error) {
     try {
       await disposeVaultBoardingResources(wallet, storage)
@@ -242,7 +346,7 @@ async function createBoardingWallet(phoneSecret: Uint8Array, status: VaultStatus
 type BoardingStorageResources = {
   walletRepository: { [Symbol.asyncDispose](): Promise<void> }
   contractRepository: { [Symbol.asyncDispose](): Promise<void> }
-  intentRepository: { [Symbol.asyncDispose](): Promise<void> }
+  intentRepository?: { [Symbol.asyncDispose](): Promise<void> }
 }
 
 export async function disposeVaultBoardingResources(
@@ -258,7 +362,7 @@ export async function disposeVaultBoardingResources(
   const repositories = await Promise.allSettled([
     storage.walletRepository[Symbol.asyncDispose](),
     storage.contractRepository[Symbol.asyncDispose](),
-    storage.intentRepository[Symbol.asyncDispose](),
+    ...(storage.intentRepository ? [storage.intentRepository[Symbol.asyncDispose]()] : []),
   ])
   for (const result of repositories) {
     if (result.status === 'rejected' && failure === undefined) failure = result.reason
@@ -286,26 +390,18 @@ function boardingOutputAmount(
   return amount
 }
 
-function boardingOutpointKey(txid: string, vout: number): string {
-  const normalizedTxid = String(txid || '').toLowerCase()
-  if (!/^[0-9a-f]{64}$/.test(normalizedTxid) || !Number.isSafeInteger(vout) || vout < 0 || vout > 0xffffffff) {
-    throw new Error('Invalid locked boarding outpoint')
-  }
-  return `${normalizedTxid}:${vout}`
-}
-
 export async function findConfirmedBoardingCoins(
   wallet: Pick<Wallet, 'getBoardingUtxos'>,
-  lockedOutpoints: ReadonlySet<string>,
-  txid?: string,
+  outpoint?: string,
 ): Promise<ExtendedCoin[]> {
+  const selected = outpoint ? parseBoardingOutpoint(outpoint) : undefined
   const coins = await wallet.getBoardingUtxos()
   return coins
     .filter(
       (coin) =>
         coin.status.confirmed &&
-        (!txid || coin.txid === txid) &&
-        !lockedOutpoints.has(boardingOutpointKey(coin.txid, coin.vout)),
+        !hasBoardingTxExpired(coin, { type: VAULT_BOARD_V1_EXIT_DELAY_UNIT, value: VAULT_BOARD_V1_EXIT_DELAY }) &&
+        (!selected || (coin.txid.toLowerCase() === selected.txid.toLowerCase() && coin.vout === selected.vout)),
     )
     .sort((a, b) => b.value - a.value)
 }
@@ -314,14 +410,14 @@ export async function settleVaultBoarding(
   lock: VaultBoardingLock,
   phoneSecret: Uint8Array,
   status: VaultStatus,
-  txid?: string,
+  outpoint?: string,
 ): Promise<{ txid: string; amountSats: number }> {
   requireActiveBoardingLock(lock)
-  const { wallet, info, storage, lockedOutpoints } = await createBoardingWallet(phoneSecret, status)
+  const { wallet, info, storage } = await createBoardingWallet(phoneSecret, status)
   let result: { txid: string; amountSats: number } | undefined
   let primaryError: unknown
   try {
-    const coins = await findConfirmedBoardingCoins(wallet, lockedOutpoints, txid)
+    const coins = await findConfirmedBoardingCoins(wallet, outpoint)
     if (coins.length === 0) throw new Error('No confirmed boarding transaction yet')
     const amountSats = boardingOutputAmount(coins, status, info.fees.intentFee)
     const commitmentTxid = await wallet.settle({

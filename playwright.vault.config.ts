@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './src/test/e2e-vault',
+  globalSetup: './src/test/e2e-vault/globalSetup.ts',
   timeout: 60000,
   fullyParallel: false,
   retries: 0,
@@ -17,9 +18,9 @@ export default defineConfig({
     contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: {
-    command: 'pnpm start',
+    command: 'NODE_ENV=production VAULT_E2E_ARKADE_PROXY_TARGET=http://127.0.0.1:18888 pnpm start',
     port: 3003,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120000,
   },
   projects: [

@@ -53,6 +53,7 @@ export interface VaultContextProps {
   approveSend: () => Promise<void>
   busy: boolean
   canSend: boolean
+  cancelSavingsHandoff: () => void
   completeSavingsHandoff: (signedPsbt: string) => Promise<void>
   handoffPsbt: string
   confirmConditions: () => void
@@ -88,6 +89,7 @@ export interface VaultContextProps {
   clearSendScan: () => void
   savingsAddress: string
   savingsSats: number
+  savingsSpendableSats: number
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
@@ -121,6 +123,7 @@ export const VaultContext = createContext<VaultContextProps>({
   approveSend: async () => {},
   busy: false,
   canSend: false,
+  cancelSavingsHandoff: () => {},
   completeSavingsHandoff: async () => {},
   handoffPsbt: '',
   confirmConditions: () => {},
@@ -156,6 +159,7 @@ export const VaultContext = createContext<VaultContextProps>({
   clearSendScan: () => {},
   savingsAddress: '',
   savingsSats: 0,
+  savingsSpendableSats: 0,
   screen: 'welcome',
   setAccount: () => {},
   setSpendDraft: () => {},

@@ -47,6 +47,25 @@ Intent state uses a separate per-vault database. Ordinary send recovery uses a
 versioned local record bound to the same vault, destination, amount, and
 operation ID.
 
+VTXO observation follows the official SDK worker architecture. Each enrolled
+vault has an opaque service-worker scope and message tag, plus isolated wallet,
+contract, and intent databases. The worker uses `ReadonlySingleKey` with the
+device public key, registers the exact `vault-policy-v1` contract, and publishes
+contract and UTXO updates to the page. It cannot sign, settle, or obtain a PRF
+result.
+
+Face ID unlocks the wrapped device scalar only for a foreground operation. A
+per-vault Web Lock serializes that operation across tabs. The temporary signing
+wallet and its repositories close before the source scalar is zeroed. Reloading
+or terminating the page during signing loses the session and requires another
+Face ID ceremony; no unlocked identity or MuSig session is persisted for
+background continuation.
+
+The SDK's generic spend, renewal, and sweep paths cannot select
+`vault-policy-v1` VTXOs. A custom Contract Manager handler reconstructs the
+enrolled script and declares it unavailable for generic spending. Vault sends
+continue through the transaction-bound VaultCosigner authorization flow.
+
 Onchain Savings and recovery use `@scure/btc-signer` for Bitcoin addresses,
 Taproot, PSBTs, signing, and finalization. A narrow Esplora adapter discovers
 the fixed program outputs and broadcasts completed transactions. Vault code
@@ -65,7 +84,8 @@ and its ledger remain one protected component so the VaultCosigner cannot sign
 without observing authoritative allowance state.
 
 The release candidate is Mutinynet-only. Mainnet uses `https://arkade.computer`
-through the official Arkade SDK. The private mainnet Emulator endpoint and the
-corresponding Contract Pack pins remain to be configured. Mainnet Vault Program
-and policy choices are a later release gate, not part of the current lifecycle
-cleanup.
+through the official Arkade SDK. The confirmed Emulator endpoint is
+`https://mainnet-signer.invalid`; its advertised signer matches the SDK pin,
+but the corresponding Contract Pack pins remain to be frozen and qualified.
+Mainnet Vault Program and policy choices are a later release gate, not part of
+the current lifecycle cleanup.
