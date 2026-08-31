@@ -5,7 +5,7 @@ import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../lib/vault/constants'
 import { ENROLL_STORE, SELECTED_VAULT_STORE, SESSION_LOCK_STORE } from '../lib/vault/enrollmentStore'
-import { INVOICE_TIMESTAMP, MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
+import { MUTINYNET_INVOICE, MUTINYNET_INVOICE_TIMESTAMP } from '../lib/vault/lightningTestUtils'
 import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   recordLightningFunding: vi.fn(),
   getLightningStatus: vi.fn(),
   loadHandoff: vi.fn(),
+  lightningEnabled: vi.fn(),
 }))
 
 vi.mock('../lib/vault/status', async (importOriginal) => {
@@ -68,6 +69,11 @@ vi.mock('../lib/vault/lightning', () => ({
   withVaultLightningLifecycleLock: vi.fn(async (_vaultId, run) => run()),
   withVaultLightningSdkWallet: mocks.sdkWallet,
   withVaultLightningTransport: vi.fn(async (_profile, run) => run({})),
+}))
+
+vi.mock('../lib/vault/lightningConfig', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/lightningConfig')>()),
+  vaultLightningSendEnabled: mocks.lightningEnabled,
 }))
 
 vi.mock('../vault/useVaultBalances', () => ({
@@ -177,7 +183,10 @@ function Probe() {
 }
 
 describe('VaultProvider reviewed VTXO reservation', () => {
-  afterEach(() => vi.unstubAllEnvs())
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
 
   beforeEach(() => {
     localStorage.clear()
@@ -196,6 +205,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     )
     mocks.fetchStatus.mockResolvedValue(status)
     mocks.loadHandoff.mockReturnValue(null)
+    mocks.lightningEnabled.mockReturnValue(false)
     mocks.reserve.mockResolvedValue(reviewed)
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
     mocks.sdkWallet.mockImplementation(async (_secret, _status, run) => run({ repository: {} }))
@@ -276,8 +286,8 @@ describe('VaultProvider reviewed VTXO reservation', () => {
   })
 
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
-    vi.stubEnv('VITE_VAULT_LIGHTNING_SEND', 'true')
-    vi.spyOn(Date, 'now').mockReturnValue((INVOICE_TIMESTAMP + 1) * 1_000)
+    mocks.lightningEnabled.mockReturnValue(true)
+    vi.spyOn(Date, 'now').mockReturnValue((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000)
     const lightningFunding = { ...reviewed, destAddress: destination, amountSats: 2_125, feeSats: 50 }
     mocks.reserve.mockResolvedValue(lightningFunding)
     mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 50 })

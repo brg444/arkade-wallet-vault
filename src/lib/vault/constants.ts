@@ -11,3 +11,16 @@ export const RECENT_HISTORY_LIMIT = 100
 
 export const SUPPORTED_NETWORKS = ['mutinynet'] as const
 export type VaultNetwork = (typeof SUPPORTED_NETWORKS)[number]
+
+export function isSupportedVaultNetwork(value: unknown): value is VaultNetwork {
+  return typeof value === 'string' && (SUPPORTED_NETWORKS as readonly string[]).includes(value)
+}
+
+/**
+ * Named Vault Programs are network-specific. Mainnet is deliberately absent
+ * until its policy values and Contract Pack are reviewed and released.
+ */
+export function requireSupportedVaultNetwork(value: unknown): VaultNetwork {
+  if (!isSupportedVaultNetwork(value)) throw new Error(`unsupported Vault network ${String(value || '')}`)
+  return value
+}

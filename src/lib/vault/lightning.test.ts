@@ -66,10 +66,12 @@ describe('Lightning SEND release boundary', () => {
   })
 
   it('is disabled unless the release flag is exactly true', () => {
-    expect(vaultLightningSendEnabled(undefined)).toBe(false)
-    expect(vaultLightningSendEnabled('TRUE')).toBe(false)
-    expect(vaultLightningSendEnabled('1')).toBe(false)
-    expect(vaultLightningSendEnabled('true')).toBe(true)
+    expect(vaultLightningSendEnabled(undefined, 'true')).toBe(false)
+    expect(vaultLightningSendEnabled('mutinynet', undefined)).toBe(false)
+    expect(vaultLightningSendEnabled('mutinynet', 'TRUE')).toBe(false)
+    expect(vaultLightningSendEnabled('mutinynet', '1')).toBe(false)
+    expect(vaultLightningSendEnabled('mutinynet', 'true')).toBe(true)
+    expect(vaultLightningSendEnabled('bitcoin', 'true')).toBe(false)
   })
 
   it('pins only the dedicated Mutinynet solver in the active release profile', () => {

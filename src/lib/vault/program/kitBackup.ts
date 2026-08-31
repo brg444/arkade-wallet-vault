@@ -1,6 +1,5 @@
-import { vaultGet, vaultPost } from '../api'
+import { vaultCosignerClient } from '../cosignerClient'
 import { beginPasskeySession } from '../signIn'
-import { fetchVaultStatus } from '../status'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
 import { buildVaultProgramDescriptor } from './descriptor'
@@ -102,9 +101,9 @@ export async function pushMapBackup(vaultId: string, kit: RecoveryKit): Promise<
   if (kit.descriptor.vaultId !== id) throw new Error('Recovery Kit does not match this vault')
   const backup = buildMapBackup(kit)
   try {
-    const status = await fetchVaultStatus(undefined, id)
+    const status = await vaultCosignerClient.enrollment.status(id)
     const session = await beginPasskeySession('map-write', status)
-    await vaultPost('/v1/map', {
+    await vaultCosignerClient.recovery.writeMap({
       vaultId: id,
       ...session.assertion,
       payload: backup,
@@ -121,7 +120,7 @@ export async function pullMapBackup(vaultId: string): Promise<{ kit: RecoveryKit
   const id = vaultId.trim()
   if (!id) throw new Error('vault id required')
   try {
-    const raw = await vaultGet<unknown>(`/v1/map?vault=${encodeURIComponent(id)}`)
+    const raw = await vaultCosignerClient.recovery.readMap(id)
     const backup = parseMapBackup(raw)
     return { kit: backup.kit }
   } catch (err) {

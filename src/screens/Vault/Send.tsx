@@ -24,7 +24,7 @@ import AddressInput from './AddressInput'
 import { Meter } from './ui'
 
 function lightningInvoice(value: string, network?: string) {
-  if (!network || !vaultLightningSendEnabled() || !isVaultLightningInput(value)) return undefined
+  if (!network || !vaultLightningSendEnabled(network as NetworkName) || !isVaultLightningInput(value)) return undefined
   const profile = vaultLightningSolverProfile(network as NetworkName)
   if (!profile) return undefined
   try {

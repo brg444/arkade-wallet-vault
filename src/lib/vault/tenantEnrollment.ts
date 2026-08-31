@@ -1,6 +1,6 @@
 import { p256 } from '@noble/curves/nist.js'
 import { secp256k1 } from '@noble/curves/secp256k1.js'
-import { vaultPost } from './api'
+import { vaultCosignerClient } from './cosignerClient'
 import { bytesToHex, hexToBytes } from './hex'
 import { xOnly } from './setupPlan'
 import {
@@ -14,7 +14,6 @@ import { requireProposedProgramDescriptor } from './program/enroll'
 import { saveLocalKit } from './program/kitStore'
 import { buildRecoveryKit } from './program/kit'
 import { pinEnrolledStatus, pinFromEnrolledStatus, requireStatusMatchesPin, saveAddressPin } from './pin'
-import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import type { VaultProgramDescriptor } from './program/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
@@ -97,19 +96,12 @@ export async function beginTenantEnrollment(
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
   const wantRecovery = Boolean(roles.recoveryPub)
-  const publicStatus = await fetchPublicStatus()
+  const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const hardwareXOnly = xOnly(roles.hardwarePub)
   const recoveryXOnly = wantRecovery ? xOnly(roles.recoveryPub || '') : ''
   if (wantRecovery && hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
   const rpId = requireRPID(publicStatus)
-  const start = await vaultPost<{
-    handle: string
-    vaultId: string
-    challenge: string
-    rpId: string
-    userId: string
-    userName: string
-  }>('/v1/enroll/start', {}, { 'X-Vault-Enrollment-Token': token })
+  const start = await vaultCosignerClient.enrollment.start(token)
   if (!start.vaultId || !start.challenge || !start.handle || !start.userId) {
     throw new Error('authorizer did not assign a vault')
   }
@@ -172,28 +164,20 @@ export async function beginTenantEnrollment(
   prf.fill(0)
   phoneSecret.fill(0)
   const authData = att.getAuthenticatorData ? new Uint8Array(att.getAuthenticatorData()) : new Uint8Array()
-  const proposed = await vaultPost<{
-    vaultId: string
-    descriptorHash: string
-    descriptor: unknown
-  }>(
-    '/v1/enroll/propose',
-    {
-      handle: start.handle,
-      userHandle: start.userId,
-      clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
-      authenticatorData: bytesToHex(authData),
-      attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
-      credentialId: enrollment.credId,
-      webauthnP256: enrollment.webauthnP256,
-      phoneDirectP256: enrollment.phoneDirectP256,
-      phoneBip340Pub: enrollment.phoneBip340Pub,
-      vaultId: start.vaultId,
-      externalOwnerWalletXOnly: hardwareXOnly,
-      ...(recoveryXOnly ? { recoveryXOnly } : {}),
-    },
-    { 'X-Vault-Enrollment-Token': token },
-  )
+  const proposed = await vaultCosignerClient.enrollment.propose(token, {
+    handle: start.handle,
+    userHandle: start.userId,
+    clientDataJSON: bytesToHex(new Uint8Array(att.clientDataJSON)),
+    authenticatorData: bytesToHex(authData),
+    attestationObject: bytesToHex(new Uint8Array(att.attestationObject)),
+    credentialId: enrollment.credId,
+    webauthnP256: enrollment.webauthnP256,
+    phoneDirectP256: enrollment.phoneDirectP256,
+    phoneBip340Pub: enrollment.phoneBip340Pub,
+    vaultId: start.vaultId,
+    externalOwnerWalletXOnly: hardwareXOnly,
+    ...(recoveryXOnly ? { recoveryXOnly } : {}),
+  })
   const descriptor = requireProposedProgramDescriptor(proposed.descriptor, proposed.descriptorHash)
   if (wantRecovery) {
     if (xOnly(descriptor.keys.recovery || '') !== recoveryXOnly) {
@@ -232,26 +216,22 @@ export async function finishTenantEnrollment(
   if (!token) throw new Error('setup code required')
   const staged = loadStagedEnrollment(storage)
   if (!staged?.vaultId || !staged.descriptorHash) throw new Error('finish setup first')
-  await vaultPost(
-    '/v1/enroll/finish',
-    {
-      handle: staged.handle,
-      userHandle: staged.userHandle,
-      clientDataJSON: staged.clientDataJSON,
-      authenticatorData: staged.authenticatorData,
-      attestationObject: staged.attestationObject,
-      credentialId: staged.credId,
-      webauthnP256: staged.webauthnP256,
-      phoneDirectP256: staged.phoneDirectP256,
-      phoneBip340Pub: staged.phoneBip340Pub,
-      vaultId: staged.vaultId,
-      externalOwnerWalletXOnly: staged.hardwareXOnly,
-      ...(staged.recoveryXOnly ? { recoveryXOnly: staged.recoveryXOnly } : {}),
-      descriptorHash: staged.descriptorHash,
-    },
-    { 'X-Vault-Enrollment-Token': token },
-  )
-  const live = await fetchVaultStatus(undefined, staged.vaultId)
+  await vaultCosignerClient.enrollment.finish(token, {
+    handle: staged.handle,
+    userHandle: staged.userHandle,
+    clientDataJSON: staged.clientDataJSON,
+    authenticatorData: staged.authenticatorData,
+    attestationObject: staged.attestationObject,
+    credentialId: staged.credId,
+    webauthnP256: staged.webauthnP256,
+    phoneDirectP256: staged.phoneDirectP256,
+    phoneBip340Pub: staged.phoneBip340Pub,
+    vaultId: staged.vaultId,
+    externalOwnerWalletXOnly: staged.hardwareXOnly,
+    ...(staged.recoveryXOnly ? { recoveryXOnly: staged.recoveryXOnly } : {}),
+    descriptorHash: staged.descriptorHash,
+  })
+  const live = await vaultCosignerClient.enrollment.status(staged.vaultId)
   const pin = pinFromEnrolledStatus({
     ...live,
     savingsAddress: staged.savingsAddress || live.savingsAddress,
@@ -269,7 +249,7 @@ export async function reconcileStagedEnrollment(
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets } | null> {
   const staged = loadStagedEnrollment(storage)
   if (!staged?.vaultId) return null
-  const live = await fetchVaultStatus(undefined, staged.vaultId)
+  const live = await vaultCosignerClient.enrollment.status(staged.vaultId)
   if (!live.enrolled) return null
   if (staged.savingsAddress) {
     const pin = pinFromEnrolledStatus({
