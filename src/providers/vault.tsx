@@ -22,6 +22,13 @@ import {
   signSavingsPsbt,
   unlockPhoneBip340,
 } from '../lib/vault/savingsSpend'
+import {
+  clearPendingSavingsHandoff,
+  createPendingSavingsHandoff,
+  loadPendingSavingsHandoff,
+  savePendingSavingsHandoff,
+  type PendingSavingsHandoff,
+} from '../lib/vault/savingsHandoff'
 import { humanizeVaultError } from '../lib/vault/humanize'
 import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
@@ -86,6 +93,10 @@ export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null,
   )
 }
 
+export function spendingPositionBalance(vtxoSats: number, boardingSats: number): number {
+  return vtxoSats + boardingSats
+}
+
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
@@ -110,6 +121,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<VaultAccount>('spend')
   const [scanOnSend, setScanOnSend] = useState(false)
   const [handoffPsbt, setHandoffPsbt] = useState('')
+  const [pendingSavingsHandoff, setPendingSavingsHandoff] = useState<PendingSavingsHandoff | null>(null)
   const [locked, setLocked] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
 
@@ -133,14 +145,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const sessionLocked = loadSessionLocked()
       setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
-      if (existing && !sessionLocked) {
-        if (existingPin) {
-          setScreen('home')
-        } else {
-          setSessionLocked(true)
-          setLocked(true)
-          setScreen('signin')
-        }
+      if (existing && sessionLocked) {
+        setScreen('welcome')
+      } else if (existing && existingPin) {
+        setScreen('home')
+      } else if (existing) {
+        setSessionLocked(true)
+        setLocked(true)
+        setScreen('signin')
       }
     } catch {
       clearSetupPlan()
@@ -176,6 +188,30 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     void boot()
   }, [])
+
+  useEffect(() => {
+    const vaultId = status?.vaultId || enrollment?.vaultId || ''
+    if (!vaultId) return
+    const pending = loadPendingSavingsHandoff(localStorage, vaultId)
+    setPendingSavingsHandoff(pending)
+    if (pending) setHandoffPsbt(pending.psbtHex)
+  }, [enrollment?.vaultId, status?.vaultId])
+
+  useEffect(() => {
+    if (!pendingSavingsHandoff) return
+    const delay = Math.max(0, pendingSavingsHandoff.expiresAt - Date.now())
+    const timeout = window.setTimeout(() => {
+      try {
+        clearPendingSavingsHandoff(localStorage, pendingSavingsHandoff.vaultId)
+      } catch {
+        // Expiry still clears the active session when browser storage is unavailable.
+      }
+      setPendingSavingsHandoff(null)
+      setHandoffPsbt('')
+      setScreen((current) => (current === 'handoff' ? 'home' : current))
+    }, delay)
+    return () => window.clearTimeout(timeout)
+  }, [pendingSavingsHandoff])
 
   useEffect(() => {
     if (!status || status.network !== 'mutinynet') return
@@ -223,11 +259,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const {
     balanceError,
     balancesLoaded,
+    boardingBalance,
     boardingInProgress,
     history,
     refreshBalance,
     refreshingBalance,
     savingsSats,
+    savingsSpendableSats,
     vtxoSpendingSats,
   } = useVaultBalances({
     addressPin,
@@ -242,7 +280,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   })
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
-  const amountSats = status?.enrolled ? vtxoSpendingSats : 0
+  const amountSats = status?.enrolled ? spendingPositionBalance(vtxoSpendingSats, boardingBalance) : 0
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
   const clearError = useCallback(() => reportError(''), [reportError])
@@ -253,6 +291,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return history.find((item) => item.account === current.account && item.txid === current.txid) || current
     })
   }, [history])
+  const visibleHistory = useMemo<VaultHistoryItem[]>(
+    () =>
+      pendingSavingsHandoff
+        ? [
+            {
+              txid: `pending-savings:${pendingSavingsHandoff.createdAt}`,
+              type: 'sent',
+              amount: pendingSavingsHandoff.amountSats + pendingSavingsHandoff.feeSats,
+              confirmed: false,
+              blockTime: Math.floor(pendingSavingsHandoff.createdAt / 1000),
+              account: 'savings',
+              activity: 'savings-handoff',
+            },
+            ...history,
+          ]
+        : history,
+    [history, pendingSavingsHandoff],
+  )
   const {
     backupRecoveryKit,
     downloadRecoveryKit,
@@ -476,7 +532,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
       return
     }
-    const source = account === 'savings' ? savingsSats : vtxoSpendingSats
+    const source = account === 'savings' ? savingsSpendableSats : vtxoSpendingSats
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -521,7 +577,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     }
     setScreen('review')
-  }, [account, enrollment, reviewLightningSpend, savingsSats, setup.txCapSats, spend, status, vtxoSpendingSats])
+  }, [
+    account,
+    enrollment,
+    reviewLightningSpend,
+    savingsSpendableSats,
+    setup.txCapSats,
+    spend,
+    status,
+    vtxoSpendingSats,
+  ])
 
   const finishBroadcast = useCallback(
     async (txid: string, kind: 'onchain' | 'vtxo' | 'lightning' = 'onchain', authoritativeFee?: number) => {
@@ -531,7 +596,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setReviewedVtxoQuote(null)
       setLightningQuote(null)
       setSpend({ address: '', amount: 0, fee: vaultDraftFee(account, liveNetwork) })
-      setHandoffPsbt('')
       if (status?.vaultId) await refreshBalance(status.vaultId)
       setScreen('success')
     },
@@ -541,6 +605,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const approveSavingsSend = useCallback(async () => {
     if (!status?.enrolled || !enrollment || !savingsAddress) {
       throw new Error('Sign in with the passkey that created this vault.')
+    }
+    if (pendingSavingsHandoff) {
+      throw new Error('Complete or cancel the Savings transfer waiting for hardware first.')
     }
     const need = spend.amount + spend.fee
     const utxos = await fetchAddressUtxos(savingsAddress)
@@ -565,23 +632,68 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     const secret = await unlockPhoneBip340(enrollment, status)
     try {
       const signed = signSavingsPsbt(unsigned, secret)
+      const pending = createPendingSavingsHandoff({
+        vaultId: status.vaultId,
+        psbtHex: signed,
+        destAddress: spend.address,
+        amountSats: spend.amount,
+        feeSats: spend.fee,
+        network: status.network,
+      })
+      try {
+        savePendingSavingsHandoff(localStorage, pending)
+      } catch {
+        throw new Error('This browser cannot save the pending Savings transfer. Use the installed wallet.')
+      }
+      setPendingSavingsHandoff(pending)
       setHandoffPsbt(signed)
       setScreen('handoff')
     } finally {
       zeroBytes(secret)
     }
-  }, [enrollment, finishBroadcast, savingsAddress, spend, status])
+  }, [enrollment, pendingSavingsHandoff, savingsAddress, spend, status])
+
+  const discardPendingSavingsHandoff = useCallback(() => {
+    const vaultId = pendingSavingsHandoff?.vaultId || status?.vaultId || ''
+    if (vaultId) {
+      try {
+        clearPendingSavingsHandoff(localStorage, vaultId)
+      } catch {
+        // The active session can still discard its copy when storage is unavailable.
+      }
+    }
+    setPendingSavingsHandoff(null)
+    setHandoffPsbt('')
+  }, [pendingSavingsHandoff?.vaultId, status?.vaultId])
+
+  const cancelSavingsHandoff = useCallback(() => {
+    discardPendingSavingsHandoff()
+    setSpend({ address: '', amount: 0, fee: vaultDraftFee('savings', liveNetwork) })
+    setError('')
+    setAccount('savings')
+    setScreen('home')
+  }, [discardPendingSavingsHandoff, liveNetwork])
 
   const completeSavingsHandoff = useCallback(
     async (signedPsbt: string) => {
       setBusy(true)
       setError('')
       try {
-        if (!handoffPsbt) throw new Error('create the device signature first')
+        if (!pendingSavingsHandoff) throw new Error('the pending Savings transfer is missing')
+        if (!handoffPsbt || handoffPsbt !== pendingSavingsHandoff.psbtHex) {
+          throw new Error('the pending Savings transfer changed locally')
+        }
         const incoming = parseIncomingPsbt(signedPsbt)
-        requireSameSavingsIntent(handoffPsbt, incoming, spend.address, spend.amount, status?.network || 'mutinynet')
+        requireSameSavingsIntent(
+          pendingSavingsHandoff.psbtHex,
+          incoming,
+          pendingSavingsHandoff.destAddress,
+          pendingSavingsHandoff.amountSats,
+          pendingSavingsHandoff.network,
+        )
         const final = finalizeSavingsPsbt(incoming)
         const txid = await broadcastTx(final.txHex)
+        discardPendingSavingsHandoff()
         await finishBroadcast(txid)
       } catch (err) {
         setError(humanizeVaultError(err))
@@ -589,7 +701,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [finishBroadcast, handoffPsbt, spend, status?.network],
+    [discardPendingSavingsHandoff, finishBroadcast, handoffPsbt, pendingSavingsHandoff],
   )
 
   const approveSend = useCallback(async () => {
@@ -767,6 +879,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       approveSend,
       busy,
       canSend: vtxoSpendingSats >= DUST_SATS,
+      cancelSavingsHandoff,
       completeSavingsHandoff,
       handoffPsbt,
       confirmConditions,
@@ -782,9 +895,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       locked,
       lastTxid,
       lastTxKind,
-      history: recentAccountHistory(history, account),
+      history: recentAccountHistory(visibleHistory, account),
       selectedTx,
       openTx: (tx) => {
+        if (tx.activity === 'savings-handoff' && pendingSavingsHandoff) {
+          setAccount('savings')
+          setSpend({
+            address: pendingSavingsHandoff.destAddress,
+            amount: pendingSavingsHandoff.amountSats,
+            fee: pendingSavingsHandoff.feeSats,
+          })
+          setHandoffPsbt(pendingSavingsHandoff.psbtHex)
+          setError('')
+          setScreen('handoff')
+          return
+        }
         setSelectedTx(tx)
         setError('')
         setScreen('tx')
@@ -818,6 +943,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       clearSendScan: () => setScanOnSend(false),
       savingsAddress,
       savingsSats,
+      savingsSpendableSats,
       screen: loaded ? screen : 'welcome',
       setAccount: selectAccount,
       setSpendDraft,
@@ -848,6 +974,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       initiateAlerts,
       approveSend,
       busy,
+      cancelSavingsHandoff,
       completeSavingsHandoff,
       confirmConditions,
       handoffPsbt,
@@ -862,7 +989,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       finishPlan,
       lastTxid,
       lastTxKind,
-      history,
+      visibleHistory,
+      pendingSavingsHandoff,
       selectedTx,
       liveNetwork,
       locked,
@@ -881,6 +1009,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       scanOnSend,
       savingsAddress,
       savingsSats,
+      savingsSpendableSats,
       screen,
       selectAccount,
       setSpendDraft,

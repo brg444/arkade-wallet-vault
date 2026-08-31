@@ -47,6 +47,7 @@ export default function VaultHome() {
     refreshingBalance,
     savingsAddress,
     savingsSats,
+    savingsSpendableSats,
     setAccount,
     setSpendDraft,
   } = useContext(VaultContext)
@@ -211,7 +212,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                Confirmed and unspent. Moving it requires this device and your hardware key.
+                Moving funds requires this device and your hardware key.
               </Text>
             )}
 
@@ -242,7 +243,7 @@ export default function VaultHome() {
                 main
                 icon={<SendIcon />}
                 label={spending ? 'Send' : 'Move to Spending'}
-                disabled={spending ? !canSend : savingsSats <= 330}
+                disabled={spending ? !canSend : savingsSpendableSats <= 330}
                 onClick={() => {
                   if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
                   navigate('send')

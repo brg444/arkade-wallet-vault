@@ -11,7 +11,7 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeyBinding'
-import { pinEnrolledStatus } from './pin'
+import { pinFromEnrolledStatus } from './pin'
 import { fetchPublicStatus, fetchVaultStatus } from './status'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
@@ -38,6 +38,32 @@ async function deriveKEK(prf: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
     false,
     ['encrypt', 'decrypt'],
   )
+}
+
+async function decryptPhoneSecret(
+  prf: Uint8Array<ArrayBuffer>,
+  nonceHex: string,
+  ciphertextHex: string,
+): Promise<Uint8Array> {
+  const nonce = hexToBytes(nonceHex)
+  const ciphertext = hexToBytes(ciphertextHex)
+  if (nonce.length !== 12 || ciphertext.length !== 48) {
+    throw new Error('saved passkey envelope is malformed')
+  }
+  try {
+    const kek = await deriveKEK(prf)
+    const secret = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, kek, ciphertext))
+    if (secret.length !== 32) {
+      zeroBytes(secret)
+      throw new Error('saved passkey envelope did not contain a phone key')
+    }
+    return secret
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('saved passkey envelope')) throw error
+    throw new Error('passkey PRF authentication succeeded but could not decrypt the saved phone key', {
+      cause: error,
+    })
+  }
 }
 
 export async function beginPasskeySession(
@@ -104,10 +130,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     const status = await fetchVaultStatus(undefined, vaultId)
     if (!status.enrolled) throw new Error('vault is not enrolled')
     session = await beginPasskeySession('install-envelope', status, rec.credId)
-    const kek = await deriveKEK(session.prf)
-    phoneSecret = new Uint8Array(
-      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
-    )
+    phoneSecret = await decryptPhoneSecret(session.prf, rec.nonce, rec.ciphertext)
     const bindingResponse = await vaultPost<{ binding: string; bindingDigest: string }>('/v1/passkey/binding', {
       vaultId: status.vaultId,
       envelopeNonce: rec.nonce,
@@ -146,7 +169,10 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     if (!live.passkeyLoginAvailable) {
       throw new Error('authorizer did not persist passkey sign-in recovery data')
     }
-    pinEnrolledStatus(live)
+    // Validate the complete program pin without making authentication depend
+    // on durable browser storage. The session coordinator persists it after
+    // the verified session is already live.
+    pinFromEnrolledStatus(live)
     return live
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
@@ -176,10 +202,7 @@ export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<Enr
   const prf = prfFrom(got)
   if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
   try {
-    const kek = await deriveKEK(prf)
-    const secret = new Uint8Array(
-      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
-    )
+    const secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
     zeroBytes(secret)
     return rec
   } finally {
@@ -235,14 +258,17 @@ export async function signInWithPasskey(
     if (bytesToHex(session.credentialId) !== parsed.credentialId) {
       throw new Error('selected passkey does not belong to this vault')
     }
-    const kek = await deriveKEK(session.prf)
-    phoneSecret = new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: hexToBytes(recovered.envelopeNonce) },
-        kek,
-        hexToBytes(recovered.envelopeCiphertext),
-      ),
-    )
+    if (bytesToHex(session.derivedDirectPub) !== parsed.phoneDirectP256) {
+      throw new Error('passkey PRF derived a different DirectP256 identity')
+    }
+    if (
+      recovered.envelopeNonce !== parsed.envelopeNonce ||
+      recovered.envelopeCiphertext !== parsed.envelopeCiphertext
+    ) {
+      throw new Error('recovered passkey envelope does not match its signed binding')
+    }
+    assertRecoveryBindingMatchesStatus(parsed, status)
+    phoneSecret = await decryptPhoneSecret(session.prf, recovered.envelopeNonce, recovered.envelopeCiphertext)
     const verified = verifyRecoveryBindingSignatures({
       binding: recovered.binding,
       bindingDigestHex: recovered.bindingDigest,
@@ -252,7 +278,10 @@ export async function signInWithPasskey(
       phoneSecret,
     })
     assertRecoveryBindingMatchesStatus(verified, status)
-    pinEnrolledStatus(status)
+    // The signed recovery binding already commits to these fields. Validate
+    // their pin shape here; persistence is best effort in the coordinator so
+    // private browsing cannot turn a valid recovery into a failed login.
+    pinFromEnrolledStatus(status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
     zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)

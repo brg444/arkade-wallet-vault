@@ -1535,9 +1535,9 @@ export async function collectPagedVtxos<T>(
   return all
 }
 
-type VaultVtxoIndexer = Pick<IndexerProvider, 'getVtxos'>
+export type VaultVtxoIndexer = Pick<IndexerProvider, 'getVtxos'>
 
-async function fetchMissingVtxoCreatedAt(
+export async function fetchMissingVtxoCreatedAt(
   provider: VaultVtxoIndexer,
   vtxos: VirtualCoin[],
 ): Promise<ReadonlyMap<string, number>> {

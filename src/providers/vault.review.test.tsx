@@ -4,9 +4,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../lib/vault/constants'
-import { ENROLL_STORE, SELECTED_VAULT_STORE } from '../lib/vault/enrollmentStore'
+import { ENROLL_STORE, SELECTED_VAULT_STORE, SESSION_LOCK_STORE } from '../lib/vault/enrollmentStore'
 import { MUTINYNET_INVOICE } from '../lib/vault/lightningTestUtils'
 import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
+import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import golden from '../lib/vault/vtxo/testdata/vault-policy-v1-tree.json'
 import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   requestLightning: vi.fn(),
   beginLightningFunding: vi.fn(),
   recordLightningFunding: vi.fn(),
+  loadHandoff: vi.fn(),
 }))
 
 vi.mock('../lib/vault/status', async (importOriginal) => {
@@ -45,6 +47,11 @@ vi.mock('../lib/vault/savingsSpend', async (importOriginal) => {
   return { ...original, unlockPhoneBip340: mocks.unlock }
 })
 
+vi.mock('../lib/vault/savingsHandoff', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/savingsHandoff')>()),
+  loadPendingSavingsHandoff: mocks.loadHandoff,
+}))
+
 vi.mock('../lib/vault/lightning', () => ({
   assertVaultLightningQuoteCurrent: vi.fn(),
   beginVaultLightningFunding: mocks.beginLightningFunding,
@@ -64,6 +71,7 @@ vi.mock('../vault/useVaultBalances', () => ({
     refreshBalance: vi.fn().mockResolvedValue(undefined),
     refreshingBalance: false,
     savingsSats: 0,
+    savingsSpendableSats: 0,
     vtxoSpendingSats: 20_000,
   }),
 }))
@@ -134,6 +142,7 @@ function Probe() {
       <span data-testid='fee'>{vault.spend.fee}</span>
       <span data-testid='error'>{vault.error}</span>
       <span data-testid='kind'>{vault.lastTxKind}</span>
+      <span data-testid='activity'>{vault.history[0]?.activity || ''}</span>
       <button type='button' onClick={() => vault.setSpendDraft({ address: destination, amount: 12_000 })}>
         Set draft
       </button>
@@ -145,6 +154,12 @@ function Probe() {
       </button>
       <button type='button' onClick={vault.approveSend}>
         Approve
+      </button>
+      <button type='button' onClick={() => vault.setAccount('savings')}>
+        Show Savings
+      </button>
+      <button type='button' onClick={() => vault.history[0] && vault.openTx(vault.history[0])}>
+        Open first activity
       </button>
     </div>
   )
@@ -169,6 +184,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
       }),
     )
     mocks.fetchStatus.mockResolvedValue(status)
+    mocks.loadHandoff.mockReturnValue(null)
     mocks.reserve.mockResolvedValue(reviewed)
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
     mocks.unlock.mockResolvedValue(new Uint8Array(32).fill(7))
@@ -222,6 +238,29 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('signin'))
   })
 
+  it('returns a locked enrolled vault to Unlock instead of the completed setup screen', async () => {
+    localStorage.setItem(SESSION_LOCK_STORE, '1')
+    localStorage.setItem(
+      SETUP_STORE_KEY,
+      JSON.stringify({
+        hardwarePub: '',
+        recoveryPub: '',
+        txCapSats: 50_000,
+        dailyLimitSats: 100_000,
+        acceptedDesign: true,
+        complete: true,
+      }),
+    )
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
+  })
+
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
     vi.stubEnv('VITE_VAULT_LIGHTNING_SEND', 'true')
     const lightningFunding = { ...reviewed, destAddress: destination, amountSats: 2_125, feeSats: 50 }
@@ -247,5 +286,32 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.beginLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32))
     expect(mocks.recordLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32), '55'.repeat(32))
     expect(mocks.send).toHaveBeenCalledWith(expect.any(Object), status, lightningFunding)
+  })
+
+  it('restores a pending Savings handoff and reopens its hardware step', async () => {
+    mocks.loadHandoff.mockReturnValue({
+      version: 1,
+      vaultId: 'vault-a',
+      psbtHex: 'phone-signed-psbt',
+      destAddress: destination,
+      amountSats: 12_000,
+      feeSats: 1_500,
+      network: 'mutinynet',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+    })
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Show Savings' }))
+    await waitFor(() => expect(screen.getByTestId('activity')).toHaveTextContent('savings-handoff'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open first activity' }))
+    expect(screen.getByTestId('screen')).toHaveTextContent('handoff')
+    expect(screen.getByTestId('fee')).toHaveTextContent('1500')
   })
 })

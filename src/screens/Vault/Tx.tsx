@@ -13,28 +13,27 @@ import { Detail } from './ui'
 export default function VaultTx() {
   const { navigate, selectedTx, status: vaultStatus } = useContext(VaultContext)
   const sent = selectedTx?.type === 'sent'
+  const boarding = selectedTx?.activity === 'boarding'
   const lightning = selectedTx?.activity === 'lightning'
   const explorer = selectedTx
     ? vaultTransactionExplorer(
         selectedTx.txid,
-        selectedTx.account === 'spend' ? 'arkade' : 'onchain',
+        boarding || selectedTx.account === 'savings' ? 'onchain' : 'arkade',
         vaultStatus?.network,
       )
     : null
   const status = selectedTx
-    ? lightning
-      ? ['claimed', 'settled'].includes(selectedTx.lightningState || '')
-        ? 'Paid'
-        : selectedTx.lightningState === 'refunded'
-          ? 'Refunded'
-          : 'Processing'
-      : selectedTx.account === 'spend'
-        ? selectedTx.confirmed
-          ? 'Settled'
-          : 'Preconfirmed'
+    ? boarding
+      ? 'Pending'
+      : lightning
+        ? ['claimed', 'settled'].includes(selectedTx.lightningState || '')
+          ? 'Paid'
+          : selectedTx.lightningState === 'refunded'
+            ? 'Refunded'
+            : 'Processing'
         : selectedTx.confirmed
           ? 'Confirmed'
-          : 'Pending confirmation'
+          : 'Pending'
     : 'Unknown'
 
   return (

@@ -66,6 +66,9 @@ export function humanizeVaultError(err: unknown): string {
   ) {
     return 'Wrong passkey. Use the device that created this vault. On a new device, scan the QR with that original device.'
   }
+  if (msg.includes('prf authentication succeeded') && msg.includes('could not decrypt')) {
+    return 'The passkey was verified, but its saved Spending key could not be unlocked. Try the same sign-in button once more. If it repeats, don’t create a new vault yet.'
+  }
   if (msg.includes('prf')) {
     return 'This browser verified the passkey but didn’t get the unlock secret. That’s common over a QR. Open the vault on the device that created it — Safari on a Mac with the same iCloud account may also work.'
   }

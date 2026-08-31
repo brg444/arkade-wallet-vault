@@ -2,8 +2,8 @@
 
 > [!WARNING]
 > This release candidate runs only on Mutinynet. Real-fund use is out of scope.
-> Mainnet activation requires the private mainnet Emulator endpoint and the
-> reviewed network and Vault Program pins described below.
+> Mainnet activation requires reviewed network, Emulator, and Vault Program
+> pins described below.
 
 Arkade Vault Wallet separates funds into two programs:
 
@@ -35,6 +35,12 @@ The browser calls the Vault service and Arkade Operator through same-origin
 routes. Enrollment requires an invitation created by the service operator.
 See [the documentation index](docs/README.md) for the program and release
 boundaries.
+
+VTXO observation follows the official Arkade Wallet worker architecture with a
+Vault-specific Face ID boundary. The persistent worker is watch-only; the
+device private key exists only during a foreground, user-verified operation.
+Exact upstream revisions and intentional Vault adapters are recorded in
+[docs/upstream-alignment.md](docs/upstream-alignment.md).
 
 ## Local development
 
@@ -75,9 +81,10 @@ supports fragmented inputs, exact no-change sends, the Operator's bounded
 intent fee policy, and recovery after an ambiguous Operator submission through
 the official SDK pending-transaction interface. Mainnet remains blocked on
 live lifecycle qualification, browser concurrency tests, production key
-isolation, mainnet-specific program pins, and the private mainnet Emulator
-endpoint. Vault Program and policy adjustments begin after the Mutinynet
-lifecycle is stable. A disabled outbound BOLT11 lifecycle delegates RFQ,
+isolation, and mainnet-specific program pins. The confirmed mainnet Emulator
+endpoint advertises the same signer already pinned by the official SDK, but it
+has not yet passed Vault release qualification. Vault Program and policy
+adjustments begin after the Mutinynet lifecycle is stable. A disabled outbound BOLT11 lifecycle delegates RFQ,
 VHTLC, persistence, restart, and refund handling to the published swap package,
 then funds through the ordinary VTXO send path. Its solver, refund, expiry, and
 live-payment gates are recorded in [docs/lightning.md](docs/lightning.md). The
