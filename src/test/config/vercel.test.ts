@@ -26,4 +26,11 @@ describe('Vercel worker caching', () => {
 
     expect(connectSrc).toEqual(['connect-src', "'self'", 'https://mutinynet.arkade.sh', 'wss://nostr.arkade.sh'])
   })
+
+  it('routes readiness through the authorizer gateway', () => {
+    const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
+      rewrites: { source: string; destination: string }[]
+    }
+    expect(config.rewrites).toContainEqual({ source: '/ready', destination: '/api/ready' })
+  })
 })
