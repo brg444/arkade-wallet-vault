@@ -1,17 +1,24 @@
 import { ArkAddress } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { Address, OutScript, TEST_NETWORK } from '@scure/btc-signer'
+import { Address, NETWORK, OutScript, TEST_NETWORK } from '@scure/btc-signer'
 
 export function vaultAddressNetwork(network: string) {
   if (network === 'mutinynet') return TEST_NETWORK
+  if (network === 'bitcoin') return NETWORK
   throw new Error('unsupported network')
 }
 
 export function isVaultBitcoinAddress(value: string, network?: string): boolean {
   const trimmed = value.trim()
-  if (!trimmed || trimmed.startsWith('bc1') || /^[13]/.test(trimmed)) return false
+  if (!trimmed) return false
   try {
-    const net = network ? vaultAddressNetwork(network) : trimmed.startsWith('tb1') ? TEST_NETWORK : null
+    const net = network
+      ? vaultAddressNetwork(network)
+      : trimmed.startsWith('tb1')
+        ? TEST_NETWORK
+        : trimmed.startsWith('bc1') || /^[13]/.test(trimmed)
+          ? NETWORK
+          : null
     if (!net) return false
     Address(net).decode(trimmed)
     return true
@@ -27,7 +34,8 @@ export function isVaultSpendAddress(value: string, network?: string): boolean {
 export function isVaultArkAddress(value: string, network?: string): boolean {
   try {
     const decoded = ArkAddress.decode(value.trim())
-    return (!network || network === 'mutinynet') && decoded.hrp === 'tark'
+    if (!network) return decoded.hrp === 'ark' || decoded.hrp === 'tark'
+    return decoded.hrp === (network === 'bitcoin' ? 'ark' : network === 'mutinynet' ? 'tark' : '')
   } catch {
     return false
   }

@@ -281,7 +281,8 @@ function validCheckpointPsbt(): string {
 
 async function authorizedPendingFixture() {
   const current = status()
-  const built = buildReservedVtxoSpend(current, fragmentedReserve(), 12_000, destination(), FEE_POLICY_DIGEST)
+  const reservation = fragmentedReserve()
+  const built = buildReservedVtxoSpend(current, reservation, 12_000, destination(), FEE_POLICY_DIGEST)
   const phone = SingleKey.fromPrivateKey(hex.decode('01'.padStart(64, '0')))
   const vault = SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0')))
   const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
@@ -305,6 +306,7 @@ async function authorizedPendingFixture() {
     destAddress: destination(),
     amountSats: 12_000,
     arkTxid: built.arkTx.id,
+    checkpointTapscript: reservation.checkpointTapscript,
     ...RESERVATION_FACTS,
     stage: 'authorized',
     unsignedArkPsbt: base64.encode(phoneArk.toPSBT()),
@@ -562,6 +564,34 @@ describe('regular VTXO spend coordinator', () => {
       } else {
         Reflect.deleteProperty(navigator, 'credentials')
       }
+    }
+  })
+
+  it('fails closed before SDK submission when the Operator omits its checkpoint tapscript', async () => {
+    sdkOperationAdapterMocks.submit.mockReset()
+    clearPersistedVtxoSpend('vault-a')
+    const pending = freshPolicyPending()
+    persistVtxoSpend(pending)
+    const restoreLock = installImmediateNavigatorLock()
+    vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(
+      Object.assign({}, currentOperatorInfo(pending), { checkpointTapscript: undefined }) as never,
+    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(reviewedOperation(pending)), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    try {
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toThrow(
+        /Operator checkpoint tapscript is missing/,
+      )
+      expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
+      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('reserved')
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
     }
   })
 
@@ -1261,7 +1291,7 @@ describe('regular VTXO spend coordinator', () => {
       vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue({
         network: 'mutinynet',
         signerPubkey: golden.fixtures.arkdServerPub,
-        checkpointTapscript: '',
+        checkpointTapscript: pending.checkpointTapscript,
         fees: { intentFee: RECONCILE_FEE_POLICY, txFeeRate: '0' },
       } as never)
       const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx').mockImplementation(async () => {
@@ -1295,6 +1325,14 @@ describe('regular VTXO spend coordinator', () => {
     changed.changeScript = `5120${'44'.repeat(32)}`
     expect(() => buildReservedVtxoSpend(status(), changed, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
       /change is not vault-policy-v1/,
+    )
+  })
+
+  it('fails closed when a reservation omits the checkpoint tapscript', () => {
+    const changed = reserve()
+    changed.checkpointTapscript = undefined
+    expect(() => buildReservedVtxoSpend(status(), changed, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /checkpoint tapscript is missing/,
     )
   })
 
