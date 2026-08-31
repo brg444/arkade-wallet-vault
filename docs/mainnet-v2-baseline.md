@@ -32,9 +32,10 @@ boarding, and Operator communication remain inside the official SDK surface.
 
 1. Qualify ordinary VTXO receive and send, including reloads and lost responses.
 2. Qualify Savings-to-Spending boarding and recovery drills.
-3. Configure `https://emulator.arkade.computer`, freeze its signer and the
-   program pins for `arkade.computer`, then regenerate both Contract Packs and
-   cross-language vectors.
+3. Configure `https://emulator.arkade.computer`, freeze its signer, the
+   `vault-spending-policy-v1` bounds and presets, and the program pins for
+   `arkade.computer`, then regenerate both Contract Packs and cross-language
+   vectors.
 4. Deploy with production key isolation, independent rollback-control storage,
    and shared durable edge limits.
 5. Enable outbound BOLT11 after ordinary Spending is stable. The published
@@ -42,8 +43,10 @@ boarding, and Operator communication remain inside the official SDK surface.
    funding uses the existing ordinary VTXO operation. Lightning receive
    remains a separate program and gate.
 
-Mainnet Vault Program parameters and policy adjustments begin at step 3. They
-are intentionally outside the current Mutinynet reliability and cleanup work.
+The compiled Vault Program remains fixed. Each fresh vault selects one
+immutable policy instance within the reviewed mainnet bounds during
+enrollment. Arbitrary policy execution and post-enrollment mutation remain out
+of scope.
 
 ## Open mainnet gates
 

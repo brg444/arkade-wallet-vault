@@ -10,13 +10,29 @@ The server and wallet pin the same machine-readable values in
 [`contract-pack.json`](../src/lib/vault/contract-pack.json) and verify the same
 canonical Savings vectors.
 
+## Enrollment policy instance
+
+The program is fixed, but its supported numeric policy is instantiated for
+each vault. Onboarding reads the service's release-pinned bounds and presets,
+then lets the user review the per-send cap, rolling 24-hour allowance,
+absolute fee cap, and feerate cap. The wallet canonicalizes those values and
+commits their digest before creating the passkey. It accepts enrollment only
+when the service echoes the exact policy and returns a descriptor the wallet
+can reconstruct from the same keys and values.
+
+The policy digest is retained in the staged enrollment, local program pin, and
+Recovery Kit. The two fee ceilings also affect the Savings transition scripts,
+so a vault enrolled with different ceilings has a different Savings
+descriptor. There is no post-enrollment edit path. Destination rules,
+arbitrary policy code, and additional programs are not part of this schema.
+
 ## Spending
 
 Spending is VTXO-only and has no L1 Daily account. The collaborative
 `vault-policy-v1` leaf requires the phone, VTXO VaultCosigner, and Arkade
 Operator. The Vault service independently verifies the complete Arkade
 transaction and checkpoints and enforces recipient, fee, and rolling 24-hour
-allowance policy before signing.
+allowance policy from that vault's immutable instance before signing.
 
 An ordinary send begins with a phone-signed, idempotent reservation. The user
 then authorizes the transaction-bound digest. The two ceremonies are separate:
