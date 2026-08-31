@@ -1,3 +1,5 @@
+import type { SpendingPolicy } from './spendingPolicy'
+
 // Exact JSON object emitted by GET /v1/status?vault=... . Keep normalized
 // compatibility aliases out of this type; they belong to VaultStatus below.
 export interface VaultStatusWire {
@@ -25,6 +27,8 @@ export interface VaultStatusWire {
   txCap: number
   absoluteFeeCap: number
   feerateCapSatVb: number
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
   phoneBip340Pub?: string
   phoneDirectP256?: string
   warnings?: string[]
@@ -69,6 +73,8 @@ export interface VaultStatus {
   txCap: number
   absoluteFeeCap: number
   feerateCapSatVb: number
+  spendingPolicy?: SpendingPolicy
+  spendingPolicyDigest?: string
   phoneBip340Pub?: string
   phoneDirectP256?: string
   enrollmentMode?: string

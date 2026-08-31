@@ -42,8 +42,8 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByText(/Optional/i)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Skip for now' }))
 
-    expect(await screen.findByRole('heading', { name: 'Daily limits' })).toBeTruthy()
-    expect(screen.getByText(/limits are set by the Vault Program/i)).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Spending limits' })).toBeTruthy()
+    expect(screen.getByText(/Choose the limits this vault will enforce/i)).toBeTruthy()
     expect(screen.getAllByText(/about 1 hour/)).not.toHaveLength(0)
     expect(screen.getAllByText(/about 1 day/)).not.toHaveLength(0)
     await user.click(screen.getByRole('button', { name: 'Review setup' }))

@@ -11,6 +11,7 @@ import { saveLocalKit } from '../../../lib/vault/program/kitStore'
 import { SAVINGS_TEMPLATE } from '../../../lib/vault/program/constants'
 import { saveSetupPlan } from '../../../lib/vault/setupPlan'
 import type { VaultStatus } from '../../../lib/vault/types'
+import { spendingPolicyFromLimits, spendingPolicyDigest } from '../../../lib/vault/spendingPolicy'
 import {
   activateBoardingKey,
   stageBoardingKey,
@@ -93,6 +94,12 @@ export async function vaultUiStatus(origin = location.origin, hostname = locatio
     descriptorHash: boardingDescriptorHash,
     expectedBoardingPub: staged.boardingPub,
   })
+  const spendingPolicy = spendingPolicyFromLimits({
+    txRecipientCapSats: descriptor.policy.recipientCapSats,
+    periodAllowanceSats: descriptor.policy.periodAllowanceSats,
+    absoluteFeeCapSats: descriptor.policy.absoluteFeeCapSats,
+    feerateCapSatPerV: descriptor.policy.feerateCapSatVb,
+  })
   return {
     enrolled: true,
     network: 'mutinynet',
@@ -103,12 +110,14 @@ export async function vaultUiStatus(origin = location.origin, hostname = locatio
     policyVersion: POLICY_VERSION,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
-    periodAllowance: 100_000,
+    periodAllowance: spendingPolicy.periodAllowanceSats,
     periodSpent: 0,
-    periodRemaining: 100_000,
-    txCap: 50_000,
-    absoluteFeeCap: 1_500,
-    feerateCapSatVb: 10,
+    periodRemaining: spendingPolicy.periodAllowanceSats,
+    txCap: spendingPolicy.txRecipientCapSats,
+    absoluteFeeCap: spendingPolicy.absoluteFeeCapSats,
+    feerateCapSatVb: spendingPolicy.feerateCapSatPerV,
+    spendingPolicy,
+    spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
     phoneBip340Pub: descriptor.keys.phoneBip340,
     phoneDirectP256: descriptor.keys.phoneDirectP256,
     externalOwnerWalletPub: descriptor.keys.hardware,
@@ -154,6 +163,8 @@ export async function installVaultUiSession() {
     recoveryPub: descriptor.keys.recovery || '',
     txCapSats: status.txCap,
     dailyLimitSats: status.periodAllowance,
+    absoluteFeeCapSats: status.absoluteFeeCap,
+    feerateCapSatPerV: status.feerateCapSatVb,
     acceptedDesign: true,
     complete: true,
   })

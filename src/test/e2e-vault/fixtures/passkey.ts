@@ -7,6 +7,13 @@ import { PROGRAM_FIXTURE } from '../../../lib/vault/program/fixtures'
 import { recoveryBindingDigest } from '../../../lib/vault/passkeyBinding'
 import { bytesToHex } from '../../../lib/vault/hex'
 import { POLICY_VERSION } from '../../../lib/vault/constants'
+import {
+  CURRENT_SPENDING_POLICY_CAPABILITIES,
+  defaultSpendingPolicy,
+  spendingPolicyDigest,
+  type SpendingPolicy,
+  validateSpendingPolicy,
+} from '../../../lib/vault/spendingPolicy'
 import { SAVINGS_TEMPLATE } from '../../../lib/vault/program/constants'
 import type {
   VaultEnrollStartResponse,
@@ -70,6 +77,7 @@ export type FakePasskeyAuthorizer = {
   clearRecoverGate(): void
   rejectNextRecoveryAsWrongCredential(): void
   releaseRecover(): void
+  selectedSpendingPolicy(): SpendingPolicy | undefined
   waitForRecover(): Promise<void>
 }
 
@@ -107,6 +115,7 @@ function publicStatus() {
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
     enrollmentMode: 'token',
+    spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
     vtxoBoardingProgram: BOARDING_PROGRAM,
   }
 }
@@ -117,7 +126,8 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
 
   private enrolled = false
   private passkeyLoginAvailable = false
-  private proposed?: Record<string, string>
+  private proposed?: Record<string, any>
+  private pendingPolicy?: SpendingPolicy
   private descriptor?: ReturnType<typeof buildVaultProgramDescriptor>
   private boardingDescriptor?: BoardingDescriptor
   private boardingDescriptorHash?: string
@@ -166,9 +176,16 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
     await this.recoverSeen.promise
   }
 
+  selectedSpendingPolicy() {
+    return this.proposed?.spendingPolicy ? validateSpendingPolicy(this.proposed.spendingPolicy) : undefined
+  }
+
   private status(vaultId = VAULT_ID): VaultStatus {
     const proposed = this.proposed
     const descriptor = this.descriptor
+    const spendingPolicy = proposed?.spendingPolicy
+      ? validateSpendingPolicy(proposed.spendingPolicy)
+      : defaultSpendingPolicy()
     return {
       enrolled: this.enrolled,
       network: 'mutinynet',
@@ -184,12 +201,14 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       arkadeCosignerVersion: PROGRAM_FIXTURE.arkadeCosigner.version,
       savingsAddress: descriptor?.savings.address || 'tb1psavings',
       savingsScript: descriptor?.savings.script || `5120${'11'.repeat(32)}`,
-      periodAllowance: 100_000,
+      periodAllowance: spendingPolicy.periodAllowanceSats,
       periodSpent: 0,
-      periodRemaining: 100_000,
-      txCap: 50_000,
-      absoluteFeeCap: 5_000,
-      feerateCapSatVb: 10,
+      periodRemaining: spendingPolicy.periodAllowanceSats,
+      txCap: spendingPolicy.txRecipientCapSats,
+      absoluteFeeCap: spendingPolicy.absoluteFeeCapSats,
+      feerateCapSatVb: spendingPolicy.feerateCapSatPerV,
+      spendingPolicy,
+      spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
       phoneBip340Pub: proposed?.phoneBip340Pub,
       phoneDirectP256: proposed?.phoneDirectP256,
       passkeyLoginAvailable: this.passkeyLoginAvailable,
@@ -259,13 +278,19 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
     const request = route.request()
     const url = new URL(request.url())
     const path = url.pathname
-    const body = request.method() === 'POST' ? ((await request.postDataJSON()) as Record<string, string>) : undefined
+    const body = request.method() === 'POST' ? ((await request.postDataJSON()) as Record<string, any>) : undefined
 
     if (path === '/v1/status' && request.method() === 'GET') {
       const requestedVault = url.searchParams.get('vault')
       return json(route, requestedVault ? this.status(requestedVault) : publicStatus())
     }
     if (path === '/v1/enroll/start') {
+      const spendingPolicy = validateSpendingPolicy(body?.spendingPolicy)
+      const selectedDigest = spendingPolicyDigest(spendingPolicy)
+      if (body?.spendingPolicyDigest !== selectedDigest) {
+        return json(route, { code: 'REJECTED', error: 'spending policy digest mismatch' }, 400)
+      }
+      this.pendingPolicy = spendingPolicy
       const response: VaultEnrollStartResponse = {
         handle: 'e2e-enrollment-handle',
         vaultId: VAULT_ID,
@@ -275,10 +300,20 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         userId: bytesToHex(new TextEncoder().encode(VAULT_ID)),
         userName: 'vault',
         timeoutMs: 300_000,
+        spendingPolicy,
+        spendingPolicyDigest: selectedDigest,
       }
       return json(route, response)
     }
     if (path === '/v1/enroll/propose' && body) {
+      const proposedPolicy = validateSpendingPolicy(body.spendingPolicy)
+      if (
+        !this.pendingPolicy ||
+        spendingPolicyDigest(proposedPolicy) !== spendingPolicyDigest(this.pendingPolicy) ||
+        body.spendingPolicyDigest !== spendingPolicyDigest(this.pendingPolicy)
+      ) {
+        return json(route, { code: 'REJECTED', error: 'spending policy changed after enrollment start' }, 400)
+      }
       if (!/^[0-9a-f]{64}$/.test(body.vaultBoardingBip340Pub)) {
         return json(route, { code: 'REJECTED', error: 'boarding key must be BIP340 x-only' }, 400)
       }
@@ -292,6 +327,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         vaultCosignerBase: PROGRAM_FIXTURE.vaultCosignerBase,
         arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
         arkadeCosigner: PROGRAM_FIXTURE.arkadeCosigner,
+        spendingPolicy: body.spendingPolicy as SpendingPolicy,
       })
       const boarding = createBoardingProgramScript(
         {
@@ -634,7 +670,7 @@ export const test = base.extend<Fixtures>({
   },
 })
 
-export async function reachPasskeySetup(page: Page) {
+export async function reachPasskeySetup(page: Page, policyPreset: 'cautious' | 'standard' | 'flexible' = 'standard') {
   await page.goto('/')
   await expect(page.getByText('Spending and Savings, together')).toBeVisible()
   await page.getByRole('button', { name: 'Set up a new vault' }).click()
@@ -642,13 +678,18 @@ export async function reachPasskeySetup(page: Page) {
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
   await page.getByRole('button', { name: 'Use this hardware key' }).click()
   await page.getByRole('button', { name: 'Skip for now' }).click()
+  await page.getByTestId(`policy-preset-${policyPreset}`).click()
   await page.getByRole('button', { name: 'Review setup' }).click()
   await page.getByRole('button', { name: 'Secure this device' }).click()
   await expect(page.getByTestId('enrollment-token')).toBeVisible()
 }
 
-export async function enrollVaultWithPasskey(page: Page, authorizer: FakePasskeyAuthorizer) {
-  await reachPasskeySetup(page)
+export async function enrollVaultWithPasskey(
+  page: Page,
+  authorizer: FakePasskeyAuthorizer,
+  policyPreset: 'cautious' | 'standard' | 'flexible' = 'standard',
+) {
+  await reachPasskeySetup(page, policyPreset)
   await page.getByTestId('enrollment-token').fill(authorizer.invite)
   await page.getByRole('button', { name: 'Secure this device' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()

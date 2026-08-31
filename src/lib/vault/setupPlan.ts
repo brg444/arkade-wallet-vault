@@ -1,6 +1,12 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js'
-import { PERIOD_ALLOWANCE_SATS, TX_RECIPIENT_CAP_SATS } from './constants'
+import {
+  ABSOLUTE_FEE_CEILING_SATS,
+  FEERATE_CEILING_SAT_PER_V,
+  PERIOD_ALLOWANCE_SATS,
+  TX_RECIPIENT_CAP_SATS,
+} from './constants'
 import { fingerprint, hexToBytes } from './hex'
+import { spendingPolicyFromLimits, validateSpendingPolicy, type SpendingPolicy } from './spendingPolicy'
 
 export const SETUP_STORE_KEY = 'arkade-vault-v2:setup'
 
@@ -13,6 +19,8 @@ export interface VaultSetupPlan {
   recoveryPub: string
   txCapSats: number
   dailyLimitSats: number
+  absoluteFeeCapSats: number
+  feerateCapSatPerV: number
   acceptedDesign: boolean
   complete: boolean
 }
@@ -23,6 +31,8 @@ export function emptySetupPlan(): VaultSetupPlan {
     recoveryPub: '',
     txCapSats: TX_RECIPIENT_CAP_SATS,
     dailyLimitSats: PERIOD_ALLOWANCE_SATS,
+    absoluteFeeCapSats: ABSOLUTE_FEE_CEILING_SATS,
+    feerateCapSatPerV: FEERATE_CEILING_SAT_PER_V,
     acceptedDesign: false,
     complete: false,
   }
@@ -60,19 +70,41 @@ export function planReady(plan: VaultSetupPlan): boolean {
   if (!plan.acceptedDesign) return false
   if (!plan.hardwarePub) return false
   if (plan.recoveryPub && sameRole(plan.hardwarePub, plan.recoveryPub)) return false
-  if (plan.txCapSats !== TX_RECIPIENT_CAP_SATS || plan.dailyLimitSats !== PERIOD_ALLOWANCE_SATS) return false
+  try {
+    validateSpendingPolicy(setupSpendingPolicy(plan))
+  } catch {
+    return false
+  }
   return true
+}
+
+export function setupSpendingPolicy(plan: VaultSetupPlan): SpendingPolicy {
+  return spendingPolicyFromLimits({
+    txRecipientCapSats: plan.txCapSats,
+    periodAllowanceSats: plan.dailyLimitSats,
+    absoluteFeeCapSats: plan.absoluteFeeCapSats,
+    feerateCapSatPerV: plan.feerateCapSatPerV,
+  })
 }
 
 export function loadSetupPlan(storage: Storage = localStorage): VaultSetupPlan | null {
   const raw = storage.getItem(SETUP_STORE_KEY)
   if (!raw) return null
   const parsed = JSON.parse(raw) as Partial<VaultSetupPlan>
+  const defaults = emptySetupPlan()
   return {
     hardwarePub: String(parsed.hardwarePub || ''),
     recoveryPub: String(parsed.recoveryPub || ''),
-    txCapSats: Number(parsed.txCapSats),
-    dailyLimitSats: Number(parsed.dailyLimitSats),
+    txCapSats: Number.isSafeInteger(parsed.txCapSats) ? Number(parsed.txCapSats) : defaults.txCapSats,
+    dailyLimitSats: Number.isSafeInteger(parsed.dailyLimitSats)
+      ? Number(parsed.dailyLimitSats)
+      : defaults.dailyLimitSats,
+    absoluteFeeCapSats: Number.isSafeInteger(parsed.absoluteFeeCapSats)
+      ? Number(parsed.absoluteFeeCapSats)
+      : defaults.absoluteFeeCapSats,
+    feerateCapSatPerV: Number.isSafeInteger(parsed.feerateCapSatPerV)
+      ? Number(parsed.feerateCapSatPerV)
+      : defaults.feerateCapSatPerV,
     acceptedDesign: parsed.acceptedDesign === true,
     complete: parsed.complete === true,
   }

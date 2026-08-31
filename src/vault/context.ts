@@ -3,6 +3,7 @@ import type { VaultHistoryItem } from '../lib/vault/history'
 import { emptySetupPlan, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import type { InitiateAlert } from '../lib/vault/program/watch'
+import type { SpendingPolicy, SpendingPolicyCapabilities } from '../lib/vault/spendingPolicy'
 
 export type VaultAccount = 'spend' | 'savings'
 
@@ -56,6 +57,8 @@ export interface VaultContextProps {
   completeSavingsHandoff: (signedPsbt: string) => Promise<void>
   handoffPsbt: string
   confirmConditions: () => void
+  setSpendingPolicy: (policy: SpendingPolicy) => void
+  spendingPolicyCapabilities: SpendingPolicyCapabilities
   dailyLimit: number
   dailyRemaining: number
   dailySpent: number
@@ -127,6 +130,19 @@ export const VaultContext = createContext<VaultContextProps>({
   completeSavingsHandoff: async () => {},
   handoffPsbt: '',
   confirmConditions: () => {},
+  setSpendingPolicy: () => {},
+  spendingPolicyCapabilities: {
+    program: 'vault-policy-v1',
+    schema: 'vault-spending-policy-v1',
+    period: 'rolling-24h',
+    bounds: {
+      periodAllowanceSats: { min: 330, max: 1_000_000_000 },
+      txRecipientCapSats: { min: 330, max: 100_000_000 },
+      absoluteFeeCapSats: { min: 0, max: 100_000 },
+      feerateCapSatPerV: { min: 1, max: 100 },
+    },
+    presets: [],
+  },
   dailyLimit: 0,
   dailyRemaining: 0,
   dailySpent: 0,

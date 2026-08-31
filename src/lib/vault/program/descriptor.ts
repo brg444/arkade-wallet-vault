@@ -2,16 +2,7 @@ import { p256 } from '@noble/curves/nist.js'
 import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '@scure/base'
-import {
-  ABSOLUTE_FEE_CEILING_SATS,
-  DUST_SATS,
-  FEERATE_CEILING_SAT_PER_V,
-  PERIOD_ALLOWANCE_SATS,
-  POLICY_VERSION,
-  SUPPORTED_NETWORKS,
-  TX_RECIPIENT_CAP_SATS,
-  type VaultNetwork,
-} from '../constants'
+import { DUST_SATS, POLICY_VERSION, SUPPORTED_NETWORKS, type VaultNetwork } from '../constants'
 import { bytesToHex, encodeUtf8, hexToBytes, requireLowerHex } from '../hex'
 import {
   familyClaimants,
@@ -27,6 +18,12 @@ import {
   type Claimant,
   type FamilyKey,
 } from './constants'
+import {
+  defaultSpendingPolicy,
+  spendingPolicyDigest,
+  validateSpendingPolicy,
+  type SpendingPolicy,
+} from '../spendingPolicy'
 import { type InitiateTweaks, buildVaultProgramFamily } from './trees'
 
 const COMPRESSED = 33
@@ -64,6 +61,10 @@ export interface VaultProgramDescriptor {
     recovery: number
   }
   policy: {
+    program: SpendingPolicy['program']
+    schema: SpendingPolicy['schema']
+    period: SpendingPolicy['period']
+    digest: string
     recipientDustSats: number
     recipientCapSats: number
     periodAllowanceSats: number
@@ -95,6 +96,7 @@ export interface VaultProgramDescriptorInput {
     version: string
   }
   templateVersion?: string
+  spendingPolicy?: SpendingPolicy
 }
 
 function appendU32(parts: Uint8Array[], value: number, name: string) {
@@ -189,6 +191,7 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
   if (!input.arkadeCosigner.origin.trim() || !input.arkadeCosigner.version.trim()) {
     throw new Error('arkade cosigner origin and version required')
   }
+  const selectedPolicy = validateSpendingPolicy(input.spendingPolicy || defaultSpendingPolicy())
   const family = buildVaultProgramFamily({
     vaultId: input.vaultId,
     phonePub: keys.phoneBip340,
@@ -199,6 +202,8 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
     arkadeCosignerBase: keys.arkadeCosignerBase,
     network: input.network,
     templateVersion: input.templateVersion || SAVINGS_TEMPLATE,
+    absoluteFeeCapSats: selectedPolicy.absoluteFeeCapSats,
+    feerateCapSatPerV: selectedPolicy.feerateCapSatPerV,
   })
   const tweaks = {
     initiate: family.initiateTweaks,
@@ -230,11 +235,15 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
     },
     csv: { ...PROGRAM_CSV },
     policy: {
+      program: selectedPolicy.program,
+      schema: selectedPolicy.schema,
+      period: selectedPolicy.period,
+      digest: spendingPolicyDigest(selectedPolicy),
       recipientDustSats: DUST_SATS,
-      recipientCapSats: TX_RECIPIENT_CAP_SATS,
-      periodAllowanceSats: PERIOD_ALLOWANCE_SATS,
-      absoluteFeeCapSats: ABSOLUTE_FEE_CEILING_SATS,
-      feerateCapSatVb: FEERATE_CEILING_SAT_PER_V,
+      recipientCapSats: selectedPolicy.txRecipientCapSats,
+      periodAllowanceSats: selectedPolicy.periodAllowanceSats,
+      absoluteFeeCapSats: selectedPolicy.absoluteFeeCapSats,
+      feerateCapSatVb: selectedPolicy.feerateCapSatPerV,
     },
     p2a: {
       script: P2A_SCRIPT_HEX,
@@ -266,11 +275,16 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
   }
   if (d.transitionSequence !== TRANSITION_SEQUENCE) throw new Error('transition sequence does not match this release')
   if (d.policy.recipientDustSats !== DUST_SATS) throw new Error('dust does not match this release')
-  if (d.policy.recipientCapSats !== TX_RECIPIENT_CAP_SATS) throw new Error('tx cap does not match this release')
-  if (d.policy.periodAllowanceSats !== PERIOD_ALLOWANCE_SATS)
-    throw new Error('period allowance does not match this release')
-  if (d.policy.absoluteFeeCapSats !== ABSOLUTE_FEE_CEILING_SATS) throw new Error('fee cap does not match this release')
-  if (d.policy.feerateCapSatVb !== FEERATE_CEILING_SAT_PER_V) throw new Error('feerate cap does not match this release')
+  const selectedPolicy = validateSpendingPolicy({
+    program: d.policy.program,
+    schema: d.policy.schema,
+    period: d.policy.period,
+    periodAllowanceSats: d.policy.periodAllowanceSats,
+    txRecipientCapSats: d.policy.recipientCapSats,
+    absoluteFeeCapSats: d.policy.absoluteFeeCapSats,
+    feerateCapSatPerV: d.policy.feerateCapSatVb,
+  })
+  if (spendingPolicyDigest(selectedPolicy) !== d.policy.digest) throw new Error('spending policy digest does not match')
   requireSecp(d.keys.phoneBip340, 'phone')
   requireP256(d.keys.phoneDirectP256, 'phoneDirectP256')
   requireSecp(d.keys.hardware, 'hardware')
@@ -296,6 +310,8 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
     arkadeCosignerBase: d.keys.arkadeCosignerBase,
     network: d.network,
     templateVersion: d.templateVersion,
+    absoluteFeeCapSats: selectedPolicy.absoluteFeeCapSats,
+    feerateCapSatPerV: selectedPolicy.feerateCapSatPerV,
   })
   for (const claimant of claimants) {
     if (
@@ -369,6 +385,10 @@ export function encodeVaultProgramDescriptor(input: VaultProgramDescriptor): Uin
   appendU32(parts, d.csv.hardware, 'csv.hardware')
   appendU32(parts, d.csv.phone, 'csv.phone')
   appendU32(parts, d.csv.recovery, 'csv.recovery')
+  appendBytes(parts, encodeUtf8(d.policy.program))
+  appendBytes(parts, encodeUtf8(d.policy.schema))
+  appendBytes(parts, encodeUtf8(d.policy.period))
+  appendHex(parts, d.policy.digest, 'policy.digest', 32)
   appendI64(parts, d.policy.recipientDustSats, 'dust')
   appendI64(parts, d.policy.recipientCapSats, 'tx cap')
   appendI64(parts, d.policy.periodAllowanceSats, 'period')
@@ -412,6 +432,8 @@ export function familyFromDescriptor(d: VaultProgramDescriptor) {
     arkadeCosignerBase: valid.keys.arkadeCosignerBase,
     network: valid.network,
     templateVersion: valid.templateVersion,
+    absoluteFeeCapSats: valid.policy.absoluteFeeCapSats,
+    feerateCapSatPerV: valid.policy.feerateCapSatVb,
   })
 }
 

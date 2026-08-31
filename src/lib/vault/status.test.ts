@@ -11,6 +11,7 @@ import {
   vaultStatusPath,
 } from './status'
 import type { VaultStatusWire } from './types'
+import { CURRENT_SPENDING_POLICY_CAPABILITIES, defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
 
 const VAULT_ID = 'vault-test-current'
 
@@ -22,6 +23,7 @@ afterEach(() => {
 type CompatibleStatusWire = VaultStatusWire & { recoveryPub?: string }
 
 function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatusWire {
+  const spendingPolicy = defaultSpendingPolicy()
   return {
     enrolled: true,
     network: 'mutinynet',
@@ -42,6 +44,8 @@ function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatu
     txCap: 50_000,
     absoluteFeeCap: 5_000,
     feerateCapSatVb: 10,
+    spendingPolicy,
+    spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
     vtxoVaultCosignerPub: '02' + '11'.repeat(32),
     vtxoExitDelay: 4608,
     vtxoExitDelayUnit: 'seconds',
@@ -132,6 +136,7 @@ describe('pingVaultService', () => {
               templateVersion: SAVINGS_TEMPLATE,
               policyVersion: POLICY_VERSION,
               enrollmentMode: 'invite',
+              spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -153,6 +158,7 @@ describe('pingVaultService', () => {
               templateVersion: SAVINGS_TEMPLATE,
               policyVersion: POLICY_VERSION,
               enrollmentMode: 'invite',
+              spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
