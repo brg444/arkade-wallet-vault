@@ -56,6 +56,7 @@ function expectLocalNoStore(result: ReturnType<typeof gatewayResponse>) {
 describe('same-origin authorizer gateway', () => {
   it('maps function URLs back to authorizer paths', () => {
     expect(publicAuthorizerPath('/api/health')).toBe('/health')
+    expect(publicAuthorizerPath('/api/ready')).toBe('/ready')
     expect(publicAuthorizerPath('/api/v1/status')).toBe('/v1/status')
     expect(publicAuthorizerPath('/api/v1/status?vault=x')).toBe('/v1/status?vault=x')
     expect(publicAuthorizerPath('/api/v1/enroll/start')).toBe('/v1/enroll/start')
@@ -70,8 +71,9 @@ describe('same-origin authorizer gateway', () => {
     expect(publicAuthorizerPath('/api/v1/vtxo-finalize?operationId=x')).toBe('/v1/vtxo/finalize?operationId=x')
   })
 
-  it('only proxies health and /v1', () => {
+  it('only proxies health, readiness, and /v1', () => {
     expect(allowAuthorizerPath('/health')).toBe(true)
+    expect(allowAuthorizerPath('/ready')).toBe(true)
     expect(allowAuthorizerPath('/v1/status')).toBe(true)
     expect(allowAuthorizerPath('/v1/enroll/start')).toBe(true)
     expect(allowAuthorizerPath('/')).toBe(false)
@@ -153,6 +155,27 @@ describe('gateway response cache policy', () => {
     expect(limited.response.statusCode).toBe(429)
     expect(limited.body()).toBe(JSON.stringify({ error: 'too many requests' }))
     expectLocalNoStore(limited)
+  })
+
+  it('proxies readiness without consuming the browser API rate bucket', async () => {
+    const caller = `ready-handler-${Math.random()}`
+    const now = Date.now()
+    for (let i = 0; i < 60; i++) expect(allowGatewayRate(caller, now)).toBe(true)
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: false }), {
+        status: 503,
+        headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ url: '/api/ready', headers: { 'x-forwarded-for': caller } }), result.response)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://authorizer.example/ready',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(result.response.statusCode).toBe(503)
+    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false }))
   })
 
   it('marks an oversized request as no-store without contacting the upstream', async () => {

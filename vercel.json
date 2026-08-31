@@ -30,6 +30,7 @@
   ],
   "rewrites": [
     { "source": "/health", "destination": "/api/health" },
+    { "source": "/ready", "destination": "/api/ready" },
     { "source": "/v1/enroll/:action", "destination": "/api/v1/enroll/:action" },
     { "source": "/v1/passkey/:action", "destination": "/api/v1/passkey/:action" },
     { "source": "/v1/kit", "destination": "/api/kit" },

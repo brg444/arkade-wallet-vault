@@ -38,7 +38,7 @@ function gatewaySecret(): string {
 }
 
 export function allowAuthorizerPath(path: string): boolean {
-  return path === '/health' || path === '/v1' || path.startsWith('/v1/')
+  return path === '/health' || path === '/ready' || path === '/v1' || path.startsWith('/v1/')
 }
 
 function requestHost(hostHeader: string | string[] | undefined): string {
@@ -107,6 +107,7 @@ export function publicAuthorizerPath(url = ''): string {
   const q = url.includes('?') ? url.slice(url.indexOf('?')) : ''
   const raw = (url.split('?')[0] || '/').replace(/\/+$/, '') || '/'
   if (raw === '/api/health' || raw === '/health') return '/health' + q
+  if (raw === '/api/ready' || raw === '/ready') return '/ready' + q
   if (FLAT_VTXO_PATHS[raw]) return FLAT_VTXO_PATHS[raw] + q
   if (raw.startsWith('/api/authorizer/')) return raw.slice('/api/authorizer'.length) + q
   if (raw === '/api/authorizer') return '/' + q
@@ -205,7 +206,7 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 403, 'cross-origin authorizer access denied')
     return
   }
-  if (pathOnly !== '/health' && !allowGatewayRate(clientAddress(req.headers))) {
+  if (pathOnly !== '/health' && pathOnly !== '/ready' && !allowGatewayRate(clientAddress(req.headers))) {
     jsonError(res, 429, 'too many requests')
     return
   }
