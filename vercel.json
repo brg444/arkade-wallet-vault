@@ -42,10 +42,7 @@
       "destination": "/api/v1/vtxo-checkpoints-authorize"
     },
     { "source": "/v1/vtxo/finalize", "destination": "/api/v1/vtxo-finalize" },
-    { "source": "/v1/vtxo/board/prepare", "destination": "/api/v1/vtxo-board-prepare" },
-    { "source": "/v1/vtxo/board/register", "destination": "/api/v1/vtxo-board-register" },
-    { "source": "/v1/vtxo/board/release", "destination": "/api/v1/vtxo-board-release" },
-    { "source": "/v1/vtxo/board/final", "destination": "/api/v1/vtxo-board-final" },
+    { "source": "/v1/vtxo/board/:phase", "destination": "/api/v1/vtxo-board?phase=:phase" },
     { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
     {
       "source": "/esplora/:path*",

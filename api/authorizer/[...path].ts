@@ -25,11 +25,9 @@ const FLAT_VTXO_PATHS: Record<string, string> = {
   '/api/v1/vtxo-authorize': '/v1/vtxo/authorize',
   '/api/v1/vtxo-checkpoints-authorize': '/v1/vtxo/checkpoints/authorize',
   '/api/v1/vtxo-finalize': '/v1/vtxo/finalize',
-  '/api/v1/vtxo-board-prepare': '/v1/vtxo/board/prepare',
-  '/api/v1/vtxo-board-register': '/v1/vtxo/board/register',
-  '/api/v1/vtxo-board-release': '/v1/vtxo/board/release',
-  '/api/v1/vtxo-board-final': '/v1/vtxo/board/final',
 }
+
+const BOARD_PHASES = new Set(['prepare', 'register', 'release', 'final'])
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
 
@@ -115,6 +113,11 @@ export function publicAuthorizerPath(url = ''): string {
   if (FLAT_VTXO_PATHS[raw]) return FLAT_VTXO_PATHS[raw] + q
   if (raw.startsWith('/api/authorizer/')) return raw.slice('/api/authorizer'.length) + q
   if (raw === '/api/authorizer') return '/' + q
+  if (raw === '/api/v1/vtxo-board') {
+    const phase = new URLSearchParams(q).get('phase') || ''
+    if (BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
+    return raw + q
+  }
   if (raw.startsWith('/api/v1')) return raw.slice('/api'.length) + q
   return raw + q
 }

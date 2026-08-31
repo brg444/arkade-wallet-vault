@@ -38,12 +38,9 @@ describe('Vercel worker caching', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
       rewrites: { source: string; destination: string }[]
     }
-    const rewrites = config.rewrites
-    for (const phase of ['prepare', 'register', 'release', 'final']) {
-      expect(rewrites).toContainEqual({
-        source: `/v1/vtxo/board/${phase}`,
-        destination: `/api/v1/vtxo-board-${phase}`,
-      })
-    }
+    expect(config.rewrites).toContainEqual({
+      source: '/v1/vtxo/board/:phase',
+      destination: '/api/v1/vtxo-board?phase=:phase',
+    })
   })
 })
