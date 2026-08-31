@@ -33,4 +33,17 @@ describe('Vercel worker caching', () => {
     }
     expect(config.rewrites).toContainEqual({ source: '/ready', destination: '/api/ready' })
   })
+
+  it('routes every nested boarding phase through a flat serverless function', () => {
+    const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
+      rewrites: { source: string; destination: string }[]
+    }
+    const rewrites = config.rewrites
+    for (const phase of ['prepare', 'register', 'release', 'final']) {
+      expect(rewrites).toContainEqual({
+        source: `/v1/vtxo/board/${phase}`,
+        destination: `/api/v1/vtxo-board-${phase}`,
+      })
+    }
+  })
 })
