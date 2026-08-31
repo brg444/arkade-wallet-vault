@@ -25,6 +25,10 @@ const FLAT_VTXO_PATHS: Record<string, string> = {
   '/api/v1/vtxo-authorize': '/v1/vtxo/authorize',
   '/api/v1/vtxo-checkpoints-authorize': '/v1/vtxo/checkpoints/authorize',
   '/api/v1/vtxo-finalize': '/v1/vtxo/finalize',
+  '/api/v1/vtxo-board-prepare': '/v1/vtxo/board/prepare',
+  '/api/v1/vtxo-board-register': '/v1/vtxo/board/register',
+  '/api/v1/vtxo-board-release': '/v1/vtxo/board/release',
+  '/api/v1/vtxo-board-final': '/v1/vtxo/board/final',
 }
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()

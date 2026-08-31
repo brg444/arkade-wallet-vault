@@ -69,6 +69,10 @@ describe('same-origin authorizer gateway', () => {
     expect(publicAuthorizerPath('/api/v1/vtxo-authorize')).toBe('/v1/vtxo/authorize')
     expect(publicAuthorizerPath('/api/v1/vtxo-checkpoints-authorize')).toBe('/v1/vtxo/checkpoints/authorize')
     expect(publicAuthorizerPath('/api/v1/vtxo-finalize?operationId=x')).toBe('/v1/vtxo/finalize?operationId=x')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board-prepare')).toBe('/v1/vtxo/board/prepare')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board-register')).toBe('/v1/vtxo/board/register')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board-release')).toBe('/v1/vtxo/board/release')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board-final')).toBe('/v1/vtxo/board/final')
   })
 
   it('only proxies health, readiness, and /v1', () => {
