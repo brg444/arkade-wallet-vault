@@ -113,9 +113,12 @@ export function publicAuthorizerPath(url = ''): string {
   if (FLAT_VTXO_PATHS[raw]) return FLAT_VTXO_PATHS[raw] + q
   if (raw.startsWith('/api/authorizer/')) return raw.slice('/api/authorizer'.length) + q
   if (raw === '/api/authorizer') return '/' + q
-  if (raw === '/api/v1/vtxo-board') {
-    const phase = new URLSearchParams(q).get('phase') || ''
-    if (BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
+  if (raw === '/api/gateway') {
+    const params = new URLSearchParams(q)
+    const route = params.get('route') || ''
+    if (route === 'kit') return '/v1/kit'
+    const phase = params.get('phase') || ''
+    if (route === 'board' && BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
     return raw + q
   }
   if (raw.startsWith('/api/v1')) return raw.slice('/api'.length) + q

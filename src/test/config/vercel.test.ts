@@ -40,7 +40,11 @@ describe('Vercel worker caching', () => {
     }
     expect(config.rewrites).toContainEqual({
       source: '/v1/vtxo/board/:phase',
-      destination: '/api/v1/vtxo-board?phase=:phase',
+      destination: '/api/gateway?route=board&phase=:phase',
+    })
+    expect(config.rewrites).toContainEqual({
+      source: '/v1/kit',
+      destination: '/api/gateway?route=kit',
     })
   })
 })
