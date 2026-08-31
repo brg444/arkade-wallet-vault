@@ -69,10 +69,11 @@ describe('same-origin authorizer gateway', () => {
     expect(publicAuthorizerPath('/api/v1/vtxo-authorize')).toBe('/v1/vtxo/authorize')
     expect(publicAuthorizerPath('/api/v1/vtxo-checkpoints-authorize')).toBe('/v1/vtxo/checkpoints/authorize')
     expect(publicAuthorizerPath('/api/v1/vtxo-finalize?operationId=x')).toBe('/v1/vtxo/finalize?operationId=x')
-    expect(publicAuthorizerPath('/api/v1/vtxo-board-prepare')).toBe('/v1/vtxo/board/prepare')
-    expect(publicAuthorizerPath('/api/v1/vtxo-board-register')).toBe('/v1/vtxo/board/register')
-    expect(publicAuthorizerPath('/api/v1/vtxo-board-release')).toBe('/v1/vtxo/board/release')
-    expect(publicAuthorizerPath('/api/v1/vtxo-board-final')).toBe('/v1/vtxo/board/final')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board?phase=prepare')).toBe('/v1/vtxo/board/prepare')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board?phase=register')).toBe('/v1/vtxo/board/register')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board?phase=release')).toBe('/v1/vtxo/board/release')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board?phase=final')).toBe('/v1/vtxo/board/final')
+    expect(publicAuthorizerPath('/api/v1/vtxo-board?phase=unknown')).toBe('/api/v1/vtxo-board?phase=unknown')
   })
 
   it('only proxies health, readiness, and /v1', () => {
@@ -82,6 +83,7 @@ describe('same-origin authorizer gateway', () => {
     expect(allowAuthorizerPath('/v1/enroll/start')).toBe(true)
     expect(allowAuthorizerPath('/')).toBe(false)
     expect(allowAuthorizerPath('/api/authorizer/v1/status')).toBe(false)
+    expect(allowAuthorizerPath(publicAuthorizerPath('/api/v1/vtxo-board?phase=unknown'))).toBe(false)
   })
 
   it('treats Origin as a CSRF filter, not authentication', () => {
