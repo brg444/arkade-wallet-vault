@@ -17,8 +17,10 @@ function gitCommitShort(): string {
 }
 
 function vaultAuthorizerProxy(): ProxyOptions {
+  const gatewaySecret = process.env.VAULT_GATEWAY_SECRET?.trim()
   return {
     target: 'http://127.0.0.1:8787',
+    ...(gatewaySecret ? { headers: { 'X-Vault-Gateway-Secret': gatewaySecret } } : {}),
     configure(proxy) {
       proxy.on('error', (_err, _req, res) => {
         const socket = res as {

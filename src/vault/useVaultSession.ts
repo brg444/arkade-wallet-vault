@@ -145,7 +145,8 @@ export function useVaultSession({
     reportError('')
     try {
       const local = enrollment || findStoredEnrollment()
-      if (local) {
+      const localPin = local ? loadAddressPin(localStorage, local.vaultId) : null
+      if (local && localPin) {
         const unlocked = await unlockLocalEnrollment(local)
         setEnrollment(unlocked)
         saveEnrollment(unlocked)
@@ -156,6 +157,19 @@ export function useVaultSession({
         setStatus(live)
         setAddressPin(loadAddressPin(localStorage, live.vaultId))
         await restoreMap(unlocked, live, setup)
+        setScreen('home')
+        return
+      }
+      if (local) {
+        const live = await enablePasskeyLogin(local)
+        setEnrollment(local)
+        saveEnrollment(local)
+        saveSelectedVaultId(local.vaultId)
+        setSessionLocked(false)
+        setLocked(false)
+        setStatus(live)
+        setAddressPin(loadAddressPin(localStorage, live.vaultId))
+        await restoreMap(local, live, setup)
         setScreen('home')
         return
       }

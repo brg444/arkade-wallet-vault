@@ -3,6 +3,7 @@ import encodeQR from 'qr'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 
 interface QrCodeProps {
+  large?: boolean
   value: string
 }
 
@@ -75,7 +76,7 @@ function renderFinderPattern(
   return elements
 }
 
-export default function QrCode({ value }: QrCodeProps) {
+export default function QrCode({ large = false, value }: QrCodeProps) {
   const prefersReduced = useReducedMotion()
   const prevMatrixRef = useRef<boolean[][] | null>(null)
   const renderCountRef = useRef(0)
@@ -203,5 +204,7 @@ export default function QrCode({ value }: QrCodeProps) {
     )
   }, [value, prefersReduced])
 
-  return svgContent ? <div className='vault-receive-qr'>{svgContent}</div> : null
+  return svgContent ? (
+    <div className={large ? 'vault-receive-qr vault-receive-qr-large' : 'vault-receive-qr'}>{svgContent}</div>
+  ) : null
 }

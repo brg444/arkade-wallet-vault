@@ -68,7 +68,7 @@ export interface VaultContextProps {
   hasLocalEnrollment: boolean
   locked: boolean
   lastTxid: string
-  lastTxKind: 'onchain' | 'vtxo' | ''
+  lastTxKind: 'onchain' | 'vtxo' | 'lightning' | ''
   history: VaultHistoryItem[]
   selectedTx: VaultHistoryItem | null
   openTx: (tx: VaultHistoryItem) => void

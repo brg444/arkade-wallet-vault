@@ -23,7 +23,17 @@ remains out of scope.
 - The Vault service holds authoritative allowance state and independently
   validates transactions before adding the VaultCosigner signature.
 - Every wallet is bound to the release template, network, Operator, and
-  canonical descriptor. Any other format is rejected.
+  canonical Savings, Spending, and boarding descriptors through the signed
+  recovery binding. Any other format is rejected.
+- The browser also records a fresh-release local program pin for the vault
+  identifier, network, Savings descriptor, and immutable Spending and boarding
+  fields. Status drift, record tampering, extra fields, and an enrolled-to-
+  unenrolled downgrade fail closed.
+- The disabled Lightning send lifecycle uses the published swap repository,
+  manager, VHTLC, and refunder. It stores complete recovery state before
+  exposing a funding target and binds the refund to the exact
+  `vault-policy-v1` script. Funding remains subject to the ordinary VTXO
+  authorization policy.
 
 ## Assumptions and open gates
 
@@ -48,6 +58,11 @@ remains out of scope.
   watchtower.
 - External hardware support must be qualified against the custom tapscript PSBT
   before any device is listed for mainnet.
+- Lightning send enablement requires an approved signed solver card, quote and
+  reservation expiry coordination, and real payment, ambiguous funding, and
+  refund tests. Lightning receive also requires a production solver route,
+  covenant claim service, reload-safe state, and proof that claims pay the
+  exact Spending script.
 
 The full release criteria are tracked in
 [mainnet-v2-baseline.md](mainnet-v2-baseline.md). Report a suspected security

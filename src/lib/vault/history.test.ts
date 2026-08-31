@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyLightningHistoryMetadata,
   classifyAddressTx,
   groupVaultHistory,
   historyFromTxs,
@@ -108,6 +109,26 @@ describe('vault history', () => {
       { txid: 'recv', type: 'received', amount: 20_000 },
     ])
     expect(rows.find((row) => row.txid === 'send')?.confirmed).toBe(true)
+  })
+
+  it('decorates only the matching sent row with Lightning amount and total fees', () => {
+    const rows: VaultHistoryItem[] = [
+      { txid: 'funding', type: 'sent', amount: 2_150, confirmed: true, account: 'spend' },
+      { txid: 'funding', type: 'received', amount: 100, confirmed: true, account: 'spend' },
+    ]
+
+    expect(
+      applyLightningHistoryMetadata(rows, [{ txid: 'funding', invoiceAmountSats: 2_100, state: 'settled' }]),
+    ).toEqual([
+      {
+        ...rows[0],
+        activity: 'lightning',
+        displayAmount: 2_100,
+        fee: 50,
+        lightningState: 'settled',
+      },
+      rows[1],
+    ])
   })
 
   it('includes a real fee in the net debit instead of inventing one from coin fragmentation', () => {

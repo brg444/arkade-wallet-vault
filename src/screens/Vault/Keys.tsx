@@ -94,7 +94,7 @@ export default function VaultKeys() {
 
             {!addressCovered && status?.enrolled ? (
               <Text color='neutral-600' tiny wrap>
-                Receive isn’t ready yet. Try again after setup finishes.
+                Vault addresses are not restored on this device. Sign in again to restore them.
               </Text>
             ) : null}
           </FlexCol>

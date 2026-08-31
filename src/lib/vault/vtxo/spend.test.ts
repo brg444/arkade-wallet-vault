@@ -1,16 +1,19 @@
 import {
   ArkAddress,
   CSVMultisigTapscript,
+  FetchError,
   Intent,
   RestArkProvider,
   SingleKey,
   Transaction,
   type ArkProvider,
+  type IndexerProvider,
+  type VirtualCoin,
 } from '@arkade-os/sdk'
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
-import { historyFromVtxos } from '../history'
+import { historyFromVtxos, recentAccountHistory } from '../history'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -22,6 +25,7 @@ import {
   collectPagedVtxos,
   createVtxoOperationId,
   createPhoneSignedPendingProof,
+  fetchVaultVtxoSnapshot,
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
   loadPersistedVtxoSpend,
@@ -34,15 +38,19 @@ import {
   persistVtxoReserveSignature,
   preReserveVtxoSpend,
   reconcilePersistedVtxoSpend,
+  requireReviewedVtxoReservation,
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
   uniqueVtxosByOutpoint,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
+  VtxoReviewedReservationError,
   VtxoSpendUnresolvedError,
   VTXO_GET_PENDING_MESSAGE,
   type PersistedVtxoSpend,
+  type VaultVtxoSpendQuote,
+  type VtxoOperationView,
   type VtxoReserveResponse,
   VAULT_VTXO_PAGE_SIZE,
   vaultArkServer,
@@ -50,6 +58,7 @@ import {
   vaultVtxoHistoryCoin,
   vaultVtxoPage,
   vtxoReserveRequest,
+  sendVaultVtxo,
 } from './spend'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { VaultPolicyV1Script } from './script'
@@ -122,6 +131,20 @@ function status(): VaultStatus {
   }
 }
 
+function indexedVtxo(txid: string, overrides: Partial<VirtualCoin> = {}): VirtualCoin {
+  return {
+    txid,
+    vout: 0,
+    value: 1_000,
+    status: { confirmed: true, isLeaf: true },
+    createdAt: new Date(1_000),
+    script: status().spendingArkScript || '',
+    isUnrolled: false,
+    virtualStatus: { state: 'settled', commitmentTxIds: [] },
+    ...overrides,
+  }
+}
+
 function reserve(): VtxoReserveResponse {
   const current = status()
   const unroll = CSVMultisigTapscript.encode({
@@ -159,6 +182,51 @@ function destination(): string {
     hex.decode(golden.fixtures.exitHardwarePub),
     'tark',
   ).encode()
+}
+
+function reviewedPending(reservationExpires = '2099-08-20T00:02:00Z'): PersistedVtxoSpend {
+  return {
+    vaultId: 'vault-a',
+    operationId: OP_1,
+    bundleDigest: '11'.repeat(32),
+    destAddress: destination(),
+    amountSats: 12_000,
+    arkTxid: 'aa'.repeat(32),
+    reservationExpires,
+    ...RESERVATION_FACTS,
+    stage: 'reserved',
+    unsignedArkPsbt: 'cHNidP9ark',
+    unsignedCheckpointPsbts: ['cHNidP9cp'],
+  }
+}
+
+function reviewedQuote(pending = reviewedPending()): VaultVtxoSpendQuote {
+  return {
+    operationId: pending.operationId,
+    bundleDigest: pending.bundleDigest,
+    destAddress: pending.destAddress,
+    amountSats: pending.amountSats,
+    feeSats: pending.feeSats!,
+    feePolicyDigest: pending.feePolicyDigest!,
+    reservationExpires: pending.reservationExpires!,
+    changeSats: pending.changeSats!,
+    ...(pending.changeVout === undefined ? {} : { changeVout: pending.changeVout }),
+  }
+}
+
+function reviewedOperation(pending = reviewedPending(), overrides: Partial<VtxoOperationView> = {}): VtxoOperationView {
+  return {
+    operationId: pending.operationId,
+    bundleDigest: pending.bundleDigest,
+    state: 'reserved',
+    arkTxid: pending.arkTxid,
+    expiresAt: pending.reservationExpires,
+    feeSats: pending.feeSats,
+    feePolicyDigest: pending.feePolicyDigest,
+    changeSats: pending.changeSats,
+    changeVout: pending.changeVout,
+    ...overrides,
+  }
 }
 
 function validCheckpointPsbt(): string {
@@ -219,6 +287,123 @@ describe('regular VTXO spend coordinator', () => {
   it('uses the same-origin Arkade gateway in production', () => {
     expect(vaultArkServer(true)).toBe('/arkade')
     expect(vaultArkServer(false)).toBe('https://mutinynet.arkade.sh')
+  })
+
+  it.each([
+    ['operation id', { operationId: OP_2 }],
+    ['bundle digest', { bundleDigest: '22'.repeat(32) }],
+    ['authoritative fee', { feeSats: 501 }],
+    ['fee policy', { feePolicyDigest: 'bb'.repeat(32) }],
+    ['expiry', { expiresAt: '2099-08-20T00:03:00Z' }],
+  ] as const)('rejects a reviewed reservation when the server changes its %s', (_label, changed) => {
+    const pending = reviewedPending()
+    expect(() =>
+      requireReviewedVtxoReservation(pending, reviewedOperation(pending, changed), reviewedQuote(pending)),
+    ).toThrow(VtxoReviewedReservationError)
+  })
+
+  it('rejects an aborted or expired reviewed reservation before approval', () => {
+    const aborted = reviewedPending()
+    expect(() =>
+      requireReviewedVtxoReservation(aborted, reviewedOperation(aborted, { state: 'aborted' }), reviewedQuote(aborted)),
+    ).toThrow(VtxoReviewedReservationError)
+
+    const expired = reviewedPending('2026-08-20T00:02:00Z')
+    expect(() =>
+      requireReviewedVtxoReservation(
+        expired,
+        reviewedOperation(expired),
+        reviewedQuote(expired),
+        Date.parse('2026-08-20T00:02:01Z'),
+      ),
+    ).toThrow(VtxoReviewedReservationError)
+  })
+
+  it('allows the exact reviewed operation to resume after a lost authorization response', () => {
+    const pending = reviewedPending('2026-08-20T00:02:00Z')
+    expect(
+      requireReviewedVtxoReservation(
+        pending,
+        reviewedOperation(pending, { state: 'signed' }),
+        reviewedQuote(pending),
+        Date.parse('2026-08-20T00:02:01Z'),
+      ),
+    ).toBe(pending)
+  })
+
+  it.each([
+    [
+      'aborted',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify(reviewedOperation(pending, { state: 'aborted' })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+    [
+      'expired',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify(reviewedOperation(pending)), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+    [
+      'changed fee',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify(reviewedOperation(pending, { feeSats: 501 })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+    [
+      'missing operation',
+      (pending: PersistedVtxoSpend) =>
+        new Response(JSON.stringify({ error: pending.operationId ? 'operation not found' : 'invalid operation' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    ],
+  ] as const)('does not reserve again or request a passkey for a %s review', async (kind, response) => {
+    const pending = reviewedPending(kind === 'expired' ? '2020-08-20T00:02:00Z' : undefined)
+    persistVtxoSpend(pending)
+    const originalLocks = navigator.locks
+    const originalCredentials = navigator.credentials
+    const getCredential = vi.fn()
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: async (_name: string, _options: unknown, callback: (lock: unknown) => Promise<unknown>) =>
+          callback({}),
+      },
+    })
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { get: getCredential },
+    })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(pending))
+
+    try {
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toBeInstanceOf(
+        VtxoReviewedReservationError,
+      )
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(fetch.mock.calls[0][0]).toContain(`/v1/vtxo/operation?vaultId=vault-a&operationId=${OP_1}`)
+      expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'GET' })
+      expect(getCredential).not.toHaveBeenCalled()
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      if (originalLocks) {
+        Object.defineProperty(navigator, 'locks', { configurable: true, value: originalLocks })
+      } else {
+        Reflect.deleteProperty(navigator, 'locks')
+      }
+      if (originalCredentials) {
+        Object.defineProperty(navigator, 'credentials', { configurable: true, value: originalCredentials })
+      } else {
+        Reflect.deleteProperty(navigator, 'credentials')
+      }
+    }
   })
 
   it('persists a client-generated operation id and signature before reserving and reuses them exactly', () => {
@@ -1036,6 +1221,15 @@ describe('regular VTXO spend coordinator', () => {
     expect(vtxos.map((vtxo) => vtxo.txid)).toEqual(['input', 'change'])
   })
 
+  it('fails instead of returning partial VTXO data beyond the pagination ceiling', async () => {
+    await expect(
+      collectPagedVtxos(async (pageIndex) => ({
+        vtxos: [{ txid: `page-${pageIndex}` }],
+        page: { current: pageIndex, next: pageIndex + 1, total: 257 },
+      })),
+    ).rejects.toThrow(/pagination exceeds the safety limit/)
+  })
+
   it('always supplies the page size required by the deployed indexer', () => {
     expect(VAULT_VTXO_PAGE_SIZE).toBeGreaterThan(0)
     expect(vaultVtxoPage(0)).toEqual({ pageIndex: 0, pageSize: VAULT_VTXO_PAGE_SIZE })
@@ -1048,5 +1242,119 @@ describe('regular VTXO spend coordinator', () => {
       repeated,
       { txid: 'same', vout: 2, value: 8_000 },
     ])
+  })
+
+  it('walks the wallet script once for a deduplicated balance and exact no-change send time', async () => {
+    const exactSend = 'exact-send'
+    const oldInput = indexedVtxo('old-input', {
+      value: 20_000,
+      createdAt: new Date(10_000),
+      isSpent: true,
+      arkTxId: exactSend,
+      virtualStatus: { state: 'spent', commitmentTxIds: [] },
+    })
+    const recent = Array.from({ length: 100 }, (_, index) =>
+      indexedVtxo(`receive-${index}`, { createdAt: new Date((200 + index) * 1_000) }),
+    )
+    const walletVtxos = [oldInput, ...recent, recent[0]]
+    let scriptQueries = 0
+    const outpointQueries: { txid: string; vout: number }[][] = []
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) {
+        outpointQueries.push(options.outpoints)
+        return { vtxos: [indexedVtxo(exactSend, { createdAt: new Date(400_000) })] }
+      }
+      scriptQueries += 1
+      return { vtxos: walletVtxos }
+    })
+
+    const snapshot = await fetchVaultVtxoSnapshot(status(), {
+      getVtxos: getVtxos as IndexerProvider['getVtxos'],
+    })
+    const recentHistory = recentAccountHistory(snapshot.history, 'spend')
+
+    expect(scriptQueries).toBe(1)
+    expect(outpointQueries).toEqual([[{ txid: exactSend, vout: 0 }]])
+    expect(snapshot.balance).toBe(100_000)
+    expect(recentHistory).toHaveLength(100)
+    expect(recentHistory).toContainEqual(expect.objectContaining({ txid: exactSend, type: 'sent', blockTime: 400 }))
+    expect(recentHistory.some((row) => row.txid === 'receive-0')).toBe(false)
+  })
+
+  it('uses the SDK terminal predicate when calculating the shared snapshot balance', async () => {
+    const getVtxos = vi.fn(async () => ({
+      vtxos: [
+        indexedVtxo('available', { value: 7_000 }),
+        indexedVtxo('settled', { value: 5_000, settledBy: 'commitment' }),
+      ],
+    }))
+
+    const snapshot = await fetchVaultVtxoSnapshot(status(), {
+      getVtxos: getVtxos as IndexerProvider['getVtxos'],
+    })
+
+    expect(snapshot.balance).toBe(7_000)
+    expect(getVtxos).toHaveBeenCalledTimes(1)
+  })
+
+  it('batches exact no-change timestamp lookups at the SDK outpoint-query limit', async () => {
+    const terminal = Array.from({ length: 65 }, (_, index) =>
+      indexedVtxo(`input-${index}`, {
+        isSpent: true,
+        arkTxId: `send-${index}`,
+        virtualStatus: { state: 'spent', commitmentTxIds: [] },
+      }),
+    )
+    const outpointBatchSizes: number[] = []
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) {
+        outpointBatchSizes.push(options.outpoints.length)
+        return { vtxos: [] as VirtualCoin[] }
+      }
+      return { vtxos: terminal }
+    })
+
+    await fetchVaultVtxoSnapshot(status(), { getVtxos: getVtxos as IndexerProvider['getVtxos'] })
+
+    expect(outpointBatchSizes).toEqual([64, 1])
+  })
+
+  it('keeps the old no-change fallback only when an exact timestamp lookup is retryable', async () => {
+    const input = indexedVtxo('old-input', {
+      createdAt: new Date(10_000),
+      isSpent: true,
+      arkTxId: 'missing-send',
+      virtualStatus: { state: 'spent', commitmentTxIds: [] },
+    })
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) {
+        throw new FetchError('offline', { url: 'https://indexer.test/v1/vtxos' })
+      }
+      return { vtxos: [input] }
+    })
+
+    const snapshot = await fetchVaultVtxoSnapshot(status(), {
+      getVtxos: getVtxos as IndexerProvider['getVtxos'],
+    })
+
+    expect(snapshot.history).toContainEqual(
+      expect.objectContaining({ txid: 'missing-send', type: 'sent', blockTime: 10 }),
+    )
+  })
+
+  it('fails the snapshot when an exact timestamp lookup has a non-retryable error', async () => {
+    const input = indexedVtxo('old-input', {
+      isSpent: true,
+      arkTxId: 'missing-send',
+      virtualStatus: { state: 'spent', commitmentTxIds: [] },
+    })
+    const getVtxos = vi.fn(async (options: Parameters<IndexerProvider['getVtxos']>[0]) => {
+      if (options && 'outpoints' in options && options.outpoints) throw new Error('invalid indexer response')
+      return { vtxos: [input] }
+    })
+
+    await expect(
+      fetchVaultVtxoSnapshot(status(), { getVtxos: getVtxos as IndexerProvider['getVtxos'] }),
+    ).rejects.toThrow('invalid indexer response')
   })
 })

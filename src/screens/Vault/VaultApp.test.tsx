@@ -44,11 +44,15 @@ describe('VaultApp onboarding', () => {
 
     expect(await screen.findByRole('heading', { name: 'Daily limits' })).toBeTruthy()
     expect(screen.getByText(/limits are set by the Vault Program/i)).toBeTruthy()
+    expect(screen.getAllByText(/about 1 hour/)).not.toHaveLength(0)
+    expect(screen.getAllByText(/about 1 day/)).not.toHaveLength(0)
     await user.click(screen.getByRole('button', { name: 'Review setup' }))
 
     expect(await screen.findByRole('heading', { name: 'Your setup' })).toBeTruthy()
     expect(screen.getByText('50,000 SATS per send')).toBeTruthy()
     expect(screen.getByText('Skipped. This device plus hardware only.')).toBeTruthy()
+    expect(screen.getAllByText(/about 1 hour/)).not.toHaveLength(0)
+    expect(screen.getAllByText(/about 1 day/)).not.toHaveLength(0)
     await user.click(screen.getByRole('button', { name: 'Secure this device' }))
 
     expect(await screen.findByText(/Set this up on the phone or computer/)).toBeTruthy()

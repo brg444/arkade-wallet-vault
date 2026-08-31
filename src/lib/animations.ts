@@ -1,11 +1,11 @@
 import { Variants } from 'framer-motion'
 
 // Easing: Emil Kowalski's curves
-export const EASE_OUT_QUINT = [0.23, 1, 0.32, 1]
-export const EASE_OUT_QUINT_TUPLE = EASE_OUT_QUINT as [number, number, number, number]
+export const EASE_OUT_QUINT: [number, number, number, number] = [0.23, 1, 0.32, 1]
+export const EASE_OUT_QUINT_TUPLE = EASE_OUT_QUINT
 // ease-in-out-quint: for on-screen elements moving between positions
-export const EASE_IN_OUT_QUINT = [0.86, 0, 0.07, 1]
-export const EASE_IN_OUT_QUINT_TUPLE = EASE_IN_OUT_QUINT as [number, number, number, number]
+export const EASE_IN_OUT_QUINT: [number, number, number, number] = [0.86, 0, 0.07, 1]
+export const EASE_IN_OUT_QUINT_TUPLE = EASE_IN_OUT_QUINT
 
 // Page transition timing
 export const PAGE_TRANSITION_DURATION = 0.3

@@ -13,6 +13,7 @@ interface InputProps {
   onChange: (arg0: any) => void
   onEnter?: () => void
   placeholder?: string
+  readOnly?: boolean
   right?: JSX.Element
   step?: string
   testId?: string
@@ -31,6 +32,7 @@ export default function Input({
   onChange,
   onEnter,
   placeholder,
+  readOnly,
   right,
   step,
   testId,
@@ -67,6 +69,7 @@ export default function Input({
         maxLength={maxLength}
         onChange={handleChange}
         placeholder={placeholder}
+        readOnly={readOnly}
         onKeyUp={(ev) => ev.key === 'Enter' && onEnter && onEnter()}
       />
     </InputContainer>

@@ -10,6 +10,10 @@ export interface VaultHistoryItem {
   confirmed: boolean
   blockTime?: number
   account: 'spend' | 'savings'
+  activity?: 'lightning'
+  displayAmount?: number
+  fee?: number
+  lightningState?: string
 }
 
 export interface VaultHistoryGroup {
@@ -120,10 +124,35 @@ export interface VaultVtxoHistoryCoin {
   settledBy?: string
 }
 
+export interface VaultLightningHistoryMetadata {
+  txid: string
+  invoiceAmountSats: number
+  state: string
+}
+
+export function applyLightningHistoryMetadata(
+  rows: VaultHistoryItem[],
+  payments: readonly VaultLightningHistoryMetadata[],
+): VaultHistoryItem[] {
+  const byTxid = new Map(payments.map((payment) => [payment.txid, payment]))
+  return rows.map((row) => {
+    const payment = row.type === 'sent' ? byTxid.get(row.txid) : undefined
+    if (!payment) return row
+    return {
+      ...row,
+      activity: 'lightning',
+      displayAmount: payment.invoiceAmountSats,
+      fee: Math.max(0, row.amount - payment.invoiceAmountSats),
+      lightningState: payment.state,
+    }
+  })
+}
+
 /** Indexer VTXOs for the spending script: receives, sends, and change-aware net amounts. */
 export function historyFromVtxos(
   coins: VaultVtxoHistoryCoin[],
   account: 'spend' | 'savings' = 'spend',
+  resolvedCreatedAt: ReadonlyMap<string, number> = new Map(),
 ): VaultHistoryItem[] {
   const unique = uniqueHistoryCoins(coins)
   const rows: VaultHistoryItem[] = []
@@ -173,7 +202,7 @@ export function historyFromVtxos(
       type: 'sent',
       amount,
       confirmed: true,
-      blockTime: unixSeconds(change[0]?.createdAtMs || terminalInput.createdAtMs + 1),
+      blockTime: unixSeconds(change[0]?.createdAtMs || resolvedCreatedAt.get(arkTxId) || terminalInput.createdAtMs + 1),
       account,
     })
   }

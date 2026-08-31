@@ -30,7 +30,7 @@ function requireRPID(status: VaultStatus): string {
   return rpId
 }
 
-async function deriveKEK(prf: Uint8Array): Promise<CryptoKey> {
+async function deriveKEK(prf: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
     await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
@@ -55,7 +55,7 @@ export async function beginPasskeySession(
   if (allowCredentialId && issued.allowCredentialId && allowCredentialId !== issued.allowCredentialId) {
     throw new Error('passkey credential does not match this vault')
   }
-  const mode = purpose === 'install-envelope' || isCoarsePhone() ? 'local' : 'hybrid'
+  const mode = purpose === 'install-envelope' ? 'local' : 'any'
   const publicKey = passkeyGetOptions(
     {
       challenge: challenge as BufferSource,
@@ -66,16 +66,7 @@ export async function beginPasskeySession(
     },
     mode,
   )
-  let got: PublicKeyCredential | null
-  try {
-    got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
-  } catch (err) {
-    const name = err instanceof DOMException ? err.name : ''
-    if (mode === 'hybrid' && expectedCred && (name === 'NotAllowedError' || name === 'InvalidStateError')) {
-      throw new Error('this browser does not have the passkey that created this vault')
-    }
-    throw err
-  }
+  const got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
   if (!got) throw new Error('The operation was aborted.')
   if (expectedCred && bytesToHex(new Uint8Array(got.rawId)) !== expectedCred) {
     throw new Error('passkey credential does not match this vault')
@@ -155,9 +146,10 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
     if (!live.passkeyLoginAvailable) {
       throw new Error('authorizer did not persist passkey sign-in recovery data')
     }
+    pinEnrolledStatus(live)
     return live
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneSecret)
+    zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }
 
@@ -263,6 +255,6 @@ export async function signInWithPasskey(
     pinEnrolledStatus(status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneSecret)
+    zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }

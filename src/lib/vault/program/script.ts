@@ -158,7 +158,7 @@ export function buildTransitionScript(input: {
   const witnessBytes = input.witnessBytes ?? TRANSITION_WITNESS_BYTES
   const phone = input.bindPhoneDirect ? requirePhoneDirect(input.bindPhoneDirect) : undefined
   const witnessShape = packetWitnessShape(!!phone)
-  let prefix = new Uint8Array()
+  let prefix: Uint8Array = new Uint8Array()
   for (let i = 0; i < 8; i++) {
     const script = assembleTransitionScript({
       dest,

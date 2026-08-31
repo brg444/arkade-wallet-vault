@@ -84,7 +84,6 @@ export async function fetchVaultStatus(signal: AbortSignal | undefined, expected
     throw new Error(`authorizer status ${res.status}`)
   }
   const body = requireStatusIdentity(parseJsonObject<VaultStatus>(text, 'status'), id)
-  if (!body.enrolled) return body
   return bindStatusToLocalPin(body)
 }
 
