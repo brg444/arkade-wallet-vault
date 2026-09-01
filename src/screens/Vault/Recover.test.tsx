@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { buildVaultProgramDescriptor } from '../../lib/vault/program/descriptor'
 import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
@@ -8,6 +8,14 @@ import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultRecover from './Recover'
 import type { InitiateAlert } from '../../lib/vault/program/watch'
 import type { FamilyKey } from '../../lib/vault/program/constants'
+
+const boardingRecovery = vi.hoisted(() => ({
+  find: vi.fn().mockResolvedValue({ inputs: [], totalSats: 0 }),
+}))
+
+vi.mock('../../lib/vault/vtxo/boardingRecovery', () => ({
+  findMatureBoardingInputs: boardingRecovery.find,
+}))
 
 const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
 const dest = kit.descriptor.savings.address
@@ -50,6 +58,34 @@ function renderLost(familyKey: FamilyKey, extra: Partial<VaultContextProps> = {}
   )
 }
 
+function renderKit(extra: Partial<VaultContextProps> = {}) {
+  const value = {
+    downloadRecoveryKit: () => JSON.stringify(kit),
+    backupRecoveryKit: async () => false,
+    restoreRecoveryKit: async () => {},
+    signGuardianExitWithDevice: async (psbt) => psbt,
+    hasRecoveryKit: true,
+    initiateAlert: '',
+    initiateAlerts: [],
+    busy: false,
+    error: '',
+    navigate: () => {},
+    openRecover: () => {},
+    recoverEntry: 'kit',
+    recoverExit: 'keys',
+    recoverMatureBoarding: async () => '55'.repeat(32),
+    savingsAddress: kit.descriptor.savings.address,
+    ...extra,
+  } as VaultContextProps
+  return render(
+    <ToastProvider>
+      <VaultContext.Provider value={value}>
+        <VaultRecover />
+      </VaultContext.Provider>
+    </ToastProvider>,
+  )
+}
+
 function startCancel(familyKey: FamilyKey) {
   renderLost(familyKey)
   fireEvent.change(screen.getByTestId('recover-claim-dest'), { target: { value: dest } })
@@ -57,6 +93,10 @@ function startCancel(familyKey: FamilyKey) {
 }
 
 describe('claimant-aware cancel without services', () => {
+  beforeEach(() => {
+    boardingRecovery.find.mockReset().mockResolvedValue({ inputs: [], totalSats: 0 })
+  })
+
   it('asks hardware and recovery after this device starts recovery', { timeout: 15_000 }, () => {
     startCancel('savings-phone')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/Hardware and Recovery/)
@@ -77,5 +117,28 @@ describe('claimant-aware cancel without services', () => {
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/This device and Hardware/)
     expect(screen.getByTestId('recover-guardian-device')).toBeTruthy()
     expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)
+  })
+})
+
+describe('mature boarding recovery', () => {
+  beforeEach(() => {
+    boardingRecovery.find.mockReset().mockResolvedValue({ inputs: [], totalSats: 0 })
+  })
+
+  it('requires an explicit confirmation before recovering with Face ID', async () => {
+    const recoverMatureBoarding = vi.fn().mockResolvedValue('55'.repeat(32))
+    boardingRecovery.find.mockResolvedValue({ inputs: [{}], totalSats: 42_000 })
+    renderKit({
+      recoverMatureBoarding,
+      status: { enrolled: true, vaultId: 'vault-v2', vtxoBoardingProgram: 'vault-board-v1' } as never,
+    })
+
+    expect(await screen.findByTestId('recover-mature-boarding')).toHaveTextContent('42,000 SATS')
+    expect(screen.queryByTestId('recover-mature-boarding-confirm')).toBeNull()
+    fireEvent.click(screen.getByTestId('recover-mature-boarding'))
+    fireEvent.click(screen.getByTestId('recover-mature-boarding-confirm'))
+
+    await waitFor(() => expect(recoverMatureBoarding).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByTestId('recover-mature-boarding')).toBeNull())
   })
 })

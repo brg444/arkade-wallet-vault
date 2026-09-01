@@ -1,90 +1,126 @@
 # VTXO boarding
 
-`vault-board-v1` is the only L1 entry into Spending. Spending itself contains
-VTXOs, not ordinary onchain outputs.
+Spending contains `vault-policy-v1` VTXOs. An Arkade-aware sender can create a
+VTXO directly. Bitcoin received onchain first enters a boarding output, appears
+as pending Spending, and becomes spendable after the official Arkade SDK
+settles it into the enrolled Spending contract.
 
 ```text
 Savings spend or onchain receive
-  -> confirmed vault-board-v1 output
-    -> SDK settle to vault-policy-v1
+  -> boarding output appears as pending Spending
+    -> output confirms on Bitcoin
+      -> official SDK joins a batch
+        -> vault-policy-v1 VTXO becomes spendable
 ```
 
 The Spending receive view publishes one BIP21 request containing the Arkade
-address and this Bitcoin intermediate. An Arkade-aware sender creates a VTXO
-directly. An onchain sender funds the intermediate. The wallet detects confirmed
-intermediate outputs and settles them to `vault-policy-v1` while it is open.
+address and Bitcoin boarding address. Moving Savings to Spending uses the same
+boarding address. The displayed balance includes observed boarding outputs,
+while sends and Lightning funding select only indexed, unspent Spending VTXOs.
+When the destination VTXO appears before Esplora marks the boarding output
+spent, transaction identity prevents the same value from being counted twice.
 
-Moving Savings to Spending uses the same path. The Savings PSBT pays the exact
-`vault-board-v1` address, then the ordinary boarding coordinator completes the
-move after confirmation. External Savings withdrawals may still use another
-Bitcoin address.
+## Program
 
-The intermediate uses the SDK's standard boarding tree: device + Arkade
-Operator before expiry, and device-only recovery after 604672 seconds. The
-vault service publishes the exact address, script, program name, and delay. The
-client reconstructs the tree from the device and Operator keys and refuses any
-mismatch before funding or signing it.
+`vault-board-v1` is the only supported boarding program. Its cooperative leaf
+requires three distinct keys:
 
-The settlement output is explicitly the `vault-policy-v1` Arkade address; SDK
-default change is not accepted.
-The server recognizes only the exact advertised `vault-board-v1` script as an
-internal transfer: its L1 fee counts toward the rolling allowance, while its
-principal is debited once, when a later VTXO payment leaves Spending.
+1. a worker-owned boarding key scoped to the vault, network, and named program;
+2. the VaultBoardCosigner held by the Vault service;
+3. the release-pinned Arkade Operator signer.
 
-## SDK observations
+Its recovery leaf is the enrolled phone key behind a 604672-second CSV delay.
+Both the wallet and service reconstruct the exact tree, address, and script.
+The current release accepts one boarding input and one BTC recipient, which
+must be the enrolled `vault-policy-v1` Spending address.
 
-- `Wallet.create()` always constructs `DefaultVtxo` as its receive contract.
-  It does not accept a custom offchain tapscript. Boarding passes an explicit
-  `vault-policy-v1` output to `wallet.settle()` because parameterless settle
-  creates a default VTXO.
-- The SDK's background boarding poll requires a continuously available signing
-  `Identity`. The vault's device key is PRF-wrapped and only exists in memory
-  after a user verification ceremony. The wallet detects unfinished boarding
-  after suspension or reload and requests device approval before settling it.
-- `settlementConfig: false` is required for this coordinator. Otherwise the
-  SDK manager may race the explicit policy-directed settle with its own
-  parameterless default-output settle.
-- The SDK defaults its wallet and contract repositories to one global IndexedDB
-  database. Contract initialization loads every contract in that database, and
-  wallet sync metadata is global to it. The Vault client supplies one versioned
-  database per vault for both repositories and a separate per-vault intent
-  database. The application never reads or migrates the SDK's global default
-  database.
-- The explicit coordinator uses one Web Lock per vault. A supporting browser
-  prevents a second tab from registering a competing intent or requesting
-  another device approval. Boarding and ordinary sends fail closed when Web
-  Locks are unavailable. Mainnet qualification must define the supported
-  browser boundary and cover deterministic two-context races.
-- A boarding settlement can outlive an ordinary HTTP request because it waits
-  on the Operator event stream. The Arkade same-origin route must remain a
-  direct streaming rewrite. A buffered serverless function breaks the event
-  stream before settlement completes.
-- Boarding uses the SDK's `RestArkProvider` and `Wallet.settle()` directly.
-  Vault code does not override intent registration, deletion, event streaming,
-  or duplicate handling. The SDK and `arkade.computer` own that protocol
-  lifecycle.
-- `Wallet.settle()` starts SDK managers and indexer watchers. Each automatic
-  attempt owns a temporary wallet and three per-vault repositories, then
-  disposes the wallet before closing those repositories on success or failure.
-- Before creating that wallet, the coordinator reads the SDK intent
-  repository's public nonterminal outpoint set, excludes every reported
-  outpoint from another boarding attempt, and stops settlement before any
-  Operator call when that set cannot be read.
-- The automatic Vault coordinator accepts confirmed boarding inputs and the
-  fixed `vault-policy-v1` output. It does not accept ArkNote or condition inputs
-  whose registration proof can contain private `extraWitness` material.
-- The coordinator does not replay registrations, infer Operator state, resume
-  MuSig2 sessions, or implement a second protocol state machine. Interrupted
-  settlement follows the behavior of the pinned SDK and deployed Operator. A
-  retained nonterminal intent pauses automatic boarding until its inputs are
-  consumed or the intent is otherwise resolved. The deployed interface cannot
-  always resolve that ambiguity after a browser crash, so this remains an
-  availability gate for mainnet qualification.
-- The SDK marks an attempt cancelled after settlement throws, even when its
-  best-effort intent deletion was not acknowledged. The current deployed
-  Operator does not resolve deletion by a boarding input, so the local terminal
-  row can hide a retained remote intent and a later attempt can collide with
-  it. The Operator rejects the duplicate input, but automatic recovery remains
-  unavailable. Mainnet boarding requires a deployed cancellation behavior that
-  is qualified for boarding inputs; Vault code does not substitute another
-  intent lifecycle.
+The boarding key is derived only after the existing passkey PRF unlock
+succeeds. It is written to a dedicated per-vault IndexedDB store and never
+crosses `postMessage`. Enrollment stages the key before the service commits the
+descriptor, then activates it only after the returned descriptor matches every
+release pin. A later passkey unlock can reproduce a missing local key from the
+same enrolled facts.
+
+## SDK ownership
+
+The scoped service worker owns one persistent SDK Wallet, Contract Manager,
+VtxoManager, intent repository, batch lifecycle, and retry loop. The page uses
+the SDK service-worker proxy for balances, activity, contract state, and reload
+events. It does not build registration proofs, poll the Operator, call
+`settle`, or maintain a second boarding state machine.
+
+The Vault adapter supplies four typed phases:
+
+- prepare one exact confirmed input and Spending recipient;
+- submit the SDK registration proof after VaultBoardCosigner authorization;
+- release a retained prior intent when the service requires it;
+- submit the SDK-validated commitment, Batch Output expiry, tree, forfeits, and
+  exact recipient evidence.
+
+The service submits those artifacts through the stock public Operator API and
+never returns its signature to the browser. Ambiguous responses remain blocked
+until the next SDK reconciliation proves finalization or obtains an
+acknowledged release.
+
+## Activity and balance
+
+One activity feed uses two states: Pending and Confirmed. An observed boarding
+output is a received Pending transaction even when its Bitcoin confirmation is
+already present, because it is not yet a Spending VTXO. The detected unspent
+output supplies that row before an Operator intent exists. When the SDK reports
+the settled activity, the resulting VTXO row is Confirmed and replaces the
+boarding row.
+
+The displayed Spending balance is:
+
+```text
+unspent vault-policy-v1 VTXOs + unspent boarding outputs
+```
+
+The spendable balance contains only the first term. Worker and page reloads
+read the persistent SDK state and public indexer state again. Those sources
+remain authoritative when an event is delayed or missed.
+
+## Logout and interruption
+
+Logout locks the interface immediately, asks the SDK worker to stop new work,
+waits through its normal drain window, unregisters the worker, then deletes the
+persisted boarding key. A teardown failure retains the registration and key so
+the application never reports cleanup it could not confirm.
+
+Browser APIs provide no method to forcibly terminate an executing service
+worker. One settlement that already crossed exact server validation may finish
+after logout. It remains bound to the confirmed input, fixed fee and Batch
+Output policy, and this vault's Spending recipient; it cannot authorize another
+operation or redirect funds. Reload or wake starts normal reconciliation from
+the SDK repository.
+
+Service workers may be suspended by the browser when no execution event keeps
+them alive. The worker-owned key removes Face ID from settlement, but it does
+not create a browser background guarantee. Opening or focusing the wallet
+wakes the official SDK lifecycle and resumes from persisted intent state.
+
+## Delayed recovery
+
+After the 604672-second recovery delay matures, the Recovery Kit screen may
+offer an explicit recovery action for current, confirmed, unspent
+`vault-board-v1` outputs. Face ID unlocks the enrolled phone key for that action
+only. The wallet calls the SDK's `recoverBoardingProgram` helper, which verifies
+the exact named tree, maturity, phone-controlled Taproot destination, fee-rate
+cap, and absolute fee cap before signing and broadcasting. The phone scalar is
+cleared when the helper returns or fails.
+
+This path is not automatic and does not construct a parallel Vault transaction
+lifecycle. It does not recover an immature, foreign, or already-spent output.
+
+## Release qualification
+
+The program must pass fresh enrollment, local key staging and activation,
+reload, fresh-browser recovery, worker suspension and wake, offline recovery,
+two tabs, response loss at every Vault phase, retained-intent release, both
+balance propagation orders, exact history convergence, and recovery after the
+CSV cutoff.
+
+Mainnet board-key registration, device revocation, delay, Operator identity,
+and policy values remain explicit release decisions. The Mutinynet program is
+not promoted by changing a URL.

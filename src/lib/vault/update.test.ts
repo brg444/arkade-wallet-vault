@@ -19,9 +19,8 @@ describe('PWA update probe', () => {
   })
 
   it('reloads with a cache-busting query so iOS does not keep the old start URL', () => {
-    expect(launchUrl('https://vault.example.com', '/', 1700000000000)).toBe(
-      'https://vault.example.com/?v=1700000000000',
+    expect(launchUrl('https://vault.example.com', 1700000000000)).toBe(
+      'https://vault.example.com/index.html?v=1700000000000',
     )
-    expect(launchUrl('https://vault.example.com', '/?check=1#home', 9)).toBe('https://vault.example.com/?v=9')
   })
 })

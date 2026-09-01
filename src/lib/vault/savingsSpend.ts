@@ -156,7 +156,26 @@ export function psbtHexToBase64(psbtHex: string): string {
 
 export function psbtFile(psbtHex: string, name = 'arkade-savings.psbt'): File {
   const bytes = hex.decode(parseIncomingPsbt(psbtHex))
-  return new File([bytes], name, { type: 'application/octet-stream' })
+  return new File([bytes as BlobPart], name, { type: 'application/octet-stream' })
+}
+
+export async function readPsbtFile(file: Blob, maxBytes = 1_000_000): Promise<string> {
+  if (file.size < 1 || file.size > maxBytes) throw new Error('PSBT file must be smaller than 1 MB')
+  const body =
+    typeof file.arrayBuffer === 'function'
+      ? await file.arrayBuffer()
+      : await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onerror = () => reject(new Error('could not read PSBT file'))
+          reader.onload = () =>
+            reader.result instanceof ArrayBuffer
+              ? resolve(reader.result)
+              : reject(new Error('could not read PSBT file'))
+          reader.readAsArrayBuffer(file)
+        })
+  const psbt = parseIncomingPsbt(hex.encode(new Uint8Array(body)))
+  inspectSavingsPsbt(psbt)
+  return psbt
 }
 
 export function parseIncomingPsbt(raw: string): string {
@@ -221,6 +240,26 @@ export function inspectSavingsPsbt(psbtHex: string) {
   }
 }
 
+export function requireSavingsPsbtIntent(
+  psbtHex: string,
+  destAddress: string,
+  amountSats: number,
+  feeSats: number,
+  network: string,
+  minimumSignatures = 1,
+) {
+  const inspected = inspectSavingsPsbt(psbtHex)
+  const destination = inspected.outputs[0]
+  if (destination.amount !== amountSats) throw new Error('signed amount does not match')
+  if (destination.script !== scriptHexFromAddress(destAddress, network)) {
+    throw new Error('signed destination does not match')
+  }
+  if (inspected.fee !== feeSats || inspected.fee < 0) throw new Error('signed fee does not match')
+  if (inspected.inputs.some((current) => current.sigs < minimumSignatures)) {
+    throw new Error('this device did not sign every Savings input')
+  }
+}
+
 export function requireSameSavingsIntent(
   unsignedHex: string,
   signedHex: string,
@@ -228,6 +267,11 @@ export function requireSameSavingsIntent(
   amountSats: number,
   network: string,
 ) {
+  const beforeTx = Transaction.fromPSBT(hex.decode(unsignedHex), TX_OPTS)
+  const afterTx = Transaction.fromPSBT(hex.decode(signedHex), TX_OPTS)
+  if (hex.encode(beforeTx.unsignedTx) !== hex.encode(afterTx.unsignedTx)) {
+    throw new Error('signed PSBT changed the unsigned Savings transaction')
+  }
   const before = inspectSavingsPsbt(unsignedHex)
   const after = inspectSavingsPsbt(signedHex)
   const unsignedInputs = before.inputs.map((current) => ({ ...current, sigs: 0 }))

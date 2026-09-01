@@ -8,6 +8,7 @@ import Header from './Header'
 import Padded from '../../components/Padded'
 import { prettyAmount } from '../../lib/format'
 import { isCoarsePhone } from '../../lib/vault/webauthn'
+import { isVaultLightningInput } from '../../lib/vault/lightningConfig'
 import { VaultContext } from '../../vault/context'
 import { Detail, SignerRow } from './ui'
 
@@ -16,6 +17,7 @@ export default function VaultReview() {
   const onPhone = isCoarsePhone()
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
+  const lightning = isVaultLightningInput(spend.address)
 
   return (
     <>
@@ -24,10 +26,16 @@ export default function VaultReview() {
         <Padded>
           <FlexCol>
             <div className='vault-hero'>
-              <p className='vault-kicker'>{movingToSpending ? 'You’re moving' : 'You’re sending'}</p>
+              <p className='vault-kicker'>
+                {movingToSpending ? 'You’re moving' : lightning ? 'You’re paying' : 'You’re sending'}
+              </p>
               <p className='vault-money'>{prettyAmount(spend.amount)}</p>
             </div>
-            <Detail label='To' value={movingToSpending ? 'Spending' : spend.address} mono={!movingToSpending} />
+            <Detail
+              label='To'
+              value={movingToSpending ? 'Spending' : lightning ? 'Lightning' : spend.address}
+              mono={!movingToSpending && !lightning}
+            />
             <Detail label='Fee' value={prettyAmount(spend.fee)} />
             <Detail label='Total' value={prettyAmount(spend.amount + spend.fee)} />
             <SignerRow title='You' detail={onPhone ? 'Face ID' : 'Your passkey'} state='you' mark='1' />

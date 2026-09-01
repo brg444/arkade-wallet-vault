@@ -17,19 +17,19 @@ export default function VaultHistory() {
   const { account, balanceError, balancesLoaded, history, openTx, refreshingBalance } = useContext(VaultContext)
   const accountName = account === 'savings' ? 'Savings' : 'Spending'
 
-  if (!balancesLoaded || history.length === 0) {
+  if (history.length === 0) {
     return (
       <section
         className='vault-history'
         data-testid='vault-history'
-        aria-busy={!balancesLoaded}
+        aria-busy={!balancesLoaded && !balanceError}
         aria-labelledby='vault-activity-title'
       >
         <div className='vault-history-head'>
           <h2 id='vault-activity-title'>Activity</h2>
           <span>{refreshingBalance ? `Refreshing ${accountName}` : accountName}</span>
         </div>
-        <div className='vault-history-empty' role={!balancesLoaded ? 'status' : undefined}>
+        <div className='vault-history-empty' role={!balancesLoaded && !balanceError ? 'status' : undefined}>
           <Text color='neutral-600' tiny wrap>
             {!balancesLoaded
               ? balanceError
@@ -55,26 +55,34 @@ export default function VaultHistory() {
           <h3 className='vault-history-group-label'>{group.label}</h3>
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
+            const lightning = tx.activity === 'lightning'
+            const savingsHandoff = tx.activity === 'savings-handoff'
+            const amount = tx.displayAmount ?? tx.amount
             const time = historyTime(tx.blockTime)
-            const state =
-              tx.account === 'spend'
-                ? tx.confirmed
-                  ? time
-                    ? `Settled · ${time}`
-                    : 'Settled'
-                  : 'Preconfirmed'
+            const state = savingsHandoff
+              ? 'Complete or cancel'
+              : lightning
+                ? ['claimed', 'settled'].includes(tx.lightningState || '')
+                  ? 'Paid'
+                  : tx.lightningState === 'refunded'
+                    ? 'Refunded'
+                    : tx.lightningState === 'needs_counterparty'
+                      ? 'Ready to return'
+                      : tx.lightningState === 'failed'
+                        ? 'Needs recovery'
+                        : 'Processing'
                 : tx.confirmed
                   ? time
                     ? `Confirmed · ${time}`
                     : 'Confirmed'
-                  : 'Pending confirmation'
+                  : 'Pending'
             return (
               <button
                 type='button'
                 key={`${tx.account}:${tx.txid}:${tx.type}`}
                 className='vault-history-row'
                 data-testid={`vault-tx-${tx.txid}`}
-                aria-label={`${sent ? 'Sent' : 'Received'} ${prettyAmount(tx.amount)}. ${state}.`}
+                aria-label={`${savingsHandoff ? 'Waiting for hardware' : lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} ${prettyAmount(amount)}. ${state}.`}
                 onClick={() => {
                   hapticSubtle()
                   openTx(tx)
@@ -85,7 +93,13 @@ export default function VaultHistory() {
                 </span>
                 <span className='vault-history-copy'>
                   <Text small bold>
-                    {sent ? 'Sent' : 'Received'}
+                    {savingsHandoff
+                      ? 'Waiting for hardware'
+                      : lightning
+                        ? 'Lightning payment'
+                        : sent
+                          ? 'Sent'
+                          : 'Received'}
                   </Text>
                   <Text color='neutral-600' tiny>
                     {state}
@@ -93,7 +107,7 @@ export default function VaultHistory() {
                 </span>
                 <span className={sent ? 'vault-history-amt' : 'vault-history-amt is-in'}>
                   {sent ? '−' : '+'}
-                  {prettyAmount(tx.amount)}
+                  {prettyAmount(amount)}
                 </span>
               </button>
             )

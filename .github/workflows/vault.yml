@@ -16,11 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24.15.0'
           cache: pnpm
       - name: Frozen install
         run: corepack pnpm install --frozen-lockfile
@@ -36,7 +36,7 @@ jobs:
             const names = Object.keys(programs).sort()
             const expected = ['savings-recovery-v1', 'vault-board-v1', 'vault-policy-v1']
             if (JSON.stringify(names) !== JSON.stringify(expected)) {
-              throw new Error('contract pack must contain exactly the v2 programs')
+              throw new Error('contract pack must contain exactly the current programs')
             }
             const savings = programs['savings-recovery-v1']
             if (!savings || savings.template !== 'phone-hww-recovery-savings-v1' || savings.enrollable !== true) {
@@ -51,43 +51,31 @@ jobs:
       - name: Build vault
         run: corepack pnpm build
       - name: Production audit
-        run: |
-          set +e
-          corepack pnpm audit --prod > /tmp/audit.txt 2>&1
-          status=$?
-          cat /tmp/audit.txt
-          if grep -q 'dompurify' /tmp/audit.txt; then
-            echo 'dompurify must not remain vulnerable'
-            exit 1
-          fi
-          if [ "$status" -eq 0 ]; then exit 0; fi
-          if grep -q 'ws-electrumx-client' /tmp/audit.txt; then
-            echo 'ws remains via @arkade-os/sdk; documented in docs/advisories.md'
-            exit 0
-          fi
-          exit "$status"
+        run: corepack pnpm audit --prod
 
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24.15.0'
           cache: pnpm
       - name: Frozen install
         run: corepack pnpm install --frozen-lockfile
+      - name: Install Playwright system dependencies
+        run: corepack pnpm exec playwright install-deps chromium webkit
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-vault-browsers-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Playwright
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: corepack pnpm exec playwright install chromium
+        run: corepack pnpm exec playwright install chromium webkit
       - name: Vault Playwright
         run: corepack pnpm test:e2e
         env:

@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest'
-import { withVaultBoardingLock } from './board'
 import { VaultConcurrencyUnavailableError, type VaultLockManager } from './lock'
 import { withVtxoSendLock } from './spend'
 
@@ -31,36 +30,11 @@ class DeterministicLockManager implements VaultLockManager {
 }
 
 describe('wallet Web Lock boundary', () => {
-  it('fails closed for boarding and ordinary sends when Web Locks are unavailable', async () => {
-    const boarding = vi.fn(async () => 'boarded')
+  it('fails closed for ordinary sends when Web Locks are unavailable', async () => {
     const sending = vi.fn(async () => 'sent')
 
-    await expect(withVaultBoardingLock('vault-a', boarding, null)).rejects.toBeInstanceOf(
-      VaultConcurrencyUnavailableError,
-    )
     await expect(withVtxoSendLock('vault-a', sending, null)).rejects.toBeInstanceOf(VaultConcurrencyUnavailableError)
-    expect(boarding).not.toHaveBeenCalled()
     expect(sending).not.toHaveBeenCalled()
-  })
-
-  it('keeps boarding nonblocking when another context owns the lock', async () => {
-    const locks = new DeterministicLockManager()
-    let release!: () => void
-    const first = withVaultBoardingLock(
-      'vault-a',
-      async () => {
-        await new Promise<void>((resolve) => {
-          release = resolve
-        })
-        return 'first'
-      },
-      locks,
-    )
-    await Promise.resolve()
-
-    await expect(withVaultBoardingLock('vault-a', async () => 'second', locks)).resolves.toEqual({ held: false })
-    release()
-    await expect(first).resolves.toEqual({ held: true, value: 'first' })
   })
 
   it('serializes ordinary sends across two contexts', async () => {
