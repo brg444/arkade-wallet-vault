@@ -22,6 +22,7 @@ const session: VaultSessionAssertion = {
 }
 
 const enrollment: VaultEnrollmentRequest = {
+  protectionTier: 'standard',
   handle: 'handle-a',
   userHandle: 'vault a',
   clientDataJSON: '11',
@@ -60,6 +61,7 @@ describe('VaultCosignerClient route compatibility', () => {
             rpId: 'vault.example',
             templateVersion: SAVINGS_TEMPLATE,
             policyVersion: POLICY_VERSION,
+            protectionTier: 'standard',
             enrollmentMode: 'invite',
             spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
           }),
@@ -76,6 +78,7 @@ describe('VaultCosignerClient route compatibility', () => {
             vaultId: 'vault a',
             templateVersion: SAVINGS_TEMPLATE,
             policyVersion: POLICY_VERSION,
+            protectionTier: 'standard',
             arkadeCosignerOrigin: 'https://mutinynet.arkade.sh',
             arkadeCosignerVersion: '0.4.65',
             savingsAddress: 'tb1ptest',
@@ -117,6 +120,7 @@ describe('VaultCosignerClient route compatibility', () => {
     await vaultCosignerClient.enrollment.status('vault a')
     await vaultCosignerClient.enrollment.invite('invite-a')
     await vaultCosignerClient.enrollment.start('invite-a', {
+      protectionTier: 'standard',
       spendingPolicy,
       spendingPolicyDigest: policyDigest,
     })
@@ -217,7 +221,7 @@ describe('VaultCosignerClient route compatibility', () => {
       headers: { Accept: 'application/json', 'X-Vault-Enrollment-Token': 'invite-a' },
     })
     expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
-      body: JSON.stringify({ spendingPolicy, spendingPolicyDigest: policyDigest }),
+      body: JSON.stringify({ protectionTier: 'standard', spendingPolicy, spendingPolicyDigest: policyDigest }),
       headers: { 'X-Vault-Enrollment-Token': 'invite-a' },
     })
     expect(fetchMock.mock.calls[10]?.[1]).toMatchObject({

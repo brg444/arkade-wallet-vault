@@ -1,5 +1,5 @@
 import { hex } from '@scure/base'
-import { CLAIMANTS, FAMILY_KEYS, type Claimant, type FamilyKey } from './constants'
+import { CLAIMANTS, familyKeysFor, type Claimant, type FamilyKey } from './constants'
 import { remainingCsv } from './session'
 import { pendingDelay, pendingGuardians, type VaultProgramFamily } from './trees'
 
@@ -33,6 +33,7 @@ export interface Route {
 }
 
 export interface RouteContext {
+  hasRecovery?: boolean
   tipHeight?: number
   confirmedHeight?: number
   availableKeys?: {
@@ -62,7 +63,7 @@ function parseFamilyKey(key: FamilyKey): { claimant: Claimant } {
 export function classifyScript(family: VaultProgramFamily, script: Uint8Array | string): CoinClass {
   const needle = scriptHex(script)
   if (scriptHex(family.savings.script) === needle) return { role: 'normal' }
-  for (const key of FAMILY_KEYS) {
+  for (const key of familyKeysFor(Boolean(family.pending['savings-recovery']))) {
     if (scriptHex(family.pending[key].script) === needle) {
       return { role: 'pending', ...parseFamilyKey(key) }
     }
@@ -91,6 +92,7 @@ function requireKey(ctx: RouteContext | undefined, role: Claimant | 'cosigners',
 
 export function selectRoute(coin: CoinClass, intent: Intent, ctx?: RouteContext): Route {
   if (coin.role === 'unknown') throw new RouteError('unknown script is not a current Vault Program coin')
+  const hasRecovery = ctx?.hasRecovery ?? true
 
   if (intent.type === 'admin') {
     if (coin.role !== 'normal') throw new RouteError('admin is only allowed from Normal')
@@ -101,6 +103,7 @@ export function selectRoute(coin: CoinClass, intent: Intent, ctx?: RouteContext)
 
   if (intent.type === 'initiate') {
     const claimant = requireClaimant(intent.claimant, 'claimant')
+    if (claimant === 'recovery' && !hasRecovery) throw new RouteError('Standard protection has no recovery claimant')
     if (coin.role !== 'normal') throw new RouteError('initiate is only allowed from Normal')
     requireKey(ctx, 'cosigners', 'initiate needs both cosigners')
     requireKey(ctx, claimant, `initiate needs the ${claimant} key`)
@@ -116,7 +119,7 @@ export function selectRoute(coin: CoinClass, intent: Intent, ctx?: RouteContext)
   if (intent.type === 'clawback') {
     const guardian = requireClaimant(intent.guardian, 'guardian')
     if (coin.role !== 'pending') throw new RouteError('clawback is only allowed from Pending')
-    if (!pendingGuardians(coin.claimant).includes(guardian)) {
+    if (!pendingGuardians(coin.claimant, hasRecovery).includes(guardian)) {
       throw new RouteError('guardian cannot claw back this pending output')
     }
     requireKey(ctx, 'cosigners', 'clawback needs both cosigners')
@@ -147,14 +150,10 @@ export function selectRoute(coin: CoinClass, intent: Intent, ctx?: RouteContext)
   }
 
   if (coin.role !== 'quarantine') throw new RouteError('quarantine-rotate is only allowed from Quarantine')
-  const [a, b] =
-    coin.claimant === 'phone'
-      ? (['hardware', 'recovery'] as const)
-      : coin.claimant === 'hardware'
-        ? (['phone', 'recovery'] as const)
-        : (['phone', 'hardware'] as const)
-  requireKey(ctx, a, `quarantine-rotate needs ${a}`)
-  requireKey(ctx, b, `quarantine-rotate needs ${b}`)
+  if (coin.claimant === 'recovery' && !hasRecovery) throw new RouteError('Standard protection has no recovery claimant')
+  for (const guardian of pendingGuardians(coin.claimant, hasRecovery)) {
+    requireKey(ctx, guardian, `quarantine-rotate needs ${guardian}`)
+  }
   return { class: coin, intent, executor: 'l1QuarantineAdmin', purpose: 'admin', leaf: 'quarantine-admin' }
 }
 
@@ -164,5 +163,8 @@ export function selectScriptRoute(
   intent: Intent,
   ctx?: RouteContext,
 ): Route {
-  return selectRoute(classifyScript(family, script), intent, ctx)
+  return selectRoute(classifyScript(family, script), intent, {
+    ...ctx,
+    hasRecovery: Boolean(family.pending['savings-recovery']),
+  })
 }

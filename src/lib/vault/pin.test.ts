@@ -20,6 +20,7 @@ const VAULT_ID = 'vault-test-current'
 const PROGRAM_FIELDS = [
   'vaultId',
   'network',
+  'protectionTier',
   'savingsAddress',
   'savingsScript',
   'vtxoVaultCosignerPub',
@@ -64,6 +65,7 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     vaultId: VAULT_ID,
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: 'standard',
     savingsAddress: 'tb1psavings',
     savingsScript: '5120' + '11'.repeat(32),
     periodAllowance: 100000,
@@ -101,6 +103,7 @@ function tenantStatus(over: Partial<VaultStatus> = {}): VaultStatus {
 function mutatedValue(field: keyof AddressPinFields, value: AddressPinFields[keyof AddressPinFields]) {
   if (typeof value === 'boolean') return !value
   if (typeof value === 'number') return value + 1
+  if (field === 'protectionTier') return value === 'standard' ? 'advanced' : 'standard'
   return field === 'vaultId' ? 'different-vault' : `${value}-different`
 }
 
@@ -161,14 +164,18 @@ describe('local program pin', () => {
 
   it('freezes the program pin domain and field order', () => {
     expect(pinFromEnrolledStatus(sampleStatus()).pinHash).toBe(
-      '1a7e6bd414421d425fa5a889b571407271df4dd90775b3e2e983ee567f8e36f4',
+      'adb92cb437635681608b351ac6f3c473a7201b87f25871b23161c1ad75ff383e',
     )
   })
 
   it.each(PROGRAM_FIELDS)('rejects status drift in %s', (field) => {
     const status = sampleStatus()
     const pin = pinFromEnrolledStatus(status)
-    const changed = { ...status, [field]: mutatedValue(field, pin[field]) }
+    const changed = {
+      ...status,
+      [field]: mutatedValue(field, pin[field]),
+      ...(field === 'protectionTier' ? { recoveryKeyPub: `02${'66'.repeat(32)}` } : {}),
+    }
     expect(() => requireStatusMatchesPin(changed, pin)).toThrow(/local pin/)
   })
 

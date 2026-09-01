@@ -15,6 +15,7 @@ import { SAVINGS_TEMPLATE } from './program/constants'
 import { requireStatusIdentity } from './status'
 import { defaultSpendingPolicy, spendingPolicyDigest, type SpendingPolicy } from './spendingPolicy'
 import type { VaultStatusWire } from './types'
+import type { ProtectionTier } from './protectionTier'
 
 type ExpectedVaultStatusWire = {
   enrolled: boolean
@@ -24,6 +25,7 @@ type ExpectedVaultStatusWire = {
   vaultId: string
   templateVersion: string
   policyVersion: string
+  protectionTier: ProtectionTier
   externalOwnerWalletPub?: string
   recoveryKeyPub?: string
   vaultCosignerBasePub?: string
@@ -79,6 +81,7 @@ type ExpectedVaultEnrollmentRequest = {
   descriptorHash?: string
   vtxoBoardingProgram?: 'vault-board-v1'
   vaultBoardingBip340Pub?: string
+  protectionTier: ProtectionTier
   spendingPolicy: SpendingPolicy
   spendingPolicyDigest: string
 }
@@ -136,6 +139,7 @@ function statusWire(): VaultStatusWire {
     vaultId: 'vault-a',
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: 'advanced',
     recoveryKeyPub: `02${'aa'.repeat(32)}`,
     arkadeCosignerOrigin: 'https://mutinynet.arkade.sh',
     arkadeCosignerVersion: '0.4.65',

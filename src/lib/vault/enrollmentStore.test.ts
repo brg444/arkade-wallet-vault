@@ -13,6 +13,7 @@ import {
   saveSelectedVaultId,
   saveStagedEnrollment,
   setSessionLocked,
+  ENROLL_STAGE_STORE,
 } from './enrollmentStore'
 import { defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
 const VAULT_ID = 'vault-test-current'
@@ -119,6 +120,7 @@ describe('namespaced enrollment store', () => {
         authenticatorData: 'dd',
         attestationObject: 'ee',
         hardwareXOnly: '11'.repeat(32),
+        protectionTier: 'standard',
         spendingPolicy,
         spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
       },
@@ -129,5 +131,21 @@ describe('namespaced enrollment store', () => {
     promoteStagedEnrollment({ ...sample, vaultId: 'tenant-b', credId: 'bb' }, storage)
     expect(loadStagedEnrollment(storage)).toBeNull()
     expect(loadEnrollment(storage, 'tenant-b')?.credId).toBe('bb')
+  })
+
+  it('does not resume a staged enrollment that predates protection tiers', () => {
+    const storage = memoryStorage()
+    storage.setItem(
+      ENROLL_STAGE_STORE,
+      JSON.stringify({
+        ...sample,
+        vaultId: 'tenant-b',
+        handle: 'aa',
+        hardwareXOnly: '11'.repeat(32),
+        spendingPolicy,
+        spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
+      }),
+    )
+    expect(loadStagedEnrollment(storage)).toBeNull()
   })
 })

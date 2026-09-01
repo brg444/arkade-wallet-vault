@@ -12,6 +12,7 @@ export function kitMatchesLiveVault(kit: RecoveryKit, status: VaultStatus): bool
   if (!status.enrolled || status.templateVersion !== SAVINGS_TEMPLATE) return false
   return (
     descriptor.vaultId === status.vaultId &&
+    descriptor.protectionTier === status.protectionTier &&
     descriptor.templateVersion === status.templateVersion &&
     descriptor.savings.address === status.savingsAddress &&
     descriptor.savings.script === status.savingsScript &&

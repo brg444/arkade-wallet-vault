@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FORBIDDEN_PUBLIC_KEY_2G } from '../setupPlan'
-import { defaultSpendingPolicy, spendingPolicyDigest } from '../spendingPolicy'
+import { defaultSpendingPolicy } from '../spendingPolicy'
 import { FAMILY_KEYS, PROGRAM_CSV, PROGRAM_SCHEMA, SAVINGS_TEMPLATE } from './constants'
 import { buildVaultProgramDescriptor, hashVaultProgramDescriptor, validateVaultProgramDescriptor } from './descriptor'
 import { PROGRAM_FIXTURE } from './fixtures'
@@ -31,7 +31,11 @@ describe('Savings program descriptor', () => {
   })
 
   it('supports Savings without recovery and rejects forbidden family keys', () => {
-    const descriptor = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, recoveryPub: undefined })
+    const descriptor = buildVaultProgramDescriptor({
+      ...PROGRAM_FIXTURE,
+      protectionTier: 'standard',
+      recoveryPub: undefined,
+    })
     expect(descriptor.keys.recovery).toBeUndefined()
     expect(Object.keys(descriptor.pending).sort()).toEqual(['savings-hardware', 'savings-phone'])
     expect(descriptor.quarantine['savings-phone'].guardians).toEqual(['hardware'])
@@ -40,28 +44,36 @@ describe('Savings program descriptor', () => {
     )
   })
 
-  it('binds selected fee policy into every Savings transition tree', () => {
+  it('rejects protection-tier and recovery-key substitution', () => {
+    expect(() => buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, protectionTier: 'standard' })).toThrow(/Standard/)
+    expect(() =>
+      buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, protectionTier: 'advanced', recoveryPub: undefined }),
+    ).toThrow(/Advanced/)
+    const descriptor = fixtureDescriptor()
+    expect(() => validateVaultProgramDescriptor({ ...descriptor, protectionTier: 'standard' })).toThrow(/Standard/)
+  })
+
+  it('binds a custom exposure policy while keeping release-managed fee scripts', () => {
     const standard = fixtureDescriptor()
-    const flexiblePolicy = {
+    const customPolicy = {
       ...defaultSpendingPolicy(),
-      txRecipientCapSats: 250_000,
-      periodAllowanceSats: 1_000_000,
-      absoluteFeeCapSats: 10_000,
-      feerateCapSatPerV: 20,
+      txRecipientCapSats: 75_000,
+      periodAllowanceSats: 300_000,
     }
-    const flexible = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, spendingPolicy: flexiblePolicy })
+    const custom = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, spendingPolicy: customPolicy })
 
-    expect(flexible.savings).not.toEqual(standard.savings)
-    expect(flexible.policy.absoluteFeeCapSats).toBe(10_000)
-    expect(flexible.policy.feerateCapSatVb).toBe(20)
-    expect(hashVaultProgramDescriptor(flexible)).toBe(
-      'cf5fb73ae35ce6b4c857a6ca79c4e872809ab9514e968afd1151b5bc091cf31e',
-    )
+    expect(custom.savings).toEqual(standard.savings)
+    expect(custom.policy.recipientCapSats).toBe(75_000)
+    expect(custom.policy.periodAllowanceSats).toBe(300_000)
+    expect(custom.policy.absoluteFeeCapSats).toBe(5_000)
+    expect(custom.policy.feerateCapSatVb).toBe(10)
+    expect(hashVaultProgramDescriptor(custom)).not.toBe(hashVaultProgramDescriptor(standard))
 
-    const tampered = structuredClone(flexible)
-    const changedPolicy = { ...flexiblePolicy, absoluteFeeCapSats: 9_000 }
-    tampered.policy.absoluteFeeCapSats = changedPolicy.absoluteFeeCapSats
-    tampered.policy.digest = spendingPolicyDigest(changedPolicy)
-    expect(() => validateVaultProgramDescriptor(tampered)).toThrow(/derived authorization scripts/)
+    expect(() =>
+      buildVaultProgramDescriptor({
+        ...PROGRAM_FIXTURE,
+        spendingPolicy: { ...customPolicy, absoluteFeeCapSats: 9_000 },
+      }),
+    ).toThrow(/absolute fee cap/)
   })
 })

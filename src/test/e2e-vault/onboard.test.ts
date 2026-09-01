@@ -13,15 +13,15 @@ async function setupToThisDevice(page: Page) {
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
   await page.getByRole('button', { name: 'Use this hardware key' }).click()
 
-  await expect(page.getByRole('button', { name: 'Skip for now' })).toBeVisible()
-  await expect(page.getByText(/waiting period/i)).toBeVisible()
-  await page.getByRole('button', { name: 'Skip for now' }).click()
+  await expect(page.getByRole('heading', { name: 'Protection' })).toBeVisible()
+  await expect(page.getByText('No recovery key', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Use Standard' }).click()
 
   await expect(page.getByRole('heading', { name: 'Spending limits' })).toBeVisible()
   await page.getByRole('button', { name: 'Review setup' }).click()
 
   await expect(page.getByRole('heading', { name: 'Your setup' })).toBeVisible()
-  await expect(page.getByText('Skipped. This device plus hardware only.')).toBeVisible()
+  await expect(page.getByText('Not enrolled with Standard.')).toBeVisible()
   await page.getByRole('button', { name: 'Secure this device' }).click()
 }
 

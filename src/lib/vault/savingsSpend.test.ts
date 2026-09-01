@@ -56,6 +56,7 @@ function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDes
     vaultId: descriptor.vaultId,
     templateVersion: descriptor.templateVersion,
     policyVersion: descriptor.policyVersion,
+    protectionTier: descriptor.protectionTier,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
     periodAllowance: descriptor.policy.periodAllowanceSats,
@@ -116,6 +117,7 @@ describe('savings admin PSBT', () => {
   it.each([true, false])('spends Savings with recovery=%s', (withRecovery) => {
     const descriptor = buildVaultProgramDescriptor({
       ...PROGRAM_FIXTURE,
+      protectionTier: withRecovery ? 'advanced' : 'standard',
       recoveryPub: withRecovery ? PROGRAM_FIXTURE.recoveryPub : undefined,
       arkadeCosigner: {
         origin: 'https://emulator.mutinynet.arkade.sh',

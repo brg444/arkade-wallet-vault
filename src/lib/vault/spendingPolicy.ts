@@ -39,8 +39,8 @@ export type SpendingPolicyCapabilities = {
 export const SPENDING_POLICY_BOUNDS = {
   periodAllowanceSats: { min: 330, max: 1_000_000_000 },
   txRecipientCapSats: { min: 330, max: 100_000_000 },
-  absoluteFeeCapSats: { min: 0, max: 100_000 },
-  feerateCapSatPerV: { min: 1, max: 100 },
+  absoluteFeeCapSats: { min: ABSOLUTE_FEE_CEILING_SATS, max: ABSOLUTE_FEE_CEILING_SATS },
+  feerateCapSatPerV: { min: FEERATE_CEILING_SAT_PER_V, max: FEERATE_CEILING_SAT_PER_V },
 } as const
 
 export function defaultSpendingPolicy(): SpendingPolicy {
@@ -62,27 +62,15 @@ export const CURRENT_SPENDING_POLICY_CAPABILITIES: SpendingPolicyCapabilities = 
   bounds: SPENDING_POLICY_BOUNDS,
   presets: [
     {
-      id: 'cautious',
-      label: 'Cautious',
+      id: 'lower-exposure',
+      label: 'Lower exposure',
       policy: {
         ...defaultSpendingPolicy(),
         txRecipientCapSats: 25_000,
         periodAllowanceSats: 50_000,
-        absoluteFeeCapSats: 2_500,
       },
     },
-    { id: 'standard', label: 'Standard', policy: defaultSpendingPolicy() },
-    {
-      id: 'flexible',
-      label: 'Flexible',
-      policy: {
-        ...defaultSpendingPolicy(),
-        txRecipientCapSats: 250_000,
-        periodAllowanceSats: 1_000_000,
-        absoluteFeeCapSats: 10_000,
-        feerateCapSatPerV: 20,
-      },
-    },
+    { id: 'everyday', label: 'Everyday', policy: defaultSpendingPolicy() },
   ],
 }
 
@@ -164,18 +152,37 @@ export function requireCurrentSpendingPolicyCapabilities(value: unknown): Spendi
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('spending policy capabilities required')
   const caps = value as SpendingPolicyCapabilities
+  const boundNames = Object.keys(SPENDING_POLICY_BOUNDS) as (keyof typeof SPENDING_POLICY_BOUNDS)[]
+  const boundsMatch =
+    caps.bounds &&
+    Object.keys(caps.bounds).length === boundNames.length &&
+    boundNames.every(
+      (name) =>
+        caps.bounds[name]?.min === SPENDING_POLICY_BOUNDS[name].min &&
+        caps.bounds[name]?.max === SPENDING_POLICY_BOUNDS[name].max,
+    )
   if (
     caps.program !== SPENDING_POLICY_PROGRAM ||
     caps.schema !== POLICY_VERSION ||
     caps.period !== SPENDING_POLICY_PERIOD ||
-    JSON.stringify(caps.bounds) !== JSON.stringify(SPENDING_POLICY_BOUNDS)
+    !boundsMatch
   ) {
     throw new Error('vault service spending policy capabilities do not match this release')
   }
-  if (!Array.isArray(caps.presets) || caps.presets.length === 0) throw new Error('spending policy presets required')
-  for (const preset of caps.presets) {
-    if (!preset?.id || !preset.label) throw new Error('invalid spending policy preset')
-    validateSpendingPolicy(preset.policy)
+  if (
+    !Array.isArray(caps.presets) ||
+    caps.presets.length !== CURRENT_SPENDING_POLICY_CAPABILITIES.presets.length ||
+    caps.presets.some((preset, index) => {
+      const expected = CURRENT_SPENDING_POLICY_CAPABILITIES.presets[index]
+      return (
+        !expected ||
+        preset.id !== expected.id ||
+        preset.label !== expected.label ||
+        !sameSpendingPolicy(preset.policy, expected.policy)
+      )
+    })
+  ) {
+    throw new Error('vault service spending policy presets do not match this release')
   }
   return caps
 }

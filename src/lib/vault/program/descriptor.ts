@@ -24,6 +24,7 @@ import {
   validateSpendingPolicy,
   type SpendingPolicy,
 } from '../spendingPolicy'
+import { requireProtectionTier, requireProtectionTierMatchesRecovery, type ProtectionTier } from '../protectionTier'
 import { type InitiateTweaks, buildVaultProgramFamily } from './trees'
 
 const COMPRESSED = 33
@@ -39,6 +40,7 @@ export interface VaultProgramDescriptor {
   vaultId: string
   templateVersion: string
   policyVersion: string
+  protectionTier: ProtectionTier
   keys: {
     phoneBip340: string
     phoneDirectP256: string
@@ -96,6 +98,7 @@ export interface VaultProgramDescriptorInput {
     version: string
   }
   templateVersion?: string
+  protectionTier: ProtectionTier
   spendingPolicy?: SpendingPolicy
 }
 
@@ -192,6 +195,7 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
     throw new Error('arkade cosigner origin and version required')
   }
   const selectedPolicy = validateSpendingPolicy(input.spendingPolicy || defaultSpendingPolicy())
+  const protectionTier = requireProtectionTierMatchesRecovery(input.protectionTier, keys.recovery)
   const family = buildVaultProgramFamily({
     vaultId: input.vaultId,
     phonePub: keys.phoneBip340,
@@ -227,6 +231,7 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
     vaultId: input.vaultId,
     templateVersion: input.templateVersion || SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier,
     keys,
     tweaks,
     arkadeCosigner: {
@@ -263,6 +268,7 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
   if (!d.vaultId || String(d.vaultId).trim() === '') throw new Error('vault id required')
   if (!isSavingsTemplate(d.templateVersion)) throw new Error('template version is not this release')
   if (d.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
+  requireProtectionTierMatchesRecovery(d.protectionTier, d.keys.recovery)
   if (
     d.csv.hardware !== PROGRAM_CSV.hardware ||
     d.csv.phone !== PROGRAM_CSV.phone ||
@@ -365,6 +371,7 @@ export function encodeVaultProgramDescriptor(input: VaultProgramDescriptor): Uin
   appendText(parts, d.vaultId, 'vaultId')
   appendBytes(parts, encodeUtf8(d.templateVersion))
   appendBytes(parts, encodeUtf8(d.policyVersion))
+  appendText(parts, requireProtectionTier(d.protectionTier), 'protectionTier')
   appendHex(parts, d.keys.phoneBip340, 'phone', COMPRESSED)
   appendHex(parts, d.keys.phoneDirectP256, 'phoneDirectP256', COMPRESSED)
   appendHex(parts, d.keys.hardware, 'hardware', COMPRESSED)

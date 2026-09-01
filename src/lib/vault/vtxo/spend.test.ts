@@ -113,13 +113,14 @@ function status(): VaultStatus {
     vaultId: 'vault-a',
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: 'standard',
     savingsAddress: '',
     savingsScript: '',
     periodAllowance: 100_000,
     periodSpent: 0,
     periodRemaining: 100_000,
     txCap: 50_000,
-    absoluteFeeCap: 1_500,
+    absoluteFeeCap: 5_000,
     feerateCapSatVb: 10,
     phoneBip340Pub: compressed(golden.fixtures.userPub),
     phoneDirectP256: compressed(golden.fixtures.exitDevicePub),
@@ -915,8 +916,8 @@ describe('regular VTXO spend coordinator', () => {
     )
 
     const excessiveFee = reserve()
-    excessiveFee.feeSats = 1_501
-    excessiveFee.changeSats = 6_499
+    excessiveFee.feeSats = 5_001
+    excessiveFee.changeSats = 2_999
     expect(() => buildReservedVtxoSpend(status(), excessiveFee, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
       /fee exceeds the vault cap/,
     )

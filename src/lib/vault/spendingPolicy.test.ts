@@ -22,7 +22,10 @@ describe('spending policy contract', () => {
     expect(() =>
       validateSpendingPolicy({ ...defaultSpendingPolicy(), txRecipientCapSats: 75_000, periodAllowanceSats: 50_000 }),
     ).toThrow(/period allowance/)
-    expect(() => validateSpendingPolicy({ ...defaultSpendingPolicy(), feerateCapSatPerV: 101 })).toThrow(/feerate/)
+    expect(() => validateSpendingPolicy({ ...defaultSpendingPolicy(), absoluteFeeCapSats: 4_999 })).toThrow(
+      /absolute fee/,
+    )
+    expect(() => validateSpendingPolicy({ ...defaultSpendingPolicy(), feerateCapSatPerV: 11 })).toThrow(/feerate/)
     expect(() => validateSpendingPolicy({ ...defaultSpendingPolicy(), unexpected: true })).toThrow(/fields/)
     expect(
       canonicalSpendingPolicy({
@@ -47,5 +50,14 @@ describe('spending policy contract', () => {
         bounds: { ...CURRENT_SPENDING_POLICY_CAPABILITIES.bounds, feerateCapSatPerV: { min: 1, max: 101 } },
       }),
     ).toThrow(/capabilities/)
+    expect(() =>
+      requireCurrentSpendingPolicyCapabilities({
+        ...CURRENT_SPENDING_POLICY_CAPABILITIES,
+        presets: [
+          ...CURRENT_SPENDING_POLICY_CAPABILITIES.presets,
+          { id: 'legacy', label: 'Legacy', policy: defaultSpendingPolicy() },
+        ],
+      }),
+    ).toThrow(/presets/)
   })
 })

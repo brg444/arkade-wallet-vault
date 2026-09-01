@@ -128,6 +128,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
   private passkeyLoginAvailable = false
   private proposed?: Record<string, any>
   private pendingPolicy?: SpendingPolicy
+  private pendingProtectionTier?: 'standard' | 'advanced'
   private descriptor?: ReturnType<typeof buildVaultProgramDescriptor>
   private boardingDescriptor?: BoardingDescriptor
   private boardingDescriptorHash?: string
@@ -194,6 +195,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       vaultId,
       templateVersion: SAVINGS_TEMPLATE,
       policyVersion: POLICY_VERSION,
+      protectionTier: (proposed?.protectionTier as 'standard' | 'advanced') || 'standard',
       externalOwnerWalletPub: descriptor?.keys.hardware || PROGRAM_FIXTURE.hardwarePub,
       vaultCosignerBasePub: PROGRAM_FIXTURE.vaultCosignerBase,
       arkadeCosignerBasePub: PROGRAM_FIXTURE.arkadeCosignerBase,
@@ -211,6 +213,9 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
       phoneBip340Pub: proposed?.phoneBip340Pub,
       phoneDirectP256: proposed?.phoneDirectP256,
+      ...(descriptor?.keys.recovery
+        ? { recoveryPub: descriptor.keys.recovery, recoveryKeyPub: descriptor.keys.recovery }
+        : {}),
       passkeyLoginAvailable: this.passkeyLoginAvailable,
       enrollmentMode: this.enrolled ? 'closed' : 'token',
       vtxoVaultCosignerPub: PROGRAM_FIXTURE.vaultCosignerBase,
@@ -234,7 +239,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
     if (!this.proposed) throw new Error('passkey was not proposed')
     const status = this.status()
     return JSON.stringify({
-      version: 3,
+      version: 4,
       credentialId: this.proposed.credentialId,
       webauthnP256: this.proposed.webauthnP256,
       phoneDirectP256: status.phoneDirectP256,
@@ -250,6 +255,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       vaultId: status.vaultId,
       templateVersion: status.templateVersion,
       policyVersion: status.policyVersion,
+      protectionTier: status.protectionTier,
       savingsAddress: status.savingsAddress,
       savingsScript: status.savingsScript,
       vtxoVaultCosignerPub: status.vtxoVaultCosignerPub,
@@ -291,6 +297,10 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         return json(route, { code: 'REJECTED', error: 'spending policy digest mismatch' }, 400)
       }
       this.pendingPolicy = spendingPolicy
+      if (body?.protectionTier !== 'standard' && body?.protectionTier !== 'advanced') {
+        return json(route, { code: 'REJECTED', error: 'protection tier required' }, 400)
+      }
+      this.pendingProtectionTier = body.protectionTier
       const response: VaultEnrollStartResponse = {
         handle: 'e2e-enrollment-handle',
         vaultId: VAULT_ID,
@@ -300,6 +310,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         userId: bytesToHex(new TextEncoder().encode(VAULT_ID)),
         userName: 'vault',
         timeoutMs: 300_000,
+        protectionTier: body.protectionTier,
         spendingPolicy,
         spendingPolicyDigest: selectedDigest,
       }
@@ -309,6 +320,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       const proposedPolicy = validateSpendingPolicy(body.spendingPolicy)
       if (
         !this.pendingPolicy ||
+        body.protectionTier !== this.pendingProtectionTier ||
         spendingPolicyDigest(proposedPolicy) !== spendingPolicyDigest(this.pendingPolicy) ||
         body.spendingPolicyDigest !== spendingPolicyDigest(this.pendingPolicy)
       ) {
@@ -321,8 +333,10 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       this.descriptor = buildVaultProgramDescriptor({
         vaultId: VAULT_ID,
         network: 'mutinynet',
+        protectionTier: body.protectionTier,
         phonePub: body.phoneBip340Pub,
         hardwarePub: PROGRAM_FIXTURE.hardwarePub,
+        ...(body.recoveryXOnly ? { recoveryPub: `02${body.recoveryXOnly}` } : {}),
         phoneDirectP256: body.phoneDirectP256,
         vaultCosignerBase: PROGRAM_FIXTURE.vaultCosignerBase,
         arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
@@ -670,14 +684,17 @@ export const test = base.extend<Fixtures>({
   },
 })
 
-export async function reachPasskeySetup(page: Page, policyPreset: 'cautious' | 'standard' | 'flexible' = 'standard') {
+export async function reachPasskeySetup(
+  page: Page,
+  policyPreset: 'lower-exposure' | 'everyday' | 'custom' = 'everyday',
+) {
   await page.goto('/')
   await expect(page.getByText('Spending and Savings, together')).toBeVisible()
   await page.getByRole('button', { name: 'Set up a new vault' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
   await page.getByRole('button', { name: 'Use this hardware key' }).click()
-  await page.getByRole('button', { name: 'Skip for now' }).click()
+  await page.getByRole('button', { name: 'Use Standard' }).click()
   await page.getByTestId(`policy-preset-${policyPreset}`).click()
   await page.getByRole('button', { name: 'Review setup' }).click()
   await page.getByRole('button', { name: 'Secure this device' }).click()
@@ -687,7 +704,7 @@ export async function reachPasskeySetup(page: Page, policyPreset: 'cautious' | '
 export async function enrollVaultWithPasskey(
   page: Page,
   authorizer: FakePasskeyAuthorizer,
-  policyPreset: 'cautious' | 'standard' | 'flexible' = 'standard',
+  policyPreset: 'lower-exposure' | 'everyday' | 'custom' = 'everyday',
 ) {
   await reachPasskeySetup(page, policyPreset)
   await page.getByTestId('enrollment-token').fill(authorizer.invite)

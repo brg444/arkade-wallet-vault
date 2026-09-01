@@ -25,11 +25,12 @@ remains out of scope.
 - Every wallet is bound to the release template, network, Operator, and
   canonical Savings, Spending, and boarding descriptors through the signed
   recovery binding. Any other format is rejected.
-- Enrollment freezes one canonical `vault-spending-policy-v1` digest before
-  passkey creation. The wallet independently rebuilds the descriptor from the
-  selected limits, including fee ceilings embedded in Savings transition
-  scripts, and rejects substitution at propose, finish, status, pin, or
-  Recovery Kit boundaries.
+- Enrollment freezes Standard-without-recovery or Advanced-with-recovery and
+  one canonical `vault-spending-policy-v1` digest before passkey creation. The
+  wallet independently rebuilds the descriptor from that tier, the two
+  reviewed exposure limits, and the release-managed 5,000-sat / 10-sat-vB fee
+  ceilings. It rejects substitution at propose, finish, status, pin, signed
+  recovery binding, or Recovery Kit boundaries.
 - The browser also records a fresh-release local program pin for the vault
   identifier, network, Savings descriptor, and immutable Spending and boarding
   fields. Status drift, record tampering, extra fields, and an enrolled-to-

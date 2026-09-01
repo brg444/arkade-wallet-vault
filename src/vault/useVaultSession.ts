@@ -95,6 +95,7 @@ export function useVaultSession({
       reportError('')
       try {
         const result = await enrollWithPasskey(token, {
+          protectionTier: setup.protectionTier,
           hardwarePub: setup.hardwarePub,
           ...(setup.recoveryPub ? { recoveryPub: setup.recoveryPub } : {}),
           spendingPolicy: setupSpendingPolicy(setup),

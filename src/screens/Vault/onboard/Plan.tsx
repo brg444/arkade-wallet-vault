@@ -5,13 +5,17 @@ import FingerprintIcon from '../../../icons/Fingerprint'
 import SafeIcon from '../../../icons/Safe'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import { prettyAmount } from '../../../lib/format'
+import { approximateFiatLabel } from '../../../lib/vault/fiatDisplay'
 import { PROGRAM_CSV } from '../../../lib/vault/program/constants'
 import { VaultContext } from '../../../vault/context'
 import { KeyCard, PolicyTimeline, Section } from '../ui'
 import { OnboardLayout } from './Layout'
 
 export default function VaultPlan() {
-  const { finishPlan, liveNetwork, navigate, setup } = useContext(VaultContext)
+  const { fiatDisplayRate, finishPlan, liveNetwork, navigate, setup } = useContext(VaultContext)
+  const advanced = setup.protectionTier === 'advanced'
+  const txFiat = approximateFiatLabel(setup.txCapSats, fiatDisplayRate)
+  const allowanceFiat = approximateFiatLabel(setup.dailyLimitSats, fiatDisplayRate)
   return (
     <OnboardLayout
       title='Your setup'
@@ -20,9 +24,10 @@ export default function VaultPlan() {
       actions={<Button onClick={finishPlan} label='Secure this device' />}
     >
       <Text wrap>
-        {setup.recoveryPub
-          ? 'If you lose a key, start recovery and wait. Cancel if it wasn’t you. After setup, save the Recovery Kit from Security.'
-          : 'This device plus hardware. You can add recovery later on a new vault.'}
+        <strong>{advanced ? 'Advanced protection' : 'Standard protection'}.</strong>{' '}
+        {advanced
+          ? 'A separate recovery key is required and can use the existing delayed recovery paths. After setup, save the Recovery Kit from Security.'
+          : 'No recovery key is enrolled. Losing both this device and the hardware key can leave funds without a cooperative recovery path.'}
       </Text>
       <Section>
         <KeyCard
@@ -31,17 +36,21 @@ export default function VaultPlan() {
           role='With this device, moves everything'
           fingerprint={setup.hardwarePub}
         />
-        {setup.recoveryPub ? (
+        {advanced ? (
           <KeyCard
             icon={<SafeIcon />}
-            title='Recovery'
-            role='Starts a waiting period you can cancel'
+            title='Recovery key'
+            role='Required for Advanced; starts a waiting period you can cancel'
             fingerprint={setup.recoveryPub}
           />
         ) : (
-          <KeyCard icon={<SafeIcon />} title='Recovery' role='Skipped. This device plus hardware only.' />
+          <KeyCard icon={<SafeIcon />} title='Recovery key' role='Not enrolled with Standard.' />
         )}
-        <KeyCard icon={<FingerprintIcon />} title='This device' role={`${prettyAmount(setup.txCapSats)} per send`} />
+        <KeyCard
+          icon={<FingerprintIcon />}
+          title='This device'
+          role={`${prettyAmount(setup.txCapSats)} per payment${txFiat ? ` · ${txFiat}` : ''}`}
+        />
       </Section>
       <PolicyTimeline
         txCap={setup.txCapSats}
@@ -51,8 +60,10 @@ export default function VaultPlan() {
         network={liveNetwork ? 'mutinynet' : undefined}
       />
       <Text color='neutral-600' tiny wrap>
-        Fees are capped at {prettyAmount(setup.absoluteFeeCapSats)} and {setup.feerateCapSatPerV} sat/vB. These spending
-        conditions are bound to this vault and cannot be changed after setup.
+        Exact limits: {prettyAmount(setup.txCapSats)} per payment{txFiat ? ` (${txFiat})` : ''} and{' '}
+        {prettyAmount(setup.dailyLimitSats)} per rolling 24 hours{allowanceFiat ? ` (${allowanceFiat})` : ''}.
+        Above-limit payments are refused. These spending conditions are bound to this vault and cannot be changed after
+        setup.
       </Text>
     </OnboardLayout>
   )

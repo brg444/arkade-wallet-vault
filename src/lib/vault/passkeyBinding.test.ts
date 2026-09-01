@@ -4,7 +4,7 @@ import { POLICY_VERSION } from './constants'
 import type { VaultStatus } from './types'
 
 const SAVINGS_BINDING = {
-  version: 3,
+  version: 4,
   credentialId: 'aa',
   webauthnP256: '02' + '11'.repeat(32),
   phoneDirectP256: '02' + '22'.repeat(32),
@@ -20,6 +20,7 @@ const SAVINGS_BINDING = {
   vaultId: 'vault-a',
   templateVersion: 'phone-hww-recovery-savings-v1',
   policyVersion: POLICY_VERSION,
+  protectionTier: 'standard',
   savingsAddress: 'tb1psavings',
   savingsScript: '5120' + '77'.repeat(32),
   vtxoVaultCosignerPub: '02' + '88'.repeat(32),
@@ -51,6 +52,7 @@ const STATUS = {
   vaultId: SAVINGS_BINDING.vaultId,
   templateVersion: SAVINGS_BINDING.templateVersion,
   policyVersion: SAVINGS_BINDING.policyVersion,
+  protectionTier: 'standard',
   externalOwnerWalletPub: SAVINGS_BINDING.externalOwnerWalletPub,
   vaultCosignerBasePub: SAVINGS_BINDING.vaultCosignerBasePub,
   arkadeCosignerBasePub: SAVINGS_BINDING.arkadeCosignerBasePub,
@@ -95,16 +97,16 @@ describe('vault access mode', () => {
 })
 
 describe('Savings recovery binding', () => {
-  it('accepts the canonical v3 fields and exact Spending/boarding status', () => {
+  it('accepts the canonical v4 fields and exact tier, Spending, and boarding status', () => {
     expect(parseRecoveryBinding(JSON.stringify(SAVINGS_BINDING))).toEqual(SAVINGS_BINDING)
     expect(assertRecoveryBindingMatchesStatus(JSON.stringify(SAVINGS_BINDING), STATUS)).toEqual(SAVINGS_BINDING)
   })
 
-  it('rejects retired fields and pre-v3 bindings', () => {
+  it('rejects retired fields and pre-v4 bindings', () => {
     expect(() =>
       parseRecoveryBinding(JSON.stringify({ ...SAVINGS_BINDING, operationalAddress: 'tb1pretired' })),
     ).toThrow(/fields or order/)
-    expect(() => parseRecoveryBinding(JSON.stringify({ ...SAVINGS_BINDING, version: 2 }))).toThrow(/version/)
+    expect(() => parseRecoveryBinding(JSON.stringify({ ...SAVINGS_BINDING, version: 3 }))).toThrow(/version/)
   })
 
   it.each([
@@ -120,6 +122,7 @@ describe('Savings recovery binding', () => {
     'vtxoBoardingScript',
     'vtxoBoardingExitDelay',
     'vtxoBoardingExitDelayUnit',
+    'protectionTier',
   ] as const)('rejects a recovery binding whose %s differs from status', (field) => {
     expect(() =>
       assertRecoveryBindingMatchesStatus(JSON.stringify(SAVINGS_BINDING), { ...STATUS, [field]: 'mutated' }),

@@ -2,6 +2,7 @@ import { vaultGet, vaultPost } from './api'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from './status'
 import type { VaultStatus, VaultStatusWire } from './types'
 import type { SpendingPolicy } from './spendingPolicy'
+import type { ProtectionTier } from './protectionTier'
 
 const enrollmentHeader = (token: string) => ({ 'X-Vault-Enrollment-Token': token })
 
@@ -19,11 +20,13 @@ export interface VaultEnrollStartResponse {
   userId: string
   userName: string
   timeoutMs: number
+  protectionTier: ProtectionTier
   spendingPolicy: SpendingPolicy
   spendingPolicyDigest: string
 }
 
 export interface VaultEnrollStartRequest {
+  protectionTier: ProtectionTier
   spendingPolicy: SpendingPolicy
   spendingPolicyDigest: string
 }
@@ -45,6 +48,7 @@ export interface VaultEnrollmentRequest {
   descriptorHash?: string
   vtxoBoardingProgram?: 'vault-board-v1'
   vaultBoardingBip340Pub?: string
+  protectionTier: ProtectionTier
   spendingPolicy: SpendingPolicy
   spendingPolicyDigest: string
 }

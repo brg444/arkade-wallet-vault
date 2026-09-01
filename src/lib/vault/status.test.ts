@@ -32,6 +32,7 @@ function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatu
     vaultId: VAULT_ID,
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: 'standard',
     arkadeCosignerOrigin: 'https://mutinynet.arkade.sh',
     arkadeCosignerVersion: '0.4.65',
     savingsAddress: 'tb1ptest',
@@ -97,13 +98,27 @@ describe('status identity binding', () => {
 
   it('normalizes the server recoveryKeyPub field and rejects conflicting aliases', () => {
     const recovery = `02${'bb'.repeat(32)}`
-    expect(requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery }), VAULT_ID)).toMatchObject({
+    expect(
+      requireStatusIdentity(sampleStatus({ protectionTier: 'advanced', recoveryKeyPub: recovery }), VAULT_ID),
+    ).toMatchObject({
       recoveryPub: recovery,
       recoveryKeyPub: recovery,
     })
     expect(() =>
-      requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery, recoveryPub: `03${'cc'.repeat(32)}` }), VAULT_ID),
+      requireStatusIdentity(
+        sampleStatus({ protectionTier: 'advanced', recoveryKeyPub: recovery, recoveryPub: `03${'cc'.repeat(32)}` }),
+        VAULT_ID,
+      ),
     ).toThrow(/recovery key fields/)
+  })
+
+  it('requires the protection tier to match recovery-key presence', () => {
+    const recovery = `02${'bb'.repeat(32)}`
+    expect(() => requireStatusIdentity(sampleStatus({ protectionTier: 'advanced' }), VAULT_ID)).toThrow(/Advanced/)
+    expect(() => requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery }), VAULT_ID)).toThrow(/Standard/)
+    expect(() => requireStatusIdentity({ ...sampleStatus(), protectionTier: undefined } as never, VAULT_ID)).toThrow(
+      /protection tier/,
+    )
   })
 
   it('fails closed when a pinned enrolled vault is reported as unenrolled', async () => {
