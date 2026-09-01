@@ -1,13 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   FORBIDDEN_PUBLIC_KEY_2G,
   FORBIDDEN_PUBLIC_KEY_G,
   emptySetupPlan,
+  loadSetupPlan,
   parseCompressedPub,
   planReady,
   sameRole,
+  saveSetupPlan,
+  SETUP_STORE_KEY,
 } from './setupPlan'
 import { PROGRAM_FIXTURE } from './program/fixtures'
+
+afterEach(() => localStorage.clear())
 
 describe('vault setup plan', () => {
   it('accepts hardware without recovery, and rejects the same key as recovery', () => {
@@ -46,5 +51,30 @@ describe('vault setup plan', () => {
   it('keeps the public generator points distinct from ordinary fixture keys', () => {
     expect(FORBIDDEN_PUBLIC_KEY_G).not.toBe(PROGRAM_FIXTURE.hardwarePub)
     expect(FORBIDDEN_PUBLIC_KEY_2G).not.toBe(PROGRAM_FIXTURE.hardwarePub)
+  })
+
+  it('round-trips the complete configurable policy shape', () => {
+    const plan = {
+      ...emptySetupPlan(),
+      hardwarePub: PROGRAM_FIXTURE.hardwarePub,
+      acceptedDesign: true,
+    }
+    saveSetupPlan(plan)
+    expect(loadSetupPlan()).toEqual(plan)
+  })
+
+  it('does not migrate a setup plan that predates configurable fee policy', () => {
+    localStorage.setItem(
+      SETUP_STORE_KEY,
+      JSON.stringify({
+        hardwarePub: PROGRAM_FIXTURE.hardwarePub,
+        recoveryPub: '',
+        txCapSats: 50_000,
+        dailyLimitSats: 100_000,
+        acceptedDesign: true,
+        complete: true,
+      }),
+    )
+    expect(loadSetupPlan()).toBeNull()
   })
 })
