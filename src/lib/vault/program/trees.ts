@@ -239,6 +239,8 @@ export function buildVaultProgramFamily(input: {
   arkadeCosignerBase: string
   network: string
   templateVersion?: string
+  absoluteFeeCapSats: number
+  feerateCapSatPerV: number
 }) {
   const phoneDirect = hexToBytes(input.phoneDirectP256)
   const bases = [input.phonePub, input.hardwarePub, input.vaultCosignerBase, input.arkadeCosignerBase]
@@ -260,6 +262,8 @@ export function buildVaultProgramFamily(input: {
     clawbackAuth[key] = buildTransitionScript({
       destScriptHex: hex.encode(quarantine[key].script),
       witnessBytes: expectedClawbackWitness,
+      feeCap: input.absoluteFeeCapSats,
+      feerateCap: input.feerateCapSatPerV,
     })
     pendingTweaks[key] = tweakPair(input.vaultCosignerBase, input.arkadeCosignerBase, clawbackAuth[key])
     pending[key] = buildPending({
@@ -274,6 +278,8 @@ export function buildVaultProgramFamily(input: {
       destScriptHex: hex.encode(pending[key].script),
       bindPhoneDirect: claimant === 'phone' ? phoneDirect : undefined,
       witnessBytes: initiateWitnessBytes(claimant, hasRecovery),
+      feeCap: input.absoluteFeeCapSats,
+      feerateCap: input.feerateCapSatPerV,
     })
   }
   const savingsInitiate: InitiateTweaks = {

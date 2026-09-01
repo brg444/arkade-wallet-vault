@@ -17,6 +17,7 @@ import { buildVaultProgramDescriptor, familyFromDescriptor } from './program/des
 import { PROGRAM_FIXTURE, scalarSecret } from './program/fixtures'
 import { buildRecoveryKit } from './program/kit'
 import { saveLocalKit } from './program/kitStore'
+import { spendingPolicyFromLimits, spendingPolicyDigest } from './spendingPolicy'
 
 const PHONE_PRIV = hex.decode('00'.repeat(31) + '03')
 const HW_PRIV = hex.decode('00'.repeat(31) + '04')
@@ -41,6 +42,12 @@ function currentAdminPsbt(): string {
 }
 
 function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDescriptor>): VaultStatus {
+  const spendingPolicy = spendingPolicyFromLimits({
+    txRecipientCapSats: descriptor.policy.recipientCapSats,
+    periodAllowanceSats: descriptor.policy.periodAllowanceSats,
+    absoluteFeeCapSats: descriptor.policy.absoluteFeeCapSats,
+    feerateCapSatPerV: descriptor.policy.feerateCapSatVb,
+  })
   return {
     enrolled: true,
     network: descriptor.network,
@@ -49,6 +56,7 @@ function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDes
     vaultId: descriptor.vaultId,
     templateVersion: descriptor.templateVersion,
     policyVersion: descriptor.policyVersion,
+    protectionTier: descriptor.protectionTier,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
     periodAllowance: descriptor.policy.periodAllowanceSats,
@@ -57,6 +65,8 @@ function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDes
     txCap: descriptor.policy.recipientCapSats,
     absoluteFeeCap: descriptor.policy.absoluteFeeCapSats,
     feerateCapSatVb: descriptor.policy.feerateCapSatVb,
+    spendingPolicy,
+    spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
     phoneBip340Pub: descriptor.keys.phoneBip340,
     externalOwnerWalletPub: descriptor.keys.hardware,
     recoveryPub: descriptor.keys.recovery,
@@ -107,6 +117,7 @@ describe('savings admin PSBT', () => {
   it.each([true, false])('spends Savings with recovery=%s', (withRecovery) => {
     const descriptor = buildVaultProgramDescriptor({
       ...PROGRAM_FIXTURE,
+      protectionTier: withRecovery ? 'advanced' : 'standard',
       recoveryPub: withRecovery ? PROGRAM_FIXTURE.recoveryPub : undefined,
       arkadeCosigner: {
         origin: 'https://emulator.mutinynet.arkade.sh',

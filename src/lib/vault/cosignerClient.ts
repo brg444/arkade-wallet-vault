@@ -1,6 +1,8 @@
 import { vaultGet, vaultPost } from './api'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from './status'
 import type { VaultStatus, VaultStatusWire } from './types'
+import type { SpendingPolicy } from './spendingPolicy'
+import type { ProtectionTier } from './protectionTier'
 
 const enrollmentHeader = (token: string) => ({ 'X-Vault-Enrollment-Token': token })
 
@@ -18,6 +20,15 @@ export interface VaultEnrollStartResponse {
   userId: string
   userName: string
   timeoutMs: number
+  protectionTier: ProtectionTier
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
+}
+
+export interface VaultEnrollStartRequest {
+  protectionTier: ProtectionTier
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
 }
 
 export interface VaultEnrollmentRequest {
@@ -37,6 +48,9 @@ export interface VaultEnrollmentRequest {
   descriptorHash?: string
   vtxoBoardingProgram?: 'vault-board-v1'
   vaultBoardingBip340Pub?: string
+  protectionTier: ProtectionTier
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
 }
 
 export interface VaultEnrollProposeResponse {
@@ -257,7 +271,7 @@ export interface VaultCosignerEnrollmentClient {
   publicStatus(signal?: AbortSignal): Promise<PublicAuthorizerStatus>
   status(vaultId: string, signal?: AbortSignal): Promise<VaultStatus>
   invite(token: string): Promise<VaultInviteView>
-  start(token: string): Promise<VaultEnrollStartResponse>
+  start(token: string, request: VaultEnrollStartRequest): Promise<VaultEnrollStartResponse>
   propose(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
   finish(token: string, request: VaultEnrollmentRequest): Promise<VaultStatusWire>
   binding(request: VaultRecoveryBindingRequest): Promise<VaultRecoveryBindingResponse>
@@ -373,8 +387,8 @@ export const vaultCosignerClient: VaultCosignerClient = {
     invite(token) {
       return vaultGet('/v1/invite', enrollmentHeader(token))
     },
-    start(token) {
-      return vaultPost('/v1/enroll/start', {}, enrollmentHeader(token))
+    start(token, request) {
+      return vaultPost('/v1/enroll/start', request, enrollmentHeader(token))
     },
     propose(token, request) {
       return vaultPost('/v1/enroll/propose', request, enrollmentHeader(token))

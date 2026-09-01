@@ -11,6 +11,7 @@ import {
   vaultStatusPath,
 } from './status'
 import type { VaultStatusWire } from './types'
+import { CURRENT_SPENDING_POLICY_CAPABILITIES, defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
 
 const VAULT_ID = 'vault-test-current'
 
@@ -22,6 +23,7 @@ afterEach(() => {
 type CompatibleStatusWire = VaultStatusWire & { recoveryPub?: string }
 
 function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatusWire {
+  const spendingPolicy = defaultSpendingPolicy()
   return {
     enrolled: true,
     network: 'mutinynet',
@@ -30,6 +32,7 @@ function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatu
     vaultId: VAULT_ID,
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: 'standard',
     arkadeCosignerOrigin: 'https://mutinynet.arkade.sh',
     arkadeCosignerVersion: '0.4.65',
     savingsAddress: 'tb1ptest',
@@ -42,6 +45,8 @@ function sampleStatus(over: Partial<CompatibleStatusWire> = {}): CompatibleStatu
     txCap: 50_000,
     absoluteFeeCap: 5_000,
     feerateCapSatVb: 10,
+    spendingPolicy,
+    spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
     vtxoVaultCosignerPub: '02' + '11'.repeat(32),
     vtxoExitDelay: 4608,
     vtxoExitDelayUnit: 'seconds',
@@ -93,13 +98,27 @@ describe('status identity binding', () => {
 
   it('normalizes the server recoveryKeyPub field and rejects conflicting aliases', () => {
     const recovery = `02${'bb'.repeat(32)}`
-    expect(requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery }), VAULT_ID)).toMatchObject({
+    expect(
+      requireStatusIdentity(sampleStatus({ protectionTier: 'advanced', recoveryKeyPub: recovery }), VAULT_ID),
+    ).toMatchObject({
       recoveryPub: recovery,
       recoveryKeyPub: recovery,
     })
     expect(() =>
-      requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery, recoveryPub: `03${'cc'.repeat(32)}` }), VAULT_ID),
+      requireStatusIdentity(
+        sampleStatus({ protectionTier: 'advanced', recoveryKeyPub: recovery, recoveryPub: `03${'cc'.repeat(32)}` }),
+        VAULT_ID,
+      ),
     ).toThrow(/recovery key fields/)
+  })
+
+  it('requires the protection tier to match recovery-key presence', () => {
+    const recovery = `02${'bb'.repeat(32)}`
+    expect(() => requireStatusIdentity(sampleStatus({ protectionTier: 'advanced' }), VAULT_ID)).toThrow(/Advanced/)
+    expect(() => requireStatusIdentity(sampleStatus({ recoveryKeyPub: recovery }), VAULT_ID)).toThrow(/Standard/)
+    expect(() => requireStatusIdentity({ ...sampleStatus(), protectionTier: undefined } as never, VAULT_ID)).toThrow(
+      /protection tier/,
+    )
   })
 
   it('fails closed when a pinned enrolled vault is reported as unenrolled', async () => {
@@ -132,6 +151,7 @@ describe('pingVaultService', () => {
               templateVersion: SAVINGS_TEMPLATE,
               policyVersion: POLICY_VERSION,
               enrollmentMode: 'invite',
+              spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
@@ -153,6 +173,7 @@ describe('pingVaultService', () => {
               templateVersion: SAVINGS_TEMPLATE,
               policyVersion: POLICY_VERSION,
               enrollmentMode: 'invite',
+              spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),

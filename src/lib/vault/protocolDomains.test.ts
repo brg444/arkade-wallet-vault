@@ -13,7 +13,13 @@ describe('frozen wallet protocol domains', () => {
     expect(SAVINGS_TEMPLATE).toBe(savings.template)
     expect(savings.status).toBe('live')
     expect(savings.enrollable).toBe(true)
-    expect(savings.recovery).toBe('optional')
+    expect(savings.protectionTiers).toEqual({
+      standard: { recoveryKey: 'forbidden' },
+      advanced: { recoveryKey: 'required' },
+    })
+    expect(pack.formats).toEqual({ recoveryKit: 3, mapBackup: 3 })
+    expect(pack.domains.vaultRecord).toBe('arkade-vault/vault-record/v2')
+    expect(pack.domains.recoveryBinding).toBe('arkade-vault/recovery-binding/v4')
   })
 
   it('pins the live Savings program', () => {
@@ -41,7 +47,7 @@ describe('frozen wallet protocol domains', () => {
     expect(enroll).toContain('arkade-2fa-vault/kek/v1')
     expect(enroll).toContain('arkade-2fa-vault/direct-p256/v1')
     const binding = readFileSync(resolve(import.meta.dirname, 'passkeyBinding.ts'), 'utf8')
-    expect(binding).toContain('arkade-vault/recovery-binding/v3')
+    expect(binding).toContain('arkade-vault/recovery-binding/v4')
     expect(binding).toContain('arkade-2fa-vault/passkey-proof/v1')
   })
 

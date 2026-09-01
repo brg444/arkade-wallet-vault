@@ -20,7 +20,8 @@ export function planInitiate(input: {
   vaultId: string
   storage?: Storage
 }) {
-  selectRoute({ role: 'normal' }, { type: 'initiate', claimant: input.claimant })
+  const hasRecovery = Boolean(input.family.pending['savings-recovery'])
+  selectRoute({ role: 'normal' }, { type: 'initiate', claimant: input.claimant }, { hasRecovery })
   const built = buildInitiatePsbt({
     family: input.family,
     claimant: input.claimant,
@@ -54,8 +55,9 @@ export function planClawback(input: {
   vaultId: string
   storage?: Storage
 }) {
-  const guardian = input.guardian || pendingGuardians(input.claimant)[0]
-  selectRoute({ role: 'pending', claimant: input.claimant }, { type: 'clawback', guardian })
+  const hasRecovery = Boolean(input.family.pending['savings-recovery'])
+  const guardian = input.guardian || pendingGuardians(input.claimant, hasRecovery)[0]
+  selectRoute({ role: 'pending', claimant: input.claimant }, { type: 'clawback', guardian }, { hasRecovery })
   const built = buildClawbackPsbt({
     family: input.family,
     claimant: input.claimant,
@@ -90,7 +92,11 @@ export function planClaim(input: {
   selectRoute(
     { role: 'pending', claimant: input.claimant },
     { type: 'claim' },
-    { tipHeight: input.tipHeight, confirmedHeight: input.confirmedHeight },
+    {
+      tipHeight: input.tipHeight,
+      confirmedHeight: input.confirmedHeight,
+      hasRecovery: Boolean(input.family.pending['savings-recovery']),
+    },
   )
   return buildClaimPsbt({
     family: input.family,

@@ -25,6 +25,15 @@ The browser never receives the VaultCosigner key. Hardware and recovery
 private keys are not accepted by production screens; those workflows exchange
 PSBTs with an external signer.
 
+Enrollment freezes a protection tier and one fixed `vault-policy-v1` policy
+before passkey creation. Standard has no recovery key; Advanced requires one
+and exposes only the delayed recovery paths already implemented by the Vault
+Program. Spending offers Lower exposure (25,000 sats per payment and 50,000
+sats per rolling 24 hours), Everyday (50,000 and 100,000), or custom values for
+those two limits. The authenticated fee ceilings remain release-managed at
+5,000 sats and 10 sat/vB. The complete descriptor, tier, and canonical policy
+digest are pinned locally and in Recovery Kit version 3.
+
 ## Components
 
 | Component                                                            | Responsibility                                                                                                          |
@@ -87,7 +96,7 @@ live lifecycle qualification, browser concurrency tests, production key
 isolation, and mainnet-specific program pins. The confirmed mainnet Emulator
 endpoint advertises the same signer already pinned by the official SDK, but it
 has not yet passed Vault release qualification. Vault Program and policy
-adjustments begin after the Mutinynet lifecycle is stable. A disabled outbound
+schema bounds require a separate mainnet release review. A disabled outbound
 BOLT11 lifecycle delegates RFQ, VHTLC, persistence, restart, and refund handling
 to the published swap package, then funds through the ordinary VTXO send path.
 Its solver, refund, expiry, and live-payment gates are recorded in

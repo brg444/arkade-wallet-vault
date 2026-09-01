@@ -13,12 +13,14 @@ import {
   type AddressPinFields,
 } from './pin'
 import type { VaultStatus } from './types'
+import { canonicalSpendingPolicy, defaultSpendingPolicy, spendingPolicyDigest } from './spendingPolicy'
 
 const VAULT_ID = 'vault-test-current'
 
 const PROGRAM_FIELDS = [
   'vaultId',
   'network',
+  'protectionTier',
   'savingsAddress',
   'savingsScript',
   'vtxoVaultCosignerPub',
@@ -54,6 +56,7 @@ function memoryStorage(): Storage {
 }
 
 function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
+  const spendingPolicy = defaultSpendingPolicy()
   return {
     enrolled: true,
     network: 'mutinynet',
@@ -62,6 +65,7 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     vaultId: VAULT_ID,
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: 'standard',
     savingsAddress: 'tb1psavings',
     savingsScript: '5120' + '11'.repeat(32),
     periodAllowance: 100000,
@@ -70,6 +74,8 @@ function sampleStatus(over: Partial<VaultStatus> = {}): VaultStatus {
     txCap: 50000,
     absoluteFeeCap: 5000,
     feerateCapSatVb: 10,
+    spendingPolicy,
+    spendingPolicyDigest: spendingPolicyDigest(spendingPolicy),
     vtxoVaultCosignerPub: '02' + '22'.repeat(32),
     vtxoExitDelay: 4608,
     vtxoExitDelayUnit: 'seconds',
@@ -97,6 +103,7 @@ function tenantStatus(over: Partial<VaultStatus> = {}): VaultStatus {
 function mutatedValue(field: keyof AddressPinFields, value: AddressPinFields[keyof AddressPinFields]) {
   if (typeof value === 'boolean') return !value
   if (typeof value === 'number') return value + 1
+  if (field === 'protectionTier') return value === 'standard' ? 'advanced' : 'standard'
   return field === 'vaultId' ? 'different-vault' : `${value}-different`
 }
 
@@ -157,16 +164,51 @@ describe('local program pin', () => {
 
   it('freezes the program pin domain and field order', () => {
     expect(pinFromEnrolledStatus(sampleStatus()).pinHash).toBe(
-      '1727d2e03a95fb8ca1ccc5857136c914aab64794f1922b73c4cfc72806e2712f',
+      'adb92cb437635681608b351ac6f3c473a7201b87f25871b23161c1ad75ff383e',
     )
   })
 
   it.each(PROGRAM_FIELDS)('rejects status drift in %s', (field) => {
     const status = sampleStatus()
     const pin = pinFromEnrolledStatus(status)
-    const changed = { ...status, [field]: mutatedValue(field, pin[field]) }
+    const changed = {
+      ...status,
+      [field]: mutatedValue(field, pin[field]),
+      ...(field === 'protectionTier' ? { recoveryKeyPub: `02${'66'.repeat(32)}` } : {}),
+    }
     expect(() => requireStatusMatchesPin(changed, pin)).toThrow(/local pin/)
   })
+
+  it('rejects status drift in the immutable spending policy or its digest', () => {
+    const status = sampleStatus()
+    const pin = pinFromEnrolledStatus(status)
+    expect(() =>
+      requireStatusMatchesPin(
+        { ...status, spendingPolicy: { ...status.spendingPolicy!, txRecipientCapSats: 49_999 } },
+        pin,
+      ),
+    ).toThrow()
+    expect(() => requireStatusMatchesPin({ ...status, spendingPolicyDigest: '00'.repeat(32) }, pin)).toThrow()
+  })
+
+  it.each(['spendingPolicyCanonical', 'spendingPolicyDigest'] as const)(
+    'rejects a stored pin whose %s was tampered or removed',
+    (field) => {
+      const storage = memoryStorage()
+      const pin = pinEnrolledStatus(sampleStatus(), storage)
+      const key = addressPinStoreKey(VAULT_ID)
+      const tampered =
+        field === 'spendingPolicyCanonical'
+          ? canonicalSpendingPolicy({ ...defaultSpendingPolicy(), txRecipientCapSats: 49_999 })
+          : '00'.repeat(32)
+      storage.setItem(key, JSON.stringify({ ...pin, [field]: tampered }))
+      expect(() => loadAddressPin(storage, VAULT_ID)).toThrow(/program pin/)
+      const missing = { ...pin } as Record<string, unknown>
+      delete missing[field]
+      storage.setItem(key, JSON.stringify(missing))
+      expect(() => loadAddressPin(storage, VAULT_ID)).toThrow(/incomplete program pin/)
+    },
+  )
 
   it.each(PROGRAM_FIELDS)('rejects an enrolled status missing %s', (field) => {
     const status = { ...sampleStatus() } as Record<string, unknown>

@@ -255,6 +255,23 @@ button.vault-panel:disabled {
   box-shadow: 4px 4px 0 0 color-mix(in srgb, var(--vault-accent) 18%, transparent);
 }
 
+.vault-policy-presets,
+.vault-policy-fields {
+  display: grid;
+  width: 100%;
+  gap: 0.65rem;
+}
+
+@media (min-width: 560px) {
+  .vault-policy-presets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .vault-policy-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .vault-callout {
   width: 100%;
   display: grid;

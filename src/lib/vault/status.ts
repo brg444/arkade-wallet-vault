@@ -3,6 +3,13 @@ import { POLICY_VERSION, requireSupportedVaultNetwork } from './constants'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus, VaultStatusWire } from './types'
+import {
+  requireCurrentSpendingPolicyCapabilities,
+  spendingPolicyDigest,
+  validateSpendingPolicy,
+  type SpendingPolicyCapabilities,
+} from './spendingPolicy'
+import { requireProtectionTierMatchesRecovery } from './protectionTier'
 
 export function authorizerBase(): string {
   // Production talks same-origin only. A VITE_ value is compiled into the
@@ -21,6 +28,7 @@ export type PublicAuthorizerStatus = {
   enrollmentMode: string
   enrollmentExpiresAt?: string
   vtxoBoardingProgram?: string
+  spendingPolicyCapabilities: SpendingPolicyCapabilities
 }
 
 function requestedVaultId(expectedVaultId: string): string {
@@ -61,6 +69,7 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   requireSupportedVaultNetwork(body.network)
   if (body.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
+  body.spendingPolicyCapabilities = requireCurrentSpendingPolicyCapabilities(body.spendingPolicyCapabilities)
   return body
 }
 
@@ -115,6 +124,18 @@ export function requireStatusIdentity(
   requireSupportedVaultNetwork(status.network)
   if (status.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (status.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
+  const selected = validateSpendingPolicy(status.spendingPolicy)
+  if (spendingPolicyDigest(selected) !== status.spendingPolicyDigest) {
+    throw new Error('status spending policy digest does not match')
+  }
+  if (
+    selected.txRecipientCapSats !== status.txCap ||
+    selected.periodAllowanceSats !== status.periodAllowance ||
+    selected.absoluteFeeCapSats !== status.absoluteFeeCap ||
+    selected.feerateCapSatPerV !== status.feerateCapSatVb
+  ) {
+    throw new Error('status spending policy does not match limit fields')
+  }
   if (status.enrolled && (!String(status.savingsAddress || '').trim() || !String(status.savingsScript || '').trim())) {
     throw new Error('enrolled status is missing the Savings descriptor')
   }
@@ -124,5 +145,6 @@ export function requireStatusIdentity(
     throw new Error('status recovery key fields do not match')
   }
   const recovery = recoveryKeyPub || recoveryPub
+  requireProtectionTierMatchesRecovery(status.protectionTier, recovery)
   return (recovery ? { ...status, recoveryPub: recovery, recoveryKeyPub: recovery } : status) as VaultStatus
 }

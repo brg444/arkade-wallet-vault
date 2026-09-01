@@ -22,6 +22,7 @@ export const PROGRAM_FIXTURE = {
   vaultId: 'aabbccddeeff00112233445566778899',
   network: 'mutinynet' as const,
   templateVersion: 'phone-hww-recovery-savings-v1' as const,
+  protectionTier: 'advanced' as const,
   phonePub: compressedFromScalar(3),
   hardwarePub: compressedFromScalar(4),
   recoveryPub: compressedFromScalar(5),
@@ -44,4 +45,6 @@ export const PROGRAM_FIXTURE_FAMILY = {
   arkadeCosignerBase: PROGRAM_FIXTURE.arkadeCosignerBase,
   network: PROGRAM_FIXTURE.network,
   templateVersion: PROGRAM_FIXTURE.templateVersion,
+  absoluteFeeCapSats: 5_000,
+  feerateCapSatPerV: 10,
 }
