@@ -54,6 +54,8 @@ export function kitFromFacts(input: {
   const liveTemplate = String(input.status?.templateVersion || '')
   const signerOrigin = String(input.status?.arkadeCosignerOrigin || '').trim()
   const signerVersion = String(input.status?.arkadeCosignerVersion || '').trim()
+  const spendingPolicy = input.status?.spendingPolicy
+  const statusSpendingPolicyDigest = String(input.status?.spendingPolicyDigest || '').trim()
   if (
     liveBases &&
     phonePub &&
@@ -61,6 +63,8 @@ export function kitFromFacts(input: {
     vaultId &&
     signerOrigin &&
     signerVersion &&
+    spendingPolicy &&
+    statusSpendingPolicyDigest &&
     input.status?.network === 'mutinynet' &&
     liveTemplate === SAVINGS_TEMPLATE
   ) {
@@ -79,7 +83,11 @@ export function kitFromFacts(input: {
           version: signerVersion,
         },
         templateVersion: liveTemplate,
+        spendingPolicy,
       })
+      if (descriptor.policy.digest !== statusSpendingPolicyDigest) {
+        throw new Error('rebuilt map spending policy does not match this vault')
+      }
       if (input.status?.savingsAddress && descriptor.savings.address !== input.status.savingsAddress) {
         throw new Error('rebuilt map does not match this vault')
       }
