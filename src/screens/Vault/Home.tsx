@@ -41,15 +41,15 @@ export default function VaultHome() {
     navigate,
     openSendScan,
     openRecover,
-    liveNetwork,
     initiateAlert,
+    refreshBalance,
     spendingArkAddress,
     refreshingBalance,
     savingsAddress,
     savingsSats,
+    savingsSpendableSats,
     setAccount,
     setSpendDraft,
-    status,
   } = useContext(VaultContext)
   const { toast } = useToast()
   const [picker, setPicker] = useState(false)
@@ -114,9 +114,7 @@ export default function VaultHome() {
                   >
                     {truncateAddress(address, 6)}
                   </button>
-                ) : (
-                  <p className='vault-account-addr is-empty'>{liveNetwork ? 'Testnet' : 'No address yet'}</p>
-                )}
+                ) : null}
               </div>
               <div className='vault-account-actions'>
                 <button
@@ -192,7 +190,7 @@ export default function VaultHome() {
             <p
               className='vault-balance-figure'
               data-testid='vault-balance'
-              aria-busy={!balancesLoaded || refreshingBalance}
+              aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
               aria-live='polite'
             >
               {balancesLoaded ? prettyNumber(sats) : '—'}
@@ -200,9 +198,11 @@ export default function VaultHome() {
             </p>
 
             {!balancesLoaded ? (
-              <Text color='neutral-600' tiny wrap>
-                Loading {spending ? 'Spending' : 'Savings'} balance…
-              </Text>
+              balanceError ? null : (
+                <Text color='neutral-600' tiny wrap>
+                  Loading {spending ? 'Spending' : 'Savings'} balance…
+                </Text>
+              )
             ) : spending ? (
               <FlexCol gap='0.35rem'>
                 <Text color='neutral-600' tiny>
@@ -212,7 +212,7 @@ export default function VaultHome() {
               </FlexCol>
             ) : (
               <Text color='neutral-600' tiny wrap>
-                Confirmed and unspent. Moving it requires this device and your hardware key.
+                Moving funds requires this device and your hardware key.
               </Text>
             )}
 
@@ -234,13 +234,16 @@ export default function VaultHome() {
             ) : null}
 
             <ErrorMessage error={Boolean(error || balanceError)} text={error || balanceError} />
+            {balanceError ? (
+              <Button secondary label='Retry' loading={refreshingBalance} onClick={() => void refreshBalance()} />
+            ) : null}
 
             <FlexRow padding='0 0 0.5rem 0'>
               <Button
                 main
                 icon={<SendIcon />}
                 label={spending ? 'Send' : 'Move to Spending'}
-                disabled={spending ? !canSend : savingsSats <= 330}
+                disabled={spending ? !canSend : savingsSpendableSats <= 330}
                 onClick={() => {
                   if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
                   navigate('send')
@@ -254,11 +257,6 @@ export default function VaultHome() {
               />
             </FlexRow>
             <VaultHistory />
-            {status?.enrolled && (!spendingArkAddress || !boardingAddress) ? (
-              <Text color='neutral-600' tiny wrap>
-                Receive isn’t ready yet. Try again after setup finishes.
-              </Text>
-            ) : null}
           </div>
         </Padded>
       </Content>

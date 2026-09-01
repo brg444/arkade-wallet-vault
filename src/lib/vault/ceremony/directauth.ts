@@ -23,7 +23,7 @@ export async function deriveDirectP256(prf: Uint8Array): Promise<{
   for (let counter = 0; counter <= 255; counter++) {
     const scalar = new Uint8Array(
       await crypto.subtle.deriveBits(
-        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: hkdfInfo(counter) },
+        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: hkdfInfo(counter) as BufferSource },
         key,
         256,
       ),
@@ -56,8 +56,8 @@ export function verifyDirectP256(pub: Uint8Array, digest: Uint8Array, signature:
   return p256.verify(compact, message, key, { prehash: false, lowS: true, format: 'compact' })
 }
 
-export function zeroBytes(...values: Uint8Array[]): void {
-  for (const value of values) value.fill(0)
+export function zeroBytes(...values: Array<Uint8Array | null | undefined>): void {
+  for (const value of values) value?.fill(0)
 }
 
 function requireBytes(value: Uint8Array | ArrayBuffer, name: string): Uint8Array {

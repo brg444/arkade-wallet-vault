@@ -5,6 +5,9 @@ export { toast }
 
 export const useToast = () => ({ toast })
 
+const topToastOffset = 'max(32px, calc(env(safe-area-inset-top, 0px) + 12px))'
+const mobileTopToastOffset = 'max(16px, calc(env(safe-area-inset-top, 0px) + 12px))'
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <>
@@ -12,6 +15,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <Toaster
         className='arkade-toast-toaster'
         position='top-center'
+        offset={{ top: topToastOffset }}
+        mobileOffset={{ top: mobileTopToastOffset }}
         richColors
         toastOptions={{
           classNames: {

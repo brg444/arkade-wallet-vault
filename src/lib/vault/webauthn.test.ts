@@ -9,6 +9,7 @@ import {
   passkeyGetOptions,
   passkeyTransports,
   prfExtension,
+  prfFrom,
 } from './webauthn'
 
 const original = navigator.userAgent
@@ -17,7 +18,7 @@ const originalCredentials = Object.getOwnPropertyDescriptor(navigator, 'credenti
 afterEach(() => {
   Object.defineProperty(navigator, 'userAgent', { configurable: true, value: original })
   if (originalCredentials) Object.defineProperty(navigator, 'credentials', originalCredentials)
-  else delete (navigator as Navigator & { credentials?: CredentialsContainer }).credentials
+  else Reflect.deleteProperty(navigator, 'credentials')
   vi.unstubAllGlobals()
 })
 
@@ -118,5 +119,17 @@ describe('prf extension', () => {
     }
     expect(ext.prf?.eval?.first).toBe(salt)
     expect(ext.prf?.evalByCredential?.[bytesToBase64Url(cred)]?.first).toBe(salt)
+  })
+
+  it('copies the browser-owned PRF result before recovery waits on the network', () => {
+    const browserResult = new Uint8Array(32).fill(0x42)
+    const credential = {
+      getClientExtensionResults: () => ({ prf: { results: { first: browserResult } } }),
+    } as unknown as PublicKeyCredential
+
+    const owned = prfFrom(credential)
+    browserResult.fill(0)
+
+    expect(owned).toEqual(new Uint8Array(32).fill(0x42))
   })
 })

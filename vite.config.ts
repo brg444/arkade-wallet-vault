@@ -16,9 +16,18 @@ function gitCommitShort(): string {
   }
 }
 
+function vaultE2eOperatorOrigin(): string {
+  if (process.env.VAULT_E2E_BUILD !== 'arkade-vault-e2e-only') return ''
+  return process.env.VAULT_E2E_OPERATOR_ORIGIN?.trim() || ''
+}
+
 function vaultAuthorizerProxy(): ProxyOptions {
+  const gatewaySecret = process.env.VAULT_GATEWAY_SECRET?.trim()
+  const testTarget = process.env.VAULT_E2E_AUTHORIZER_PROXY_TARGET?.trim()
   return {
-    target: 'http://127.0.0.1:8787',
+    target: testTarget || 'http://127.0.0.1:8787',
+    ...(testTarget ? { secure: false } : {}),
+    ...(gatewaySecret ? { headers: { 'X-Vault-Gateway-Secret': gatewaySecret } } : {}),
     configure(proxy) {
       proxy.on('error', (_err, _req, res) => {
         const socket = res as {
@@ -31,6 +40,16 @@ function vaultAuthorizerProxy(): ProxyOptions {
         }
       })
     },
+  }
+}
+
+function esploraProxy(): ProxyOptions {
+  const testTarget = process.env.VAULT_E2E_ESPLORA_PROXY_TARGET?.trim()
+  return {
+    target: testTarget || 'https://mempool.mutinynet.arkade.sh',
+    changeOrigin: true,
+    ...(testTarget ? { secure: false } : {}),
+    rewrite: (path) => path.replace(/^\/esplora/, '/api'),
   }
 }
 
@@ -59,20 +78,12 @@ export default defineConfig({
     proxy: {
       '/v1': vaultAuthorizerProxy(),
       '/health': vaultAuthorizerProxy(),
-      '/esplora': {
-        target: 'https://mempool.mutinynet.arkade.sh',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/esplora/, '/api'),
-      },
-      '/arkade': {
-        target: 'https://mutinynet.arkade.sh',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/arkade/, ''),
-      },
+      '/esplora': esploraProxy(),
     },
   },
   define: {
     'import.meta.env.VITE_GIT_COMMIT': JSON.stringify(gitCommitShort()),
+    __VAULT_E2E_OPERATOR_ORIGIN__: JSON.stringify(vaultE2eOperatorOrigin()),
   },
   build: {
     emptyOutDir: true,

@@ -2,8 +2,8 @@
 
 > [!WARNING]
 > This release candidate runs only on Mutinynet. Real-fund use is out of scope.
-> Mainnet activation requires the private mainnet Emulator endpoint and the
-> reviewed network and Vault Program pins described below.
+> Mainnet activation requires reviewed network, Emulator, and Vault Program
+> pins described below.
 
 Arkade Vault Wallet separates funds into two programs:
 
@@ -16,8 +16,10 @@ Arkade Vault Wallet separates funds into two programs:
 
 Spending receive presents one BIP21 request containing an Arkade address and a
 Bitcoin boarding address. Arkade-aware payments arrive as VTXOs. Confirmed
-onchain payments enter `vault-board-v1`, then the wallet settles them into the
-Spending program. Savings-to-Spending uses that same boarding path.
+onchain payments enter the vault's enrolled boarding program, then the official
+SDK settles them into Spending. Savings-to-Spending uses that same path. The
+only supported boarding program is `vault-board-v1`, documented in
+[docs/boarding.md](docs/boarding.md).
 
 The browser never receives the VaultCosigner key. Hardware and recovery
 private keys are not accepted by production screens; those workflows exchange
@@ -36,6 +38,13 @@ routes. Enrollment requires an invitation created by the service operator.
 See [the documentation index](docs/README.md) for the program and release
 boundaries.
 
+VTXO state follows the official Arkade Wallet worker architecture. One scoped
+worker owns the official SDK Wallet, Contract Manager, repositories, and a
+boarding key provisioned only after the existing PRF unlock succeeds. The page
+never receives that key or owns a parallel settlement lifecycle. Exact upstream
+revisions and intentional Vault adapters are recorded in
+[docs/upstream-alignment.md](docs/upstream-alignment.md).
+
 ## Local development
 
 Use Node.js and pnpm:
@@ -47,6 +56,17 @@ pnpm start
 
 The development server listens on
 [http://localhost:3003](http://localhost:3003).
+
+When the local Vault service has a gateway secret, pass the same value only to
+the Vite process:
+
+```bash
+VAULT_GATEWAY_SECRET=<local-gateway-secret> pnpm start
+```
+
+The development proxy adds the private header to `/v1` requests. Never expose
+this value through a `VITE_` variable; variables with that prefix are compiled
+into browser code.
 
 Run the release checks with:
 
@@ -64,9 +84,14 @@ supports fragmented inputs, exact no-change sends, the Operator's bounded
 intent fee policy, and recovery after an ambiguous Operator submission through
 the official SDK pending-transaction interface. Mainnet remains blocked on
 live lifecycle qualification, browser concurrency tests, production key
-isolation, mainnet-specific program pins, and the private mainnet Emulator
-endpoint. Vault Program and policy adjustments begin after the Mutinynet
-lifecycle is stable. The complete release gate is in
+isolation, and mainnet-specific program pins. The confirmed mainnet Emulator
+endpoint advertises the same signer already pinned by the official SDK, but it
+has not yet passed Vault release qualification. Vault Program and policy
+adjustments begin after the Mutinynet lifecycle is stable. A disabled outbound
+BOLT11 lifecycle delegates RFQ, VHTLC, persistence, restart, and refund handling
+to the published swap package, then funds through the ordinary VTXO send path.
+Its solver, refund, expiry, and live-payment gates are recorded in
+[docs/lightning.md](docs/lightning.md). The complete release gate is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.

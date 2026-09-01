@@ -8,6 +8,7 @@ import {
   inspectSavingsPsbt,
   psbtFile,
   psbtHexToBase64,
+  readPsbtFile,
   requireSameSavingsIntent,
   signSavingsPsbt,
 } from './savingsSpend'
@@ -63,6 +64,18 @@ function statusFromDescriptor(descriptor: ReturnType<typeof buildVaultProgramDes
     arkadeCosignerBasePub: descriptor.keys.arkadeCosignerBase,
     arkadeCosignerOrigin: descriptor.arkadeCosigner.origin,
     arkadeCosignerVersion: descriptor.arkadeCosigner.version,
+    vtxoVaultCosignerPub: '02' + '11'.repeat(32),
+    vtxoExitDelay: 4608,
+    vtxoExitDelayUnit: 'seconds',
+    spendingArkAddress: 'tark1spending',
+    spendingArkScript: '5120' + '22'.repeat(32),
+    vtxoDelegatePub: '02' + '33'.repeat(32),
+    vtxoBoardingActive: true,
+    vtxoBoardingProgram: 'vault-board-v1',
+    vtxoBoardingAddress: BOARDING_DEST,
+    vtxoBoardingScript: '5120' + '44'.repeat(32),
+    vtxoBoardingExitDelay: 604672,
+    vtxoBoardingExitDelayUnit: 'seconds',
   }
 }
 
@@ -83,6 +96,12 @@ describe('savings admin PSBT', () => {
     expect(file.name).toBe('arkade-savings.psbt')
     expect(file.size).toBeGreaterThan(20)
     expect(psbtHexToBase64(hexPsbt).length).toBeGreaterThan(20)
+  })
+
+  it('reads a binary .psbt file back into the canonical hex form', async () => {
+    const hexPsbt = currentAdminPsbt()
+    await expect(readPsbtFile(psbtFile(hexPsbt))).resolves.toBe(hexPsbt)
+    await expect(readPsbtFile(new File([], 'empty.psbt'))).rejects.toThrow(/smaller than 1 MB/)
   })
 
   it.each([true, false])('spends Savings with recovery=%s', (withRecovery) => {
@@ -148,5 +167,32 @@ describe('savings admin PSBT', () => {
     ])
     expect(inspected.outputs.map((output) => output.amount)).toEqual([50_000, 4_500])
     expect(finalizeSavingsPsbt(hardwareSigned).txid).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('accepts a hardware signature only for the exact persisted Savings transaction', () => {
+    const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
+    const status = statusFromDescriptor(descriptor)
+    saveLocalKit(buildRecoveryKit(descriptor))
+    pinEnrolledStatus(status)
+    const build = (amountSats: number) =>
+      buildSavingsPsbt({
+        status,
+        phonePub: descriptor.keys.phoneBip340,
+        destAddress: BOARDING_DEST,
+        amountSats,
+        feeSats: 1_500,
+        coins: [{ txid: '11'.repeat(32), vout: 0, value: 100_000, confirmedHeight: 1 }],
+        leaf: 'admin',
+      })
+
+    const firstPhone = signSavingsPsbt(build(50_000), scalarSecret(3))
+    const firstHardware = signSavingsPsbt(firstPhone, scalarSecret(4))
+    const identicalRetry = signSavingsPsbt(build(50_000), scalarSecret(3))
+    const differentAmount = signSavingsPsbt(build(40_000), scalarSecret(3))
+
+    requireSameSavingsIntent(identicalRetry, firstHardware, BOARDING_DEST, 50_000, descriptor.network)
+    expect(() =>
+      requireSameSavingsIntent(differentAmount, firstHardware, BOARDING_DEST, 40_000, descriptor.network),
+    ).toThrow(/changed the unsigned Savings transaction/)
   })
 })

@@ -4,7 +4,9 @@
   "private": true,
   "homepage": ".",
   "dependencies": {
-    "@arkade-os/sdk": "0.4.65",
+    "@arkade-os/sdk": "git+https://github.com/arkade-os/ts-sdk.git#3077a1ba&path:packages/ts-sdk",
+    "@arkade-os/solver-discovery": "0.2.3",
+    "@arkade-os/swap": "0.0.8",
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@noble/curves": "^2.0.1",
@@ -17,7 +19,9 @@
     "clsx": "^2.1.1",
     "decimal.js": "^10.5.0",
     "framer-motion": "^12.34.3",
+    "light-bolt11-decoder": "3.2.0",
     "lucide-react": "^0.575.0",
+    "nostr-tools": "2.17.2",
     "qr": "^0.5.2",
     "qr-scanner": "^1.4.2",
     "react": "^18.3.1",
@@ -29,8 +33,9 @@
   },
   "scripts": {
     "prepare": "husky install",
-    "start": "vite --port 3003 --host localhost",
-    "build": "vite build",
+    "build:worker": "vite build -c vite.worker.config.ts",
+    "start": "pnpm build:worker && vite --port 3003 --host localhost",
+    "build": "pnpm build:worker && vite build",
     "test": "vitest run",
     "test:ui": "vitest run --ui",
     "test:unit": "vitest run --exclude '**/e2e/**'",
@@ -77,6 +82,7 @@
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "fake-indexeddb": "^6.2.5",
     "husky": "^8.0.3",
     "jsdom": "^26.1.0",
     "prettier": "^3.6.2",
@@ -93,6 +99,11 @@
     "pnpm": ">=8"
   },
   "pnpm": {
+    "overrides": {
+      "@arkade-os/sdk": "git+https://github.com/arkade-os/ts-sdk.git#3077a1ba&path:packages/ts-sdk",
+      "@arkade-os/swap>@arkade-os/sdk": "git+https://github.com/arkade-os/ts-sdk.git#3077a1ba&path:packages/ts-sdk",
+      "ws": "8.21.0"
+    },
     "ignoredBuiltDependencies": [
       "esbuild"
     ],

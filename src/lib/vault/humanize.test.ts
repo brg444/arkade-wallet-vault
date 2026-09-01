@@ -49,6 +49,12 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('VTXO reservation expired'))).toMatch(/did not finish/i)
   })
 
+  it('keeps an expired reviewed quote actionable', () => {
+    expect(humanizeVaultError(new Error('This fee quote expired or changed. Review the send again.'))).toBe(
+      'This fee quote expired or changed. Review the send again.',
+    )
+  })
+
   it('does not expose signing scalar internals', () => {
     expect(humanizeVaultError(new Error('Invalid scalar: out of range'))).toBe(
       'Couldn’t unlock Spending. Sign in again.',
@@ -95,9 +101,21 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('this passkey does not belong to this vault'))).toMatch(/scan the QR|original/i)
   })
 
+  it('distinguishes a verified PRF whose saved phone-key envelope cannot be opened', () => {
+    expect(
+      humanizeVaultError(new Error('passkey PRF authentication succeeded but could not decrypt the saved phone key')),
+    ).toMatch(/passkey was verified.*saved Spending key.*same sign-in button/i)
+  })
+
   it('does not mislabel a vault script mismatch as a passkey failure', () => {
     expect(humanizeVaultError(new Error('savings tree does not match this vault’s address'))).toBe(
-      'Savings tree does not match this vault’s address',
+      'This app doesn’t match the vault. Update and try again.',
+    )
+  })
+
+  it('never exposes an unknown implementation error in the wallet UI', () => {
+    expect(humanizeVaultError(new Error('INTERNAL_ERROR (0): opaque SDK detail'))).toBe(
+      'Something went wrong. Try again.',
     )
   })
 })

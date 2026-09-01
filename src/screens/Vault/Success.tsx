@@ -16,13 +16,14 @@ export default function VaultSuccess() {
   const { boardingAddress, lastSend, lastTxid, lastTxKind, navigate, status } = useContext(VaultContext)
   const amount = lastSend ? prettyAmount(lastSend.amount) : 'Sent'
   const movingToSpending = Boolean(lastSend && boardingAddress && lastSend.address === boardingAddress)
+  const lightning = lastTxKind === 'lightning'
   const explorer = lastTxKind
-    ? vaultTransactionExplorer(lastTxid, lastTxKind === 'vtxo' ? 'arkade' : 'onchain', status?.network)
+    ? vaultTransactionExplorer(lastTxid, lastTxKind === 'onchain' ? 'onchain' : 'arkade', status?.network)
     : null
 
   return (
     <>
-      <Header text={movingToSpending ? 'Moving' : 'Sent'} />
+      <Header text={movingToSpending ? 'Moving' : lightning ? 'Payment started' : 'Sent'} />
       <Content noRefresh>
         <Padded>
           <FlexCol>
@@ -31,19 +32,21 @@ export default function VaultSuccess() {
               text={
                 movingToSpending
                   ? 'Finishes after Bitcoin confirms'
-                  : lastTxKind === 'vtxo'
-                    ? 'Sent as a VTXO'
-                    : lastTxid
-                      ? 'Broadcast on testnet'
-                      : 'Done'
+                  : lightning
+                    ? 'The Lightning payment is on the way'
+                    : lastTxKind === 'vtxo'
+                      ? 'Sent as a VTXO'
+                      : lastTxid
+                        ? 'Broadcast on testnet'
+                        : 'Done'
               }
             />
             {lastSend ? (
               <>
                 <Detail
                   label='To'
-                  value={movingToSpending ? 'Spending' : truncateAddress(lastSend.address, 8)}
-                  mono={!movingToSpending}
+                  value={movingToSpending ? 'Spending' : lightning ? 'Lightning' : truncateAddress(lastSend.address, 8)}
+                  mono={!movingToSpending && !lightning}
                 />
                 <Detail label='Fee' value={prettyAmount(lastSend.fee)} />
               </>

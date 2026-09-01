@@ -52,14 +52,20 @@ export function prfExtension(salt: Uint8Array, credentialId?: Uint8Array): Authe
   return { prf } as AuthenticationExtensionsClientInputs
 }
 
-export function prfFrom(cred: PublicKeyCredential): Uint8Array | null {
+export function prfFrom(cred: PublicKeyCredential): Uint8Array<ArrayBuffer> | null {
   const ext = cred.getClientExtensionResults() as {
-    prf?: { results?: { first?: ArrayBuffer | Uint8Array }; first?: ArrayBuffer | Uint8Array }
+    prf?: {
+      results?: { first?: ArrayBuffer | Uint8Array<ArrayBuffer> }
+      first?: ArrayBuffer | Uint8Array<ArrayBuffer>
+    }
   }
   const first = ext?.prf?.results?.first ?? ext?.prf?.first
   if (!first) return null
   const bytes = first instanceof Uint8Array ? first : new Uint8Array(first)
-  return bytes.length ? bytes : null
+  // WebAuthn owns the extension-result backing store. Recovery keeps this
+  // secret across an HTTP round trip, so never retain a view into memory the
+  // browser or authenticator is free to reuse after get() returns.
+  return bytes.length ? Uint8Array.from(bytes) : null
 }
 
 type HintedCreate = PublicKeyCredentialCreationOptions & { hints?: string[] }
@@ -100,7 +106,7 @@ export function passkeyGetOptions(
 
 export function deviceSigningOptions(
   options: Omit<PublicKeyCredentialRequestOptions, 'allowCredentials'>,
-  credentialId: Uint8Array,
+  credentialId: Uint8Array<ArrayBuffer>,
 ): PublicKeyCredentialRequestOptions {
   const mode: PasskeyGetMode = isCoarsePhone() ? 'local' : 'any'
   return passkeyGetOptions(

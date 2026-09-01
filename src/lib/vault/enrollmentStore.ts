@@ -98,6 +98,9 @@ export type StagedEnrollment = EnrollmentSecrets & {
   recoveryXOnly?: string
   inviteToken?: string
   descriptorHash?: string
+  boardingPub?: string
+  boardingDescriptor?: unknown
+  boardingDescriptorHash?: string
   savingsAddress?: string
   savingsScript?: string
 }

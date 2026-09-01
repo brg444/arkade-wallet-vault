@@ -1,6 +1,6 @@
 import { schnorr } from '@noble/curves/secp256k1.js'
-import { vaultPost } from './api'
 import { deriveDirectP256, signDirectP256, zeroBytes } from './ceremony/directauth'
+import { vaultCosignerClient } from './cosignerClient'
 import type { EnrollmentSecrets } from './tenantEnrollment'
 import { bytesToHex, hexToBytes } from './hex'
 import {
@@ -11,10 +11,10 @@ import {
   recoveryBindingDigest,
   verifyRecoveryBindingSignatures,
 } from './passkeyBinding'
-import { pinEnrolledStatus } from './pin'
-import { fetchPublicStatus, fetchVaultStatus } from './status'
+import { pinEnrolledStatus, pinFromEnrolledStatus } from './pin'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
+import { provisionBoardingKey } from './vtxo/board'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -30,7 +30,7 @@ function requireRPID(status: VaultStatus): string {
   return rpId
 }
 
-async function deriveKEK(prf: Uint8Array): Promise<CryptoKey> {
+async function deriveKEK(prf: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
     await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
@@ -40,22 +40,45 @@ async function deriveKEK(prf: Uint8Array): Promise<CryptoKey> {
   )
 }
 
+async function decryptPhoneSecret(
+  prf: Uint8Array<ArrayBuffer>,
+  nonceHex: string,
+  ciphertextHex: string,
+): Promise<Uint8Array> {
+  const nonce = hexToBytes(nonceHex)
+  const ciphertext = hexToBytes(ciphertextHex)
+  if (nonce.length !== 12 || ciphertext.length !== 48) {
+    throw new Error('saved passkey envelope is malformed')
+  }
+  try {
+    const kek = await deriveKEK(prf)
+    const secret = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, kek, ciphertext))
+    if (secret.length !== 32) {
+      zeroBytes(secret)
+      throw new Error('saved passkey envelope did not contain a phone key')
+    }
+    return secret
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('saved passkey envelope')) throw error
+    throw new Error('passkey PRF authentication succeeded but could not decrypt the saved phone key', {
+      cause: error,
+    })
+  }
+}
+
 export async function beginPasskeySession(
   purpose: 'recover' | 'install-envelope' | 'transition' | 'map-write',
   status: VaultStatus,
   allowCredentialId?: string,
 ) {
-  const issued = await vaultPost<{ challengeId: string; challenge: string; allowCredentialId?: string }>(
-    '/v1/passkey/challenge',
-    { purpose, vaultId: status.vaultId },
-  )
+  const issued = await vaultCosignerClient.recovery.challenge({ purpose, vaultId: status.vaultId })
   const challenge = hexToBytes(issued.challenge)
   if (challenge.length !== 32) throw new Error('authorizer returned a malformed passkey challenge')
   const expectedCred = allowCredentialId || issued.allowCredentialId
   if (allowCredentialId && issued.allowCredentialId && allowCredentialId !== issued.allowCredentialId) {
     throw new Error('passkey credential does not match this vault')
   }
-  const mode = purpose === 'install-envelope' || isCoarsePhone() ? 'local' : 'hybrid'
+  const mode = purpose === 'install-envelope' ? 'local' : 'any'
   const publicKey = passkeyGetOptions(
     {
       challenge: challenge as BufferSource,
@@ -66,16 +89,7 @@ export async function beginPasskeySession(
     },
     mode,
   )
-  let got: PublicKeyCredential | null
-  try {
-    got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
-  } catch (err) {
-    const name = err instanceof DOMException ? err.name : ''
-    if (mode === 'hybrid' && expectedCred && (name === 'NotAllowedError' || name === 'InvalidStateError')) {
-      throw new Error('this browser does not have the passkey that created this vault')
-    }
-    throw err
-  }
+  const got = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null
   if (!got) throw new Error('The operation was aborted.')
   if (expectedCred && bytesToHex(new Uint8Array(got.rawId)) !== expectedCred) {
     throw new Error('passkey credential does not match this vault')
@@ -110,14 +124,11 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
   try {
     const vaultId = rec.vaultId
     if (!vaultId) throw new Error('vault id required')
-    const status = await fetchVaultStatus(undefined, vaultId)
+    const status = await vaultCosignerClient.enrollment.status(vaultId)
     if (!status.enrolled) throw new Error('vault is not enrolled')
     session = await beginPasskeySession('install-envelope', status, rec.credId)
-    const kek = await deriveKEK(session.prf)
-    phoneSecret = new Uint8Array(
-      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
-    )
-    const bindingResponse = await vaultPost<{ binding: string; bindingDigest: string }>('/v1/passkey/binding', {
+    phoneSecret = await decryptPhoneSecret(session.prf, rec.nonce, rec.ciphertext)
+    const bindingResponse = await vaultCosignerClient.enrollment.binding({
       vaultId: status.vaultId,
       envelopeNonce: rec.nonce,
       envelopeCiphertext: rec.ciphertext,
@@ -137,7 +148,7 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
       derivedDirectPub: session.derivedDirectPub,
       phoneSecret,
     })
-    await vaultPost('/v1/passkey/install', {
+    await vaultCosignerClient.enrollment.install({
       vaultId,
       challengeId: session.assertion.challengeId,
       credentialId: session.assertion.credentialId,
@@ -151,22 +162,31 @@ export async function enablePasskeyLogin(rec: EnrollmentSecrets): Promise<VaultS
       bindingDirectSig: bytesToHex(bindingDirectSig),
       bindingPhoneSig: bytesToHex(bindingPhoneSig),
     })
-    const live = await fetchVaultStatus(undefined, vaultId)
+    const live = await vaultCosignerClient.enrollment.status(vaultId)
     if (!live.passkeyLoginAvailable) {
       throw new Error('authorizer did not persist passkey sign-in recovery data')
     }
+    // Validate the complete program pin without making authentication depend
+    // on durable browser storage. The session coordinator persists it after
+    // the verified session is already live.
+    pinFromEnrolledStatus(live)
+    await provisionBoardingKey(phoneSecret, live)
     return live
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneSecret)
+    zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }
 
-export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<EnrollmentSecrets> {
-  const publicStatus = await fetchPublicStatus()
+export async function unlockLocalEnrollment(
+  rec: EnrollmentSecrets,
+): Promise<{ enrollment: EnrollmentSecrets; status: VaultStatus }> {
+  const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
   if (rpId !== location.hostname.toLowerCase()) {
     throw new Error('deployment RP ID does not match this signing client host')
   }
+  const live = await vaultCosignerClient.enrollment.status(rec.vaultId)
+  pinEnrolledStatus(live)
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const got = (await navigator.credentials.get({
     publicKey: passkeyGetOptions(
@@ -184,19 +204,20 @@ export async function unlockLocalEnrollment(rec: EnrollmentSecrets): Promise<Enr
   const prf = prfFrom(got)
   if (!prf || prf.length !== 32) throw new Error('authenticator did not return PRF')
   try {
-    const kek = await deriveKEK(prf)
-    const secret = new Uint8Array(
-      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: hexToBytes(rec.nonce) }, kek, hexToBytes(rec.ciphertext)),
-    )
-    zeroBytes(secret)
-    return rec
+    const secret = await decryptPhoneSecret(prf, rec.nonce, rec.ciphertext)
+    try {
+      await provisionBoardingKey(secret, live)
+      return { enrollment: rec, status: live }
+    } finally {
+      zeroBytes(secret)
+    }
   } finally {
     zeroBytes(prf)
   }
 }
 
 export async function discoverVaultIdFromPasskey(): Promise<string> {
-  const publicStatus = await fetchPublicStatus()
+  const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const got = (await navigator.credentials.get({
@@ -225,32 +246,31 @@ export async function signInWithPasskey(
   try {
     const id = String(vaultId || '').trim()
     if (!id) throw new Error('vault id required')
-    const status = await fetchVaultStatus(undefined, id)
+    const status = await vaultCosignerClient.enrollment.status(id)
     if (!status.enrolled) throw new Error('this deployment has not been set up yet')
     if (!status.passkeyLoginAvailable) {
       throw new Error('passkey sign-in must first be enabled on the original enrolled device')
     }
     session = await beginPasskeySession('recover', status)
-    const recovered = await vaultPost<{
-      binding: string
-      bindingDigest: string
-      envelopeNonce: string
-      envelopeCiphertext: string
-      bindingDirectSig: string
-      bindingPhoneSig: string
-    }>('/v1/passkey/recover', { vaultId: status.vaultId, ...session.assertion })
+    const recovered = await vaultCosignerClient.enrollment.recover({
+      vaultId: status.vaultId,
+      ...session.assertion,
+    })
     const parsed = parseRecoveryBinding(recovered.binding)
     if (bytesToHex(session.credentialId) !== parsed.credentialId) {
       throw new Error('selected passkey does not belong to this vault')
     }
-    const kek = await deriveKEK(session.prf)
-    phoneSecret = new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: hexToBytes(recovered.envelopeNonce) },
-        kek,
-        hexToBytes(recovered.envelopeCiphertext),
-      ),
-    )
+    if (bytesToHex(session.derivedDirectPub) !== parsed.phoneDirectP256) {
+      throw new Error('passkey PRF derived a different DirectP256 identity')
+    }
+    if (
+      recovered.envelopeNonce !== parsed.envelopeNonce ||
+      recovered.envelopeCiphertext !== parsed.envelopeCiphertext
+    ) {
+      throw new Error('recovered passkey envelope does not match its signed binding')
+    }
+    assertRecoveryBindingMatchesStatus(parsed, status)
+    phoneSecret = await decryptPhoneSecret(session.prf, recovered.envelopeNonce, recovered.envelopeCiphertext)
     const verified = verifyRecoveryBindingSignatures({
       binding: recovered.binding,
       bindingDigestHex: recovered.bindingDigest,
@@ -260,9 +280,13 @@ export async function signInWithPasskey(
       phoneSecret,
     })
     assertRecoveryBindingMatchesStatus(verified, status)
-    pinEnrolledStatus(status)
+    // The signed recovery binding already commits to these fields. Validate
+    // their pin shape here; persistence is best effort in the coordinator so
+    // private browsing cannot turn a valid recovery into a failed login.
+    pinFromEnrolledStatus(status)
+    await provisionBoardingKey(phoneSecret, status)
     return { status, enrollment: recordFromRecoveryBinding(verified) }
   } finally {
-    zeroBytes(session?.prf, session?.scalar, phoneSecret)
+    zeroBytes(session?.prf as Uint8Array, session?.scalar as Uint8Array, phoneSecret as Uint8Array)
   }
 }

@@ -8,7 +8,7 @@ export function requireLowerHex(value: string, name: string, exactBytes?: number
   return value
 }
 
-export function hexToBytes(value: string): Uint8Array {
+export function hexToBytes(value: string): Uint8Array<ArrayBuffer> {
   const hex = requireLowerHex(value, 'hex')
   const out = new Uint8Array(hex.length / 2)
   for (let i = 0; i < out.length; i++) {

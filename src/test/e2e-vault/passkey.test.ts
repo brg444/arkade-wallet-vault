@@ -1,0 +1,127 @@
+import type { Page } from '@playwright/test'
+import { enrollVaultWithPasskey, expect, test } from './fixtures/passkey'
+
+const SESSION_LOCK_STORE = 'arkade-vault-v2:session-lock'
+
+async function lock(page: Page) {
+  await page.evaluate((key) => localStorage.setItem(key, '1'), SESSION_LOCK_STORE)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Unlock vault' })).toBeVisible()
+}
+
+async function clearBrowserWalletState(page: Page) {
+  await page.evaluate(async () => {
+    localStorage.clear()
+    sessionStorage.clear()
+    for (const database of await indexedDB.databases()) {
+      if (!database.name) continue
+      await new Promise<void>((resolve) => {
+        const request = indexedDB.deleteDatabase(database.name!)
+        request.onsuccess = () => resolve()
+        request.onerror = () => resolve()
+        request.onblocked = () => resolve()
+      })
+    }
+    for (const name of await caches.keys()) await caches.delete(name)
+  })
+}
+
+async function freshSignIn(page: Page) {
+  await page.goto('/')
+  const button = page.getByRole('button', { name: /Sign in to an existing vault/ })
+  await expect(button).toBeVisible()
+  await button.click()
+  await expect(page.getByTestId('account-switcher')).toBeVisible()
+}
+
+test('enrolls, locks, and unlocks with a CTAP2.1 resident PRF passkey', async ({
+  page,
+  authorizer,
+  passkey,
+  secretAudit,
+}) => {
+  await enrollVaultWithPasskey(page, authorizer)
+  const credentials = await passkey.credentials()
+  expect(credentials).toHaveLength(1)
+  expect(credentials[0]).toMatchObject({ isResidentCredential: true, rpId: 'localhost' })
+
+  await lock(page)
+  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await expect(page.getByTestId('account-switcher')).toBeVisible()
+  await secretAudit.assertNoSecretsPersisted(page)
+})
+
+test('a cancelled Face ID prompt retries through the same button', async ({ page, authorizer, passkey }) => {
+  await enrollVaultWithPasskey(page, authorizer)
+  await lock(page)
+  await passkey.abortNextRequest()
+
+  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(page.getByTestId('account-switcher')).toBeVisible()
+})
+
+test('fresh browser state refuses a mismatched credential binding and then recovers with the resident passkey', async ({
+  page,
+  authorizer,
+  passkey,
+}) => {
+  expect(await passkey.credentials()).toHaveLength(0)
+  await enrollVaultWithPasskey(page, authorizer)
+  await clearBrowserWalletState(page)
+  await page.reload()
+  authorizer.rejectNextRecoveryAsWrongCredential()
+
+  const signIn = page.getByRole('button', { name: /Sign in to an existing vault/ })
+  await expect(signIn).toBeVisible()
+  await signIn.click()
+  await expect(page.getByText(/Wrong passkey/)).toBeVisible()
+  await expect(page.getByTestId('account-switcher')).not.toBeVisible()
+
+  await freshSignIn(page)
+})
+
+test('reload before PRF derivation leaves the vault locked and permits a clean retry', async ({
+  page,
+  authorizer,
+  passkey,
+}) => {
+  await enrollVaultWithPasskey(page, authorizer)
+  await lock(page)
+  await passkey.setPresence(false)
+  await page.getByRole('button', { name: 'Unlock vault' }).click()
+
+  await page.reload()
+  await passkey.setPresence(true)
+  await expect(page.getByRole('button', { name: 'Unlock vault' })).toBeVisible()
+  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await expect(page.getByTestId('account-switcher')).toBeVisible()
+})
+
+test('reload after PRF derivation but before recovery response installs no session and can recover again', async ({
+  page,
+  authorizer,
+  passkey,
+  secretAudit,
+}) => {
+  await enrollVaultWithPasskey(page, authorizer)
+  await clearBrowserWalletState(page)
+  await page.reload()
+  authorizer.clearRecoverGate()
+
+  await page.getByRole('button', { name: /Sign in to an existing vault/ }).click()
+  await authorizer.waitForRecover()
+  await page.reload()
+  authorizer.releaseRecover()
+
+  await expect(page.getByTestId('account-switcher')).not.toBeVisible()
+  await expect(page.getByRole('button', { name: /Sign in to an existing vault/ })).toBeVisible()
+  await freshSignIn(page)
+  await secretAudit.assertNoSecretsPersisted(page)
+
+  const audit = await secretAudit.snapshot(page)
+  expect(JSON.stringify(audit.serviceWorkerMessages)).not.toMatch(/phone.?secret|phone.?scalar|private.?key|prf/i)
+  expect(await passkey.credentials()).toHaveLength(1)
+})

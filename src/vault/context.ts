@@ -44,7 +44,6 @@ export interface VaultContextProps {
   balanceError: string
   balancesLoaded: boolean
   boardingAddress: string
-  boardingInProgress: boolean
   restoreRecoveryKit: () => Promise<void>
   signGuardianExitWithDevice: (psbtHex: string) => Promise<string>
   hasRecoveryKit: boolean
@@ -53,6 +52,7 @@ export interface VaultContextProps {
   approveSend: () => Promise<void>
   busy: boolean
   canSend: boolean
+  cancelSavingsHandoff: () => void
   completeSavingsHandoff: (signedPsbt: string) => Promise<void>
   handoffPsbt: string
   confirmConditions: () => void
@@ -68,7 +68,7 @@ export interface VaultContextProps {
   hasLocalEnrollment: boolean
   locked: boolean
   lastTxid: string
-  lastTxKind: 'onchain' | 'vtxo' | ''
+  lastTxKind: 'onchain' | 'vtxo' | 'lightning' | ''
   history: VaultHistoryItem[]
   selectedTx: VaultHistoryItem | null
   openTx: (tx: VaultHistoryItem) => void
@@ -77,9 +77,11 @@ export interface VaultContextProps {
   openRecover: (view?: 'kit' | 'lost', exit?: VaultScreen) => void
   recoverEntry: 'kit' | 'lost'
   recoverExit: VaultScreen
+  recoverMatureBoarding: () => Promise<string>
   networkLabel: string
   spendingArkAddress: string
   refreshBalance: () => Promise<void>
+  retryLightningRefund: (rfqId: string) => Promise<void>
   refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
@@ -88,6 +90,7 @@ export interface VaultContextProps {
   clearSendScan: () => void
   savingsAddress: string
   savingsSats: number
+  savingsSpendableSats: number
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
@@ -112,7 +115,6 @@ export const VaultContext = createContext<VaultContextProps>({
   balanceError: '',
   balancesLoaded: false,
   boardingAddress: '',
-  boardingInProgress: false,
   restoreRecoveryKit: async () => {},
   signGuardianExitWithDevice: async () => '',
   hasRecoveryKit: false,
@@ -121,6 +123,7 @@ export const VaultContext = createContext<VaultContextProps>({
   approveSend: async () => {},
   busy: false,
   canSend: false,
+  cancelSavingsHandoff: () => {},
   completeSavingsHandoff: async () => {},
   handoffPsbt: '',
   confirmConditions: () => {},
@@ -145,9 +148,11 @@ export const VaultContext = createContext<VaultContextProps>({
   openRecover: () => {},
   recoverEntry: 'kit',
   recoverExit: 'keys',
+  recoverMatureBoarding: async () => '',
   networkLabel: 'Test network',
   spendingArkAddress: '',
   refreshBalance: async () => {},
+  retryLightningRefund: async () => {},
   refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},
@@ -156,6 +161,7 @@ export const VaultContext = createContext<VaultContextProps>({
   clearSendScan: () => {},
   savingsAddress: '',
   savingsSats: 0,
+  savingsSpendableSats: 0,
   screen: 'welcome',
   setAccount: () => {},
   setSpendDraft: () => {},

@@ -41,7 +41,6 @@ export default function VaultPillNav({ visible, active }: { visible: boolean; ac
 
   return (
     <div className={`pill-navbar-layer ${visible ? '' : 'pill-navbar-layer--hidden'}`}>
-      <div className='pill-navbar-haze' aria-hidden='true' />
       <nav className='pill-navbar' role='tablist' aria-label='Main navigation'>
         {TABS.map((tab) => (
           <button

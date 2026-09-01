@@ -64,7 +64,7 @@ export async function fetchAddressTxs(address: string): Promise<EsploraTx[]> {
 
 export async function fetchAddressUtxos(address: string): Promise<EsploraUtxo[]> {
   const res = await fetch(`${esploraBase()}/address/${address}/utxo`)
-  return esploraJson<EsploraUtxo[]>(res, 'Could not load coins from Mutinynet')
+  return esploraJson<EsploraUtxo[]>(res, 'Could not load coins')
 }
 
 export async function fetchTxHex(txid: string): Promise<string> {
@@ -78,7 +78,7 @@ export async function fetchAddressStats(address: string): Promise<{ funded: numb
   const res = await fetch(`${esploraBase()}/address/${address}`)
   const body = await esploraJson<{ chain_stats?: { funded_txo_sum?: number; spent_txo_sum?: number } }>(
     res,
-    'Could not load the Mutinynet balance',
+    'Could not load the balance',
   )
   const chain = body.chain_stats || {}
   return {

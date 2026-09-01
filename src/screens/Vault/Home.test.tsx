@@ -61,11 +61,11 @@ describe('Vault home account boundaries', () => {
     renderHome({ account: 'savings' })
     expect(screen.getByRole('button', { name: 'Move to Spending' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: 'Add to Savings' })).toHaveLength(2)
-    expect(screen.getByText(/Confirmed and unspent.*hardware key/i)).toBeTruthy()
+    expect(screen.getByText(/Moving funds.*hardware key/i)).toBeTruthy()
   })
 
   it('does not expose background boarding state on Home', () => {
-    renderHome({ account: 'spend', boardingInProgress: true })
+    renderHome({ account: 'spend' })
     expect(screen.queryByText(/boarding|processing|Moving received Bitcoin|Face ID/i)).toBeNull()
   })
 
@@ -73,5 +73,15 @@ describe('Vault home account boundaries', () => {
     renderHome({ balancesLoaded: false, amountSats: 0 })
     expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
     expect(screen.getByText('Loading Spending balance…')).toBeTruthy()
+  })
+
+  it('replaces terminal loading with a clear balance retry action', async () => {
+    const user = userEvent.setup()
+    const value = renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
+
+    expect(screen.queryByText('Loading Spending balance…')).toBeNull()
+    expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(value.refreshBalance).toHaveBeenCalledTimes(1)
   })
 })

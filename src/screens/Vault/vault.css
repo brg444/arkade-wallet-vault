@@ -293,6 +293,11 @@ button.vault-panel:disabled {
   border: 1px solid var(--vault-line);
 }
 
+.vault-receive-qr-large {
+  max-width: 360px;
+  margin-top: 0;
+}
+
 .vault-receive-addr {
   word-break: break-all;
   text-align: center;

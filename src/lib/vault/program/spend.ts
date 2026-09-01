@@ -1,5 +1,6 @@
 import { hex } from '@scure/base'
 import { Transaction } from '@scure/btc-signer'
+import type { TransactionInput } from '@scure/btc-signer/psbt.js'
 import { scriptHexFromAddress } from '../bitcoin'
 import { ABSOLUTE_FEE_CEILING_SATS, DUST_SATS, FEERATE_CEILING_SAT_PER_V } from '../constants'
 import {
@@ -43,9 +44,9 @@ function requireFee(feeSats: number) {
 }
 
 export function tapLeafForScript(
-  tapLeafScript: [unknown, Uint8Array][] | undefined,
+  tapLeafScript: TransactionInput['tapLeafScript'],
   script: Uint8Array,
-): [unknown, Uint8Array] {
+): NonNullable<TransactionInput['tapLeafScript']>[number] {
   const leaf = tapLeafScript?.find((entry) => hex.encode(entry[1].slice(0, -1)) === hex.encode(script))
   if (!leaf) throw new Error('tap leaf missing from tree')
   return leaf

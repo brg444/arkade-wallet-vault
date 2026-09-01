@@ -3,10 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAddressTxs, fetchAddressUtxos } from '../lib/vault/esplora'
 import { pinFromEnrolledStatus, saveAddressPin } from '../lib/vault/pin'
 import { fetchVaultStatus } from '../lib/vault/status'
+import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
-import { fetchVaultBoardingFunds } from '../lib/vault/vtxo/board'
-import { fetchVaultVtxoFunds, fetchVaultVtxoHistory } from '../lib/vault/vtxo/spend'
-import { confirmedUtxoBalance, useVaultBalances } from './useVaultBalances'
+import {
+  fetchVaultWalletVtxoSnapshot,
+  reloadVaultWalletWorker,
+  subscribeVaultWalletEvents,
+} from '../lib/vault/vtxo/walletWorker'
+import { confirmedUtxoBalance, savingsUtxoBalance, useVaultBalances } from './useVaultBalances'
 
 vi.mock('../lib/vault/esplora', () => ({
   fetchAddressTxs: vi.fn(),
@@ -14,13 +18,12 @@ vi.mock('../lib/vault/esplora', () => ({
 }))
 vi.mock('../lib/vault/status', () => ({ fetchVaultStatus: vi.fn() }))
 vi.mock('../lib/vault/vtxo/spend', () => ({
-  fetchVaultVtxoFunds: vi.fn(),
-  fetchVaultVtxoHistory: vi.fn(),
   reconcilePersistedVtxoSpend: vi.fn().mockResolvedValue({ kind: 'none' }),
 }))
-vi.mock('../lib/vault/vtxo/board', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/vault/vtxo/board')>()),
-  fetchVaultBoardingFunds: vi.fn(),
+vi.mock('../lib/vault/vtxo/walletWorker', () => ({
+  fetchVaultWalletVtxoSnapshot: vi.fn(),
+  reloadVaultWalletWorker: vi.fn().mockResolvedValue(undefined),
+  subscribeVaultWalletEvents: vi.fn().mockReturnValue(() => undefined),
 }))
 
 const STATUS: VaultStatus = {
@@ -39,16 +42,26 @@ const STATUS: VaultStatus = {
   txCap: 50_000,
   absoluteFeeCap: 1_500,
   feerateCapSatVb: 10,
+  vtxoVaultCosignerPub: `02${'11'.repeat(32)}`,
+  vtxoExitDelay: 4608,
+  vtxoExitDelayUnit: 'seconds',
   spendingArkAddress: 'tark1spending',
-  vtxoBoardingActive: false,
+  spendingArkScript: `5120${'22'.repeat(32)}`,
+  vtxoDelegatePub: `02${'33'.repeat(32)}`,
+  vtxoBoardingActive: true,
+  vtxoBoardingProgram: 'vault-board-v1',
+  vtxoBoardingAddress: 'tb1pboarding',
+  vtxoBoardingScript: `5120${'44'.repeat(32)}`,
+  vtxoBoardingExitDelay: 604672,
+  vtxoBoardingExitDelayUnit: 'seconds',
 }
 
 const mockedStatus = vi.mocked(fetchVaultStatus)
 const mockedUtxos = vi.mocked(fetchAddressUtxos)
 const mockedTxs = vi.mocked(fetchAddressTxs)
-const mockedFunds = vi.mocked(fetchVaultVtxoFunds)
-const mockedHistory = vi.mocked(fetchVaultVtxoHistory)
-const mockedBoardingFunds = vi.mocked(fetchVaultBoardingFunds)
+const mockedSnapshot = vi.mocked(fetchVaultWalletVtxoSnapshot)
+const mockedWorkerReload = vi.mocked(reloadVaultWalletWorker)
+const mockedWorkerEvents = vi.mocked(subscribeVaultWalletEvents)
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -58,24 +71,28 @@ function deferred<T>() {
   return { promise, resolve }
 }
 
-function setupHook(locked = true, status = STATUS) {
-  const pin = saveAddressPin(pinFromEnrolledStatus(status))
+function setupHook(
+  locked = true,
+  status: VaultStatus | null = STATUS,
+  initialStatusChecked = true,
+  enrollment: EnrollmentSecrets | null = null,
+  withPin = true,
+  persistPin = true,
+) {
+  const builtPin = withPin ? pinFromEnrolledStatus(status || STATUS) : null
+  const pin = builtPin && persistPin ? saveAddressPin(builtPin) : builtPin
   const setStatus = vi.fn()
-  const reportError = vi.fn()
-  const onBoarded = vi.fn()
   const hook = renderHook(() =>
     useVaultBalances({
       addressPin: pin,
-      busy: false,
-      enrollment: null,
+      enrollment,
+      initialStatusChecked,
       locked,
-      onBoarded,
-      reportError,
       setStatus,
       status,
     }),
   )
-  return { ...hook, reportError, setStatus }
+  return { ...hook, setStatus }
 }
 
 beforeEach(() => {
@@ -84,9 +101,9 @@ beforeEach(() => {
   mockedStatus.mockResolvedValue(STATUS)
   mockedUtxos.mockResolvedValue([])
   mockedTxs.mockResolvedValue([])
-  mockedFunds.mockResolvedValue({ balance: 0 })
-  mockedHistory.mockResolvedValue([])
-  mockedBoardingFunds.mockResolvedValue({ total: 0, confirmed: 0 })
+  mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
+  mockedWorkerReload.mockResolvedValue(undefined)
+  mockedWorkerEvents.mockReturnValue(() => undefined)
 })
 
 afterEach(() => vi.useRealTimers())
@@ -100,23 +117,94 @@ describe('confirmedUtxoBalance', () => {
   })
 })
 
-describe('useVaultBalances refresh coordination', () => {
+describe('savingsUtxoBalance', () => {
+  it('shows pending wallet-owned change but keeps only confirmed coins spendable', () => {
+    const address = 'tb1psavings'
+    expect(
+      savingsUtxoBalance(
+        [
+          { txid: 'old-a', vout: 0, value: 47_260, status: { confirmed: true } },
+          { txid: 'old-b', vout: 0, value: 32_260, status: { confirmed: true } },
+          { txid: 'send', vout: 1, value: 418_100, status: { confirmed: false } },
+        ],
+        [
+          {
+            txid: 'send',
+            vin: [{ prevout: { scriptpubkey_address: address, value: 519_600 } }],
+            vout: [
+              { scriptpubkey_address: 'tb1pboarding', value: 100_000 },
+              { scriptpubkey_address: address, value: 418_100 },
+            ],
+            status: { confirmed: false },
+          },
+        ],
+        address,
+      ),
+    ).toEqual({ total: 497_620, spendable: 79_520 })
+  })
+
+  it('does not show an unconfirmed external deposit', () => {
+    const address = 'tb1psavings'
+    const incoming = { txid: 'incoming', vout: 0, value: 90_000, status: { confirmed: false } }
+    expect(
+      savingsUtxoBalance(
+        [incoming, incoming],
+        [
+          {
+            txid: 'incoming',
+            vin: [{ prevout: { scriptpubkey_address: 'tb1psender', value: 90_500 } }],
+            vout: [{ scriptpubkey_address: address, value: 90_000 }],
+            status: { confirmed: false },
+          },
+        ],
+        address,
+      ),
+    ).toEqual({ total: 0, spendable: 0 })
+  })
+})
+
+describe('useVaultBalances', () => {
+  it('takes Spending, boarding balance, and activity only from the persistent SDK worker', async () => {
+    mockedSnapshot.mockResolvedValue({
+      balance: 30_000,
+      boardingBalance: 48_000,
+      boardingConfirmedBalance: 48_000,
+      history: [
+        {
+          txid: 'boarding',
+          type: 'received',
+          amount: 48_000,
+          confirmed: true,
+          account: 'spend',
+          activity: 'boarding',
+        },
+      ],
+    })
+    const { result } = setupHook()
+
+    await act(async () => result.current.refreshBalance())
+
+    expect(result.current.vtxoSpendingSats).toBe(30_000)
+    expect(result.current.boardingBalance).toBe(48_000)
+    expect(result.current.history.map((item) => item.txid)).toEqual(['boarding'])
+    expect(mockedSnapshot).toHaveBeenCalledWith(STATUS)
+  })
+
   it('ignores an older refresh that finishes after a newer snapshot', async () => {
     const older = deferred<Awaited<ReturnType<typeof fetchAddressUtxos>>>()
     mockedUtxos
       .mockImplementationOnce(() => older.promise)
       .mockResolvedValueOnce([{ txid: 'new', vout: 0, value: 25_000, status: { confirmed: true } }])
-    mockedFunds.mockResolvedValueOnce({ balance: 10_000 }).mockResolvedValueOnce({ balance: 30_000 })
-
+    mockedSnapshot
+      .mockResolvedValueOnce({ balance: 10_000, history: [] })
+      .mockResolvedValueOnce({ balance: 30_000, history: [] })
     const { result } = setupHook()
+
     let first!: Promise<void>
-    let second!: Promise<void>
     await act(async () => {
       first = result.current.refreshBalance()
-      second = result.current.refreshBalance()
-      await second
+      await result.current.refreshBalance()
     })
-    expect(result.current.savingsSats).toBe(25_000)
     expect(result.current.vtxoSpendingSats).toBe(30_000)
 
     await act(async () => {
@@ -127,167 +215,43 @@ describe('useVaultBalances refresh coordination', () => {
     expect(result.current.vtxoSpendingSats).toBe(30_000)
   })
 
-  it('keeps the previous account snapshot when any balance or history read fails', async () => {
+  it('keeps the previous account snapshot when a worker read fails', async () => {
     mockedUtxos.mockResolvedValueOnce([{ txid: 'old', vout: 0, value: 20_000, status: { confirmed: true } }])
-    mockedFunds.mockResolvedValueOnce({ balance: 15_000 })
-    mockedHistory.mockResolvedValueOnce([
-      {
-        txid: 'old-spend',
-        type: 'received',
-        amount: 15_000,
-        confirmed: true,
-        blockTime: 1,
-        account: 'spend',
-      },
-    ])
-    const { reportError, result } = setupHook()
-    await act(async () => {
-      await result.current.refreshBalance()
+    mockedSnapshot.mockResolvedValueOnce({
+      balance: 15_000,
+      history: [
+        { txid: 'old-spend', type: 'received', amount: 15_000, confirmed: true, blockTime: 1, account: 'spend' },
+      ],
     })
+    const { result } = setupHook()
+    await act(async () => result.current.refreshBalance())
 
     mockedUtxos.mockResolvedValueOnce([{ txid: 'new', vout: 0, value: 40_000, status: { confirmed: true } }])
-    mockedFunds.mockResolvedValueOnce({ balance: 35_000 })
-    mockedHistory.mockRejectedValueOnce(new Error('activity unavailable'))
-    await act(async () => {
-      await result.current.refreshBalance()
-    })
+    mockedSnapshot.mockRejectedValueOnce(new Error('activity unavailable'))
+    await act(async () => result.current.refreshBalance())
 
     expect(result.current.savingsSats).toBe(20_000)
     expect(result.current.vtxoSpendingSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
-    expect(result.current.balanceError).toMatch(/activity unavailable/i)
-    expect(reportError).not.toHaveBeenCalled()
+    expect(result.current.balanceError).toBe('Something went wrong. Try again.')
   })
 
-  it('publishes loading state and the fresh policy status with a completed snapshot', async () => {
-    const pending = deferred<Awaited<ReturnType<typeof fetchAddressUtxos>>>()
-    mockedUtxos.mockImplementationOnce(() => pending.promise)
-    const { result, setStatus } = setupHook()
+  it('recovers a cold reload from the persisted enrollment', async () => {
+    const enrollment = { vaultId: STATUS.vaultId } as EnrollmentSecrets
+    mockedSnapshot.mockResolvedValueOnce({ balance: 12_000, history: [] })
+    const { result } = setupHook(false, null, true, enrollment, false)
 
-    let refresh!: Promise<void>
-    act(() => {
-      refresh = result.current.refreshBalance()
-    })
-    expect(result.current.refreshingBalance).toBe(true)
-    expect(result.current.balancesLoaded).toBe(false)
-
-    await act(async () => {
-      pending.resolve([])
-      await refresh
-    })
-    expect(result.current.refreshingBalance).toBe(false)
-    expect(result.current.balancesLoaded).toBe(true)
-    expect(setStatus).toHaveBeenCalledWith(STATUS)
+    await waitFor(() => expect(mockedStatus).toHaveBeenCalledWith(undefined, STATUS.vaultId))
+    await waitFor(() => expect(result.current.balancesLoaded).toBe(true))
+    expect(result.current.vtxoSpendingSats).toBe(12_000)
   })
 
-  it('refreshes once when an unlocked vault mounts and once when the window regains focus', async () => {
-    setupHook(false)
+  it('subscribes to worker updates and reloads the same worker on focus', async () => {
+    const { result } = setupHook(false)
+    await waitFor(() => expect(result.current.balancesLoaded).toBe(true))
+    expect(mockedWorkerEvents).toHaveBeenCalledWith(STATUS, expect.any(Function))
 
-    await waitFor(() => expect(mockedStatus).toHaveBeenCalledTimes(1))
     window.dispatchEvent(new Event('focus'))
-    await waitFor(() => expect(mockedStatus).toHaveBeenCalledTimes(2))
-  })
-
-  it('uses the 15-second timer only for boarding funds and preserves the wallet snapshot', async () => {
-    vi.useFakeTimers()
-    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
-    mockedStatus.mockResolvedValue(active)
-    mockedFunds.mockResolvedValue({ balance: 30_000 })
-    mockedHistory.mockResolvedValue([
-      {
-        txid: 'spend-history',
-        type: 'received',
-        amount: 30_000,
-        confirmed: true,
-        account: 'spend',
-      },
-    ])
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
-    const { result } = setupHook(false, active)
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(result.current.balancesLoaded).toBe(true)
-
-    mockedStatus.mockClear()
-    mockedUtxos.mockClear()
-    mockedTxs.mockClear()
-    mockedFunds.mockClear()
-    mockedHistory.mockClear()
-    mockedBoardingFunds.mockClear()
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 1_000 })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
-    })
-
-    expect(mockedBoardingFunds).toHaveBeenCalledTimes(1)
-    expect(mockedStatus).not.toHaveBeenCalled()
-    expect(mockedUtxos).not.toHaveBeenCalled()
-    expect(mockedTxs).not.toHaveBeenCalled()
-    expect(mockedFunds).not.toHaveBeenCalled()
-    expect(mockedHistory).not.toHaveBeenCalled()
-    expect(result.current.vtxoSpendingSats).toBe(30_000)
-    expect(result.current.history.map((item) => item.txid)).toEqual(['spend-history'])
-    expect(result.current.boardingConfirmedBalance).toBe(1_000)
-  })
-
-  it('ignores a narrow boarding poll superseded by a full refresh', async () => {
-    vi.useFakeTimers()
-    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
-    mockedStatus.mockResolvedValue(active)
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
-    const { result } = setupHook(false, active)
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-
-    const olderPoll = deferred<{ total: number; confirmed: number }>()
-    mockedBoardingFunds
-      .mockImplementationOnce(() => olderPoll.promise)
-      .mockResolvedValueOnce({ total: 2_000, confirmed: 2_000 })
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000)
-    })
-    await act(async () => {
-      await result.current.refreshBalance()
-    })
-    expect(result.current.boardingConfirmedBalance).toBe(2_000)
-
-    await act(async () => {
-      olderPoll.resolve({ total: 1_000, confirmed: 1_000 })
-      await olderPoll.promise
-    })
-    expect(result.current.boardingConfirmedBalance).toBe(2_000)
-  })
-
-  it('invalidates an in-flight boarding poll and stops its timer on unmount', async () => {
-    vi.useFakeTimers()
-    const active = { ...STATUS, vtxoBoardingActive: true, vtxoBoardingAddress: 'tb1pboarding' }
-    mockedStatus.mockResolvedValue(active)
-    mockedBoardingFunds.mockResolvedValueOnce({ total: 1_000, confirmed: 0 })
-    const { unmount } = setupHook(false, active)
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-
-    const pendingPoll = deferred<{ total: number; confirmed: number }>()
-    mockedBoardingFunds.mockClear()
-    mockedBoardingFunds.mockImplementationOnce(() => pendingPoll.promise)
-    act(() => vi.advanceTimersByTime(15_000))
-    expect(mockedBoardingFunds).toHaveBeenCalledTimes(1)
-
-    unmount()
-    await act(async () => {
-      pendingPoll.resolve({ total: 1_000, confirmed: 1_000 })
-      await pendingPoll.promise
-      vi.advanceTimersByTime(30_000)
-    })
-    expect(mockedBoardingFunds).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(mockedWorkerReload).toHaveBeenCalledWith(STATUS))
   })
 })

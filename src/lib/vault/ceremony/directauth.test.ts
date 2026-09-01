@@ -21,4 +21,10 @@ describe('direct P-256 authorization', () => {
     expect(Array.from(hkdfInfo(1).slice(-4))).toEqual([0, 0, 0, 1])
     expect(() => hkdfInfo(256)).toThrow(/0\.\.255/)
   })
+
+  it('clears every available secret without masking an earlier partial-session failure', () => {
+    const secret = new Uint8Array([1, 2, 3])
+    expect(() => zeroBytes(undefined, secret, null)).not.toThrow()
+    expect(secret).toEqual(new Uint8Array(3))
+  })
 })
