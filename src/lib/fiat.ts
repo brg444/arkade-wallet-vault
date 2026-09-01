@@ -22,7 +22,7 @@ export const FIAT_SYMBOLS: Partial<Record<Fiats, string>> = {
 
 export const fiatDecimalsFor = (currency: Fiats): number => (currency === Fiats.JPY ? 0 : 2)
 
-export const getPriceFeed = async (): Promise<FiatPrices | undefined> => {
+export const getPriceFeed = async (options: { silent?: boolean } = {}): Promise<FiatPrices | undefined> => {
   try {
     const resp = await fetch('https://blockchain.info/ticker')
     const json = await resp.json()
@@ -35,6 +35,6 @@ export const getPriceFeed = async (): Promise<FiatPrices | undefined> => {
       cny: json.CNY?.last,
     }
   } catch (err) {
-    consoleError(err, 'error fetching fiat prices')
+    if (!options.silent) consoleError(err, 'error fetching fiat prices')
   }
 }

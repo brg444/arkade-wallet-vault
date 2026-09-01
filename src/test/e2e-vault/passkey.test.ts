@@ -51,6 +51,28 @@ test('enrolls, locks, and unlocks with a CTAP2.1 resident PRF passkey', async ({
   await secretAudit.assertNoSecretsPersisted(page)
 })
 
+test('enrolls the reviewed lower-exposure policy as this vault immutable policy', async ({
+  page,
+  authorizer,
+  passkey,
+}) => {
+  void passkey
+  await enrollVaultWithPasskey(page, authorizer, 'lower-exposure')
+  expect(authorizer.selectedSpendingPolicy()).toMatchObject({
+    txRecipientCapSats: 25_000,
+    periodAllowanceSats: 50_000,
+    absoluteFeeCapSats: 5_000,
+    feerateCapSatPerV: 10,
+  })
+  const storedPolicy = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((entry) => entry.startsWith('arkade-vault-program-pin-v1:'))
+    if (!key) return null
+    const pin = JSON.parse(localStorage.getItem(key) || '{}') as { spendingPolicyCanonical?: string }
+    return pin.spendingPolicyCanonical ? JSON.parse(pin.spendingPolicyCanonical) : null
+  })
+  expect(storedPolicy).toMatchObject({ txRecipientCapSats: 25_000, periodAllowanceSats: 50_000 })
+})
+
 test('a cancelled Face ID prompt retries through the same button', async ({ page, authorizer, passkey }) => {
   await enrollVaultWithPasskey(page, authorizer)
   await lock(page)

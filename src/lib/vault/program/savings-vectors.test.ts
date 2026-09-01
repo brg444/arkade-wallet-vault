@@ -27,6 +27,7 @@ describe('frozen Savings program vectors', () => {
   it.each(vectors)('matches $name', (vector) => {
     const descriptor = buildVaultProgramDescriptor({
       ...PROGRAM_FIXTURE,
+      protectionTier: vector.recovery ? 'advanced' : 'standard',
       recoveryPub: vector.recovery ? PROGRAM_FIXTURE.recoveryPub : undefined,
     })
     expect(descriptor.savings).toEqual(vector.savings)

@@ -63,6 +63,15 @@ import {
   sameRole,
   type VaultSetupPlan,
 } from '../lib/vault/setupPlan'
+import {
+  CURRENT_SPENDING_POLICY_CAPABILITIES,
+  validateSpendingPolicy,
+  type SpendingPolicy,
+} from '../lib/vault/spendingPolicy'
+import { requireProtectionTier, type ProtectionTier } from '../lib/vault/protectionTier'
+import type { VaultFiatDisplayRate } from '../lib/vault/fiatDisplay'
+import { getPriceFeed } from '../lib/fiat'
+import { Fiats } from '../lib/types'
 
 import type { VaultStatus } from '../lib/vault/types'
 import {
@@ -127,6 +136,21 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [pendingSavingsHandoff, setPendingSavingsHandoff] = useState<PendingSavingsHandoff | null>(null)
   const [locked, setLocked] = useState(false)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
+  const [fiatDisplayRate, setFiatDisplayRate] = useState<VaultFiatDisplayRate | null>(null)
+  const [fiatDisplayEnabled, setFiatDisplayEnabled] = useState(false)
+
+  const setFiatDisplay = useCallback(async (enabled: boolean) => {
+    if (!enabled) {
+      setFiatDisplayEnabled(false)
+      setFiatDisplayRate(null)
+      return
+    }
+    const prices = await getPriceFeed({ silent: true })
+    if (Number.isFinite(prices?.usd) && Number(prices?.usd) > 0) {
+      setFiatDisplayRate({ currency: Fiats.USD, pricePerBtc: Number(prices!.usd) })
+      setFiatDisplayEnabled(true)
+    }
+  }, [])
 
   useEffect(() => {
     let existing: EnrollmentSecrets | null = null
@@ -217,17 +241,28 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   }, [pendingSavingsHandoff])
 
   useEffect(() => {
-    if (!status || status.network !== 'mutinynet') return
-    if (account === 'savings') {
+    if (!status) return
+    if (status.network === 'mutinynet' && account === 'savings') {
       setSpend((prev) => (prev.fee === LIVE_FEE ? prev : { ...prev, fee: LIVE_FEE }))
     }
     setSetup((prev) => {
       const next = {
         ...prev,
+        protectionTier: status.protectionTier,
+        recoveryPub: status.recoveryPub || status.recoveryKeyPub || '',
         txCapSats: status.txCap || prev.txCapSats,
         dailyLimitSats: status.periodAllowance || prev.dailyLimitSats,
+        absoluteFeeCapSats: status.absoluteFeeCap ?? prev.absoluteFeeCapSats,
+        feerateCapSatPerV: status.feerateCapSatVb || prev.feerateCapSatPerV,
       }
-      if (next.txCapSats === prev.txCapSats && next.dailyLimitSats === prev.dailyLimitSats) {
+      if (
+        next.protectionTier === prev.protectionTier &&
+        next.recoveryPub === prev.recoveryPub &&
+        next.txCapSats === prev.txCapSats &&
+        next.dailyLimitSats === prev.dailyLimitSats &&
+        next.absoluteFeeCapSats === prev.absoluteFeeCapSats &&
+        next.feerateCapSatPerV === prev.feerateCapSatPerV
+      ) {
         return prev
       }
       saveSetupPlan(next)
@@ -350,7 +385,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const recoveryPub = parseCompressedPub(raw, 'recovery key')
         if (!setup.hardwarePub) throw new Error('Set hardware first')
         if (sameRole(recoveryPub, setup.hardwarePub)) throw new Error('Recovery must be a different key')
-        persist({ ...setup, recoveryPub })
+        persist({ ...setup, protectionTier: 'advanced', recoveryPub })
         setScreen('conditions')
       } catch (err) {
         setError(humanizeVaultError(err))
@@ -361,14 +396,42 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const skipRecovery = useCallback(() => {
     setError('')
-    persist({ ...setup, recoveryPub: '' })
+    persist({ ...setup, protectionTier: 'standard', recoveryPub: '' })
     setScreen('conditions')
   }, [persist, setup])
+
+  const setProtectionTier = useCallback(
+    (tier: ProtectionTier) => {
+      setError('')
+      const selected = requireProtectionTier(tier)
+      persist({ ...setup, protectionTier: selected, ...(selected === 'standard' ? { recoveryPub: '' } : {}) })
+    },
+    [persist, setup],
+  )
 
   const confirmConditions = useCallback(() => {
     setError('')
     setScreen('plan')
   }, [])
+
+  const setSpendingPolicy = useCallback(
+    (selected: SpendingPolicy) => {
+      setError('')
+      try {
+        const policy = validateSpendingPolicy(selected)
+        persist({
+          ...setup,
+          txCapSats: policy.txRecipientCapSats,
+          dailyLimitSats: policy.periodAllowanceSats,
+          absoluteFeeCapSats: policy.absoluteFeeCapSats,
+          feerateCapSatPerV: policy.feerateCapSatPerV,
+        })
+      } catch (err) {
+        setError(humanizeVaultError(err))
+      }
+    },
+    [persist, setup],
+  )
 
   const finishPlan = useCallback(() => {
     setError('')
@@ -929,6 +992,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       amountSats,
       applyHardware,
       applyRecovery,
+      setProtectionTier,
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
@@ -947,6 +1011,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       completeSavingsHandoff,
       handoffPsbt,
       confirmConditions,
+      setSpendingPolicy,
+      spendingPolicyCapabilities: deployment?.spendingPolicyCapabilities || CURRENT_SPENDING_POLICY_CAPABILITIES,
       dailyLimit,
       dailyRemaining,
       dailySpent: status?.enrolled ? (status.periodSpent ?? 0) : Math.max(0, dailyLimit - dailyRemaining),
@@ -954,6 +1020,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       enroll,
       enrolled,
       error,
+      fiatDisplayRate,
+      fiatDisplayEnabled,
+      setFiatDisplay,
       finishPlan,
       hasLocalEnrollment: Boolean(enrollment),
       locked,
@@ -1026,6 +1095,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       amountSats,
       applyHardware,
       applyRecovery,
+      setProtectionTier,
       skipRecovery,
       downloadRecoveryKit,
       backupRecoveryKit,
@@ -1042,6 +1112,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       cancelSavingsHandoff,
       completeSavingsHandoff,
       confirmConditions,
+      setSpendingPolicy,
+      deployment?.spendingPolicyCapabilities,
       handoffPsbt,
       dailyLimit,
       dailyRemaining,
@@ -1051,6 +1123,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       signIn,
       enrolled,
       error,
+      fiatDisplayRate,
+      fiatDisplayEnabled,
+      setFiatDisplay,
       finishPlan,
       lastTxid,
       lastTxKind,

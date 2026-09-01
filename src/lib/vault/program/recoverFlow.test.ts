@@ -77,4 +77,28 @@ describe('Savings recovery flow', () => {
       }),
     ).toThrow(/not mature/)
   })
+
+  it('uses only existing Standard guardians for clawback', () => {
+    const family = buildVaultProgramFamily({ ...PROGRAM_FIXTURE_FAMILY, recoveryPub: undefined })
+    const built = planClawback({
+      family,
+      claimant: 'hardware',
+      coin: COIN,
+      feeSats: 500,
+      vaultId: 'vault-standard',
+      storage: memoryStorage(),
+    })
+    expect(built.guardian).toBe('phone')
+    expect(() =>
+      planClawback({
+        family,
+        claimant: 'hardware',
+        guardian: 'recovery',
+        coin: COIN,
+        feeSats: 500,
+        vaultId: 'vault-standard',
+        storage: memoryStorage(),
+      }),
+    ).toThrow(/guardian/)
+  })
 })

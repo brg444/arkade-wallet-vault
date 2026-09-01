@@ -1,6 +1,8 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex, encodeUtf8 } from './hex'
 import type { VaultStatus } from './types'
+import { canonicalSpendingPolicy, spendingPolicyDigest, validateSpendingPolicy } from './spendingPolicy'
+import { requireProtectionTier, requireProtectionTierMatchesRecovery, type ProtectionTier } from './protectionTier'
 
 export const ADDRESS_PIN_STORE = 'arkade-vault-program-pin-v1'
 
@@ -9,6 +11,9 @@ const PROGRAM_PIN_DOMAIN = 'arkade-vault/program-pin/v1'
 export type AddressPinFields = {
   vaultId: string
   network: string
+  protectionTier: ProtectionTier
+  spendingPolicyCanonical: string
+  spendingPolicyDigest: string
   savingsAddress: string
   savingsScript: string
   vtxoVaultCosignerPub: string
@@ -32,6 +37,9 @@ export type AddressPin = AddressPinFields & {
 const PIN_FIELD_NAMES = [
   'vaultId',
   'network',
+  'protectionTier',
+  'spendingPolicyCanonical',
+  'spendingPolicyDigest',
   'savingsAddress',
   'savingsScript',
   'vtxoVaultCosignerPub',
@@ -92,9 +100,18 @@ function requireAddressPinFields(value: unknown): AddressPinFields {
   if (typeof fields.vtxoBoardingActive !== 'boolean') {
     throw new Error('vtxoBoardingActive must be boolean')
   }
+  const policyCanonical = requiredText(fields.spendingPolicyCanonical, 'spendingPolicyCanonical')
+  const policyDigest = requiredText(fields.spendingPolicyDigest, 'spendingPolicyDigest')
+  const selected = validateSpendingPolicy(JSON.parse(policyCanonical) as unknown)
+  if (canonicalSpendingPolicy(selected) !== policyCanonical || spendingPolicyDigest(selected) !== policyDigest) {
+    throw new Error('program pin spending policy does not match its digest')
+  }
   return {
     vaultId: requiredText(fields.vaultId, 'vaultId'),
     network: requiredText(fields.network, 'network'),
+    protectionTier: requireProtectionTier(fields.protectionTier),
+    spendingPolicyCanonical: policyCanonical,
+    spendingPolicyDigest: policyDigest,
     savingsAddress: requiredText(fields.savingsAddress, 'savingsAddress'),
     savingsScript: requiredText(fields.savingsScript, 'savingsScript'),
     vtxoVaultCosignerPub: requiredText(fields.vtxoVaultCosignerPub, 'vtxoVaultCosignerPub'),
@@ -127,9 +144,19 @@ export function addressPinHash(input: AddressPinFields): string {
 
 export function pinFieldsFromStatus(status: VaultStatus): AddressPinFields {
   if (!status?.enrolled) throw new Error('authorizer is not enrolled')
+  const selected = validateSpendingPolicy(status.spendingPolicy)
+  const digest = spendingPolicyDigest(selected)
+  if (digest !== status.spendingPolicyDigest) throw new Error('status spending policy digest does not match')
+  const protectionTier = requireProtectionTierMatchesRecovery(
+    status.protectionTier,
+    status.recoveryKeyPub || status.recoveryPub || '',
+  )
   return requireAddressPinFields({
     vaultId: status.vaultId,
     network: status.network,
+    protectionTier,
+    spendingPolicyCanonical: canonicalSpendingPolicy(selected),
+    spendingPolicyDigest: digest,
     savingsAddress: status.savingsAddress,
     savingsScript: status.savingsScript,
     vtxoVaultCosignerPub: status.vtxoVaultCosignerPub,

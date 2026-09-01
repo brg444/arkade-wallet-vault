@@ -25,6 +25,12 @@ remains out of scope.
 - Every wallet is bound to the release template, network, Operator, and
   canonical Savings, Spending, and boarding descriptors through the signed
   recovery binding. Any other format is rejected.
+- Enrollment freezes Standard-without-recovery or Advanced-with-recovery and
+  one canonical `vault-spending-policy-v1` digest before passkey creation. The
+  wallet independently rebuilds the descriptor from that tier, the two
+  reviewed exposure limits, and the release-managed 5,000-sat / 10-sat-vB fee
+  ceilings. It rejects substitution at propose, finish, status, pin, signed
+  recovery binding, or Recovery Kit boundaries.
 - The browser also records a fresh-release local program pin for the vault
   identifier, network, Savings descriptor, and immutable Spending and boarding
   fields. Status drift, record tampering, extra fields, and an enrolled-to-
@@ -76,6 +82,9 @@ remains out of scope.
   requirement, not a reason to resubmit an ambiguous transaction.
 - The wallet provides a local recovery watcher, not a continuously available
   watchtower.
+- The service advertises one fixed policy schema with release-pinned bounds.
+  The wallet does not accept arbitrary executable policy, unknown fields, or a
+  post-enrollment policy mutation.
 - External hardware support must be qualified against the custom tapscript PSBT
   before any device is listed for mainnet.
 - Lightning send enablement requires an approved signed solver card, quote and

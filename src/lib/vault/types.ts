@@ -1,3 +1,6 @@
+import type { SpendingPolicy } from './spendingPolicy'
+import type { ProtectionTier } from './protectionTier'
+
 // Exact JSON object emitted by GET /v1/status?vault=... . Keep normalized
 // compatibility aliases out of this type; they belong to VaultStatus below.
 export interface VaultStatusWire {
@@ -8,6 +11,7 @@ export interface VaultStatusWire {
   vaultId: string
   templateVersion: string
   policyVersion: string
+  protectionTier: ProtectionTier
   externalOwnerWalletPub?: string
   recoveryKeyPub?: string
   vaultCosignerBasePub?: string
@@ -25,6 +29,8 @@ export interface VaultStatusWire {
   txCap: number
   absoluteFeeCap: number
   feerateCapSatVb: number
+  spendingPolicy: SpendingPolicy
+  spendingPolicyDigest: string
   phoneBip340Pub?: string
   phoneDirectP256?: string
   warnings?: string[]
@@ -56,6 +62,7 @@ export interface VaultStatus {
   vaultId: string
   templateVersion: string
   policyVersion: string
+  protectionTier: ProtectionTier
   externalOwnerWalletPub?: string
   vaultCosignerBasePub?: string
   arkadeCosignerBasePub?: string
@@ -69,6 +76,8 @@ export interface VaultStatus {
   txCap: number
   absoluteFeeCap: number
   feerateCapSatVb: number
+  spendingPolicy?: SpendingPolicy
+  spendingPolicyDigest?: string
   phoneBip340Pub?: string
   phoneDirectP256?: string
   enrollmentMode?: string

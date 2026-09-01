@@ -8,7 +8,7 @@ import Padded from '../../../components/Padded'
 import Text from '../../../components/Text'
 import { StepRail } from '../ui'
 
-const STEP_LABELS = ['How it works', 'Add hardware', 'Recovery', 'Daily limits', 'Your setup', 'This device']
+const STEP_LABELS = ['How it works', 'Add hardware', 'Protection', 'Spending policy', 'Your setup', 'This device']
 
 export function OnboardLayout({
   title,

@@ -1,14 +1,17 @@
-import { FAMILY_KEYS, PROGRAM_CSV, PROGRAM_SCHEMA, isSavingsTemplate } from './constants'
+import { PROGRAM_CSV, PROGRAM_SCHEMA, familyKeysFor, isSavingsTemplate } from './constants'
 import { hashVaultProgramDescriptor, validateVaultProgramDescriptor, type VaultProgramDescriptor } from './descriptor'
+import type { ProtectionTier } from '../protectionTier'
 
 export const RECOVERY_KIT_NAME = 'arkade-recovery-kit'
-export const RECOVERY_KIT_VERSION = 2
+export const RECOVERY_KIT_VERSION = 3
 
 export interface RecoveryKit {
   name: typeof RECOVERY_KIT_NAME
   version: typeof RECOVERY_KIT_VERSION
   descriptor: VaultProgramDescriptor
   descriptorHash: string
+  spendingPolicyDigest: string
+  protectionTier: ProtectionTier
 }
 
 export interface RecoveryKitReport {
@@ -25,6 +28,8 @@ export function buildRecoveryKit(descriptor: VaultProgramDescriptor): RecoveryKi
     version: RECOVERY_KIT_VERSION,
     descriptor: d,
     descriptorHash: hashVaultProgramDescriptor(d),
+    spendingPolicyDigest: d.policy.digest,
+    protectionTier: d.protectionTier,
   }
 }
 
@@ -36,20 +41,27 @@ export function parseRecoveryKit(raw: unknown): RecoveryKit {
   if (kit.descriptorHash && kit.descriptorHash !== built.descriptorHash) {
     throw new Error('Recovery Kit hash does not match the rebuilt descriptor')
   }
+  if (kit.spendingPolicyDigest !== built.spendingPolicyDigest) {
+    throw new Error('Recovery Kit spending policy digest does not match the rebuilt descriptor')
+  }
+  if (kit.protectionTier !== built.protectionTier) {
+    throw new Error('Recovery Kit protection tier does not match the rebuilt descriptor')
+  }
   return built
 }
 
 export function inspectRecoveryKit(kit: RecoveryKit): RecoveryKitReport {
   const parsed = parseRecoveryKit(kit)
   const d = parsed.descriptor
+  const familyKeys = familyKeysFor(Boolean(d.keys.recovery))
   const trees = [
     { role: 'savings', address: d.savings.address },
-    ...FAMILY_KEYS.map((key) => ({
+    ...familyKeys.map((key) => ({
       role: `pending-${key}`,
       address: d.pending[key].address,
       delay: d.pending[key].delay,
     })),
-    ...FAMILY_KEYS.map((key) => ({
+    ...familyKeys.map((key) => ({
       role: `quarantine-${key}`,
       address: d.quarantine[key].address,
       guardians: d.quarantine[key].guardians,

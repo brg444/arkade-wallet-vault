@@ -1,6 +1,13 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js'
-import { PERIOD_ALLOWANCE_SATS, TX_RECIPIENT_CAP_SATS } from './constants'
+import {
+  ABSOLUTE_FEE_CEILING_SATS,
+  FEERATE_CEILING_SAT_PER_V,
+  PERIOD_ALLOWANCE_SATS,
+  TX_RECIPIENT_CAP_SATS,
+} from './constants'
 import { fingerprint, hexToBytes } from './hex'
+import { requireProtectionTier, requireProtectionTierMatchesRecovery, type ProtectionTier } from './protectionTier'
+import { spendingPolicyFromLimits, validateSpendingPolicy, type SpendingPolicy } from './spendingPolicy'
 
 export const SETUP_STORE_KEY = 'arkade-vault-v2:setup'
 
@@ -9,20 +16,26 @@ export const FORBIDDEN_PUBLIC_KEY_G = '0279be667ef9dcbbac55a06295ce870b07029bfcd
 export const FORBIDDEN_PUBLIC_KEY_2G = '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5'
 
 export interface VaultSetupPlan {
+  protectionTier: ProtectionTier
   hardwarePub: string
   recoveryPub: string
   txCapSats: number
   dailyLimitSats: number
+  absoluteFeeCapSats: number
+  feerateCapSatPerV: number
   acceptedDesign: boolean
   complete: boolean
 }
 
 export function emptySetupPlan(): VaultSetupPlan {
   return {
+    protectionTier: 'standard',
     hardwarePub: '',
     recoveryPub: '',
     txCapSats: TX_RECIPIENT_CAP_SATS,
     dailyLimitSats: PERIOD_ALLOWANCE_SATS,
+    absoluteFeeCapSats: ABSOLUTE_FEE_CEILING_SATS,
+    feerateCapSatPerV: FEERATE_CEILING_SAT_PER_V,
     acceptedDesign: false,
     complete: false,
   }
@@ -60,19 +73,45 @@ export function planReady(plan: VaultSetupPlan): boolean {
   if (!plan.acceptedDesign) return false
   if (!plan.hardwarePub) return false
   if (plan.recoveryPub && sameRole(plan.hardwarePub, plan.recoveryPub)) return false
-  if (plan.txCapSats !== TX_RECIPIENT_CAP_SATS || plan.dailyLimitSats !== PERIOD_ALLOWANCE_SATS) return false
+  try {
+    requireProtectionTierMatchesRecovery(plan.protectionTier, plan.recoveryPub)
+    validateSpendingPolicy(setupSpendingPolicy(plan))
+  } catch {
+    return false
+  }
   return true
+}
+
+export function setupSpendingPolicy(plan: VaultSetupPlan): SpendingPolicy {
+  return spendingPolicyFromLimits({
+    txRecipientCapSats: plan.txCapSats,
+    periodAllowanceSats: plan.dailyLimitSats,
+    absoluteFeeCapSats: plan.absoluteFeeCapSats,
+    feerateCapSatPerV: plan.feerateCapSatPerV,
+  })
 }
 
 export function loadSetupPlan(storage: Storage = localStorage): VaultSetupPlan | null {
   const raw = storage.getItem(SETUP_STORE_KEY)
   if (!raw) return null
   const parsed = JSON.parse(raw) as Partial<VaultSetupPlan>
+  if (
+    (parsed.protectionTier !== 'standard' && parsed.protectionTier !== 'advanced') ||
+    !Number.isSafeInteger(parsed.txCapSats) ||
+    !Number.isSafeInteger(parsed.dailyLimitSats) ||
+    !Number.isSafeInteger(parsed.absoluteFeeCapSats) ||
+    !Number.isSafeInteger(parsed.feerateCapSatPerV)
+  ) {
+    return null
+  }
   return {
+    protectionTier: requireProtectionTier(parsed.protectionTier),
     hardwarePub: String(parsed.hardwarePub || ''),
     recoveryPub: String(parsed.recoveryPub || ''),
     txCapSats: Number(parsed.txCapSats),
     dailyLimitSats: Number(parsed.dailyLimitSats),
+    absoluteFeeCapSats: Number(parsed.absoluteFeeCapSats),
+    feerateCapSatPerV: Number(parsed.feerateCapSatPerV),
     acceptedDesign: parsed.acceptedDesign === true,
     complete: parsed.complete === true,
   }

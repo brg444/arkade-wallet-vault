@@ -70,6 +70,28 @@ describe('Savings initiate / clawback / claim PSBTs', () => {
     ).toThrow(/guardian/)
   })
 
+  it('builds Standard clawback only for its existing guardian', () => {
+    const built = buildVaultProgramFamily({ ...PROGRAM_FIXTURE_FAMILY, recoveryPub: undefined })
+    expect(
+      buildClawbackPsbt({
+        family: built,
+        claimant: 'hardware',
+        guardian: 'phone',
+        coin: COIN,
+        feeSats: 500,
+      }).destAddress,
+    ).toBe(built.quarantine['savings-hardware'].address)
+    expect(() =>
+      buildClawbackPsbt({
+        family: built,
+        claimant: 'hardware',
+        guardian: 'recovery',
+        coin: COIN,
+        feeSats: 500,
+      }),
+    ).toThrow(/guardian/)
+  })
+
   it('claims serverlessly with the pending CSV and an unpinned dest', () => {
     const built = family()
     const dest = built.quarantine['savings-recovery'].address
