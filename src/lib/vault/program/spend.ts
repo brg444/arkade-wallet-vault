@@ -103,7 +103,7 @@ export function buildClawbackPsbt(input: {
 }): { psbtHex: string; destAddress: string; authScript: Uint8Array; destSats: number } {
   const coin = requireCoin(input.coin)
   const feeSats = requireFee(input.feeSats)
-  const guardians = pendingGuardians(input.claimant)
+  const guardians = pendingGuardians(input.claimant, Boolean(input.family.pending['savings-recovery']))
   const guardianIndex = guardians.indexOf(input.guardian)
   if (guardianIndex < 0) throw new Error('guardian cannot claw back this pending output')
   const key = familyKey(input.claimant)

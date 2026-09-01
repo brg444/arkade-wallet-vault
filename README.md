@@ -25,12 +25,14 @@ The browser never receives the VaultCosigner key. Hardware and recovery
 private keys are not accepted by production screens; those workflows exchange
 PSBTs with an external signer.
 
-Enrollment instantiates one fixed `vault-policy-v1` program with the user's
-reviewed per-send, rolling 24-hour, absolute-fee, and feerate limits. The
-wallet accepts only the release-advertised schema and bounds, reconstructs the
-complete descriptor, and pins the canonical policy digest locally and in the
-Recovery Kit. These conditions are immutable after enrollment; choosing them
-does not install executable policy code or a different Vault Program.
+Enrollment freezes a protection tier and one fixed `vault-policy-v1` policy
+before passkey creation. Standard has no recovery key; Advanced requires one
+and exposes only the delayed recovery paths already implemented by the Vault
+Program. Spending offers Lower exposure (25,000 sats per payment and 50,000
+sats per rolling 24 hours), Everyday (50,000 and 100,000), or custom values for
+those two limits. The authenticated fee ceilings remain release-managed at
+5,000 sats and 10 sat/vB. The complete descriptor, tier, and canonical policy
+digest are pinned locally and in Recovery Kit version 3.
 
 ## Components
 

@@ -24,7 +24,13 @@ describe('Vercel worker caching', () => {
       .map((directive) => directive.trim().split(/\s+/))
       .find(([name]) => name === 'connect-src')
 
-    expect(connectSrc).toEqual(['connect-src', "'self'", 'https://mutinynet.arkade.sh', 'wss://nostr.arkade.sh'])
+    expect(connectSrc).toEqual([
+      'connect-src',
+      "'self'",
+      'https://mutinynet.arkade.sh',
+      'https://blockchain.info',
+      'wss://nostr.arkade.sh',
+    ])
   })
 
   it('routes readiness through the authorizer gateway', () => {

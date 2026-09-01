@@ -3,10 +3,12 @@ import Button from '../../../components/Button'
 import Input from '../../../components/Input'
 import Text from '../../../components/Text'
 import { prettyAmount } from '../../../lib/format'
+import { approximateFiatLabel } from '../../../lib/vault/fiatDisplay'
 import { waitLabel } from '../../../lib/vault/policy'
 import { PROGRAM_CSV } from '../../../lib/vault/program/constants'
 import { setupSpendingPolicy } from '../../../lib/vault/setupPlan'
 import { sameSpendingPolicy, spendingPolicyFromLimits } from '../../../lib/vault/spendingPolicy'
+import { ABSOLUTE_FEE_CEILING_SATS, FEERATE_CEILING_SAT_PER_V } from '../../../lib/vault/constants'
 import { VaultContext } from '../../../vault/context'
 import { PolicyTimeline } from '../ui'
 import { ChoiceCard, OnboardLayout } from './Layout'
@@ -14,30 +16,41 @@ import { ChoiceCard, OnboardLayout } from './Layout'
 type PolicyDraft = {
   txRecipientCapSats: string
   periodAllowanceSats: string
-  absoluteFeeCapSats: string
-  feerateCapSatPerV: string
 }
 
 function draftFromPolicy(policy: ReturnType<typeof setupSpendingPolicy>): PolicyDraft {
   return {
     txRecipientCapSats: String(policy.txRecipientCapSats),
     periodAllowanceSats: String(policy.periodAllowanceSats),
-    absoluteFeeCapSats: String(policy.absoluteFeeCapSats),
-    feerateCapSatPerV: String(policy.feerateCapSatPerV),
   }
 }
 
 export default function VaultConditions() {
-  const { confirmConditions, error, liveNetwork, navigate, setSpendingPolicy, setup, spendingPolicyCapabilities } =
-    useContext(VaultContext)
-  const [draft, setDraft] = useState<PolicyDraft>(() => draftFromPolicy(setupSpendingPolicy(setup)))
+  const {
+    confirmConditions,
+    error,
+    fiatDisplayEnabled,
+    fiatDisplayRate,
+    liveNetwork,
+    navigate,
+    setSpendingPolicy,
+    setFiatDisplay,
+    setup,
+    spendingPolicyCapabilities,
+  } = useContext(VaultContext)
+  const setupPolicy = setupSpendingPolicy(setup)
+  const initialPreset = spendingPolicyCapabilities.presets.find((preset) =>
+    sameSpendingPolicy(setupPolicy, preset.policy),
+  )
+  const [choice, setChoice] = useState(initialPreset?.id || 'custom')
+  const [draft, setDraft] = useState<PolicyDraft>(() => draftFromPolicy(setupPolicy))
   const selected = useMemo(() => {
     try {
       return spendingPolicyFromLimits({
         txRecipientCapSats: Number(draft.txRecipientCapSats),
         periodAllowanceSats: Number(draft.periodAllowanceSats),
-        absoluteFeeCapSats: Number(draft.absoluteFeeCapSats),
-        feerateCapSatPerV: Number(draft.feerateCapSatPerV),
+        absoluteFeeCapSats: ABSOLUTE_FEE_CEILING_SATS,
+        feerateCapSatPerV: FEERATE_CEILING_SAT_PER_V,
       })
     } catch {
       return null
@@ -45,9 +58,18 @@ export default function VaultConditions() {
   }, [draft])
   const network = liveNetwork ? 'mutinynet' : undefined
 
-  const update = (field: keyof PolicyDraft) => (value: string) =>
+  const update = (field: keyof PolicyDraft) => (value: string) => {
+    setChoice('custom')
     setDraft((current) => ({ ...current, [field]: value }))
-  const choose = (policy: Parameters<typeof setSpendingPolicy>[0]) => setDraft(draftFromPolicy(policy))
+  }
+  const choose = (id: string, policy: Parameters<typeof setSpendingPolicy>[0]) => {
+    setChoice(id)
+    setDraft(draftFromPolicy(policy))
+  }
+  const displayAmount = (sats: number) => {
+    const fiat = approximateFiatLabel(sats, fiatDisplayRate)
+    return `${prettyAmount(sats)}${fiat ? ` (${fiat})` : ''}`
+  }
   const continueSetup = () => {
     if (!selected) return
     setSpendingPolicy(selected)
@@ -62,57 +84,51 @@ export default function VaultConditions() {
       onBack={() => navigate('recovery')}
       actions={<Button onClick={continueSetup} disabled={!selected} label='Review setup' />}
     >
-      <Text wrap>Choose the limits this vault will enforce. They become permanent when you secure this device.</Text>
+      <Text wrap>Choose how much this vault can pay. Above-limit payments are refused.</Text>
+      <button type='button' className='vault-inline-paste' onClick={() => void setFiatDisplay(!fiatDisplayEnabled)}>
+        {fiatDisplayEnabled ? 'Hide approximate USD' : 'Show approximate USD'}
+      </button>
       <div className='vault-policy-presets' aria-label='Spending limit presets'>
         {spendingPolicyCapabilities.presets.map((preset) => (
           <ChoiceCard
             key={preset.id}
             title={preset.label}
-            detail={`${prettyAmount(preset.policy.txRecipientCapSats)} per send · ${prettyAmount(preset.policy.periodAllowanceSats)} per rolling 24 hours`}
-            selected={Boolean(selected && sameSpendingPolicy(selected, preset.policy))}
-            onClick={() => choose(preset.policy)}
+            detail={`${displayAmount(preset.policy.txRecipientCapSats)} per payment · ${displayAmount(preset.policy.periodAllowanceSats)} per rolling 24 hours`}
+            selected={choice === preset.id}
+            onClick={() => choose(preset.id, preset.policy)}
             testId={`policy-preset-${preset.id}`}
           />
         ))}
-      </div>
-      <div className='vault-policy-fields'>
-        <Input
-          type='number'
-          label='Maximum per send (sats)'
-          value={draft.txRecipientCapSats}
-          min={String(spendingPolicyCapabilities.bounds.txRecipientCapSats.min)}
-          max={String(spendingPolicyCapabilities.bounds.txRecipientCapSats.max)}
-          onChange={update('txRecipientCapSats')}
-          testId='policy-tx-cap'
-        />
-        <Input
-          type='number'
-          label='Rolling 24-hour allowance (sats)'
-          value={draft.periodAllowanceSats}
-          min={String(spendingPolicyCapabilities.bounds.periodAllowanceSats.min)}
-          max={String(spendingPolicyCapabilities.bounds.periodAllowanceSats.max)}
-          onChange={update('periodAllowanceSats')}
-          testId='policy-period-allowance'
-        />
-        <Input
-          type='number'
-          label='Maximum fee (sats)'
-          value={draft.absoluteFeeCapSats}
-          min={String(spendingPolicyCapabilities.bounds.absoluteFeeCapSats.min)}
-          max={String(spendingPolicyCapabilities.bounds.absoluteFeeCapSats.max)}
-          onChange={update('absoluteFeeCapSats')}
-          testId='policy-fee-cap'
-        />
-        <Input
-          type='number'
-          label='Maximum fee rate (sat/vB)'
-          value={draft.feerateCapSatPerV}
-          min={String(spendingPolicyCapabilities.bounds.feerateCapSatPerV.min)}
-          max={String(spendingPolicyCapabilities.bounds.feerateCapSatPerV.max)}
-          onChange={update('feerateCapSatPerV')}
-          testId='policy-feerate-cap'
+        <ChoiceCard
+          title='Custom'
+          detail='Set the per-payment cap and rolling 24-hour allowance.'
+          selected={choice === 'custom'}
+          onClick={() => setChoice('custom')}
+          testId='policy-preset-custom'
         />
       </div>
+      {choice === 'custom' ? (
+        <div className='vault-policy-fields'>
+          <Input
+            type='number'
+            label='Maximum per payment (sats)'
+            value={draft.txRecipientCapSats}
+            min={String(spendingPolicyCapabilities.bounds.txRecipientCapSats.min)}
+            max={String(spendingPolicyCapabilities.bounds.txRecipientCapSats.max)}
+            onChange={update('txRecipientCapSats')}
+            testId='policy-tx-cap'
+          />
+          <Input
+            type='number'
+            label='Rolling 24-hour allowance (sats)'
+            value={draft.periodAllowanceSats}
+            min={String(spendingPolicyCapabilities.bounds.periodAllowanceSats.min)}
+            max={String(spendingPolicyCapabilities.bounds.periodAllowanceSats.max)}
+            onChange={update('periodAllowanceSats')}
+            testId='policy-period-allowance'
+          />
+        </div>
+      ) : null}
       {selected ? (
         <PolicyTimeline
           txCap={selected.txRecipientCapSats}
@@ -127,7 +143,7 @@ export default function VaultConditions() {
             Check these limits
           </Text>
           <Text color='neutral-600' tiny wrap>
-            The rolling allowance must cover at least one maximum-size send, and every value must stay within the
+            The rolling allowance must cover at least one maximum-size payment, and both values must stay within the
             supported range.
           </Text>
         </div>

@@ -56,4 +56,35 @@ describe('Savings route table', () => {
       }).executor,
     ).toBe('l1Clawback')
   })
+
+  it('classifies and routes only existing Standard families', () => {
+    const standard = buildVaultProgramFamily({ ...PROGRAM_FIXTURE_FAMILY, recoveryPub: undefined })
+    expect(classifyScript(standard, standard.pending['savings-hardware'].script)).toEqual({
+      role: 'pending',
+      claimant: 'hardware',
+    })
+    expect(
+      selectScriptRoute(standard, standard.pending['savings-hardware'].script, {
+        type: 'clawback',
+        guardian: 'phone',
+      }).executor,
+    ).toBe('l1Clawback')
+    expect(() =>
+      selectScriptRoute(standard, standard.pending['savings-hardware'].script, {
+        type: 'clawback',
+        guardian: 'recovery',
+      }),
+    ).toThrow(/guardian/)
+    expect(() =>
+      selectScriptRoute(standard, standard.savings.script, { type: 'initiate', claimant: 'recovery' }),
+    ).toThrow(/Standard/)
+    expect(
+      selectScriptRoute(
+        standard,
+        standard.quarantine['savings-phone'].script,
+        { type: 'quarantine-rotate' },
+        { availableKeys: { hardware: true, recovery: false } },
+      ).executor,
+    ).toBe('l1QuarantineAdmin')
+  })
 })

@@ -9,6 +9,7 @@ import { buildMapBackup, kitFromFacts, parseMapBackup } from './kitBackup'
 function descriptor(recovery = true) {
   return buildVaultProgramDescriptor({
     ...PROGRAM_FIXTURE,
+    protectionTier: recovery ? 'advanced' : 'standard',
     recoveryPub: recovery ? PROGRAM_FIXTURE.recoveryPub : undefined,
   })
 }
@@ -28,6 +29,7 @@ function statusFromDescriptor(committed: ReturnType<typeof descriptor>): VaultSt
     vaultId: committed.vaultId,
     templateVersion: committed.templateVersion,
     policyVersion: committed.policyVersion,
+    protectionTier: committed.protectionTier,
     externalOwnerWalletPub: committed.keys.hardware,
     vaultCosignerBasePub: committed.keys.vaultCosignerBase,
     arkadeCosignerBasePub: committed.keys.arkadeCosignerBase,
@@ -54,7 +56,7 @@ describe('Savings map backup', () => {
     const kit = buildRecoveryKit(descriptor())
     const backup = buildMapBackup(kit, '2026-08-18T00:00:00.000Z')
     expect(backup.name).toBe('arkade-vault-map')
-    expect(backup.version).toBe(2)
+    expect(backup.version).toBe(3)
     expect(JSON.stringify(backup)).not.toMatch(/mnemonic|privateKey|secret/)
     expect(parseMapBackup(backup).kit.descriptorHash).toBe(kit.descriptorHash)
   })

@@ -1,5 +1,6 @@
 import type { EnrollmentSecrets } from './tenantEnrollment'
 import type { SpendingPolicy } from './spendingPolicy'
+import type { ProtectionTier } from './protectionTier'
 
 export const ENROLL_STORE = 'arkade-vault-v2:enrollment'
 export const SELECTED_VAULT_STORE = 'arkade-vault-v2:selected-vault'
@@ -104,6 +105,7 @@ export type StagedEnrollment = EnrollmentSecrets & {
   boardingDescriptorHash?: string
   savingsAddress?: string
   savingsScript?: string
+  protectionTier: ProtectionTier
   spendingPolicy: SpendingPolicy
   spendingPolicyDigest: string
 }
@@ -115,6 +117,7 @@ export function loadStagedEnrollment(storage: Storage = localStorage): StagedEnr
     !rec.handle ||
     !rec.credId ||
     !rec.ciphertext ||
+    !rec.protectionTier ||
     !rec.spendingPolicy ||
     !rec.spendingPolicyDigest
   )

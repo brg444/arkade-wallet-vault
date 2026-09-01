@@ -1,5 +1,5 @@
 import type { EsploraUtxo } from '../esplora'
-import { FAMILY_KEYS, type FamilyKey } from './constants'
+import { familyKeysFor, type FamilyKey } from './constants'
 import type { VaultProgramDescriptor } from './descriptor'
 
 export const WATCH_SEEN_STORE = 'arkade-vault-savings-v1-watch-seen-v1'
@@ -44,7 +44,7 @@ export async function pollPendingInitiates(input: {
   const next = new Set(input.seen)
   const alerts: InitiateAlert[] = []
   const now = new Date().toISOString()
-  for (const key of FAMILY_KEYS) {
+  for (const key of familyKeysFor(Boolean(input.descriptor.keys.recovery))) {
     const address = input.descriptor.pending[key].address
     const utxos = await input.fetchUtxos(address)
     for (const coin of utxos) {

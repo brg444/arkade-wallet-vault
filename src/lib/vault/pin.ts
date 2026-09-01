@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex, encodeUtf8 } from './hex'
 import type { VaultStatus } from './types'
 import { canonicalSpendingPolicy, spendingPolicyDigest, validateSpendingPolicy } from './spendingPolicy'
+import { requireProtectionTier, requireProtectionTierMatchesRecovery, type ProtectionTier } from './protectionTier'
 
 export const ADDRESS_PIN_STORE = 'arkade-vault-program-pin-v1'
 
@@ -10,6 +11,7 @@ const PROGRAM_PIN_DOMAIN = 'arkade-vault/program-pin/v1'
 export type AddressPinFields = {
   vaultId: string
   network: string
+  protectionTier: ProtectionTier
   spendingPolicyCanonical: string
   spendingPolicyDigest: string
   savingsAddress: string
@@ -35,6 +37,7 @@ export type AddressPin = AddressPinFields & {
 const PIN_FIELD_NAMES = [
   'vaultId',
   'network',
+  'protectionTier',
   'spendingPolicyCanonical',
   'spendingPolicyDigest',
   'savingsAddress',
@@ -106,6 +109,7 @@ function requireAddressPinFields(value: unknown): AddressPinFields {
   return {
     vaultId: requiredText(fields.vaultId, 'vaultId'),
     network: requiredText(fields.network, 'network'),
+    protectionTier: requireProtectionTier(fields.protectionTier),
     spendingPolicyCanonical: policyCanonical,
     spendingPolicyDigest: policyDigest,
     savingsAddress: requiredText(fields.savingsAddress, 'savingsAddress'),
@@ -143,9 +147,14 @@ export function pinFieldsFromStatus(status: VaultStatus): AddressPinFields {
   const selected = validateSpendingPolicy(status.spendingPolicy)
   const digest = spendingPolicyDigest(selected)
   if (digest !== status.spendingPolicyDigest) throw new Error('status spending policy digest does not match')
+  const protectionTier = requireProtectionTierMatchesRecovery(
+    status.protectionTier,
+    status.recoveryKeyPub || status.recoveryPub || '',
+  )
   return requireAddressPinFields({
     vaultId: status.vaultId,
     network: status.network,
+    protectionTier,
     spendingPolicyCanonical: canonicalSpendingPolicy(selected),
     spendingPolicyDigest: digest,
     savingsAddress: status.savingsAddress,

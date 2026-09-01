@@ -7,7 +7,7 @@ import { buildRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
 import { SAVINGS_TEMPLATE } from './constants'
 
 export const MAP_BACKUP_NAME = 'arkade-vault-map'
-export const MAP_BACKUP_VERSION = 2
+export const MAP_BACKUP_VERSION = 3
 
 export interface MapBackup {
   name: typeof MAP_BACKUP_NAME
@@ -56,6 +56,7 @@ export function kitFromFacts(input: {
   const signerVersion = String(input.status?.arkadeCosignerVersion || '').trim()
   const spendingPolicy = input.status?.spendingPolicy
   const statusSpendingPolicyDigest = String(input.status?.spendingPolicyDigest || '').trim()
+  const protectionTier = input.status?.protectionTier
   if (
     liveBases &&
     phonePub &&
@@ -65,6 +66,7 @@ export function kitFromFacts(input: {
     signerVersion &&
     spendingPolicy &&
     statusSpendingPolicyDigest &&
+    protectionTier &&
     input.status?.network === 'mutinynet' &&
     liveTemplate === SAVINGS_TEMPLATE
   ) {
@@ -83,6 +85,7 @@ export function kitFromFacts(input: {
           version: signerVersion,
         },
         templateVersion: liveTemplate,
+        protectionTier,
         spendingPolicy,
       })
       if (descriptor.policy.digest !== statusSpendingPolicyDigest) {

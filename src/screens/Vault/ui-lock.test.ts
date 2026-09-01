@@ -30,16 +30,18 @@ describe('vault UI lock', () => {
     expect(nav).not.toMatch(/hwsign/)
   })
 
-  it('keeps optional recovery chrome and the kit path', () => {
+  it('keeps Standard and Advanced protection chrome and the kit path', () => {
     expect(existsSync(resolve(root, 'src/screens/Vault/onboard/Recovery.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Recover.tsx'))).toBe(true)
     const recovery = read('src/screens/Vault/onboard/Recovery.tsx')
-    expect(recovery).toMatch(/Skip for now/)
-    expect(recovery).toMatch(/Optional/)
-    expect(recovery).not.toMatch(/Required/)
+    expect(recovery).toMatch(/protection-standard/)
+    expect(recovery).toMatch(/protection-advanced/)
+    expect(recovery).toMatch(/Use Standard/)
+    expect(recovery).toMatch(/Use Advanced/)
+    expect(recovery).toMatch(/Recovery public key/)
     expect(recovery).not.toMatch(/Prove you hold/)
     expect(recovery).not.toMatch(/recovery-secret/)
-    expect(recovery).toMatch(/waiting period/)
+    expect(recovery).toMatch(/delayed recovery paths/)
     const design = read('src/screens/Vault/onboard/Design.tsx')
     expect(design).toMatch(/Optional/)
     expect(design).not.toMatch(/Recovery is required/)

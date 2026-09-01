@@ -42,4 +42,26 @@ describe('Savings pending watcher', () => {
     })
     expect(second.alerts).toHaveLength(0)
   })
+
+  it('polls only the Standard phone and hardware families', async () => {
+    const descriptor = buildVaultProgramDescriptor({
+      ...PROGRAM_FIXTURE,
+      protectionTier: 'standard',
+      recoveryPub: undefined,
+    })
+    const addresses: string[] = []
+    const result = await pollPendingInitiates({
+      descriptor,
+      seen: new Set(),
+      fetchUtxos: async (address) => {
+        addresses.push(address)
+        return []
+      },
+    })
+    expect(result.alerts).toEqual([])
+    expect(addresses).toEqual([
+      descriptor.pending['savings-phone'].address,
+      descriptor.pending['savings-hardware'].address,
+    ])
+  })
 })

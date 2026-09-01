@@ -6,7 +6,7 @@ import type { EnrollmentSecrets } from './tenantEnrollment'
 import type { VaultStatus } from './types'
 
 const encoder = new TextEncoder()
-const BINDING_DOMAIN = encoder.encode('arkade-vault/recovery-binding/v3')
+const BINDING_DOMAIN = encoder.encode('arkade-vault/recovery-binding/v4')
 const PROOF_DOMAIN = encoder.encode('arkade-2fa-vault/passkey-proof/v1')
 const ZERO = Uint8Array.of(0)
 
@@ -60,6 +60,7 @@ export function parseRecoveryBinding(binding: string): RecoveryBinding {
     'vaultId',
     'templateVersion',
     'policyVersion',
+    'protectionTier',
     'savingsAddress',
     'savingsScript',
     'vtxoVaultCosignerPub',
@@ -86,7 +87,7 @@ export function parseRecoveryBinding(binding: string): RecoveryBinding {
   if (got.length !== expected.length || expected.some((field, i) => got[i] !== field)) {
     throw new Error('recovery binding fields or order')
   }
-  if (value.version !== 3) throw new Error('recovery binding version')
+  if (value.version !== 4) throw new Error('recovery binding version')
   return value
 }
 
@@ -106,6 +107,7 @@ export function assertRecoveryBindingMatchesStatus(binding: string | RecoveryBin
     ['vaultId', 'vaultId'],
     ['templateVersion', 'templateVersion'],
     ['policyVersion', 'policyVersion'],
+    ['protectionTier', 'protectionTier'],
     ['savingsAddress', 'savingsAddress'],
     ['savingsScript', 'savingsScript'],
     ['vtxoVaultCosignerPub', 'vtxoVaultCosignerPub'],

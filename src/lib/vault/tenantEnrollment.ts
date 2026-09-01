@@ -19,6 +19,7 @@ import type { VaultProgramDescriptor } from './program/descriptor'
 import { allowPasskey, passkeyCreateOptions, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 import { activateBoardingKey, requireBoardingStatus, stageBoardingKey, BOARDING_PROGRAM } from './vtxo/board'
 import { sameSpendingPolicy, spendingPolicyDigest, validateSpendingPolicy, type SpendingPolicy } from './spendingPolicy'
+import { requireProtectionTierMatchesRecovery, type ProtectionTier } from './protectionTier'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -76,6 +77,7 @@ async function deriveDirectP256(prf: Uint8Array<ArrayBuffer>): Promise<{ pub: Ui
 }
 
 export interface EnrollmentRoles {
+  protectionTier: ProtectionTier
   hardwarePub: string
   recoveryPub?: string
   spendingPolicy: SpendingPolicy
@@ -98,7 +100,8 @@ export async function beginTenantEnrollment(
   }
   const token = String(enrollmentToken || '').trim()
   if (!token) throw new Error('setup code required')
-  const wantRecovery = Boolean(roles.recoveryPub)
+  const protectionTier = requireProtectionTierMatchesRecovery(roles.protectionTier, roles.recoveryPub || '')
+  const wantRecovery = protectionTier === 'advanced'
   const selectedPolicy = validateSpendingPolicy(roles.spendingPolicy)
   const selectedPolicyDigest = spendingPolicyDigest(selectedPolicy)
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
@@ -110,6 +113,7 @@ export async function beginTenantEnrollment(
   if (wantRecovery && hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
   const rpId = requireRPID(publicStatus)
   const start = await vaultCosignerClient.enrollment.start(token, {
+    protectionTier,
     spendingPolicy: selectedPolicy,
     spendingPolicyDigest: selectedPolicyDigest,
   })
@@ -117,6 +121,7 @@ export async function beginTenantEnrollment(
     throw new Error('authorizer did not assign a vault')
   }
   if (
+    start.protectionTier !== protectionTier ||
     !sameSpendingPolicy(start.spendingPolicy, selectedPolicy) ||
     start.spendingPolicyDigest !== selectedPolicyDigest
   ) {
@@ -201,6 +206,7 @@ export async function beginTenantEnrollment(
       ...(recoveryXOnly ? { recoveryXOnly } : {}),
       vtxoBoardingProgram: BOARDING_PROGRAM,
       vaultBoardingBip340Pub: xOnly(stagedBoard.boardingPub),
+      protectionTier,
       spendingPolicy: selectedPolicy,
       spendingPolicyDigest: selectedPolicyDigest,
     }
@@ -230,6 +236,9 @@ export async function beginTenantEnrollment(
   if (xOnly(descriptor.keys.hardware) !== hardwareXOnly) {
     throw new Error('proposed hardware key does not match this client')
   }
+  if (descriptor.protectionTier !== protectionTier) {
+    throw new Error('proposed protection tier does not match this setup')
+  }
   const proposedPolicy = validateSpendingPolicy({
     program: descriptor.policy.program,
     schema: descriptor.policy.schema,
@@ -258,6 +267,7 @@ export async function beginTenantEnrollment(
     boardingDescriptorHash: proposed.descriptorHash,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
+    protectionTier,
     spendingPolicy: selectedPolicy,
     spendingPolicyDigest: selectedPolicyDigest,
   }
@@ -292,6 +302,7 @@ export async function finishTenantEnrollment(
     descriptorHash: staged.descriptorHash,
     vtxoBoardingProgram: BOARDING_PROGRAM,
     vaultBoardingBip340Pub: xOnly(staged.boardingPub),
+    protectionTier: staged.protectionTier,
     spendingPolicy: staged.spendingPolicy,
     spendingPolicyDigest: staged.spendingPolicyDigest,
   }

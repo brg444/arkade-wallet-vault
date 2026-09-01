@@ -16,6 +16,7 @@ function statusForProgram(): VaultStatus {
     vaultId: descriptor.vaultId,
     templateVersion: descriptor.templateVersion,
     policyVersion: descriptor.policyVersion,
+    protectionTier: descriptor.protectionTier,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
     periodAllowance: descriptor.policy.periodAllowanceSats,
@@ -51,6 +52,7 @@ describe('live Savings kit policy', () => {
     expect(kitMatchesLiveVault(kit, { ...status, savingsAddress: 'tb1pstale' })).toBe(false)
     expect(kitMatchesLiveVault(kit, { ...status, savingsScript: '5120' + '00'.repeat(32) })).toBe(false)
     expect(kitMatchesLiveVault(kit, { ...status, arkadeCosignerVersion: 'preview' })).toBe(false)
+    expect(kitMatchesLiveVault(kit, { ...status, protectionTier: 'standard' })).toBe(false)
     expect(
       kitMatchesLiveVault(kit, {
         ...status,

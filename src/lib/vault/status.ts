@@ -9,6 +9,7 @@ import {
   validateSpendingPolicy,
   type SpendingPolicyCapabilities,
 } from './spendingPolicy'
+import { requireProtectionTierMatchesRecovery } from './protectionTier'
 
 export function authorizerBase(): string {
   // Production talks same-origin only. A VITE_ value is compiled into the
@@ -144,5 +145,6 @@ export function requireStatusIdentity(
     throw new Error('status recovery key fields do not match')
   }
   const recovery = recoveryKeyPub || recoveryPub
+  requireProtectionTierMatchesRecovery(status.protectionTier, recovery)
   return (recovery ? { ...status, recoveryPub: recovery, recoveryKeyPub: recovery } : status) as VaultStatus
 }

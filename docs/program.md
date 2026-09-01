@@ -12,13 +12,14 @@ canonical Savings vectors.
 
 ## Enrollment policy instance
 
-The program is fixed, but its supported numeric policy is instantiated for
-each vault. Onboarding reads the service's release-pinned bounds and presets,
-then lets the user review the per-send cap, rolling 24-hour allowance,
-absolute fee cap, and feerate cap. The wallet canonicalizes those values and
-commits their digest before creating the passkey. It accepts enrollment only
-when the service echoes the exact policy and returns a descriptor the wallet
-can reconstruct from the same keys and values.
+The program is fixed, but each vault freezes a protection tier and supported
+numeric policy. Standard forbids a recovery key; Advanced requires one.
+Onboarding offers Lower exposure (25,000 sats per payment and 50,000 sats per
+rolling 24 hours), Everyday (50,000 and 100,000), or custom values for those
+two fields. The 5,000-sat absolute fee ceiling and 10 sat/vB feerate ceiling
+remain release-managed and are not ordinary setup controls. The wallet commits
+the exact tier and policy digest before creating the passkey and accepts only
+an exact service echo and reconstructable descriptor.
 
 The policy digest is retained in the staged enrollment, local program pin, and
 Recovery Kit. The two fee ceilings also affect the Savings transition scripts,
@@ -59,8 +60,9 @@ workflow.
 
 ## Recovery
 
-Recovery is optional. The enrolled program can begin a new Pending output for
-the phone, hardware key, or optional recovery key. The current Mutinynet delays
+Standard has phone and hardware recovery claimants but no recovery key.
+Advanced also includes the recovery-key claimant. The enrolled program can
+begin a new Pending output for an enrolled claimant. The current Mutinynet delays
 are 144, 6, and 288 blocks respectively. Those values begin when the Pending
 output confirms; the age of the original Savings output does not satisfy them.
 

@@ -31,6 +31,7 @@ describe('vault setup plan', () => {
     expect(planReady(same)).toBe(false)
     const plan = {
       ...noRecovery,
+      protectionTier: 'advanced' as const,
       recoveryPub: '022f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4',
     }
     expect(planReady(plan)).toBe(true)
@@ -75,6 +76,25 @@ describe('vault setup plan', () => {
         complete: true,
       }),
     )
+    expect(loadSetupPlan()).toBeNull()
+  })
+
+  it('requires the selected protection tier to match recovery-key presence', () => {
+    const base = { ...emptySetupPlan(), acceptedDesign: true, hardwarePub: PROGRAM_FIXTURE.hardwarePub }
+    expect(planReady({ ...base, protectionTier: 'advanced' })).toBe(false)
+    expect(planReady({ ...base, protectionTier: 'standard', recoveryPub: PROGRAM_FIXTURE.recoveryPub })).toBe(false)
+    expect(planReady({ ...base, protectionTier: 'advanced', recoveryPub: PROGRAM_FIXTURE.recoveryPub })).toBe(true)
+  })
+
+  it('does not migrate a setup plan that predates protection tiers', () => {
+    const legacy: Partial<ReturnType<typeof emptySetupPlan>> = {
+      ...emptySetupPlan(),
+      hardwarePub: PROGRAM_FIXTURE.hardwarePub,
+      acceptedDesign: true,
+      complete: true,
+    }
+    delete legacy.protectionTier
+    localStorage.setItem(SETUP_STORE_KEY, JSON.stringify(legacy))
     expect(loadSetupPlan()).toBeNull()
   })
 })

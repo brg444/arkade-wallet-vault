@@ -8,7 +8,11 @@ describe('Savings enrollment descriptor', () => {
     expect(() => requireProposedProgramDescriptor({ schema: 'retired' }, 'aa'.repeat(32))).toThrow(
       /current Vault Program descriptor/,
     )
-    const skipped = buildVaultProgramDescriptor({ ...PROGRAM_FIXTURE, recoveryPub: undefined })
+    const skipped = buildVaultProgramDescriptor({
+      ...PROGRAM_FIXTURE,
+      protectionTier: 'standard',
+      recoveryPub: undefined,
+    })
     expect(skipped.keys.recovery).toBeUndefined()
     expect(requireProposedProgramDescriptor(skipped, hashVaultProgramDescriptor(skipped)).vaultId).toBe(skipped.vaultId)
     const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)

@@ -108,6 +108,7 @@ export async function vaultUiStatus(origin = location.origin, hostname = locatio
     vaultId: VAULT_UI_ID,
     templateVersion: SAVINGS_TEMPLATE,
     policyVersion: POLICY_VERSION,
+    protectionTier: descriptor.protectionTier,
     savingsAddress: descriptor.savings.address,
     savingsScript: descriptor.savings.script,
     periodAllowance: spendingPolicy.periodAllowanceSats,
@@ -159,6 +160,7 @@ export async function installVaultUiSession() {
   })
   saveAddressPin(pinFromEnrolledStatus(status))
   saveSetupPlan({
+    protectionTier: descriptor.protectionTier,
     hardwarePub: descriptor.keys.hardware,
     recoveryPub: descriptor.keys.recovery || '',
     txCapSats: status.txCap,

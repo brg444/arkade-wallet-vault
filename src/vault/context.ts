@@ -4,6 +4,8 @@ import { emptySetupPlan, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import type { InitiateAlert } from '../lib/vault/program/watch'
 import type { SpendingPolicy, SpendingPolicyCapabilities } from '../lib/vault/spendingPolicy'
+import type { ProtectionTier } from '../lib/vault/protectionTier'
+import type { VaultFiatDisplayRate } from '../lib/vault/fiatDisplay'
 
 export type VaultAccount = 'spend' | 'savings'
 
@@ -39,6 +41,7 @@ export interface VaultContextProps {
   amountSats: number
   applyHardware: (raw: string) => void
   applyRecovery: (raw: string) => void
+  setProtectionTier: (tier: ProtectionTier) => void
   skipRecovery: () => void
   downloadRecoveryKit: () => string
   backupRecoveryKit: () => Promise<boolean>
@@ -66,6 +69,9 @@ export interface VaultContextProps {
   enroll: (token?: string) => Promise<void>
   enrolled: boolean
   error: string
+  fiatDisplayRate: VaultFiatDisplayRate | null
+  fiatDisplayEnabled: boolean
+  setFiatDisplay: (enabled: boolean) => Promise<void>
   signIn: () => Promise<void>
   finishPlan: () => void
   hasLocalEnrollment: boolean
@@ -112,6 +118,7 @@ export const VaultContext = createContext<VaultContextProps>({
   amountSats: 0,
   applyHardware: () => {},
   applyRecovery: () => {},
+  setProtectionTier: () => {},
   skipRecovery: () => {},
   downloadRecoveryKit: () => '',
   backupRecoveryKit: async () => false,
@@ -138,8 +145,8 @@ export const VaultContext = createContext<VaultContextProps>({
     bounds: {
       periodAllowanceSats: { min: 330, max: 1_000_000_000 },
       txRecipientCapSats: { min: 330, max: 100_000_000 },
-      absoluteFeeCapSats: { min: 0, max: 100_000 },
-      feerateCapSatPerV: { min: 1, max: 100 },
+      absoluteFeeCapSats: { min: 5_000, max: 5_000 },
+      feerateCapSatPerV: { min: 10, max: 10 },
     },
     presets: [],
   },
@@ -150,6 +157,9 @@ export const VaultContext = createContext<VaultContextProps>({
   enroll: async () => {},
   enrolled: false,
   error: '',
+  fiatDisplayRate: null,
+  fiatDisplayEnabled: false,
+  setFiatDisplay: async () => {},
   signIn: async () => {},
   finishPlan: () => {},
   hasLocalEnrollment: false,
