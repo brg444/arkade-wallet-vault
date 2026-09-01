@@ -91,20 +91,21 @@ export function loadSetupPlan(storage: Storage = localStorage): VaultSetupPlan |
   const raw = storage.getItem(SETUP_STORE_KEY)
   if (!raw) return null
   const parsed = JSON.parse(raw) as Partial<VaultSetupPlan>
-  const defaults = emptySetupPlan()
+  if (
+    !Number.isSafeInteger(parsed.txCapSats) ||
+    !Number.isSafeInteger(parsed.dailyLimitSats) ||
+    !Number.isSafeInteger(parsed.absoluteFeeCapSats) ||
+    !Number.isSafeInteger(parsed.feerateCapSatPerV)
+  ) {
+    return null
+  }
   return {
     hardwarePub: String(parsed.hardwarePub || ''),
     recoveryPub: String(parsed.recoveryPub || ''),
-    txCapSats: Number.isSafeInteger(parsed.txCapSats) ? Number(parsed.txCapSats) : defaults.txCapSats,
-    dailyLimitSats: Number.isSafeInteger(parsed.dailyLimitSats)
-      ? Number(parsed.dailyLimitSats)
-      : defaults.dailyLimitSats,
-    absoluteFeeCapSats: Number.isSafeInteger(parsed.absoluteFeeCapSats)
-      ? Number(parsed.absoluteFeeCapSats)
-      : defaults.absoluteFeeCapSats,
-    feerateCapSatPerV: Number.isSafeInteger(parsed.feerateCapSatPerV)
-      ? Number(parsed.feerateCapSatPerV)
-      : defaults.feerateCapSatPerV,
+    txCapSats: Number(parsed.txCapSats),
+    dailyLimitSats: Number(parsed.dailyLimitSats),
+    absoluteFeeCapSats: Number(parsed.absoluteFeeCapSats),
+    feerateCapSatPerV: Number(parsed.feerateCapSatPerV),
     acceptedDesign: parsed.acceptedDesign === true,
     complete: parsed.complete === true,
   }
