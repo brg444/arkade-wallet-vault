@@ -7,10 +7,15 @@ import type { VaultStatus } from '../../lib/vault/types'
 
 const UI_FIXTURE = '/src/test/e2e-vault/fixtures/vault-ui.ts'
 const WORKER_FIXTURE = '/src/test/e2e-vault/fixtures/vtxo-browser.ts'
-const OPERATOR_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_operator'
-const AUTHORIZER_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_authorizer'
-const ESPLORA_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_esplora'
+const APP_PORT = process.env.VAULT_E2E_PORT || '3003'
+const OPERATOR_PORT = process.env.VAULT_E2E_OPERATOR_PORT || '18888'
+const APP_ORIGIN = `http://localhost:${APP_PORT}`
+const OPERATOR_ORIGIN = `http://127.0.0.1:${OPERATOR_PORT}`
+const OPERATOR_CONTROL = `${OPERATOR_ORIGIN}/__vault_e2e_operator`
+const AUTHORIZER_CONTROL = `${OPERATOR_ORIGIN}/__vault_e2e_authorizer`
+const ESPLORA_CONTROL = `${OPERATOR_ORIGIN}/__vault_e2e_esplora`
 const BOARDING_TXID = '11'.repeat(32)
+const SAVINGS_TXID = '22'.repeat(32)
 const VTXO_TXID = 'aa'.repeat(32)
 const COMMITMENT_TXID = 'cc'.repeat(32)
 
@@ -143,7 +148,7 @@ async function installRoutes(page: Page, getStatus: () => VaultStatus | undefine
       schema: 7,
       network: 'mutinynet',
       enrollTemplate: SAVINGS_TEMPLATE,
-      arkadeOrigin: 'http://127.0.0.1:18888',
+      arkadeOrigin: OPERATOR_ORIGIN,
       arkadeVersion: 'e2e',
     }),
   )
@@ -155,7 +160,7 @@ async function installRoutes(page: Page, getStatus: () => VaultStatus | undefine
     }
     return json(route, {
       network: 'mutinynet',
-      clientOrigin: 'http://localhost:3003',
+      clientOrigin: APP_ORIGIN,
       rpId: 'localhost',
       templateVersion: SAVINGS_TEMPLATE,
       policyVersion: POLICY_VERSION,
@@ -254,7 +259,7 @@ test.afterEach(async ({ context }) => {
 })
 
 test('renders the Spending BIP21 request and copies each underlying address', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3003' })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_ORIGIN })
   const { status } = await openVault(page)
 
   await page.getByTestId('account-receive').click()
@@ -544,6 +549,22 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(overflow).toEqual({ document: 0, body: 0 })
 }
 
+async function expectReachableAbove(page: Page, targetSelector: string, chromeSelector: string) {
+  const target = page.locator(targetSelector)
+  await target.scrollIntoViewIfNeeded()
+  let targetBox = await target.boundingBox()
+  let chromeBox = await page.locator(chromeSelector).boundingBox()
+  expect(targetBox).not.toBeNull()
+  expect(chromeBox).not.toBeNull()
+  const overlap = targetBox!.y + targetBox!.height - chromeBox!.y
+  if (overlap > 0) {
+    await page.locator('.content').evaluate((content, amount) => content.scrollBy(0, amount + 16), overlap)
+    targetBox = await target.boundingBox()
+    chromeBox = await page.locator(chromeSelector).boundingBox()
+  }
+  expect(targetBox!.y + targetBox!.height).toBeLessThanOrEqual(chromeBox!.y)
+}
+
 test('@polish covers accessible account, send, Security, and Settings states', async ({ page }) => {
   const pending: EsploraUtxo = {
     txid: BOARDING_TXID,
@@ -551,7 +572,17 @@ test('@polish covers accessible account, send, Security, and Settings states', a
     value: 48_000,
     status: { confirmed: false },
   }
-  const { destination, status } = await openVault(page, { boardingUtxos: [pending] })
+  const { destination, state, status } = await openVault(page, {
+    boardingUtxos: [pending],
+    savingsUtxos: [
+      {
+        txid: SAVINGS_TXID,
+        vout: 0,
+        value: 100_000,
+        status: { confirmed: true, block_height: 1 },
+      },
+    ],
+  })
   await setOperatorVtxos([
     await wireVtxo(page, status, {
       amount: 80_000,
@@ -564,13 +595,40 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByTestId('vault-balance')).toContainText('80,000')
   await expect(page.getByTestId('spending-pending')).toContainText('48,000 sats · Arriving via Bitcoin')
   await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 128,000 sats')
+  await expect
+    .poll(() => page.locator('.vault-home-hero').evaluate((element) => getComputedStyle(element, '::after').content))
+    .toBe('none')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('home-with-pending.png', { animations: 'disabled', fullPage: true })
 
   const accountTrigger = page.getByTestId('account-switcher')
+  await accountTrigger.click()
+  await expect(page.getByRole('menu')).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('home-account-menu.png', { animations: 'disabled', fullPage: true })
+  await page.keyboard.press('Escape')
+  await expect(accountTrigger).toBeFocused()
+
+  await page.getByTestId('account-scan').click()
+  await expect(page.getByRole('heading', { name: 'Payment request' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('payment-scanner.png', { animations: 'disabled', fullPage: true })
+  const cancelScanner = page.getByRole('button', { name: 'Cancel' })
+  if (await cancelScanner.isVisible()) await cancelScanner.click().catch(() => undefined)
+  await expect(page.getByRole('heading', { name: 'Send' })).toBeVisible()
+  await page.getByRole('button', { name: 'Go back' }).click()
+
+  await page.getByTestId('account-receive').click()
+  await expect(page.getByRole('heading', { name: 'Receive to Spending' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('receive-spending.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+
   await accountTrigger.focus()
   await page.keyboard.press('ArrowDown')
-  await expect(page.getByRole('menuitemradio', { name: /Spending/ })).toHaveAttribute('aria-checked', 'true')
+  const spendingOption = page.getByRole('menuitemradio', { name: /Spending/ })
+  await expect(spendingOption).toHaveAttribute('aria-checked', 'true')
+  await expect(spendingOption).toBeFocused()
   await page.keyboard.press('End')
   await page.keyboard.press('Enter')
   await expect(accountTrigger).toContainText('Savings')
@@ -584,6 +642,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await seedReviewedSpend(page, status, destination, 12_000, 500, 67_500)
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('send-spending.png', { animations: 'disabled', fullPage: true })
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
   await page.getByRole('button', { name: 'Review send' }).click()
@@ -591,6 +650,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByText('Mutinynet', { exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('send-review.png', { animations: 'disabled', fullPage: true })
+  await expectReachableAbove(page, '.vault-review-approvals', '.buttons-on-bottom')
 
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByRole('button', { name: 'Go back' }).click()
@@ -599,6 +659,18 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByTestId('security-readiness')).toContainText('Ready')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('security.png', { animations: 'disabled', fullPage: true })
+  await expectReachableAbove(page, '[data-testid="security-lost"]', '.pill-navbar')
+
+  await page.getByTestId('security-kit').click()
+  await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('recovery-kit.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: /I lost a key/ }).click()
+  await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('recovery-lost-key.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByRole('button', { name: 'Go back' }).click()
 
   await page.getByTestId('tab-settings').click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
@@ -606,12 +678,65 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page).toHaveScreenshot('settings.png', { animations: 'disabled', fullPage: true })
 
   await page.getByTestId('settings-theme').click()
+  await expect(page.getByRole('heading', { name: 'Theme' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings-theme.png', { animations: 'disabled', fullPage: true })
   await page.getByTestId('select-option-1').click()
   await expect(page.locator('html')).toHaveClass(/palette-dark/)
+  await expect(page).toHaveScreenshot('settings-theme-dark.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('settings-dark.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByTestId('settings-theme').click()
+  await page.getByTestId('select-option-2').click()
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByTestId('settings-haptics').click()
+  await expect(page.getByRole('heading', { name: 'Haptics' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings-haptics.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByTestId('settings-about').click()
+  await expect(page.getByRole('heading', { name: 'About' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings-about.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByTestId('settings-logs').click()
+  await expect(page.getByRole('heading', { name: 'Logs' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings-logs.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByTestId('settings-signout').click()
+  await expect(page.getByRole('heading', { name: 'Sign out' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings-signout.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+
+  await page.getByTestId('tab-wallet').click()
+  await page.getByRole('button', { name: /Received 80,000 SATS/ }).click()
+  await expect(page.getByRole('heading', { name: 'Received' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('transaction-received.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+
+  await setEsploraState(status, state)
+  await page.getByTestId('account-switcher').click()
+  await page.getByTestId('account-savings').click()
+  await expect(page.getByTestId('account-switcher')).toContainText('Savings')
+  await refreshHome(page)
+  await expect(page.getByTestId('vault-balance')).toContainText('100,000')
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('home-savings.png', { animations: 'disabled', fullPage: true })
+  await page.getByTestId('account-receive').click()
+  await expect(page.getByRole('heading', { name: 'Add to Savings' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('receive-savings.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByRole('button', { name: 'Move to Spending' }).click()
+  await expect(page.getByRole('heading', { name: 'Move to Spending' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('send-savings.png', { animations: 'disabled', fullPage: true })
 
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: width >= 900 ? 1000 : 844 })

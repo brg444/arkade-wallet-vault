@@ -139,41 +139,43 @@ export default function VaultKeys() {
               />
             </div>
 
-            <HubGroup label='Keys'>
-              <HubRow
-                icon={<FingerprintIcon />}
-                title='This device'
-                status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
-                onClick={
-                  canEnableOther
-                    ? () => {
-                        if (!busy) void enablePasskeyLogin()
-                      }
-                    : undefined
-                }
-              />
-              <HubRow icon={<ShieldCheckOutlineIcon />} title='Hardware' status={shortKey(hardwarePub)} />
-              {hasRecovery ? (
+            <div className='vault-security-groups'>
+              <HubGroup label='Keys'>
                 <HubRow
-                  icon={<SafeIcon />}
-                  title='Recovery'
-                  detail='Starts a wait you can cancel'
-                  status={shortKey(recoveryPub)}
+                  icon={<FingerprintIcon />}
+                  title='This device'
+                  status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
+                  onClick={
+                    canEnableOther
+                      ? () => {
+                          if (!busy) void enablePasskeyLogin()
+                        }
+                      : undefined
+                  }
                 />
-              ) : null}
-            </HubGroup>
+                <HubRow icon={<ShieldCheckOutlineIcon />} title='Hardware' status={shortKey(hardwarePub)} />
+                {hasRecovery ? (
+                  <HubRow
+                    icon={<SafeIcon />}
+                    title='Recovery'
+                    detail='Starts a wait you can cancel'
+                    status={shortKey(recoveryPub)}
+                  />
+                ) : null}
+              </HubGroup>
 
-            <HubGroup label='Recovery and access'>
-              <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
-              {canEnableOther ? (
-                <HubRow
-                  title={busy ? 'Waiting for device unlock…' : 'Use on another device'}
-                  onClick={() => {
-                    if (!busy) void enablePasskeyLogin()
-                  }}
-                />
-              ) : null}
-            </HubGroup>
+              <HubGroup label='Recovery and access'>
+                <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
+                {canEnableOther ? (
+                  <HubRow
+                    title={busy ? 'Waiting for device unlock…' : 'Use on another device'}
+                    onClick={() => {
+                      if (!busy) void enablePasskeyLogin()
+                    }}
+                  />
+                ) : null}
+              </HubGroup>
+            </div>
 
             {!addressCovered && status?.enrolled ? (
               <Text color='neutral-600' tiny wrap>

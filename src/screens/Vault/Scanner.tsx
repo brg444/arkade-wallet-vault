@@ -1,19 +1,14 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { QRCanvas, frameLoop, frontalCamera } from 'qr/dom.js'
 import QrScanner from 'qr-scanner'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import ErrorMessage from '../../components/Error'
 import Padded from '../../components/Padded'
+import QrIcon from '../../icons/Qr'
 import { extractError } from '../../lib/error'
 import Content from './Content'
 import Header from './Header'
-
-const videoStyle: CSSProperties = {
-  border: '1px solid var(--neutral-300)',
-  borderRadius: '0.5rem',
-  margin: '0 auto',
-}
 
 interface ScannerProps {
   close: () => void
@@ -98,11 +93,21 @@ function ScannerMills({ close, label, onData, onError, onSwitch }: ScannerProps)
 
   return (
     <>
-      <Header auxFunc={switchScanner} auxText='M' text={label} back={closeScanner} />
-      <Content noRefresh>
+      <Header
+        auxAriaLabel='Try another scanner'
+        auxFunc={switchScanner}
+        auxIcon={<QrIcon />}
+        text={label}
+        back={closeScanner}
+      />
+      <Content noRefresh className='vault-scanner-content'>
         <Padded>
           <ErrorMessage error={error} text='Camera not available' />
-          <video style={videoStyle} ref={videoRef} />
+          <div className='vault-scanner-stage'>
+            <video className='vault-scanner-video' ref={videoRef} />
+            <span className='vault-scanner-guide' aria-hidden />
+          </div>
+          <p className='vault-scanner-help'>Hold the QR code inside the frame.</p>
         </Padded>
       </Content>
       <ButtonsOnBottom>
@@ -162,13 +167,21 @@ function ScannerQr({ calculateScanRegion, close, label, onData, onError, onSwitc
 
   return (
     <>
-      <Header auxFunc={switchScanner} auxText={calculateScanRegion ? 'q' : 'Q'} text={label} back={closeScanner} />
-      <Content noRefresh>
+      <Header
+        auxAriaLabel='Try another scanner'
+        auxFunc={switchScanner}
+        auxIcon={<QrIcon />}
+        text={label}
+        back={closeScanner}
+      />
+      <Content noRefresh className='vault-scanner-content'>
         <Padded>
           <ErrorMessage error={error} text='Camera not available' />
-          <div id='video-wrapper'>
-            <video id='qr-scanner' ref={videoRef} style={videoStyle} />
+          <div id='video-wrapper' className='vault-scanner-stage'>
+            <video id='qr-scanner' ref={videoRef} className='vault-scanner-video' />
+            <span className='vault-scanner-guide' aria-hidden />
           </div>
+          <p className='vault-scanner-help'>Hold the QR code inside the frame.</p>
         </Padded>
       </Content>
       <ButtonsOnBottom>

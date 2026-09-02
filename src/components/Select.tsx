@@ -1,18 +1,19 @@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { GreenStatusIcon } from '../icons/Status'
+import StatusIcon from '../icons/Status'
 import { useEffect } from 'react'
 import Text from './Text'
 import { hapticSubtle } from '../lib/haptics'
 import { cn } from '@/lib/utils'
 
 interface SelectProps {
+  accessibleName: string
   labels?: string[]
   onChange: (value: string) => void
   options: string[]
   selected: string
 }
 
-export default function Select({ labels, onChange, options, selected }: SelectProps) {
+export default function Select({ accessibleName, labels, onChange, options, selected }: SelectProps) {
   useEffect(() => {
     const handleKeyDown = (event: { key: string; keyCode: number }) => {
       const selectedIndex = options.indexOf(selected)
@@ -34,7 +35,12 @@ export default function Select({ labels, onChange, options, selected }: SelectPr
   }
 
   return (
-    <RadioGroup value={selected} onValueChange={handleChange} className='flex flex-col !gap-0 !p-0 !m-0'>
+    <RadioGroup
+      aria-label={accessibleName}
+      value={selected}
+      onValueChange={handleChange}
+      className='flex flex-col !gap-0 !p-0 !m-0'
+    >
       {options.map((option, index) => (
         <label
           key={option}
@@ -54,7 +60,11 @@ export default function Select({ labels, onChange, options, selected }: SelectPr
             className='!absolute !-m-px !size-px !border-0 !p-0 opacity-0 pointer-events-none'
           />
           <Text thin>{labels?.[index] ?? option}</Text>
-          {option === selected && <GreenStatusIcon small />}
+          {option === selected && (
+            <span className='vault-select-check' aria-hidden>
+              <StatusIcon />
+            </span>
+          )}
         </label>
       ))}
     </RadioGroup>

@@ -42,9 +42,9 @@ export default function VaultTx() {
   return (
     <>
       <Header text={lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} back={() => navigate('home')} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-detail-content vault-tx-content'>
         <Padded>
-          <FlexCol gap='1.15rem'>
+          <FlexCol gap='1.15rem' className='vault-flow vault-tx-layout'>
             <div className='vault-hero'>
               <p className='vault-kicker'>{lightning ? 'You paid' : sent ? 'You sent' : 'You received'}</p>
               <p className='vault-money'>

@@ -13,12 +13,7 @@ export default function PsbtQr({ value }: { value: string }) {
     }
   }
   return (
-    <svg
-      viewBox={`0 0 ${size} ${size}`}
-      width='100%'
-      style={{ maxWidth: 280, background: '#fff', borderRadius: 12, padding: 8, boxSizing: 'content-box' }}
-      aria-label='PSBT QR'
-    >
+    <svg viewBox={`0 0 ${size} ${size}`} width='100%' className='vault-psbt-qr' aria-label='PSBT QR'>
       {dots}
     </svg>
   )
