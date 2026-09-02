@@ -96,10 +96,11 @@ live lifecycle qualification, browser concurrency tests, production key
 isolation, and mainnet-specific program pins. The confirmed mainnet Emulator
 endpoint advertises the same signer already pinned by the official SDK, but it
 has not yet passed Vault release qualification. Vault Program and policy
-schema bounds require a separate mainnet release review. A disabled outbound
-BOLT11 lifecycle delegates RFQ, VHTLC, persistence, restart, and refund handling
-to the published swap package, then funds through the ordinary VTXO send path.
-Its solver, refund, expiry, and live-payment gates are recorded in
+schema bounds require a separate mainnet release review. A feature-gated
+outbound BOLT11 lifecycle delegates RFQ, VHTLC, persistence, restart, and refund
+handling to the published swap package, then funds through the ordinary VTXO
+send path. The Mutinynet release candidate enables send; mainnet remains
+disabled. Its solver, refund, expiry, and live-payment gates are recorded in
 [docs/lightning.md](docs/lightning.md). The complete release gate is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
