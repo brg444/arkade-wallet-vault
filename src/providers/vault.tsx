@@ -105,10 +105,6 @@ export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null,
   )
 }
 
-export function spendingPositionBalance(vtxoSats: number, boardingSats: number): number {
-  return vtxoSats + boardingSats
-}
-
 export function VaultProvider({ children }: { children: ReactNode }) {
   const [screen, setScreen] = useState<VaultScreen>('welcome')
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
@@ -290,17 +286,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [liveNetwork],
   )
   const reportError = useCallback((message: string) => setError(message), [])
-  const {
-    balanceError,
-    balancesLoaded,
-    boardingBalance,
-    history,
-    refreshBalance,
-    refreshingBalance,
-    savingsSats,
-    savingsSpendableSats,
-    vtxoSpendingSats,
-  } = useVaultBalances({
+  const { balanceError, balancesLoaded, history, positions, refreshBalance, refreshingBalance } = useVaultBalances({
     addressPin,
     enrollment,
     initialStatusChecked,
@@ -308,9 +294,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setStatus,
     status,
   })
+  const spendingAvailableSats = positions.spending.availableSats
+  const savingsAvailableSats = positions.savings.availableSats
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
-  const amountSats = status?.enrolled ? spendingPositionBalance(vtxoSpendingSats, boardingBalance) : 0
   const enrolled = Boolean(status?.enrolled)
   const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
   const clearError = useCallback(() => reportError(''), [reportError])
@@ -505,7 +492,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
       return
     }
-    if (invoice.amountSats > vtxoSpendingSats) {
+    if (invoice.amountSats > spendingAvailableSats) {
       setError('Not enough confirmed spending funds.')
       return
     }
@@ -549,7 +536,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         throw new Error(`This payment exceeds the ${setup.txCapSats.toLocaleString()} sat send limit after fees.`)
       }
       const funding = await reserveVaultVtxo(enrollment, status, quote.fundAddress, quote.fundAmountSats)
-      if (quote.fundAmountSats + funding.feeSats > vtxoSpendingSats) {
+      if (quote.fundAmountSats + funding.feeSats > spendingAvailableSats) {
         throw new Error('Not enough confirmed spending funds after fees.')
       }
       if (spendRef.current.address.trim().replace(/^lightning:/i, '') !== invoice.raw) {
@@ -570,7 +557,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setBusy(false)
     }
-  }, [account, enrollment, setup.txCapSats, spend.address, status, vtxoSpendingSats])
+  }, [account, enrollment, setup.txCapSats, spend.address, spendingAvailableSats, status])
 
   const reviewSpend = useCallback(async () => {
     setError('')
@@ -601,7 +588,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
       return
     }
-    const source = account === 'savings' ? savingsSpendableSats : vtxoSpendingSats
+    const source = account === 'savings' ? savingsAvailableSats : spendingAvailableSats
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -650,11 +637,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     account,
     enrollment,
     reviewLightningSpend,
-    savingsSpendableSats,
+    savingsAvailableSats,
     setup.txCapSats,
     spend,
     status,
-    vtxoSpendingSats,
+    spendingAvailableSats,
   ])
 
   const finishBroadcast = useCallback(
@@ -865,7 +852,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           throw err
         }
       }
-      if (spendingArkAddress && isVaultArkAddress(spend.address, status.network) && vtxoSpendingSats >= spend.amount) {
+      if (
+        spendingArkAddress &&
+        isVaultArkAddress(spend.address, status.network) &&
+        spendingAvailableSats >= spend.amount
+      ) {
         const reviewed = reviewedVtxoQuote
         if (!reviewed || !reviewedVtxoQuoteMatchesDraft(reviewed, spend)) {
           setReviewedVtxoQuote(null)
@@ -917,7 +908,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     spend,
     spendingArkAddress,
     status,
-    vtxoSpendingSats,
+    spendingAvailableSats,
   ])
 
   const reset = useCallback(() => {
@@ -989,7 +980,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     () => ({
       acceptDesign,
       account,
-      amountSats,
       applyHardware,
       applyRecovery,
       setProtectionTier,
@@ -1006,7 +996,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       initiateAlerts,
       approveSend,
       busy,
-      canSend: vtxoSpendingSats >= DUST_SATS,
+      canSend: spendingAvailableSats >= DUST_SATS,
       cancelSavingsHandoff,
       completeSavingsHandoff,
       handoffPsbt,
@@ -1077,8 +1067,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       scanOnSend,
       clearSendScan: () => setScanOnSend(false),
       savingsAddress,
-      savingsSats,
-      savingsSpendableSats,
+      positions,
       screen: loaded ? screen : 'welcome',
       setAccount: selectAccount,
       setSpendDraft,
@@ -1087,12 +1076,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       spend,
       status,
       lastSend,
-      vtxoSpendingSats,
     }),
     [
       acceptDesign,
       account,
-      amountSats,
       applyHardware,
       applyRecovery,
       setProtectionTier,
@@ -1150,16 +1137,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       reviewSpend,
       scanOnSend,
       savingsAddress,
-      savingsSats,
-      savingsSpendableSats,
+      positions,
       screen,
       selectAccount,
       setSpendDraft,
       setup,
       spend,
+      spendingAvailableSats,
       status?.enrolled,
       status?.periodSpent,
-      vtxoSpendingSats,
     ],
   )
 

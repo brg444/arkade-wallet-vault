@@ -27,5 +27,12 @@ describe('Vault settings account boundaries', () => {
 
     expect(screen.queryByTestId('settings-faucet')).toBeNull()
     expect(screen.queryByTestId('settings-hwsign')).toBeNull()
+    expect(screen.getByTestId('settings-theme')).toHaveRole('button')
+    expect(screen.getByTestId('settings-haptics')).toHaveRole('button')
+    expect(screen.getByTestId('settings-about')).toHaveRole('button')
+    expect(screen.getByTestId('settings-update')).toHaveRole('button')
+    expect(screen.getByTestId('settings-refresh')).toHaveRole('button')
+    expect(screen.getByTestId('settings-logs')).toHaveRole('button')
+    expect(screen.getByTestId('settings-signout')).toHaveRole('button')
   })
 })

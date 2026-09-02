@@ -105,8 +105,6 @@ body {
   -ms-content-zooming: none;
   word-wrap: break-word;
   overscroll-behavior-y: none;
-  -webkit-text-size-adjust: none;
-  text-size-adjust: none;
 }
 
 p {

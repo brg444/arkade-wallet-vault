@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { consoleError } from '../lib/logs'
 import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } from '../lib/vault/esplora'
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
@@ -13,6 +13,7 @@ import {
   subscribeVaultWalletEvents,
 } from '../lib/vault/vtxo/walletWorker'
 import { reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
+import { vaultAccountPositions } from './balances'
 
 interface VaultBalancesOptions {
   addressPin: AddressPin | null
@@ -109,6 +110,16 @@ export function useVaultBalances({
   const refreshVaultId = status?.vaultId || enrollment?.vaultId || addressPin?.vaultId || ''
 
   const { boardingBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats } = snapshot
+  const positions = useMemo(
+    () =>
+      vaultAccountPositions({
+        boardingSats: boardingBalance,
+        savingsAvailableSats: savingsSpendableSats,
+        savingsTotalSats: savingsSats,
+        spendingAvailableSats: vtxoSpendingSats,
+      }),
+    [boardingBalance, savingsSats, savingsSpendableSats, vtxoSpendingSats],
+  )
 
   const refreshBalance = useCallback(
     async (vaultId?: string) => {
@@ -257,12 +268,9 @@ export function useVaultBalances({
   return {
     balanceError,
     balancesLoaded,
-    boardingBalance,
     history,
+    positions,
     refreshBalance,
     refreshingBalance,
-    savingsSats,
-    savingsSpendableSats,
-    vtxoSpendingSats,
   }
 }

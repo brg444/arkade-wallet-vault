@@ -6,6 +6,7 @@ import type { InitiateAlert } from '../lib/vault/program/watch'
 import type { SpendingPolicy, SpendingPolicyCapabilities } from '../lib/vault/spendingPolicy'
 import type { ProtectionTier } from '../lib/vault/protectionTier'
 import type { VaultFiatDisplayRate } from '../lib/vault/fiatDisplay'
+import { EMPTY_VAULT_POSITIONS, type VaultAccountPositions } from './balances'
 
 export type VaultAccount = 'spend' | 'savings'
 
@@ -38,7 +39,7 @@ export interface VaultSpend {
 export interface VaultContextProps {
   acceptDesign: () => void
   account: VaultAccount
-  amountSats: number
+  positions: VaultAccountPositions
   applyHardware: (raw: string) => void
   applyRecovery: (raw: string) => void
   setProtectionTier: (tier: ProtectionTier) => void
@@ -98,8 +99,6 @@ export interface VaultContextProps {
   scanOnSend: boolean
   clearSendScan: () => void
   savingsAddress: string
-  savingsSats: number
-  savingsSpendableSats: number
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
@@ -107,7 +106,6 @@ export interface VaultContextProps {
   spend: VaultSpend
   status: VaultStatus | null
   lastSend: VaultSpend | null
-  vtxoSpendingSats: number
 }
 
 export const DEFAULT_SPEND_FEE_SATS = 500
@@ -115,7 +113,7 @@ export const DEFAULT_SPEND_FEE_SATS = 500
 export const VaultContext = createContext<VaultContextProps>({
   acceptDesign: () => {},
   account: 'spend',
-  amountSats: 0,
+  positions: EMPTY_VAULT_POSITIONS,
   applyHardware: () => {},
   applyRecovery: () => {},
   setProtectionTier: () => {},
@@ -186,8 +184,6 @@ export const VaultContext = createContext<VaultContextProps>({
   scanOnSend: false,
   clearSendScan: () => {},
   savingsAddress: '',
-  savingsSats: 0,
-  savingsSpendableSats: 0,
   screen: 'welcome',
   setAccount: () => {},
   setSpendDraft: () => {},
@@ -195,5 +191,4 @@ export const VaultContext = createContext<VaultContextProps>({
   spend: { address: '', amount: 0, fee: DEFAULT_SPEND_FEE_SATS },
   status: null,
   lastSend: null,
-  vtxoSpendingSats: 0,
 })

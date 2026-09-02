@@ -4,10 +4,12 @@ import { pinEnrolledStatus } from './pin'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import {
   fetchPublicStatus,
+  fetchVaultReadiness,
   fetchVaultStatus,
   parseStatusJson,
   pingVaultService,
   requireStatusIdentity,
+  VaultReadinessResponseError,
   vaultStatusPath,
 } from './status'
 import type { VaultStatusWire } from './types'
@@ -191,5 +193,64 @@ describe('pingVaultService', () => {
       }),
     )
     await expect(pingVaultService()).resolves.toBe(false)
+  })
+})
+
+describe('Vault readiness', () => {
+  const ready = {
+    ok: true,
+    schema: 7,
+    network: 'mutinynet',
+    enrollTemplate: SAVINGS_TEMPLATE,
+    arkadeOrigin: 'https://mutinynet.arkade.sh',
+    arkadeVersion: '0.4.65',
+  }
+
+  it('accepts the current typed readiness response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(ready), { status: 200 })),
+    )
+    await expect(fetchVaultReadiness()).resolves.toEqual({ state: 'ready', status: ready })
+  })
+
+  it('keeps a structured 503 error out of the display state', async () => {
+    const unavailable = { ...ready, ok: false, error: 'ledger unavailable' }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(unavailable), { status: 503 })),
+    )
+    await expect(fetchVaultReadiness()).resolves.toEqual({ state: 'unavailable', status: unavailable })
+  })
+
+  it('rejects a malformed readiness body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{"ok":true}', { status: 200 })),
+    )
+    await expect(fetchVaultReadiness()).rejects.toBeInstanceOf(VaultReadinessResponseError)
+  })
+
+  it('aborts a readiness request that exceeds its timeout', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async (_input: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true })
+          }),
+      ),
+    )
+    await expect(fetchVaultReadiness(undefined, 1)).rejects.toMatchObject({ name: 'TimeoutError' })
+  })
+
+  it('distinguishes a network failure from a structured unavailable response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    await expect(fetchVaultReadiness()).rejects.toBeInstanceOf(TypeError)
   })
 })

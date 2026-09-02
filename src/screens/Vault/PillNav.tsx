@@ -41,17 +41,17 @@ export default function VaultPillNav({ visible, active }: { visible: boolean; ac
 
   return (
     <div className={`pill-navbar-layer ${visible ? '' : 'pill-navbar-layer--hidden'}`}>
-      <nav className='pill-navbar' role='tablist' aria-label='Main navigation'>
+      <nav className='pill-navbar' aria-label='Main navigation'>
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            type='button'
             className={`pill-nav-btn ${active === tab.id ? 'pill-nav-btn--active' : ''}`}
             onClick={() => {
               hapticLight()
               navigate(tab.screen)
             }}
-            role='tab'
-            aria-selected={active === tab.id}
+            aria-current={active === tab.id ? 'page' : undefined}
             aria-label={tab.label}
             data-testid={tab.testId}
           >
