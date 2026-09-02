@@ -38,7 +38,7 @@ export default function VaultReceive() {
   return (
     <>
       <Header text={spending ? 'Receive to Spending' : 'Add to Savings'} back={() => navigate('home')} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-receive-content'>
         <Padded>
           <FlexCol>
             {request ? (
@@ -78,6 +78,7 @@ export default function VaultReceive() {
       </Content>
       <ButtonsOnBottom>
         <Button
+          className='vault-commit-action'
           onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
           disabled={!request}
           label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}

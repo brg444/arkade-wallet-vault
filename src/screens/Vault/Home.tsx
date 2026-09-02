@@ -3,9 +3,6 @@ import { useContext, useEffect, useRef } from 'react'
 import Button from '../../components/Button'
 import Content from './Content'
 import ErrorMessage from '../../components/Error'
-import FlexCol from '../../components/FlexCol'
-import FlexRow from '../../components/FlexRow'
-import Padded from '../../components/Padded'
 import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import SmallLogo from '../../components/SmallLogo'
@@ -77,10 +74,10 @@ export default function VaultHome() {
   }
 
   return (
-    <>
-      <Content>
-        <Padded>
-          <div className='vault-home'>
+    <Content className='vault-home-content'>
+      <div className='vault-home'>
+        <section className='vault-home-hero'>
+          <div className='vault-home-hero-inner'>
             <div className='vault-account-bar'>
               <div className='vault-account-lead'>
                 <Menu.Root
@@ -184,37 +181,62 @@ export default function VaultHome() {
                 </button>
               </div>
             </div>
-            <p className='vault-balance-label'>{spending ? 'Available to spend' : 'Savings balance'}</p>
-            <p
-              className='vault-balance-figure'
-              data-testid='vault-balance'
-              aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
-              aria-live='polite'
-            >
-              {balancesLoaded ? prettyNumber(sats) : '—'}
-              {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
-            </p>
-
-            {!balancesLoaded ? (
-              balanceError ? null : (
+            <div className='vault-home-balance'>
+              <p className='vault-balance-label'>{spending ? 'Available to spend' : 'Savings balance'}</p>
+              <p
+                className='vault-balance-figure'
+                data-testid='vault-balance'
+                aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
+                aria-live='polite'
+              >
+                {balancesLoaded ? prettyNumber(sats) : '—'}
+                {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
+              </p>
+              {!balancesLoaded ? (
+                balanceError ? null : (
+                  <Text color='neutral-600' tiny wrap>
+                    Loading {spending ? 'Spending' : 'Savings'} balance…
+                  </Text>
+                )
+              ) : spending ? (
+                <div className='vault-home-limit'>
+                  <Text color='neutral-600' tiny>
+                    {prettyNumber(dailyRemaining, 0)} remaining of {prettyNumber(dailyLimit, 0)} in your rolling 24-hour
+                    limit
+                  </Text>
+                  <Meter ratio={ratio} label='Rolling 24-hour limit used' />
+                </div>
+              ) : (
                 <Text color='neutral-600' tiny wrap>
-                  Loading {spending ? 'Spending' : 'Savings'} balance…
+                  Moving funds requires this device and your hardware key.
                 </Text>
-              )
-            ) : spending ? (
-              <FlexCol gap='0.35rem'>
-                <Text color='neutral-600' tiny>
-                  {prettyNumber(dailyRemaining, 0)} remaining of {prettyNumber(dailyLimit, 0)} in your rolling 24-hour
-                  limit
-                </Text>
-                <Meter ratio={ratio} label='Rolling 24-hour limit used' />
-              </FlexCol>
-            ) : (
-              <Text color='neutral-600' tiny wrap>
-                Moving funds requires this device and your hardware key.
-              </Text>
-            )}
+              )}
+            </div>
+            <div className='vault-home-actions'>
+              <Button
+                main
+                className='vault-home-action-send'
+                icon={<SendIcon />}
+                label={spending ? 'Send' : 'Move to Spending'}
+                disabled={spending ? !canSend : positions.savings.availableSats <= 330}
+                onClick={() => {
+                  if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
+                  navigate('send')
+                }}
+              />
+              <Button
+                main
+                className='vault-home-action-receive'
+                icon={<ReceiveIcon />}
+                label={spending ? 'Receive' : 'Add to Savings'}
+                onClick={() => navigate('receive')}
+              />
+            </div>
+          </div>
+        </section>
 
+        <section className='vault-home-sheet'>
+          <div className='vault-home-sheet-inner'>
             {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
               <div className='vault-status-card is-active' role='status' data-testid='spending-pending'>
                 <span className='vault-status-icon' aria-hidden>
@@ -271,29 +293,10 @@ export default function VaultHome() {
             {balanceError ? (
               <Button secondary label='Retry' loading={refreshingBalance} onClick={() => void refreshBalance()} />
             ) : null}
-
-            <FlexRow padding='0 0 0.5rem 0'>
-              <Button
-                main
-                icon={<SendIcon />}
-                label={spending ? 'Send' : 'Move to Spending'}
-                disabled={spending ? !canSend : positions.savings.availableSats <= 330}
-                onClick={() => {
-                  if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
-                  navigate('send')
-                }}
-              />
-              <Button
-                main
-                icon={<ReceiveIcon />}
-                label={spending ? 'Receive' : 'Add to Savings'}
-                onClick={() => navigate('receive')}
-              />
-            </FlexRow>
             <VaultHistory />
           </div>
-        </Padded>
-      </Content>
-    </>
+        </section>
+      </div>
+    </Content>
   )
 }

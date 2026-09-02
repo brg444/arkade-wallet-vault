@@ -51,8 +51,9 @@ export default function VaultApp() {
     tx: <VaultTx />,
   }
   const page = pages[screen] || <VaultWelcome />
+  const className = ['page', `vault-screen-${screen}`, showNavbar ? 'has-pill-navbar' : ''].filter(Boolean).join(' ')
   return (
-    <div className={showNavbar ? 'page has-pill-navbar' : 'page'} data-testid='vault-app'>
+    <div className={className} data-testid='vault-app'>
       {page}
       {tab ? <VaultPillNav visible={showNavbar} active={tab} /> : null}
     </div>

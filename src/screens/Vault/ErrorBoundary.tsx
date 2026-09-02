@@ -1,10 +1,8 @@
 import { Component, type ReactNode } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import CenterScreen from '../../components/CenterScreen'
 import FlexRow from '../../components/FlexRow'
-import Padded from '../../components/Padded'
-import Text, { TextSecondary } from '../../components/Text'
+import SmallLogo from '../../components/SmallLogo'
 import { createIncidentReference, recordVaultIncident } from '../../lib/logs'
 import Content from './Content'
 import Header from './Header'
@@ -36,13 +34,16 @@ export default class VaultErrorBoundary extends Component<Props, State> {
     return (
       <div className='page vault-error-page' data-testid='vault-app'>
         <Header text='Something went wrong' />
-        <Content noRefresh>
-          <Padded>
-            <CenterScreen>
-              <Text>Arkade Vault could not display this screen.</Text>
-              <TextSecondary centered>Incident reference: {this.state.incidentReference}</TextSecondary>
-            </CenterScreen>
-          </Padded>
+        <Content noRefresh className='vault-error-content'>
+          <div className='vault-error-layout'>
+            <div className='vault-error-mark' aria-hidden>
+              <SmallLogo />
+            </div>
+            <div className='vault-error-copy'>
+              <p>Arkade Vault could not display this screen.</p>
+              <p className='vault-error-reference'>Incident reference: {this.state.incidentReference}</p>
+            </div>
+          </div>
         </Content>
         <ButtonsOnBottom>
           <FlexRow>

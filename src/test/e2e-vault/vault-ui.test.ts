@@ -375,7 +375,7 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
   await page.getByRole('button', { name: 'Review send' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
   await expect(page.getByText('12,000 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText(destination, { exact: true })).toBeVisible()
   await expect(page.getByText('500 SATS', { exact: true })).toBeVisible()
@@ -587,7 +587,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
   await page.getByRole('button', { name: 'Review send' }).click()
-  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
   await expect(page.getByText('Mutinynet', { exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('send-review.png', { animations: 'disabled', fullPage: true })
@@ -596,13 +596,22 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByTestId('tab-vault').click()
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible()
-  await expect(page.getByText('Ready', { exact: true })).toBeVisible()
+  await expect(page.getByTestId('security-readiness')).toContainText('Ready')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('security.png', { animations: 'disabled', fullPage: true })
 
   await page.getByTestId('tab-settings').click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByTestId('settings-theme').click()
+  await page.getByTestId('select-option-1').click()
+  await expect(page.locator('html')).toHaveClass(/palette-dark/)
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('settings-dark.png', { animations: 'disabled', fullPage: true })
 
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: width >= 900 ? 1000 : 844 })
