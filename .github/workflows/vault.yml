@@ -82,3 +82,19 @@ jobs:
         run: corepack pnpm test:e2e
         env:
           CI: true
+      - name: Refresh exact send-review baselines after a visual failure
+        if: failure()
+        run: >-
+          corepack pnpm exec playwright test -c playwright.vault.config.ts
+          src/test/e2e-vault/vault-ui.test.ts
+          --grep '@polish covers accessible account'
+          --update-snapshots
+        env:
+          CI: true
+      - name: Upload refreshed send-review baselines
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: send-review-linux-baselines
+          path: src/test/e2e-vault/vault-ui.test.ts-snapshots/send-review-*-linux.png
+          if-no-files-found: error
