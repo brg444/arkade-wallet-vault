@@ -82,11 +82,11 @@ function LogsView({ onBack }: { onBack: () => void }) {
           setLogs([])
         }}
       />
-      <Content noRefresh>
+      <Content noRefresh className='vault-settings-subview vault-logs-content'>
         {logs.length === 0 ? (
           <EmptyLogsList />
         ) : (
-          <div style={{ margin: '1rem' }} className='scroll-fade'>
+          <div className='vault-logs-list scroll-fade'>
             <FlexCol gap='0.5rem'>
               {[...logs].reverse().map((line) => (
                 <button
@@ -99,7 +99,7 @@ function LogsView({ onBack }: { onBack: () => void }) {
                   }}
                 >
                   <span className={line.level === 'error' ? 'vault-log-time is-error' : 'vault-log-time'}>
-                    {prettyAgo(line.time)}
+                    {Date.now() - new Date(line.time).getTime() < 60_000 ? 'Just now' : prettyAgo(line.time)}
                   </span>
                   <span className='vault-settings-value'>{prettyLongText(line.msg.replace('...', ''), 12)}</span>
                 </button>
@@ -117,7 +117,7 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
   return (
     <>
       <Header text='Sign out' back={onBack} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-settings-subview vault-signout-content'>
         <Padded>
           <CenterScreen>
             <WalletAlternativeIcon />
@@ -159,9 +159,10 @@ export default function VaultSettings() {
     return (
       <>
         <Header text='Theme' back={() => setView('menu')} />
-        <Content noRefresh>
+        <Content noRefresh className='vault-settings-subview vault-theme-content'>
           <Padded>
             <Select
+              accessibleName='Theme'
               labels={[`Auto (${systemTheme()})`, 'Dark', 'Light']}
               options={[Themes.Auto, Themes.Dark, Themes.Light]}
               selected={theme}
@@ -181,7 +182,7 @@ export default function VaultSettings() {
     return (
       <>
         <Header text='Haptics' back={() => setView('menu')} />
-        <Content noRefresh>
+        <Content noRefresh className='vault-settings-subview vault-haptics-content'>
           <Padded>
             <Toggle
               checked={haptics}
@@ -228,9 +229,11 @@ export default function VaultSettings() {
     return (
       <>
         <Header text='About' back={() => setView('menu')} />
-        <Content noRefresh>
+        <Content noRefresh className='vault-settings-subview vault-about-content'>
           <Padded>
-            <Table data={data} />
+            <div className='vault-about-table'>
+              <Table data={data} />
+            </div>
           </Padded>
         </Content>
       </>

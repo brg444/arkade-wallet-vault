@@ -3,7 +3,7 @@ import { CSVMultisigTapscript } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { MUTINYNET_OPERATOR_SIGNER_PUB } from '../../lib/vault/vtxo/board'
 
-const OPERATOR_PORT = 18_888
+const OPERATOR_PORT = Number(process.env.VAULT_E2E_OPERATOR_PORT || 18_888)
 const OPERATOR_XONLY = MUTINYNET_OPERATOR_SIGNER_PUB.slice(2)
 const OPERATOR_COMPRESSED = MUTINYNET_OPERATOR_SIGNER_PUB
 const CHECKPOINT_TAPSCRIPT = hex.encode(

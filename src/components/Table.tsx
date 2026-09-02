@@ -1,9 +1,4 @@
-import Text from './Text'
-import FlexRow from './FlexRow'
-import FlexCol from './FlexCol'
 import { prettyLongText } from '../lib/format'
-import { useState } from 'react'
-import Focusable from './Focusable'
 import { copyToClipboard } from '../lib/clipboard'
 import { useToast } from './Toast'
 import { hapticSubtle } from '../lib/haptics'
@@ -13,70 +8,40 @@ export type TableLine = [string, string | undefined, JSX.Element?, (() => void)?
 export type TableData = TableLine[]
 
 export default function Table({ data }: { data: TableData }) {
-  const [focused, setFocused] = useState(false)
-
   const { toast } = useToast()
 
-  const copy = (value: string) => {
+  const copy = async (value: string) => {
     hapticSubtle()
-    copyToClipboard(value)
-    toast('Copied to clipboard')
-  }
-
-  const focusOnFirstRow = () => {
-    setFocused(true)
-    if (data.length === 0) return
-    const id = data[0][0]
-    const first = document.getElementById(id) as HTMLElement
-    if (first) first.focus()
-  }
-
-  const focusOnOuterShell = () => {
-    setFocused(false)
-    const outer = document.getElementById('outer') as HTMLElement
-    if (outer) outer.focus()
-  }
-
-  const ariaLabel = (title?: string, value?: string) => {
-    if (!title || !value) return 'Pressing Enter enables keyboard navigation of the table'
-    return `Title ${title} with status ${value}. Press Escape to exit keyboard navigation.`
+    try {
+      await copyToClipboard(value)
+      toast('Copied to clipboard')
+    } catch {
+      toast('Failed to copy')
+    }
   }
 
   return (
-    <Focusable id='outer' inactive={focused} onEnter={focusOnFirstRow} ariaLabel={ariaLabel()}>
-      <FlexCol gap='0.5rem'>
-        {data.map(([title, value, icon, onClick]) =>
-          value == '' || value === undefined || value === null ? null : (
-            <Focusable
-              id={title}
-              key={title}
-              inactive={!focused}
-              onEnter={() => (onClick ? onClick() : copy(value))}
-              onEscape={focusOnOuterShell}
-              ariaLabel={ariaLabel(title, value)}
-            >
-              <FlexRow between>
-                <FlexRow color='neutral-500'>
-                  {icon}
-                  <Text small thin>
-                    {title}
-                  </Text>
-                </FlexRow>
-                <FlexRow end gap='0.25rem'>
-                  {onClick ? (
-                    <span onClick={onClick} style={{ cursor: 'pointer', color: 'var(--neutral-500)' }}>
-                      <ExternalLinkIcon />
-                    </span>
-                  ) : null}
-                  <Text color='dark' copy={value} small bold testId={title}>
-                    {prettyLongText(value, onClick ? 8 : undefined)}
-                  </Text>
-                </FlexRow>
-              </FlexRow>
-            </Focusable>
-          ),
-        )}
-      </FlexCol>
-    </Focusable>
+    <div className='vault-table'>
+      {data.map(([title, value, icon, onClick]) =>
+        value == '' || value === undefined || value === null ? null : (
+          <button
+            type='button'
+            className='vault-table-row'
+            key={title}
+            aria-label={`${onClick ? 'Open' : 'Copy'} ${title}: ${value}`}
+            onClick={() => (onClick ? onClick() : void copy(value))}
+          >
+            <span className='vault-table-title'>
+              {icon}
+              <span>{title}</span>
+            </span>
+            <span className='vault-table-value' data-testid={title} title={value}>
+              <span>{onClick ? prettyLongText(value, 18) : value}</span>
+              {onClick ? <ExternalLinkIcon /> : null}
+            </span>
+          </button>
+        ),
+      )}
+    </div>
   )
 }

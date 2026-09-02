@@ -53,9 +53,9 @@ export default function VaultHandoff() {
   return (
     <>
       <Header text='Hardware next' back={() => navigate('home')} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-handoff-content'>
         <Padded>
-          <FlexCol gap='1.15rem'>
+          <FlexCol gap='1.15rem' className='vault-flow vault-handoff-flow'>
             <Text wrap>
               This device signed and saved the pending transfer. Sign the PSBT with your hardware key, then upload the
               signed .psbt file here.

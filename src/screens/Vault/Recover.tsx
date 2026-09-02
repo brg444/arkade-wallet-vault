@@ -154,9 +154,9 @@ export default function VaultRecover() {
           text='Lost a key'
           back={() => (fromKit || recoverEntry === 'kit' ? setView('kit') : navigate(recoverExit))}
         />
-        <Content noRefresh>
+        <Content noRefresh className='vault-recover-content'>
           <Padded>
-            <FlexCol>
+            <FlexCol className='vault-flow vault-recover-flow'>
               <Text wrap>
                 Start recovery with a key you still have. That begins a waiting period of a fixed number of blocks. If
                 you didn’t start it, cancel it. New vaults can cancel with the remaining keys and no vault service.
@@ -446,9 +446,9 @@ export default function VaultRecover() {
   return (
     <>
       <Header text='Recovery Kit' back={() => navigate(recoverExit)} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-recover-content'>
         <Padded>
-          <FlexCol>
+          <FlexCol className='vault-flow vault-recover-flow'>
             <Text wrap>
               The Recovery Kit is a map of this vault. It is not a seed. It does not hold your keys. Back up the map
               with this vault, then device unlock can rebuild it on this device or another device.
