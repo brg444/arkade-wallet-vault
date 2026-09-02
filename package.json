@@ -43,6 +43,7 @@
     "test:e2e": "playwright test -c playwright.vault.config.ts",
     "test:e2e:ui": "playwright test -c playwright.vault.config.ts --ui",
     "test:codegen": "playwright codegen localhost:3003",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --max-warnings=0",
     "lint:fix": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --fix",
     "format": "prettier --write src",
@@ -66,6 +67,7 @@
     ]
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "^4.2.2",
     "@testing-library/jest-dom": "^6.8.0",

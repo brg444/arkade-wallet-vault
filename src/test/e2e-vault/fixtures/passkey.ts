@@ -474,7 +474,7 @@ async function installSecretAudit(context: BrowserContext) {
       return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
     }
     const random = crypto.getRandomValues.bind(crypto)
-    crypto.getRandomValues = ((array: ArrayBufferView | null) => {
+    crypto.getRandomValues = ((array: ArrayBufferView) => {
       const result = random(array)
       if (result?.byteLength === 32) audit.generated32.push(toHex(result as ArrayBufferView<ArrayBuffer>))
       return result

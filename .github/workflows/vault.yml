@@ -28,6 +28,8 @@ jobs:
         run: corepack pnpm format:check
       - name: Lint
         run: corepack pnpm exec eslint "src/**/*.{ts,tsx,js,jsx}" --max-warnings=0
+      - name: Type check
+        run: corepack pnpm typecheck
       - name: Contract pack
         run: |
           node -e "
