@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
 import { decodeVaultBip21 } from '../../lib/vault/bip21'
 import { POLICY_VERSION } from '../../lib/vault/constants'
@@ -136,6 +137,16 @@ async function refreshHome(page: Page) {
 }
 
 async function installRoutes(page: Page, getStatus: () => VaultStatus | undefined, state: VaultUiState) {
+  await page.route('**/ready', (route) =>
+    json(route, {
+      ok: true,
+      schema: 7,
+      network: 'mutinynet',
+      enrollTemplate: SAVINGS_TEMPLATE,
+      arkadeOrigin: 'http://127.0.0.1:18888',
+      arkadeVersion: 'e2e',
+    }),
+  )
   await page.route('**/v1/status*', async (route) => {
     const url = new URL(route.request().url())
     const status = getStatus()
@@ -359,7 +370,7 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await seedReviewedSpend(page, status, destination, 12_000, 500, 7_500)
 
   await page.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(page.getByText('20,000 / 100,000 available today')).toBeVisible()
+  await expect(page.getByText('20,000 remaining of 100,000 in your rolling 24-hour limit')).toBeVisible()
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
   await page.getByRole('button', { name: 'Review send' }).click()
@@ -370,7 +381,7 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await expect(page.getByText('500 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText('12,500 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText('Vault service', { exact: true })).toBeVisible()
-  await expect(page.getByText('Approves if under today’s limit', { exact: true })).toBeVisible()
+  await expect(page.getByText('Approves within your enrolled limits', { exact: true })).toBeVisible()
   await expect(page.getByText('Hardware', { exact: true })).toBeVisible()
   await expect(page.getByText('Not needed for this send', { exact: true })).toBeVisible()
 })
@@ -451,7 +462,9 @@ test('shows a pending boarding deposit, then replaces it with the confirmed VTXO
   }
   const { state, status } = await openVault(page, { boardingUtxos: [pending] })
 
-  await expect(page.getByTestId('vault-balance')).toContainText('50,000')
+  await expect(page.getByTestId('vault-balance')).toContainText('0')
+  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats · Arriving via Bitcoin')
+  await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 50,000 sats')
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toContainText('Pending')
 
   state.boardingUtxos = []
@@ -498,7 +511,9 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
   const { destination, status } = await openVault(page, { boardingUtxos: [pending] })
   await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])
   await refreshHome(page)
-  await expect(page.getByTestId('vault-balance')).toContainText('70,000')
+  await expect(page.getByTestId('vault-balance')).toContainText('20,000')
+  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats · Arriving via Bitcoin')
+  await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 70,000 sats')
 
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   await page.getByTestId('vault-send-amount').fill('30000')
@@ -507,4 +522,94 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
 
   await expect(page.getByText('Not enough confirmed spending funds.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Review' })).toHaveCount(0)
+})
+
+async function expectNoBlockingAxeViolations(page: Page) {
+  const results = await new AxeBuilder({ page }).analyze()
+  const blocking = results.violations
+    .filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
+    .map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      targets: violation.nodes.map((node) => node.target),
+    }))
+  expect(blocking).toEqual([])
+}
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => ({
+    document: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    body: document.body.scrollWidth - document.body.clientWidth,
+  }))
+  expect(overflow).toEqual({ document: 0, body: 0 })
+}
+
+test('@polish covers accessible account, send, Security, and Settings states', async ({ page }) => {
+  const pending: EsploraUtxo = {
+    txid: BOARDING_TXID,
+    vout: 0,
+    value: 48_000,
+    status: { confirmed: false },
+  }
+  const { destination, status } = await openVault(page, { boardingUtxos: [pending] })
+  await setOperatorVtxos([
+    await wireVtxo(page, status, {
+      amount: 80_000,
+      txid: VTXO_TXID,
+      createdAt: Date.UTC(2026, 7, 20, 10, 0, 0),
+    }),
+  ])
+  await refreshHome(page)
+
+  await expect(page.getByTestId('vault-balance')).toContainText('80,000')
+  await expect(page.getByTestId('spending-pending')).toContainText('48,000 sats · Arriving via Bitcoin')
+  await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 128,000 sats')
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('home-with-pending.png', { animations: 'disabled', fullPage: true })
+
+  const accountTrigger = page.getByTestId('account-switcher')
+  await accountTrigger.focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByRole('menuitemradio', { name: /Spending/ })).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('End')
+  await page.keyboard.press('Enter')
+  await expect(accountTrigger).toContainText('Savings')
+  await accountTrigger.focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByRole('menuitemradio', { name: /Savings/ })).toBeFocused()
+  await page.keyboard.press('Home')
+  await page.keyboard.press('Enter')
+  await expect(accountTrigger).toContainText('Spending')
+
+  await seedReviewedSpend(page, status, destination, 12_000, 500, 67_500)
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expectNoBlockingAxeViolations(page)
+  await page.getByTestId('vault-send-amount').fill('12000')
+  await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
+  await page.getByRole('button', { name: 'Review send' }).click()
+  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
+  await expect(page.getByText('Mutinynet', { exact: true })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('send-review.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByTestId('tab-vault').click()
+  await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible()
+  await expect(page.getByText('Ready', { exact: true })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('security.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByTestId('tab-settings').click()
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: width >= 900 ? 1000 : 844 })
+    await expectNoHorizontalOverflow(page)
+  }
+  const frame = await page.getByTestId('vault-app').boundingBox()
+  expect(frame?.width).toBe(720)
+  expect(frame?.x).toBe(360)
+  expect(frame?.y).toBe(24)
 })

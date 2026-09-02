@@ -33,14 +33,14 @@ export default function VaultRecovery() {
       <div className='vault-policy-presets' aria-label='Protection tier'>
         <ChoiceCard
           title='Standard'
-          detail='This device and hardware key. No recovery key.'
+          detail='This device and hardware key. No separate recovery key.'
           selected={!advanced}
           onClick={() => setProtectionTier('standard')}
           testId='protection-standard'
         />
         <ChoiceCard
           title='Advanced'
-          detail='Requires a separate recovery key for the existing delayed recovery paths.'
+          detail='Add a separate recovery key for the existing delayed recovery paths.'
           selected={advanced}
           onClick={() => setProtectionTier('advanced')}
           testId='protection-advanced'

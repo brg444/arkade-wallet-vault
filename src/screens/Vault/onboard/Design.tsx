@@ -19,8 +19,8 @@ export default function VaultDesign() {
       actions={<Button onClick={acceptDesign} label='Continue' />}
     >
       <Text wrap>
-        Three keys protect both accounts: Spending is available for daily payments, while every Savings send requires
-        your hardware key.
+        Spending and Savings use different approval paths. Spending stays available within your limits, while every
+        Savings transfer requires your hardware key.
       </Text>
       <Section>
         <KeyCard icon={<FingerprintIcon />} title='This device' role='Approves every send' />

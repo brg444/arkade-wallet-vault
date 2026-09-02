@@ -23,7 +23,9 @@ export default function VaultSuccess() {
 
   return (
     <>
-      <Header text={movingToSpending ? 'Moving' : lightning ? 'Payment started' : 'Sent'} />
+      <Header
+        text={lastTxKind === 'onchain' ? 'Savings transfer submitted' : lightning ? 'Payment started' : 'Payment sent'}
+      />
       <Content noRefresh>
         <Padded>
           <FlexCol>
@@ -31,13 +33,13 @@ export default function VaultSuccess() {
               headline={amount}
               text={
                 movingToSpending
-                  ? 'Finishes after Bitcoin confirms'
+                  ? 'Bitcoin confirmation is next'
                   : lightning
-                    ? 'The Lightning payment is on the way'
+                    ? 'Quote accepted. The Lightning payment is completing.'
                     : lastTxKind === 'vtxo'
-                      ? 'Sent as a VTXO'
-                      : lastTxid
-                        ? 'Broadcast on testnet'
+                      ? 'Arkade transfer'
+                      : lastTxKind === 'onchain'
+                        ? 'Bitcoin confirmation is next'
                         : 'Done'
               }
             />
@@ -49,6 +51,10 @@ export default function VaultSuccess() {
                   mono={!movingToSpending && !lightning}
                 />
                 <Detail label='Fee' value={prettyAmount(lastSend.fee)} />
+                <Detail label='Network' value={status?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'} />
+                {lastTxid ? (
+                  <Detail label={lastTxKind === 'vtxo' ? 'VTXO identifier' : 'Transaction ID'} value={lastTxid} mono />
+                ) : null}
               </>
             ) : null}
           </FlexCol>

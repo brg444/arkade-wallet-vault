@@ -1,52 +1,58 @@
-import * as Sentry from '@sentry/react'
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ReactNode } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import CenterScreen from '../../components/CenterScreen'
+import FlexRow from '../../components/FlexRow'
 import Padded from '../../components/Padded'
 import Text, { TextSecondary } from '../../components/Text'
+import { createIncidentReference, recordVaultIncident } from '../../lib/logs'
 import Content from './Content'
 import Header from './Header'
 
 interface Props {
   children: ReactNode
+  reload?: () => void
 }
 
 interface State {
-  error: Error | null
+  crashed: boolean
+  incidentReference: string
 }
 
 /** Vault-owned crash boundary with no dependency on the general wallet shell. */
 export default class VaultErrorBoundary extends Component<Props, State> {
-  state: State = { error: null }
+  state: State = { crashed: false, incidentReference: '' }
 
-  static getDerivedStateFromError(error: Error): State {
-    return { error }
+  static getDerivedStateFromError(): State {
+    return { crashed: true, incidentReference: createIncidentReference() }
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    Sentry.withScope((scope) => {
-      scope.setExtra('componentStack', errorInfo.componentStack)
-      Sentry.captureException(error)
-    })
+  componentDidCatch(error: Error) {
+    recordVaultIncident(this.state.incidentReference, error)
   }
 
   render() {
-    if (!this.state.error) return this.props.children
+    if (!this.state.crashed) return this.props.children
     return (
-      <div className='page'>
+      <div className='page vault-error-page' data-testid='vault-app'>
         <Header text='Something went wrong' />
         <Content noRefresh>
           <Padded>
             <CenterScreen>
-              <Text>The app ran into an unexpected error</Text>
-              <Text>Please reload to continue</Text>
-              <TextSecondary centered>{this.state.error.message}</TextSecondary>
+              <Text>Arkade Vault could not display this screen.</Text>
+              <TextSecondary centered>Incident reference: {this.state.incidentReference}</TextSecondary>
             </CenterScreen>
           </Padded>
         </Content>
         <ButtonsOnBottom>
-          <Button label='Reload' onClick={() => window.location.reload()} />
+          <FlexRow>
+            <Button
+              secondary
+              label='Try again'
+              onClick={() => this.setState({ crashed: false, incidentReference: '' })}
+            />
+            <Button label='Reload' onClick={this.props.reload || (() => window.location.reload())} />
+          </FlexRow>
         </ButtonsOnBottom>
       </div>
     )

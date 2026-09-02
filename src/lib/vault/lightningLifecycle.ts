@@ -28,7 +28,7 @@ import type { LightningRequestResult } from './lightningValidation'
 const VAULT_LIGHTNING_PROFILE = 'vaultLightning'
 const VAULT_LIGHTNING_PROFILE_VERSION = 2
 const VAULT_LIGHTNING_STORAGE_PREFIX = 'arkade-vault-v2'
-const VAULT_LIGHTNING_REAUTHENTICATION_REQUIRED = 'Face ID is required to return this payment to Spending.'
+const VAULT_LIGHTNING_REAUTHENTICATION_REQUIRED = 'Device unlock is required to return this payment to Spending.'
 
 type VaultLightningManagerCallbacks = Parameters<RfqSwapManager['setCallbacks']>[0]
 

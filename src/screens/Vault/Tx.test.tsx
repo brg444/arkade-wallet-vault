@@ -37,6 +37,7 @@ describe('Vault transaction details', () => {
     })
 
     expect(screen.getByText('Pending')).toBeTruthy()
+    expect(screen.getByText('Mutinynet')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'View on Arkade Space' }))
     expect(open).toHaveBeenCalledWith(
       'https://explorer.mutinynet.arkade.sh/tx/ark-transaction',

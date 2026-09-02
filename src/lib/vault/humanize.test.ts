@@ -21,9 +21,9 @@ describe('humanizeVaultError', () => {
   it('does not expose Operator intent internals during boarding', () => {
     expect(
       humanizeVaultError(new Error('INVALID_INTENT_PROOF (23): no matching intents found for intent proof')),
-    ).toMatch(/Moving received Bitcoin.*approve Face ID/i)
+    ).toMatch(/Moving received Bitcoin.*approve device unlock/i)
     expect(humanizeVaultError(new Error('INTERNAL_ERROR (0): not enough intent confirmations received'))).toMatch(
-      /Moving received Bitcoin.*approve Face ID/i,
+      /Moving received Bitcoin.*approve device unlock/i,
     )
     expect(isRecoverableVaultBoardingError(new Error('EventSource error'))).toBe(true)
     expect(

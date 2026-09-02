@@ -75,7 +75,7 @@ export default function VaultWelcome() {
               <div className='vault-welcome-copy'>
                 <div className='vault-welcome-title'>
                   <p className='vault-kicker'>Arkade Vault</p>
-                  <Text heading big>
+                  <Text heading big wrap>
                     Spending and Savings, together
                   </Text>
                 </div>
@@ -99,7 +99,7 @@ export default function VaultWelcome() {
                   </Text>
                 ) : null}
                 <Text color='neutral-600' tiny wrap>
-                  This is testnet, so don’t send real bitcoin.
+                  Mutinynet only. Don’t send real Bitcoin.
                 </Text>
               </div>
             </div>

@@ -34,5 +34,10 @@ export default defineConfig({
       testMatch: '**/vtxo-worker.test.ts',
       use: { ...devices['iPhone 13'] },
     },
+    {
+      name: 'Desktop Chromium accessibility and visual',
+      grep: /@polish/,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } },
+    },
   ],
 })
