@@ -231,3 +231,69 @@ export function seedReviewedVtxoSpend(
   persistVtxoSpend(record)
   return record
 }
+
+export async function seedVaultLightningActivity(
+  status: VaultStatus,
+  input: {
+    invoice: string
+    rfqId: string
+    fundingTxid: string
+    state: 'failed' | 'needs_counterparty' | 'refunded'
+    createdAt?: number
+    invoiceAmountSats?: number
+    corridorFeeSats?: number
+    fundingFeeSats?: number
+  },
+) {
+  const { withVaultWalletState } = await import('../../../lib/vault/vtxo/walletWorker')
+  const invoiceAmountSats = input.invoiceAmountSats ?? 2_100
+  const corridorFeeSats = input.corridorFeeSats ?? 25
+  const fundingFeeSats = input.fundingFeeSats ?? 50
+  const amountSats = invoiceAmountSats + corridorFeeSats
+  const lockupAddress = String(status.spendingArkAddress || '')
+  if (!lockupAddress) throw new Error('Lightning fixture requires a Spending address')
+  await withVaultWalletState(status, ({ swapRepository }) =>
+    swapRepository.saveRfqSwap({
+      kind: 'lightning_send',
+      rfqId: input.rfqId,
+      lockupAddress,
+      amount: amountSats,
+      fundingArkTxid: input.fundingTxid,
+      state: input.state,
+      createdAt: input.createdAt ?? Math.floor(Date.now() / 1_000),
+      updatedAt: input.createdAt ?? Math.floor(Date.now() / 1_000),
+      ...(input.state === 'failed' ? { failure: 'fixture terminal failure' } : {}),
+      ...(input.state === 'needs_counterparty' ? { blockedReason: 'fixture refund requires device unlock' } : {}),
+      profile: {
+        vaultLightning: {
+          version: 2,
+          network: 'mutinynet',
+          invoice: input.invoice,
+          fundingState: 'funding',
+          fundingProof: {
+            rfqId: input.rfqId,
+            address: lockupAddress,
+            amountSats,
+            operationId: '44'.repeat(16),
+            bundleDigest: '55'.repeat(32),
+            fundingFeeSats,
+          },
+          quote: {
+            v: 1,
+            type: 'rfq_quote',
+            rfq_id: input.rfqId,
+            pair: 'arkade:BTC->lightning:BTC',
+            amount_side: 'to',
+            from_amount: amountSats,
+            to_amount: invoiceAmountSats,
+            solver_pubkey: '66'.repeat(32),
+            valid_until: 4_000_000_000,
+            refund_locktime: 4_000_000_100,
+            profile: {},
+          },
+        },
+      },
+    }),
+  )
+  return { amountSats, feeSats: corridorFeeSats + fundingFeeSats }
+}

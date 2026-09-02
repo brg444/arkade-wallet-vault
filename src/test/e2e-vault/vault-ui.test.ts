@@ -18,6 +18,9 @@ const BOARDING_TXID = '11'.repeat(32)
 const SAVINGS_TXID = '22'.repeat(32)
 const VTXO_TXID = 'aa'.repeat(32)
 const COMMITMENT_TXID = 'cc'.repeat(32)
+const MUTINYNET_INVOICE =
+  'lntbs21u1p4ghty5pp500cgfavsavx2prgw3vm4s6ckrjvg9zyjx3k87segw240hr2l2glqdqqcqzzsxqyz5vqsp56tscwj6zyk4k9g2xm4r0tf7s6xemuq2rqm7vea0tfymmzwapaqlq9qxpqysgq49fj3f48wy2utl25xzs8tjg7ak89p3242p2h3e9rk20alxajjqarjusq8222fsa9ncy43ucslfdcdtld2pd58hcxtndmjf0sfyqsf2qpsf0h6s'
+const MUTINYNET_INVOICE_TIMESTAMP = 1_787_538_580
 
 type EsploraUtxo = {
   txid: string
@@ -132,6 +135,30 @@ async function seedReviewedSpend(
       amount: amountSats,
       fee: feeSats,
       change: changeSats,
+    },
+  )
+}
+
+async function seedLightningActivity(
+  page: Page,
+  status: VaultStatus,
+  input: { rfqId: string; fundingTxid: string; state: 'failed' | 'needs_counterparty' | 'refunded' },
+) {
+  await page.evaluate(
+    async ({ fixturePath, currentStatus, currentInput, invoice, createdAt }) => {
+      const fixture = await import(/* @vite-ignore */ fixturePath)
+      await fixture.seedVaultLightningActivity(currentStatus, {
+        ...currentInput,
+        invoice,
+        createdAt,
+      })
+    },
+    {
+      fixturePath: UI_FIXTURE,
+      currentStatus: status,
+      currentInput: input,
+      invoice: MUTINYNET_INVOICE,
+      createdAt: MUTINYNET_INVOICE_TIMESTAMP + 1,
     },
   )
 }
@@ -293,6 +320,78 @@ test('ignores another vault worker update and refreshes on the matching update',
   await dispatchUtxoUpdate(page, status.vaultId)
   await expect(page.getByTestId('vault-balance')).toContainText('25,000')
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+})
+
+test('opens a confirmed Spending activity in its transaction detail view', async ({ page }) => {
+  const { status } = await openVault(page)
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 25_000, txid: VTXO_TXID })])
+  await dispatchUtxoUpdate(page, status.vaultId)
+
+  await page.getByTestId(`vault-tx-${VTXO_TXID}`).click()
+  await expect(page.getByRole('heading', { name: 'Received' })).toBeVisible()
+  await expect(page.getByText('25,000 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText('Confirmed', { exact: true })).toBeVisible()
+  await expect(page.getByText('Spending', { exact: true })).toBeVisible()
+  await expect(page.getByText(VTXO_TXID, { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'View on Arkade Space' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByTestId('account-switcher')).toBeVisible()
+})
+
+test('accepts a BOLT11 send input and renders persisted Lightning failure and refund states', async ({ page }) => {
+  await page.clock.setFixedTime(new Date((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000))
+  const { status } = await openVault(page)
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])
+  await dispatchUtxoUpdate(page, status.vaultId)
+
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByPlaceholder('Arkade address or Lightning invoice').fill(MUTINYNET_INVOICE)
+  await expect(page.getByTestId('vault-send-amount')).toHaveValue('2100')
+  await expect(page.getByTestId('vault-send-amount')).toHaveAttribute('readonly', '')
+  await expect(page.getByText('The solver and VTXO fees appear on the next screen.')).toBeVisible()
+  await page.getByRole('button', { name: 'Go back' }).click()
+
+  const failedTxid = '91'.repeat(32)
+  const returnableTxid = '92'.repeat(32)
+  const refundedTxid = '93'.repeat(32)
+  await seedLightningActivity(page, status, {
+    rfqId: '81'.repeat(32),
+    fundingTxid: failedTxid,
+    state: 'failed',
+  })
+  await seedLightningActivity(page, status, {
+    rfqId: '82'.repeat(32),
+    fundingTxid: returnableTxid,
+    state: 'needs_counterparty',
+  })
+  await seedLightningActivity(page, status, {
+    rfqId: '83'.repeat(32),
+    fundingTxid: refundedTxid,
+    state: 'refunded',
+  })
+  await dispatchUtxoUpdate(page, status.vaultId)
+
+  await expect(page.getByTestId(`vault-tx-${failedTxid}`)).toContainText('Needs recovery')
+  await expect(page.getByTestId(`vault-tx-${returnableTxid}`)).toContainText('Ready to return')
+  await expect(page.getByTestId(`vault-tx-${refundedTxid}`)).toContainText('Refunded')
+
+  await page.getByTestId(`vault-tx-${failedTxid}`).click()
+  await expect(page.getByRole('heading', { name: 'Lightning payment' })).toBeVisible()
+  await expect(page.getByText('Needs recovery', { exact: true })).toBeVisible()
+  await expect(page.getByText('2,100 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText('75 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Return to Spending' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await page.getByTestId(`vault-tx-${returnableTxid}`).click()
+  await expect(page.getByText('Ready to return', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Return to Spending' })).toBeVisible()
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await page.getByTestId(`vault-tx-${refundedTxid}`).click()
+  await expect(page.getByText('Refunded', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Return to Spending' })).toHaveCount(0)
 })
 
 test('loads Spending while another tab holds the foreground Lightning lock', async ({ context, page }) => {
