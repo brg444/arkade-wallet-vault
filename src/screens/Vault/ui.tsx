@@ -264,10 +264,12 @@ export function SignerRow({
   state: 'you' | 'auto' | 'unused'
   mark?: string
 }) {
-  const glyph = mark ?? (state === 'you' ? '1' : state === 'auto' ? '✓' : '–')
+  const glyph = mark ?? (state === 'you' ? '1' : state === 'auto' ? '✓' : null)
   return (
     <div style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
-      <div className={state === 'unused' ? 'vault-check wait' : 'vault-check on'}>{glyph}</div>
+      <div className={state === 'unused' ? 'vault-check wait' : 'vault-check on'}>
+        {glyph ?? <span className='vault-check-line' />}
+      </div>
       <div>
         <Text small bold>
           {title}
