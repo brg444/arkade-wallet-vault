@@ -23,7 +23,16 @@ export default defineConfig({
     contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: {
-    command: `export NODE_ENV=production VITE_GIT_COMMIT=vault-e2e VAULT_E2E_BUILD=arkade-vault-e2e-only VAULT_E2E_OPERATOR_ORIGIN=${operatorOrigin} VAULT_E2E_AUTHORIZER_PROXY_TARGET=${operatorOrigin} VAULT_E2E_ESPLORA_PROXY_TARGET=${operatorOrigin}; pnpm build:worker && pnpm exec vite --port ${appPort} --host localhost`,
+    command: `pnpm build:worker && pnpm exec vite -c vite.vault-e2e.config.ts --port ${appPort} --host 127.0.0.1`,
+    env: {
+      NODE_ENV: 'production',
+      VITE_GIT_COMMIT: 'vault-e2e',
+      VITE_VAULT_LIGHTNING_SEND: 'true',
+      VAULT_E2E_BUILD: 'arkade-vault-e2e-only',
+      VAULT_E2E_OPERATOR_ORIGIN: operatorOrigin,
+      VAULT_E2E_AUTHORIZER_PROXY_TARGET: operatorOrigin,
+      VAULT_E2E_ESPLORA_PROXY_TARGET: operatorOrigin,
+    },
     port: appPort,
     reuseExistingServer: false,
     timeout: 120000,
