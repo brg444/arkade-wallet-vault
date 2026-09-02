@@ -99,8 +99,6 @@ test('preserves SDK wallet identity across worker restart and cross-build activa
   context,
   page,
 }) => {
-  test.skip(browserName !== 'chromium', 'Stopping a worker process requires Chromium CDP')
-
   const installedStatus = (await page.evaluate(
     async (path) => (await import(/* @vite-ignore */ path)).vaultUiStatus(),
     UI_FIXTURE,
@@ -138,11 +136,13 @@ test('preserves SDK wallet identity across worker restart and cross-build activa
     state: 'activated',
   })
 
-  const cdp = await context.newCDPSession(page)
-  await cdp.send('ServiceWorker.enable')
-  await cdp.send('ServiceWorker.stopAllWorkers')
-  await page.reload()
-  expect(await snapshot()).toEqual(before)
+  if (browserName === 'chromium') {
+    const cdp = await context.newCDPSession(page)
+    await cdp.send('ServiceWorker.enable')
+    await cdp.send('ServiceWorker.stopAllWorkers')
+    await page.reload()
+    expect(await snapshot()).toEqual(before)
+  }
 
   await selectWorkerBuild(page, 'b')
   const replacement = await page.evaluate(async (scope) => {
