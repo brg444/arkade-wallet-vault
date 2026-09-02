@@ -70,7 +70,9 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   await page.getByRole('button', { name: 'Set up a new vault' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByRole('heading', { name: 'Add hardware' })).toBeVisible()
-  await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
+  const hardwarePub = page.getByTestId('hardware-pub')
+  await hardwarePub.fill(PROGRAM_FIXTURE.hardwarePub)
+  await hardwarePub.blur()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-hardware.png', { animations: 'disabled', fullPage: true })
 
