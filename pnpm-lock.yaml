@@ -5,16 +5,16 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@arkade-os/sdk': git+https://github.com/arkade-os/ts-sdk.git#8b40c76c&path:packages/ts-sdk
-  '@arkade-os/swap>@arkade-os/sdk': git+https://github.com/arkade-os/ts-sdk.git#8b40c76c&path:packages/ts-sdk
+  '@arkade-os/sdk': git+https://github.com/arkade-os/ts-sdk.git#f0fd58d5&path:packages/ts-sdk
+  '@arkade-os/swap>@arkade-os/sdk': git+https://github.com/arkade-os/ts-sdk.git#f0fd58d5&path:packages/ts-sdk
   ws: 8.21.0
 
 importers:
   .:
     dependencies:
       '@arkade-os/sdk':
-        specifier: git+https://github.com/arkade-os/ts-sdk.git#8b40c76c&path:packages/ts-sdk
-        version: https://codeload.github.com/arkade-os/ts-sdk/tar.gz/8b40c76c#path:packages/ts-sdk
+        specifier: git+https://github.com/arkade-os/ts-sdk.git#f0fd58d5&path:packages/ts-sdk
+        version: https://codeload.github.com/arkade-os/ts-sdk/tar.gz/f0fd58d5#path:packages/ts-sdk
       '@arkade-os/solver-discovery':
         specifier: 0.2.3
         version: 0.2.3
@@ -175,8 +175,8 @@ packages:
     resolution:
       { integrity: sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg== }
 
-  '@arkade-os/sdk@https://codeload.github.com/arkade-os/ts-sdk/tar.gz/8b40c76c#path:packages/ts-sdk':
-    resolution: { path: packages/ts-sdk, tarball: https://codeload.github.com/arkade-os/ts-sdk/tar.gz/8b40c76c }
+  '@arkade-os/sdk@https://codeload.github.com/arkade-os/ts-sdk/tar.gz/f0fd58d5#path:packages/ts-sdk':
+    resolution: { path: packages/ts-sdk, tarball: https://codeload.github.com/arkade-os/ts-sdk/tar.gz/f0fd58d5 }
     version: 0.4.66
     engines: { node: '>=22.12.0 <27' }
     peerDependencies:
@@ -4540,7 +4540,7 @@ packages:
 snapshots:
   '@adobe/css-tools@4.4.4': {}
 
-  '@arkade-os/sdk@https://codeload.github.com/arkade-os/ts-sdk/tar.gz/8b40c76c#path:packages/ts-sdk':
+  '@arkade-os/sdk@https://codeload.github.com/arkade-os/ts-sdk/tar.gz/f0fd58d5#path:packages/ts-sdk':
     dependencies:
       '@bitcoinerlab/descriptors-scure': 3.1.7
       '@marcbachmann/cel-js': 8.0.0
@@ -4563,7 +4563,7 @@ snapshots:
 
   '@arkade-os/swap@0.0.8(nostr-tools@2.17.2(typescript@5.9.3))':
     dependencies:
-      '@arkade-os/sdk': https://codeload.github.com/arkade-os/ts-sdk/tar.gz/8b40c76c#path:packages/ts-sdk
+      '@arkade-os/sdk': https://codeload.github.com/arkade-os/ts-sdk/tar.gz/f0fd58d5#path:packages/ts-sdk
       '@arkade-os/solver-discovery': 0.2.3
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1
