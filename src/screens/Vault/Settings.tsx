@@ -6,7 +6,6 @@ import Checkbox from '../../components/Checkbox'
 import Content from './Content'
 import { EmptyLogsList } from '../../components/Empty'
 import FlexCol from '../../components/FlexCol'
-import FlexRow from '../../components/FlexRow'
 import Header from './Header'
 import Padded from '../../components/Padded'
 import Select from '../../components/Select'
@@ -32,6 +31,7 @@ import {
 } from '../../lib/vault/prefs'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
+import { useVaultReadiness } from '../../vault/useVaultReadiness'
 
 type View = 'menu' | 'theme' | 'about' | 'haptics' | 'logs' | 'reset'
 
@@ -49,26 +49,21 @@ function Row({
   testId?: string
 }) {
   return (
-    <FlexRow
-      between
-      padding='0.8rem 0'
+    <button
+      type='button'
+      className={danger ? 'vault-settings-row is-danger' : 'vault-settings-row'}
+      data-testid={testId}
       onClick={() => {
         hapticSubtle()
         onClick()
       }}
     >
-      <Text capitalize thin color={danger ? 'danger' : undefined} testId={testId}>
-        {label}
-      </Text>
-      <FlexRow end>
-        {value ? (
-          <Text small thin color='neutral-500'>
-            {value}
-          </Text>
-        ) : null}
+      <span className='vault-settings-label'>{label}</span>
+      <span className='vault-settings-end'>
+        {value ? <span className='vault-settings-value'>{value}</span> : null}
         <ArrowIcon />
-      </FlexRow>
-    </FlexRow>
+      </span>
+    </button>
   )
 }
 
@@ -94,17 +89,20 @@ function LogsView({ onBack }: { onBack: () => void }) {
           <div style={{ margin: '1rem' }} className='scroll-fade'>
             <FlexCol gap='0.5rem'>
               {[...logs].reverse().map((line) => (
-                <FlexRow
-                  between
+                <button
+                  type='button'
+                  className='vault-settings-row'
                   key={`${line.time}${line.msg}${line.level}`}
                   onClick={() => {
                     void copyToClipboard(line.msg)
                     toast('Copied to clipboard')
                   }}
                 >
-                  <Text color={line.level === 'error' ? 'red' : undefined}>{prettyAgo(line.time)}</Text>
-                  <Text color='neutral-500'>{prettyLongText(line.msg.replace('...', ''), 12)}</Text>
-                </FlexRow>
+                  <span className={line.level === 'error' ? 'vault-log-time is-error' : 'vault-log-time'}>
+                    {prettyAgo(line.time)}
+                  </span>
+                  <span className='vault-settings-value'>{prettyLongText(line.msg.replace('...', ''), 12)}</span>
+                </button>
               ))}
             </FlexCol>
           </div>
@@ -125,7 +123,8 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
             <WalletAlternativeIcon />
             <Text>Sign out of this browser</Text>
             <TextSecondary>
-              Coins stay on the vault. Sign in again with Face ID. This does not close the vault or delete the passkey.
+              Coins stay on the vault. Sign in again with device unlock. This does not close the vault or delete the
+              passkey.
             </TextSecondary>
           </CenterScreen>
         </Padded>
@@ -141,7 +140,9 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const { balanceError, busy, liveNetwork, refreshBalance, refreshingBalance, reset, status } = useContext(VaultContext)
+  const { balanceError, busy, liveNetwork, refreshBalance, refreshingBalance, reset, setup, status } =
+    useContext(VaultContext)
+  const readiness = useVaultReadiness()
   const { toast } = useToast()
   const [view, setView] = useState<View>('menu')
   const [theme, setTheme] = useState(loadVaultTheme)
@@ -199,16 +200,30 @@ export default function VaultSettings() {
   }
 
   if (view === 'about') {
+    const tier = status?.protectionTier || setup.protectionTier
+    const readinessLabel =
+      readiness.state === 'checking'
+        ? 'Checking…'
+        : readiness.state === 'ready'
+          ? 'Ready'
+          : readiness.state === 'unavailable'
+            ? 'Unavailable'
+            : 'Can’t reach'
     const data = [
-      ['Network', status?.network || (liveNetwork ? 'mutinynet' : 'unavailable')],
+      ['Network', status?.network === 'mutinynet' || liveNetwork ? 'Mutinynet' : 'Unavailable'],
+      ['App revision', gitCommit],
       ['Vault', status?.vaultId],
-      ['Template', status?.templateVersion],
-      ['Policy', status?.policyVersion],
+      ['Enrolled template', status?.templateVersion],
+      ['Policy version', status?.policyVersion],
+      [
+        'Protection tier',
+        tier === 'advanced' ? 'Advanced — separate recovery key' : 'Standard — no separate recovery key',
+      ],
+      ['Per-payment limit', prettyAmount(status?.txCap || setup.txCapSats)],
+      ['Rolling allowance', prettyAmount(status?.periodAllowance || setup.dailyLimitSats)],
+      ['Vault service', readinessLabel],
       ['Site', status?.clientOrigin || location.origin],
       ['RP ID', status?.rpId],
-      ['Daily limit', status ? prettyAmount(status.periodAllowance) : undefined],
-      ['Per send', status ? prettyAmount(status.txCap) : undefined],
-      ['App', gitCommit],
     ] as [string, string | undefined][]
     return (
       <>

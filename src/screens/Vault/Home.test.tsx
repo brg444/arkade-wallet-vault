@@ -10,7 +10,6 @@ vi.mock('../../lib/vault/update', () => ({ reloadIfNewerWallet: () => Promise.re
 function renderHome(overrides: Partial<VaultContextProps>) {
   const value = {
     account: 'spend',
-    amountSats: 12_000,
     balancesLoaded: true,
     boardingAddress: 'tb1pboardingdestination',
     busy: false,
@@ -26,7 +25,10 @@ function renderHome(overrides: Partial<VaultContextProps>) {
     openSendScan: vi.fn(),
     refreshBalance: vi.fn().mockResolvedValue(undefined),
     savingsAddress: 'tb1psavingsaddress',
-    savingsSats: 50_000,
+    positions: {
+      spending: { availableSats: 12_000, pendingSats: 0, totalSats: 12_000 },
+      savings: { availableSats: 50_000, pendingSats: 0, totalSats: 50_000 },
+    },
     setAccount: vi.fn(),
     setSpendDraft: vi.fn(),
     spendingArkAddress: 'tark1spendingaddress',
@@ -64,13 +66,28 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByText(/Moving funds.*hardware key/i)).toBeTruthy()
   })
 
-  it('does not expose background boarding state on Home', () => {
-    renderHome({ account: 'spend' })
-    expect(screen.queryByText(/boarding|processing|Moving received Bitcoin|Face ID/i)).toBeNull()
+  it('keeps pending boarding separate from the sendable Spending balance', () => {
+    renderHome({
+      account: 'spend',
+      positions: {
+        spending: { availableSats: 80_000, pendingSats: 48_000, totalSats: 128_000 },
+        savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+      },
+    })
+    expect(screen.getByText('Available to spend')).toBeTruthy()
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('80,000')
+    expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 sats · Arriving via Bitcoin')
+    expect(screen.getByTestId('spending-total')).toHaveTextContent('Total in Spending: 128,000 sats')
   })
 
   it('does not present zero as the balance before the first snapshot loads', () => {
-    renderHome({ balancesLoaded: false, amountSats: 0 })
+    renderHome({
+      balancesLoaded: false,
+      positions: {
+        spending: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+        savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+      },
+    })
     expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
     expect(screen.getByText('Loading Spending balance…')).toBeTruthy()
   })
@@ -83,5 +100,40 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(value.refreshBalance).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses menu radio semantics and restores focus after Escape', async () => {
+    const user = userEvent.setup()
+    renderHome({ account: 'spend' })
+    const trigger = screen.getByTestId('account-switcher')
+
+    trigger.focus()
+    await user.keyboard('{ArrowDown}')
+    const spending = screen.getByRole('menuitemradio', { name: /Spending/ })
+    expect(spending).toHaveAttribute('aria-checked', 'true')
+    expect(spending).toHaveFocus()
+
+    await user.keyboard('{End}')
+    expect(screen.getByRole('menuitemradio', { name: /Savings/ })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(trigger).toHaveFocus()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('dismisses the account menu outside and selects Savings by keyboard', async () => {
+    const user = userEvent.setup()
+    const value = renderHome({ account: 'spend' })
+    const trigger = screen.getByTestId('account-switcher')
+
+    trigger.focus()
+    await user.keyboard('{ArrowDown}')
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).toBeNull()
+
+    trigger.focus()
+    await user.keyboard('{ArrowDown}')
+    await user.keyboard('{End}{Enter}')
+    expect(value.setAccount).toHaveBeenCalledWith('savings')
+    expect(trigger).toHaveFocus()
   })
 })

@@ -80,13 +80,13 @@ vi.mock('../vault/useVaultBalances', () => ({
   useVaultBalances: () => ({
     balanceError: '',
     balancesLoaded: true,
-    boardingInProgress: false,
     history: [],
+    positions: {
+      spending: { availableSats: 20_000, pendingSats: 0, totalSats: 20_000 },
+      savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+    },
     refreshBalance: vi.fn().mockResolvedValue(undefined),
     refreshingBalance: false,
-    savingsSats: 0,
-    savingsSpendableSats: 0,
-    vtxoSpendingSats: 20_000,
   }),
 }))
 

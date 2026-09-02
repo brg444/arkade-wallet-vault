@@ -189,8 +189,11 @@ describe('useVaultBalances', () => {
 
     await act(async () => result.current.refreshBalance())
 
-    expect(result.current.vtxoSpendingSats).toBe(30_000)
-    expect(result.current.boardingBalance).toBe(48_000)
+    expect(result.current.positions.spending).toEqual({
+      availableSats: 30_000,
+      pendingSats: 48_000,
+      totalSats: 78_000,
+    })
     expect(result.current.history.map((item) => item.txid)).toEqual(['boarding'])
     expect(mockedSnapshot).toHaveBeenCalledWith(STATUS)
   })
@@ -210,14 +213,14 @@ describe('useVaultBalances', () => {
       first = result.current.refreshBalance()
       await result.current.refreshBalance()
     })
-    expect(result.current.vtxoSpendingSats).toBe(30_000)
+    expect(result.current.positions.spending.availableSats).toBe(30_000)
 
     await act(async () => {
       older.resolve([{ txid: 'old', vout: 0, value: 5_000, status: { confirmed: true } }])
       await first
     })
-    expect(result.current.savingsSats).toBe(25_000)
-    expect(result.current.vtxoSpendingSats).toBe(30_000)
+    expect(result.current.positions.savings.totalSats).toBe(25_000)
+    expect(result.current.positions.spending.availableSats).toBe(30_000)
   })
 
   it('keeps the previous account snapshot when a worker read fails', async () => {
@@ -235,8 +238,8 @@ describe('useVaultBalances', () => {
     mockedSnapshot.mockRejectedValueOnce(new Error('activity unavailable'))
     await act(async () => result.current.refreshBalance())
 
-    expect(result.current.savingsSats).toBe(20_000)
-    expect(result.current.vtxoSpendingSats).toBe(15_000)
+    expect(result.current.positions.savings.totalSats).toBe(20_000)
+    expect(result.current.positions.spending.availableSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
     expect(result.current.balanceError).toBe('Something went wrong. Try again.')
   })
@@ -248,7 +251,7 @@ describe('useVaultBalances', () => {
 
     await waitFor(() => expect(mockedStatus).toHaveBeenCalledWith(undefined, STATUS.vaultId))
     await waitFor(() => expect(result.current.balancesLoaded).toBe(true))
-    expect(result.current.vtxoSpendingSats).toBe(12_000)
+    expect(result.current.positions.spending.availableSats).toBe(12_000)
   })
 
   it('subscribes to worker updates and reloads the same worker on focus', async () => {

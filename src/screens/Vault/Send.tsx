@@ -78,15 +78,14 @@ export default function VaultSend() {
     spend,
     setup,
     status,
-    savingsSpendableSats,
-    vtxoSpendingSats,
+    positions,
   } = useContext(VaultContext)
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
   const destNetwork = status?.network
   const lightning = !fromSavings && Boolean(lightningInvoice(spend.address, destNetwork))
   const [scan, setScan] = useState(false)
-  const availableSpend = Math.max(0, Math.min(dailyRemaining, vtxoSpendingSats))
+  const availableSpend = Math.max(0, Math.min(dailyRemaining, positions.spending.availableSats))
   const used = Math.max(0, setup.dailyLimitSats - availableSpend)
   const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
 
@@ -160,18 +159,19 @@ export default function VaultSend() {
                   : `Sending from Savings costs ${prettyAmount(spend.fee)} and requires this device to sign before your hardware key.`
                 : lightning
                   ? 'The solver and VTXO fees appear on the next screen.'
-                  : `Spending allows up to ${prettyAmount(setup.txCapSats)} per send, and the fee appears on the next screen.`}
+                  : `Spending allows up to ${prettyAmount(setup.txCapSats)} per payment, and the fee appears on the next screen.`}
             </Text>
             {fromSavings ? (
               <Text color='neutral-600' tiny>
-                {prettyNumber(savingsSpendableSats, 0)} sats available
+                {prettyNumber(positions.savings.availableSats, 0)} sats available to move
               </Text>
             ) : (
               <>
                 <Text color='neutral-600' tiny>
-                  {prettyNumber(availableSpend, 0)} / {prettyNumber(setup.dailyLimitSats, 0)} available today
+                  {prettyNumber(availableSpend, 0)} remaining of {prettyNumber(setup.dailyLimitSats, 0)} in your rolling
+                  24-hour limit
                 </Text>
-                <Meter ratio={ratio} label='Daily limit used' />
+                <Meter ratio={ratio} label='Rolling 24-hour limit used' />
               </>
             )}
             <ErrorMessage error={Boolean(error)} text={error} />

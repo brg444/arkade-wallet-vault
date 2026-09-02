@@ -31,6 +31,27 @@ export type PublicAuthorizerStatus = {
   spendingPolicyCapabilities: SpendingPolicyCapabilities
 }
 
+export type VaultReadyStatus = {
+  ok: boolean
+  schema: number
+  network: string
+  enrollTemplate: string
+  arkadeOrigin: string
+  arkadeVersion: string
+  error?: string
+}
+
+export type VaultServiceReadiness =
+  | { state: 'ready'; status: VaultReadyStatus }
+  | { state: 'unavailable'; status: VaultReadyStatus }
+
+export class VaultReadinessResponseError extends Error {
+  constructor(message = 'invalid readiness response') {
+    super(message)
+    this.name = 'VaultReadinessResponseError'
+  }
+}
+
 function requestedVaultId(expectedVaultId: string): string {
   const id = String(expectedVaultId || '').trim()
   if (!id) throw new Error('vault id required')
@@ -79,6 +100,67 @@ export async function pingVaultService(signal?: AbortSignal): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+function requireReadyStatus(value: unknown): VaultReadyStatus {
+  if (!value || typeof value !== 'object') throw new VaultReadinessResponseError()
+  const status = value as Partial<VaultReadyStatus>
+  if (
+    typeof status.ok !== 'boolean' ||
+    !Number.isInteger(status.schema) ||
+    Number(status.schema) < 0 ||
+    typeof status.network !== 'string' ||
+    typeof status.enrollTemplate !== 'string' ||
+    typeof status.arkadeOrigin !== 'string' ||
+    typeof status.arkadeVersion !== 'string' ||
+    (status.error !== undefined && typeof status.error !== 'string')
+  ) {
+    throw new VaultReadinessResponseError()
+  }
+  if (status.ok) {
+    try {
+      requireSupportedVaultNetwork(status.network)
+    } catch {
+      throw new VaultReadinessResponseError('unsupported readiness network')
+    }
+    if (status.enrollTemplate !== SAVINGS_TEMPLATE) {
+      throw new VaultReadinessResponseError('readiness template is not this release')
+    }
+    if (!status.arkadeOrigin || !status.arkadeVersion) {
+      throw new VaultReadinessResponseError('readiness is missing its Arkade release pin')
+    }
+  }
+  return status as VaultReadyStatus
+}
+
+export async function fetchVaultReadiness(signal?: AbortSignal, timeoutMs = 5_000): Promise<VaultServiceReadiness> {
+  const controller = new AbortController()
+  const abort = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abort()
+  else signal?.addEventListener('abort', abort, { once: true })
+  const timeout = window.setTimeout(
+    () => controller.abort(new DOMException('Readiness timed out', 'TimeoutError')),
+    timeoutMs,
+  )
+  try {
+    const response = await fetch(`${authorizerBase()}/ready`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    })
+    const raw = await readBounded(response)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      throw new VaultReadinessResponseError()
+    }
+    const status = requireReadyStatus(parsed)
+    return response.ok && status.ok ? { state: 'ready', status } : { state: 'unavailable', status }
+  } finally {
+    window.clearTimeout(timeout)
+    signal?.removeEventListener('abort', abort)
   }
 }
 

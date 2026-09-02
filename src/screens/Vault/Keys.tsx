@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react'
+import { useContext } from 'react'
 import Content from './Content'
 import FlexCol from '../../components/FlexCol'
 import Header from './Header'
@@ -8,9 +8,10 @@ import FingerprintIcon from '../../icons/Fingerprint'
 import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import { prettyAmount } from '../../lib/format'
 import { shortKey } from '../../lib/vault/setupPlan'
-import { pingVaultService } from '../../lib/vault/status'
 import { VaultContext } from '../../vault/context'
+import { useVaultReadiness } from '../../vault/useVaultReadiness'
 import { HubGroup, HubRow } from './ui'
 
 export default function VaultKeys() {
@@ -18,6 +19,7 @@ export default function VaultKeys() {
     busy,
     enablePasskeyLogin,
     hasLocalEnrollment,
+    hasRecoveryKit,
     openRecover,
     savingsAddress,
     setup,
@@ -31,17 +33,10 @@ export default function VaultKeys() {
   const recoveryPub = status?.recoveryPub || setup.recoveryPub
   const hasRecovery = Boolean(recoveryPub)
   const addressCovered = Boolean(savingsAddress && spendingArkAddress)
-  const [service, setService] = useState<'checking' | 'online' | 'down'>(status ? 'online' : 'checking')
-
-  useEffect(() => {
-    let live = true
-    void pingVaultService().then((ok) => {
-      if (live) setService(ok ? 'online' : 'down')
-    })
-    return () => {
-      live = false
-    }
-  }, [])
+  const readiness = useVaultReadiness()
+  const protectionTier = status?.protectionTier || setup.protectionTier
+  const limit = status?.periodAllowance || setup.dailyLimitSats
+  const perPayment = status?.txCap || setup.txCapSats
 
   return (
     <>
@@ -49,7 +44,7 @@ export default function VaultKeys() {
       <Content noRefresh>
         <Padded>
           <FlexCol gap='1.75rem'>
-            <HubGroup>
+            <HubGroup label='Keys and service'>
               <HubRow
                 icon={<FingerprintIcon />}
                 title='This device'
@@ -66,8 +61,16 @@ export default function VaultKeys() {
               <HubRow
                 icon={<ServerIcon />}
                 title='Vault service'
-                signal={service === 'checking' ? 'wait' : service === 'online' ? 'ok' : 'bad'}
-                status={service === 'checking' ? 'Checking…' : service === 'online' ? 'Online' : 'Can’t reach'}
+                signal={readiness.state === 'checking' ? 'wait' : readiness.state === 'ready' ? 'ok' : 'bad'}
+                status={
+                  readiness.state === 'checking'
+                    ? 'Checking…'
+                    : readiness.state === 'ready'
+                      ? 'Ready'
+                      : readiness.state === 'unavailable'
+                        ? 'Unavailable'
+                        : 'Can’t reach'
+                }
               />
               {hasRecovery ? (
                 <HubRow
@@ -79,12 +82,28 @@ export default function VaultKeys() {
               ) : null}
             </HubGroup>
 
-            <HubGroup>
-              <HubRow title='Recovery Kit' onClick={() => openRecover('kit', 'keys')} testId='security-kit' />
+            <HubGroup label='Protection'>
+              <HubRow
+                title={protectionTier === 'advanced' ? 'Advanced' : 'Standard'}
+                detail={protectionTier === 'advanced' ? 'Add a separate recovery key' : 'No separate recovery key'}
+                status='Protection tier'
+              />
+              <HubRow
+                title='Spending limits'
+                detail={`${prettyAmount(perPayment)} per payment`}
+                status={`${prettyAmount(limit)} / rolling 24 hours`}
+              />
+              <HubRow
+                title='Recovery Kit'
+                detail={hasRecoveryKit ? 'Available on this device' : 'Open to restore or save a copy'}
+                status={hasRecoveryKit ? 'Available' : 'Review'}
+                onClick={() => openRecover('kit', 'keys')}
+                testId='security-kit'
+              />
               <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
               {canEnableOther ? (
                 <HubRow
-                  title={busy ? 'Waiting for Face ID…' : 'Use on another device'}
+                  title={busy ? 'Waiting for device unlock…' : 'Use on another device'}
                   onClick={() => {
                     if (!busy) void enablePasskeyLogin()
                   }}

@@ -46,7 +46,7 @@ export default function Text({
   tooltip,
   wrap,
 }: TextProps) {
-  const fontSize = tiny ? 12 : smaller ? 13 : small ? 14 : big ? 24 : bigger ? 32 : large ? 18 : 16
+  const fontSize = tiny ? 13 : smaller ? 13 : small ? 14 : big ? 24 : bigger ? 32 : large ? 18 : 16
 
   const className = capitalize ? 'first-letter' : ''
 
@@ -57,7 +57,7 @@ export default function Text({
     fontSize,
     fontWeight: thin ? '400' : medium ? '500' : bold ? (heading ? '700' : '600') : undefined,
     letterSpacing: heading ? '-0.5px' : undefined,
-    lineHeight: heading ? (bigger || big ? '1.2' : large ? '1.4' : '1.5') : tiny ? '1' : '1.5',
+    lineHeight: heading ? (bigger || big ? '1.2' : large ? '1.4' : '1.5') : tiny ? '1.4' : '1.5',
     overflow: wrap ? undefined : 'hidden',
     textAlign: centered ? 'center' : right ? 'right' : undefined,
     textOverflow: wrap ? undefined : 'ellipsis',
