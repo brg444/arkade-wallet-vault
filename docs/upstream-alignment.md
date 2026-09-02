@@ -9,7 +9,7 @@ The architecture review used these exact sources:
 | Source                  | Reviewed revision                            | Vault dependency                                   |
 | ----------------------- | -------------------------------------------- | -------------------------------------------------- |
 | `arkade-os/wallet`      | `9e57e8ef2d05eb1f0831ccf91b4e98cc199ba3a9`   | Reference implementation                           |
-| `arkade-os/ts-sdk`      | Runtime `27f5c758`; PR validation `6e2b9ff1` | One exact Git-pinned `@arkade-os/sdk` 0.4.66 graph |
+| `arkade-os/ts-sdk`      | Runtime `27f5c758`; package `f0fd58d5`       | One exact Git-pinned `@arkade-os/sdk` 0.4.66 graph |
 | `arkade-os/ts-swap-sdk` | Published package                            | `@arkade-os/swap` 0.0.8 using the same SDK graph   |
 
 Unmerged Wallet branches can inform tests and future compatibility work. The
@@ -32,8 +32,9 @@ one typed VaultBoardCosigner phase adapter.
 
 The candidate SDK seam is maintained in
 [`arkade-os/ts-sdk#802`](https://github.com/arkade-os/ts-sdk/pull/802). The wallet
-pins commit `27f5c758` until that work is merged and released. Both the direct
-SDK dependency and the swap package resolve to that same build.
+pins commit `f0fd58d5` until that work is merged and released. That commit adds
+only deterministic declaration packaging after the reviewed runtime seam. Both
+the direct SDK dependency and the swap package resolve to that same build.
 
 Per-vault worker scopes, message tags, and IndexedDB names prevent two enrolled
 vaults from sharing identity or lifecycle state. These are isolation adapters
