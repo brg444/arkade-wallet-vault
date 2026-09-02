@@ -30,9 +30,9 @@ export function OnboardLayout({
   return (
     <>
       <Header text={title} back={onBack} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-onboard-content'>
         <Padded>
-          <FlexCol gap='1.15rem'>
+          <FlexCol gap='1.15rem' className='vault-onboard-flow'>
             <StepRail step={step} total={total} />
             <p className='vault-step-label' aria-live='polite'>
               <span>{STEP_LABELS[step - 1] || `Step ${step}`}</span>

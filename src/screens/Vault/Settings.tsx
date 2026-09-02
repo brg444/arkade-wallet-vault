@@ -243,9 +243,9 @@ export default function VaultSettings() {
   return (
     <>
       <Header text='Settings' />
-      <Content noRefresh>
+      <Content noRefresh className='vault-settings-content'>
         <Padded>
-          <FlexCol gap='1.25rem'>
+          <FlexCol gap='1.25rem' className='vault-settings-menu'>
             <FlexCol gap='0'>
               <TextLabel>General</TextLabel>
               <Row

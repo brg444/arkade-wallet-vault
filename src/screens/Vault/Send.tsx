@@ -120,10 +120,11 @@ export default function VaultSend() {
         text={movingToSpending ? 'Move to Spending' : fromSavings ? 'Send from Savings' : 'Send'}
         back={() => navigate('home')}
       />
-      <Content noRefresh>
+      <Content noRefresh className='vault-send-content'>
         <Padded>
-          <FlexCol>
+          <FlexCol className='vault-send-form'>
             <Input
+              className='vault-send-amount-input'
               label='Amount (sats)'
               type='number'
               min='330'
@@ -180,6 +181,7 @@ export default function VaultSend() {
       </Content>
       <ButtonsOnBottom>
         <Button
+          className='vault-commit-action'
           onClick={reviewSpend}
           disabled={busy}
           loading={busy}

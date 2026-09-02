@@ -55,7 +55,7 @@ export default function Shadow({
   }
 
   return (
-    <div data-testid={testId} onClick={onClick} style={style}>
+    <div className='shadow-surface' data-testid={testId} onClick={onClick} style={style}>
       {children}
     </div>
   )

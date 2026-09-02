@@ -52,7 +52,7 @@ export default function VaultWelcome() {
       />
       <PixelSunrise show={sunrise} reducedMotion={prefersReduced} />
 
-      <Content noRefresh>
+      <Content noRefresh className='vault-welcome-content'>
         <Padded>
           <FlexCol between>
             <div
@@ -66,11 +66,14 @@ export default function VaultWelcome() {
                 paddingBottom: 24,
               }}
             >
-              <div
-                ref={logoTargetRef}
-                style={{ width: 40, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                {ready ? <SmallLogo /> : null}
+              <div className='vault-welcome-brandline'>
+                <div
+                  ref={logoTargetRef}
+                  style={{ width: 40, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {ready ? <SmallLogo /> : null}
+                </div>
+                <span className='vault-testnet-badge'>Mutinynet</span>
               </div>
               <div className='vault-welcome-copy'>
                 <div className='vault-welcome-title'>

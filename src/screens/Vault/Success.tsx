@@ -2,7 +2,6 @@ import { useContext } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from './Content'
-import FlexCol from '../../components/FlexCol'
 import Header from './Header'
 import Padded from '../../components/Padded'
 import Success from '../../components/Success'
@@ -26,25 +25,28 @@ export default function VaultSuccess() {
       <Header
         text={lastTxKind === 'onchain' ? 'Savings transfer submitted' : lightning ? 'Payment started' : 'Payment sent'}
       />
-      <Content noRefresh>
+      <Content noRefresh className='vault-success-content'>
         <Padded>
-          <FlexCol>
-            <Success
-              headline={amount}
-              text={
-                movingToSpending
-                  ? 'Bitcoin confirmation is next'
-                  : lightning
-                    ? 'Quote accepted. The Lightning payment is completing.'
-                    : lastTxKind === 'vtxo'
-                      ? 'Arkade transfer'
-                      : lastTxKind === 'onchain'
-                        ? 'Bitcoin confirmation is next'
-                        : 'Done'
-              }
-            />
+          <div className='vault-success-layout'>
+            <div className='vault-success-hero'>
+              <Success
+                headline={amount}
+                text={
+                  movingToSpending
+                    ? 'Bitcoin confirmation is next'
+                    : lightning
+                      ? 'Quote accepted. The Lightning payment is completing.'
+                      : lastTxKind === 'vtxo'
+                        ? 'Arkade transfer'
+                        : lastTxKind === 'onchain'
+                          ? 'Bitcoin confirmation is next'
+                          : 'Done'
+                }
+              />
+            </div>
             {lastSend ? (
-              <>
+              <section className='vault-success-receipt' aria-label='Transfer receipt'>
+                <p className='vault-success-receipt-label'>Receipt</p>
                 <Detail
                   label='To'
                   value={movingToSpending ? 'Spending' : lightning ? 'Lightning' : truncateAddress(lastSend.address, 8)}
@@ -55,9 +57,9 @@ export default function VaultSuccess() {
                 {lastTxid ? (
                   <Detail label={lastTxKind === 'vtxo' ? 'VTXO identifier' : 'Transaction ID'} value={lastTxid} mono />
                 ) : null}
-              </>
+              </section>
             ) : null}
-          </FlexCol>
+          </div>
         </Padded>
       </Content>
       <ButtonsOnBottom>

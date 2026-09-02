@@ -19,6 +19,11 @@ test('@polish welcome is accessible and visually stable', async ({ page }) => {
   await expect(page.getByText('Mutinynet only. Don’t send real Bitcoin.')).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('welcome.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Set up a new vault' }).click()
+  await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible()
+  await expectNoBlockingAxeViolations(page)
+  await expect(page).toHaveScreenshot('onboarding-how-it-works.png', { animations: 'disabled', fullPage: true })
 })
 
 test('@polish render failures are safe, accessible, and visually stable', async ({ page }) => {
