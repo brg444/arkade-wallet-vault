@@ -21,8 +21,19 @@
   --vault-testnet: var(--purple-800, #24154f);
   --vault-testnet-surface: var(--purple-100, #ede7fb);
   --vault-ease: 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  --bottom-anchor-gap: max(8px, env(safe-area-inset-bottom, 0px));
   background: var(--vault-paper);
   color: var(--vault-ink);
+}
+
+body:has(.vault-screen-home),
+body:has(.vault-screen-welcome) {
+  --background-color: #381993;
+}
+
+html.palette-dark body:has(.vault-screen-home),
+html.palette-dark body:has(.vault-screen-welcome) {
+  --background-color: #2f147f;
 }
 
 html.palette-dark [data-testid='vault-app'] {
@@ -1144,6 +1155,18 @@ button.vault-status-card {
 
 [data-testid='vault-app'] .content > .content-shell {
   position: relative;
+  min-height: 100%;
+  height: auto;
+}
+
+[data-testid='vault-app'] > .content {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+[data-testid='vault-app'] > .header,
+[data-testid='vault-app'] > .buttons-on-bottom {
+  flex: 0 0 auto;
 }
 
 [data-testid='vault-app'] .header {
@@ -1267,19 +1290,6 @@ button.vault-status-card {
   overflow: hidden;
   background: var(--vault-hero);
   color: #fffdf8;
-}
-
-.vault-home-hero::after {
-  position: absolute;
-  top: 80px;
-  right: -90px;
-  width: 220px;
-  height: 220px;
-  border: 28px solid var(--vault-hero-soft);
-  border-radius: 52px;
-  content: '';
-  pointer-events: none;
-  transform: rotate(14deg);
 }
 
 .vault-home-hero-inner,
@@ -1500,20 +1510,6 @@ button.vault-status-card {
   isolation: isolate;
   min-height: 640px;
   padding-top: 1.6rem;
-}
-
-.vault-welcome-stage::before {
-  position: absolute;
-  top: 150px;
-  right: -88px;
-  z-index: -1;
-  width: 230px;
-  height: 230px;
-  border: 30px solid var(--vault-hero-soft);
-  border-radius: 54px;
-  box-shadow: 18px 18px 0 var(--vault-coral);
-  content: '';
-  transform: rotate(14deg);
 }
 
 .vault-welcome-brandline {
@@ -1762,6 +1758,12 @@ button.vault-status-card {
   border-radius: 18px;
 }
 
+.vault-signer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
 /* Security */
 
 .vault-security {
@@ -1776,18 +1778,6 @@ button.vault-status-card {
   background: var(--vault-hero);
   box-shadow: 6px 6px 0 var(--vault-coral);
   color: #fffdf8;
-}
-
-.vault-security-hero::after {
-  position: absolute;
-  right: -34px;
-  bottom: -44px;
-  width: 126px;
-  height: 126px;
-  border: 19px solid var(--vault-hero-soft);
-  border-radius: 34px;
-  content: '';
-  transform: rotate(13deg);
 }
 
 .vault-security-hero-head {
@@ -1848,6 +1838,11 @@ button.vault-status-card {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
+}
+
+.vault-security-groups {
+  display: grid;
+  gap: 1.35rem;
 }
 
 .vault-security-tile {
@@ -2105,6 +2100,70 @@ html.palette-dark [data-testid='vault-app'] .vault-settings-menu > div > div:fir
   }
 }
 
+@media (max-width: 899px) {
+  .vault-review-content > .content-shell {
+    padding-top: 0.65rem;
+  }
+
+  .vault-review {
+    gap: 0.7rem;
+  }
+
+  .vault-review-amount {
+    padding: 0.9rem 0.75rem;
+    border-radius: 20px;
+  }
+
+  .vault-review-amount .vault-money {
+    font-size: clamp(2.2rem, 10vw, 2.8rem);
+  }
+
+  .vault-review-receipt-label {
+    padding: 0.75rem 1rem;
+  }
+
+  .vault-review-receipt .vault-row {
+    min-height: 50px;
+    padding: 0.65rem 1rem;
+  }
+
+  .vault-review-approvals {
+    gap: 0.6rem;
+    margin-top: 0;
+    padding: 0.8rem 1rem;
+  }
+
+  .vault-review-approvals .vault-section-label {
+    margin: 0;
+  }
+
+  .vault-signer-row {
+    gap: 0.6rem;
+  }
+
+  .vault-security {
+    gap: 1rem !important;
+    padding-bottom: calc(var(--pill-navbar-clearance) + 1rem);
+  }
+
+  .vault-security-hero {
+    padding: 1rem;
+  }
+
+  .vault-security-hero h2 {
+    margin-top: 1.25rem;
+  }
+
+  .vault-security-tile {
+    min-height: 116px;
+    padding: 0.85rem;
+  }
+
+  .vault-security-groups {
+    gap: 1rem;
+  }
+}
+
 @media (min-width: 900px) {
   [data-testid='vault-app'] {
     box-shadow:
@@ -2115,6 +2174,40 @@ html.palette-dark [data-testid='vault-app'] .vault-settings-menu > div > div:fir
 
   .vault-home-hero-inner {
     padding-top: 1.5rem;
+  }
+
+  .vault-security {
+    gap: 1rem !important;
+  }
+
+  .vault-security-hero h2 {
+    margin-top: 1.5rem;
+  }
+
+  .vault-security-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .vault-security-tile {
+    min-height: 154px;
+    padding: 0.85rem;
+  }
+
+  .vault-security-groups {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 0.75rem;
+  }
+
+  .vault-settings-menu {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 1rem !important;
+  }
+
+  .vault-settings-menu > div:last-child {
+    grid-column: 1 / -1;
   }
 }
 

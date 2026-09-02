@@ -18,9 +18,9 @@ export default function VaultSignIn() {
   return (
     <>
       <Header text='Sign in' back={() => navigate('welcome')} />
-      <Content noRefresh>
+      <Content noRefresh className='vault-detail-content vault-signin-content'>
         <Padded>
-          <FlexCol gap='1.15rem'>
+          <FlexCol gap='1.15rem' className='vault-flow vault-signin-flow'>
             <Text wrap>
               {onPhone
                 ? 'Use device unlock, such as Face ID or your device PIN, if you set this vault up here. Do not create a new passkey.'

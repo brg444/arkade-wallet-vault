@@ -53,7 +53,7 @@ export function HubRow({
           {title}
         </Text>
         {detail ? (
-          <Text color='neutral-600' tiny>
+          <Text color='neutral-600' tiny wrap>
             {detail}
           </Text>
         ) : null}
@@ -188,9 +188,9 @@ export function KeyCard({
 }) {
   return (
     <Panel onClick={onClick} testId={testId}>
-      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+      <div className='vault-key-card'>
         {icon ? <IconBubble small>{icon}</IconBubble> : null}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className='vault-key-card-copy'>
           <Text small bold>
             {title}
           </Text>
@@ -200,7 +200,7 @@ export function KeyCard({
             </Text>
           ) : null}
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div className='vault-key-card-end'>
           {amount ? <span className='vault-row-amt'>{amount}</span> : null}
           {!amount && status ? (
             <Text color='neutral-600' tiny>
@@ -238,17 +238,13 @@ export function Reveal({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div>
-      <button
-        type='button'
-        onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-      >
+    <div className='vault-reveal'>
+      <button type='button' className='vault-inline-action' onClick={() => setOpen((v) => !v)}>
         <Text color='neutral-600' tiny>
           {open ? 'Hide details' : label}
         </Text>
       </button>
-      <div style={{ marginTop: open ? '0.6rem' : 0, display: open ? 'block' : 'none' }}>{children}</div>
+      <div className={open ? 'vault-reveal-content is-open' : 'vault-reveal-content'}>{children}</div>
     </div>
   )
 }
@@ -266,7 +262,7 @@ export function SignerRow({
 }) {
   const glyph = mark ?? (state === 'you' ? '1' : state === 'auto' ? '✓' : null)
   return (
-    <div style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
+    <div className='vault-signer-row'>
       <div className={state === 'unused' ? 'vault-check wait' : 'vault-check on'}>
         {glyph ?? <span className='vault-check-line' />}
       </div>

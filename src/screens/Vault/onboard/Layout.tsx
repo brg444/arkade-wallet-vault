@@ -8,8 +8,6 @@ import Padded from '../../../components/Padded'
 import Text from '../../../components/Text'
 import { StepRail } from '../ui'
 
-const STEP_LABELS = ['How it works', 'Add hardware', 'Protection', 'Spending policy', 'Your setup', 'This device']
-
 export function OnboardLayout({
   title,
   step,
@@ -35,7 +33,6 @@ export function OnboardLayout({
           <FlexCol gap='1.15rem' className='vault-onboard-flow'>
             <StepRail step={step} total={total} />
             <p className='vault-step-label' aria-live='polite'>
-              <span>{STEP_LABELS[step - 1] || `Step ${step}`}</span>
               <span>
                 Step {step} of {total}
               </span>

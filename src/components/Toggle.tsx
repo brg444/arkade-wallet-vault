@@ -23,6 +23,7 @@ export default function Toggle({ checked, onClick, text, subtext, testId }: Togg
       <FlexRow between>
         <Text thin>{text}</Text>
         <Switch
+          aria-label={text}
           checked={checked}
           onCheckedChange={handleChange}
           data-testid={testId}

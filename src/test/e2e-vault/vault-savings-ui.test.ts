@@ -8,8 +8,12 @@ const ENROLLMENT_MODULE = '/src/lib/vault/enrollmentStore.ts'
 const HANDOFF_MODULE = '/src/lib/vault/savingsHandoff.ts'
 const SAVINGS_MODULE = '/src/lib/vault/savingsSpend.ts'
 const PROGRAM_FIXTURE_MODULE = '/src/lib/vault/program/fixtures.ts'
-const AUTHORIZER_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_authorizer'
-const ESPLORA_CONTROL = 'http://127.0.0.1:18888/__vault_e2e_esplora'
+const APP_PORT = process.env.VAULT_E2E_PORT || '3003'
+const OPERATOR_PORT = process.env.VAULT_E2E_OPERATOR_PORT || '18888'
+const APP_ORIGIN = `http://localhost:${APP_PORT}`
+const OPERATOR_ORIGIN = `http://127.0.0.1:${OPERATOR_PORT}`
+const AUTHORIZER_CONTROL = `${OPERATOR_ORIGIN}/__vault_e2e_authorizer`
+const ESPLORA_CONTROL = `${OPERATOR_ORIGIN}/__vault_e2e_esplora`
 
 function json(route: Route, body: unknown) {
   return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
@@ -25,7 +29,7 @@ async function openVault(page: Page): Promise<{ broadcastHex: () => string; stat
         ? status
         : {
             network: 'mutinynet',
-            clientOrigin: 'http://localhost:3003',
+            clientOrigin: APP_ORIGIN,
             rpId: 'localhost',
             templateVersion: 'phone-hww-recovery-savings-v1',
             policyVersion: 'vault-spending-policy-v1',
@@ -133,8 +137,11 @@ async function createPendingTransfer(
   )
 }
 
-test('persists a phone-signed Savings PSBT and completes a real hardware-signed handoff', async ({ context, page }) => {
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3003' })
+test('@polish persists a phone-signed Savings PSBT and completes a real hardware-signed handoff', async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_ORIGIN })
   const { broadcastHex, status } = await openVault(page)
   const { hardwareSigned, phoneSigned } = await createPendingTransfer(page, status)
 
@@ -147,6 +154,7 @@ test('persists a phone-signed Savings PSBT and completes a real hardware-signed 
   await selectSavings(page)
   await page.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i }).click()
   await expect(page.getByRole('heading', { name: 'Hardware next' })).toBeVisible()
+  await expect(page).toHaveScreenshot('savings-hardware-handoff.png', { animations: 'disabled', fullPage: true })
 
   await page.getByRole('button', { name: 'Copy PSBT' }).click()
   const copied = await page.evaluate(() => navigator.clipboard.readText())
@@ -165,6 +173,8 @@ test('persists a phone-signed Savings PSBT and completes a real hardware-signed 
   await page.getByRole('button', { name: 'Broadcast' }).click()
   await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
   await expect(page.getByText('Bitcoin confirmation is next')).toBeVisible()
+  await expect(page.getByText('PSBT copied')).toBeHidden()
+  await expect(page).toHaveScreenshot('savings-transfer-success.png', { animations: 'disabled', fullPage: true })
   await expect.poll(broadcastHex).toMatch(/^[0-9a-f]+$/)
   await expect
     .poll(() => page.evaluate((id) => localStorage.getItem(`arkade-vault-savings-handoff-v1:${id}`), status.vaultId))

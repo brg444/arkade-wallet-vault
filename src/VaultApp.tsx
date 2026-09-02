@@ -1,6 +1,7 @@
 import { useContext, useEffect } from 'react'
 import { VaultContext } from './vault/context'
 import './screens/Vault/vault.css'
+import './screens/Vault/vault-system.css'
 import VaultHome from './screens/Vault/Home'
 import VaultReceive from './screens/Vault/Receive'
 import VaultReview from './screens/Vault/Review'

@@ -33,7 +33,7 @@ export default class VaultErrorBoundary extends Component<Props, State> {
     if (!this.state.crashed) return this.props.children
     return (
       <div className='page vault-error-page' data-testid='vault-app'>
-        <Header text='Something went wrong' />
+        <Header text='Arkade Vault' />
         <Content noRefresh className='vault-error-content'>
           <div className='vault-error-layout'>
             <div className='vault-error-mark' aria-hidden>
