@@ -340,11 +340,11 @@ test('keeps cached Spending balance and history during an open-session outage, t
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 
   const nextTxid = 'ab'.repeat(32)
+  await context.setOffline(true)
   await setOperatorVtxos([
     { ...cached, isSpent: true, spentBy: nextTxid, arkTxid: nextTxid },
     await wireVtxo(page, status, { amount: 30_000, txid: nextTxid }),
   ])
-  await context.setOffline(true)
   await refreshHome(page)
   await expect(page.getByTestId('vault-balance')).toContainText('25,000')
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
