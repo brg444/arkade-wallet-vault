@@ -295,8 +295,8 @@ export function PolicyTimeline({
 }) {
   const rows = [
     {
-      title: 'Daily spend',
-      detail: `${prettyAmount(txCap)} per send, ${prettyAmount(dailyLimit)} a day.`,
+      title: 'Spending limits',
+      detail: `${prettyAmount(txCap)} per payment, ${prettyAmount(dailyLimit)} over a rolling 24 hours.`,
     },
     {
       title: 'If you lose this device',

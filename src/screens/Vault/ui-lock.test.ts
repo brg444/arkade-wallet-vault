@@ -76,7 +76,7 @@ describe('vault UI lock', () => {
     expect(keys).toMatch(/Recovery Kit/)
     expect(keys).toMatch(/hasRecovery/)
     expect(keys).not.toMatch(/Not on this vault/)
-    expect(keys).toMatch(/pingVaultService/)
+    expect(keys).toMatch(/useVaultReadiness/)
     expect(keys).not.toMatch(/Daily only/)
     expect(keys).not.toMatch(/PolicyTimeline/)
     expect(keys).not.toMatch(/If you lose one/)
@@ -111,7 +111,7 @@ describe('vault UI lock', () => {
   it('rejects the retired singleton home chrome', () => {
     const home = read('src/screens/Vault/Home.tsx')
     expect(home).toContain('account-switcher')
-    expect(home).toContain('remaining in the rolling 24h limit')
+    expect(home).toContain('in your rolling 24-hour')
     expect(home).not.toMatch(/Phone may spend/)
     expect(home).not.toMatch(/Mutinynet · live coins/)
     expect(home).not.toMatch(/Daily path ready/)
@@ -124,5 +124,19 @@ describe('vault UI lock', () => {
     const receive = read('src/screens/Vault/Receive.tsx')
     expect(receive).toMatch(/encodeVaultBip21/)
     expect(receive).not.toMatch(/operationalAddress/)
+  })
+
+  it('rejects obsolete balance, biometric, success, and recovery copy', () => {
+    const productCopy = [
+      read('src/screens/Vault/Home.tsx'),
+      read('src/screens/Vault/Review.tsx'),
+      read('src/screens/Vault/Success.tsx'),
+      read('src/screens/Vault/Recover.tsx'),
+      read('src/lib/vault/humanize.ts'),
+    ].join('\n')
+    expect(productCopy).not.toMatch(/available today/i)
+    expect(productCopy).not.toMatch(/Face ID is required/i)
+    expect(productCopy).not.toMatch(/Sent as a VTXO/i)
+    expect(productCopy).not.toMatch(/cancellation requires the vault services/i)
   })
 })

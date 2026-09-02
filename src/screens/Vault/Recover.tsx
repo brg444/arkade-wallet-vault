@@ -451,14 +451,14 @@ export default function VaultRecover() {
           <FlexCol>
             <Text wrap>
               The Recovery Kit is a map of this vault. It is not a seed. It does not hold your keys. Back up the map
-              with this vault, then Face ID can rebuild it on this device or another device.
+              with this vault, then device unlock can rebuild it on this device or another device.
             </Text>
             <KeyCard
               title='On this device'
               role={
                 hasRecoveryKit
                   ? 'The map is here. Save a file if you want a spare, or back it up with the vault.'
-                  : 'No map on this device yet. Get it with Face ID, or paste a file you saved.'
+                  : 'No map on this device yet. Get it with device unlock, or paste a file you saved.'
               }
             />
             <KeyCard
@@ -505,8 +505,8 @@ export default function VaultRecover() {
                 {confirmBoardingRecovery ? (
                   <>
                     <Text wrap>
-                      Face ID will authorize a one-time recovery to this device. A network fee is deducted before the
-                      transaction is sent.
+                      Device unlock will authorize a one-time recovery to this device. A network fee is deducted before
+                      the transaction is sent.
                     </Text>
                     <Button
                       label={recoveringBoarding ? 'Recovering…' : 'Recover to this device'}
@@ -542,7 +542,7 @@ export default function VaultRecover() {
             <Button label='Save Recovery Kit' testId='download-recovery-kit' onClick={saveKit} />
             <Button
               secondary
-              label={busy ? 'Waiting for Face ID…' : 'Back up map'}
+              label={busy ? 'Waiting for device unlock…' : 'Back up map'}
               testId='backup-recovery-kit'
               disabled={busy}
               onClick={() => {
@@ -560,7 +560,7 @@ export default function VaultRecover() {
           </>
         ) : (
           <Button
-            label={busy ? 'Waiting for Face ID…' : 'Get map'}
+            label={busy ? 'Waiting for device unlock…' : 'Get map'}
             testId='restore-recovery-kit'
             disabled={busy}
             onClick={() => {

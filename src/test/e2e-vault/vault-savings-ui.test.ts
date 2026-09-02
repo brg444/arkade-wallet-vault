@@ -163,8 +163,8 @@ test('persists a phone-signed Savings PSBT and completes a real hardware-signed 
   await expect(page.getByText('hardware-signed.psbt is ready to broadcast.')).toBeVisible()
 
   await page.getByRole('button', { name: 'Broadcast' }).click()
-  await expect(page.getByRole('heading', { name: 'Moving' })).toBeVisible()
-  await expect(page.getByText('Finishes after Bitcoin confirms')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
+  await expect(page.getByText('Bitcoin confirmation is next')).toBeVisible()
   await expect.poll(broadcastHex).toMatch(/^[0-9a-f]+$/)
   await expect
     .poll(() => page.evaluate((id) => localStorage.getItem(`arkade-vault-savings-handoff-v1:${id}`), status.vaultId))

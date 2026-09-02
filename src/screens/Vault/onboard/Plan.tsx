@@ -60,10 +60,10 @@ export default function VaultPlan() {
         network={liveNetwork ? 'mutinynet' : undefined}
       />
       <Text color='neutral-600' tiny wrap>
-        Exact limits: {prettyAmount(setup.txCapSats)} per payment{txFiat ? ` (${txFiat})` : ''} and{' '}
-        {prettyAmount(setup.dailyLimitSats)} per rolling 24 hours{allowanceFiat ? ` (${allowanceFiat})` : ''}.
-        Above-limit payments are refused. These spending conditions are bound to this vault and cannot be changed after
-        setup.
+        Network: Mutinynet. Don’t send real Bitcoin. Exact limits: {prettyAmount(setup.txCapSats)} per payment
+        {txFiat ? ` (${txFiat})` : ''} and {prettyAmount(setup.dailyLimitSats)} per rolling 24 hours
+        {allowanceFiat ? ` (${allowanceFiat})` : ''}. Above-limit payments are refused. These spending conditions are
+        bound to this vault and cannot be changed after setup.
       </Text>
     </OnboardLayout>
   )

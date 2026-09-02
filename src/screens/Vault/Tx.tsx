@@ -57,6 +57,7 @@ export default function VaultTx() {
               value={selectedTx?.blockTime ? prettyDate(selectedTx.blockTime) : 'Not available yet'}
             />
             <Detail label='Account' value={selectedTx?.account === 'savings' ? 'Savings' : 'Spending'} />
+            <Detail label='Network' value={vaultStatus?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'} />
             {lightning && selectedTx?.fee !== undefined ? (
               <Detail label='Fee' value={prettyAmount(selectedTx.fee)} />
             ) : null}
