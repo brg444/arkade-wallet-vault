@@ -1,4 +1,6 @@
 import type { Page } from '@playwright/test'
+import { scalarSecret } from '../../lib/vault/program/fixtures'
+import { finalizeSavingsPsbt, parseIncomingPsbt, signSavingsPsbt } from '../../lib/vault/savingsSpend'
 import { enrollVaultWithPasskey, expect, test } from './fixtures/passkey'
 
 const SESSION_LOCK_STORE = 'arkade-vault-v2:session-lock'
@@ -71,6 +73,71 @@ test('enrolls the reviewed lower-exposure policy as this vault immutable policy'
     return pin.spendingPolicyCanonical ? JSON.parse(pin.spendingPolicyCanonical) : null
   })
   expect(storedPolicy).toMatchObject({ txRecipientCapSats: 25_000, periodAllowanceSats: 50_000 })
+})
+
+test('creates and resumes a Savings hardware handoff through the passkey-backed UI', async ({
+  context,
+  page,
+  authorizer,
+  passkey,
+  secretAudit,
+}) => {
+  void passkey
+  authorizer.fundSavings(51_500)
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3003' })
+  await enrollVaultWithPasskey(page, authorizer)
+
+  await page.getByTestId('account-switcher').click()
+  await page.getByTestId('account-savings').click()
+  await expect(page.getByTestId('vault-balance')).toContainText('51,500')
+  await page.getByRole('button', { name: 'Move to Spending' }).click()
+  await page.getByTestId('vault-send-amount').fill('50000')
+  await page.getByRole('button', { name: 'Review move' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
+  await expect(page.getByText('From Savings')).toBeVisible()
+  await expect(page.getByText('Spending', { exact: true })).toBeVisible()
+  await expect(page.getByText('51,500 SATS', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Sign on this device' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Hardware next' })).toBeVisible()
+  await page.getByRole('button', { name: 'Copy PSBT' }).click()
+  const phoneSigned = await page.evaluate(() => navigator.clipboard.readText())
+  const hardwareSecret = scalarSecret(4)
+  let hardwareSigned: string
+  try {
+    hardwareSigned = signSavingsPsbt(parseIncomingPsbt(phoneSigned), hardwareSecret)
+  } finally {
+    hardwareSecret.fill(0)
+  }
+  await secretAudit.assertNoSecretsPersisted(page)
+
+  await page.reload()
+  await page.getByTestId('account-switcher').click()
+  await page.getByTestId('account-savings').click()
+  const pending = page.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i })
+  await expect(pending).toBeVisible()
+  await pending.click()
+  await expect(page.getByRole('heading', { name: 'Hardware next' })).toBeVisible()
+
+  await page.getByTestId('savings-signed-psbt-file').setInputFiles({
+    name: 'hardware-signed.psbt',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from(hardwareSigned, 'hex'),
+  })
+  await expect(page.getByText('hardware-signed.psbt is ready to broadcast.')).toBeVisible()
+  await page.getByRole('button', { name: 'Broadcast' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
+  await expect.poll(() => authorizer.broadcastedTransaction()).toBe(finalizeSavingsPsbt(hardwareSigned).txHex)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (vaultId) => localStorage.getItem(`arkade-vault-savings-handoff-v1:${vaultId}`),
+        authorizer.vaultId,
+      ),
+    )
+    .toBeNull()
 })
 
 test('a cancelled Face ID prompt retries through the same button', async ({ page, authorizer, passkey }) => {
