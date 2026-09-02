@@ -87,12 +87,12 @@ of scope.
   updates, A-to-B-to-A vault switching, simultaneous vaults in separate tabs,
   offline recovery, lost worker events, and both VTXO-first and Esplora-first
   propagation.
-- Outbound BOLT11 is implemented as a disabled package-native lifecycle using
-  the published RFQ repository, manager, contract registry, and refunder.
-  Mainnet enablement still requires an approved signed solver card and rotation
-  procedure, quote-to-reservation expiry tests, and real invoice and refund
-  tests. The public mainnet solver registry currently advertises no Lightning
-  market.
+- Outbound BOLT11 is implemented as a feature-gated package-native lifecycle
+  using the published RFQ repository, manager, contract registry, and refunder.
+  The Mutinynet release candidate enables send; mainnet remains disabled until
+  an approved signed solver card and rotation procedure, quote-to-reservation
+  expiry tests, and real invoice and refund tests are complete. The public
+  mainnet solver registry currently advertises no Lightning market.
 - Lightning receive remains disabled. The route needs a published package with
   the current receive fixes, a deployed mainnet solver market, a production
   covenant claim service, reload-safe client state, and proof that every claim

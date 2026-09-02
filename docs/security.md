@@ -35,7 +35,7 @@ remains out of scope.
   identifier, network, Savings descriptor, and immutable Spending and boarding
   fields. Status drift, record tampering, extra fields, and an enrolled-to-
   unenrolled downgrade fail closed.
-- The disabled Lightning send lifecycle uses the published swap repository,
+- The feature-gated Lightning send lifecycle uses the published swap repository,
   manager, VHTLC, and refunder. It stores complete recovery state before
   exposing a funding target and binds the refund to the exact
   `vault-policy-v1` script. Funding remains subject to the ordinary VTXO
