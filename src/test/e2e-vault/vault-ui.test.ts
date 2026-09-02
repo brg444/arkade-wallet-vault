@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { decodeVaultBip21 } from '../../lib/vault/bip21'
 import { POLICY_VERSION } from '../../lib/vault/constants'
 import { SAVINGS_TEMPLATE } from '../../lib/vault/program/constants'
@@ -7,6 +8,8 @@ import type { VaultStatus } from '../../lib/vault/types'
 
 const UI_FIXTURE = '/src/test/e2e-vault/fixtures/vault-ui.ts'
 const WORKER_FIXTURE = '/src/test/e2e-vault/fixtures/vtxo-browser.ts'
+const KIT_STORE_MODULE = '/src/lib/vault/program/kitStore.ts'
+const RECOVERY_SPEND_MODULE = '/src/lib/vault/program/spend.ts'
 const APP_PORT = process.env.VAULT_E2E_PORT || '3003'
 const OPERATOR_PORT = process.env.VAULT_E2E_OPERATOR_PORT || '18888'
 const APP_ORIGIN = `http://localhost:${APP_PORT}`
@@ -265,6 +268,43 @@ async function openVault(page: Page, initial: Partial<VaultUiState> = {}, option
     }
   }
   return { destination: installed.destination as string, state, status: currentStatus }
+}
+
+async function recoveryKitJson(page: Page, vaultId: string): Promise<string> {
+  return page.evaluate(
+    async ({ id, storePath }) => {
+      const store = await import(/* @vite-ignore */ storePath)
+      const kit = store.loadLocalKit(id)
+      if (!kit) throw new Error('Recovery Kit fixture is missing')
+      return JSON.stringify(kit)
+    },
+    { id: vaultId, storePath: KIT_STORE_MODULE },
+  )
+}
+
+async function installPendingRecovery(
+  page: Page,
+  vaultId: string,
+  claimant: 'phone' | 'hardware' | 'recovery',
+  utxo: EsploraUtxo,
+) {
+  const address = await page.evaluate(
+    async ({ id, role, storePath }) => {
+      const store = await import(/* @vite-ignore */ storePath)
+      const kit = store.loadLocalKit(id)
+      if (!kit) throw new Error('Recovery Kit fixture is missing')
+      return kit.descriptor.pending[`savings-${role}`].address as string
+    },
+    { id: vaultId, role: claimant, storePath: KIT_STORE_MODULE },
+  )
+  await page.route('**/esplora/**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === `/esplora/address/${address}/utxo`) return json(route, [utxo])
+    if (url.pathname === '/esplora/blocks/tip/height') return route.fulfill({ status: 200, body: '20' })
+    return route.fallback()
+  })
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByTestId('initiate-alert')).toBeVisible()
 }
 
 async function clearVaultWorkers(context: BrowserContext) {
@@ -626,6 +666,129 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
 
   await expect(page.getByText('Not enough confirmed spending funds.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Review' })).toHaveCount(0)
+})
+
+test('validates a pasted Recovery Kit against its committed descriptor', async ({ page }) => {
+  const { status } = await openVault(page)
+  const validKit = await recoveryKitJson(page, status.vaultId)
+  const tampered = JSON.parse(validKit) as Record<string, unknown>
+  tampered.descriptorHash = '00'.repeat(32)
+
+  await page.getByTestId('tab-vault').click()
+  await page.getByTestId('security-kit').click()
+  await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
+  await page.getByRole('button', { name: 'I already have a kit file' }).click()
+
+  const input = page.getByTestId('recovery-kit-json')
+  await input.fill(JSON.stringify(tampered))
+  await expect(page.getByText('Recovery Kit hash does not match the rebuilt descriptor')).toBeVisible()
+
+  await input.fill(validKit)
+  await expect(page.getByText(/This kit is for vault e2e-vaul… · 7 addresses/)).toBeVisible()
+  await expect(page.getByText('Recovery Kit hash does not match the rebuilt descriptor')).toHaveCount(0)
+})
+
+test('starts recovery only from a confirmed Savings coin and fences a second destination', async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3003' })
+  const { state, status } = await openVault(page)
+  const coin: EsploraUtxo = {
+    txid: '71'.repeat(32),
+    vout: 0,
+    value: 50_000,
+    status: { confirmed: true, block_height: 1 },
+  }
+
+  await page.getByTestId('tab-vault').click()
+  await page.getByTestId('security-lost').click()
+  await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
+
+  await page.getByTestId('recover-initiate').click()
+  await expect(page.getByText('No confirmed coin on that account')).toBeVisible()
+
+  state.savingsUtxos = [coin]
+  await page.getByTestId('recover-initiate').click()
+  await expect(page.getByText('Transaction copied. Sign it with the key you still have.')).toBeVisible()
+  const psbt = await page.evaluate(() => navigator.clipboard.readText())
+  const initiation = await page.evaluate(
+    async ({ id, kitPath, rawPsbt, spendPath }) => {
+      const [kitStore, spend] = await Promise.all([
+        import(/* @vite-ignore */ kitPath),
+        import(/* @vite-ignore */ spendPath),
+      ])
+      const kit = kitStore.loadLocalKit(id)
+      if (!kit) throw new Error('Recovery Kit fixture is missing')
+      return {
+        expectedDestScript: kit.descriptor.pending['savings-hardware'].script,
+        view: spend.inspectTransitionPsbt(rawPsbt),
+      }
+    },
+    { id: status.vaultId, kitPath: KIT_STORE_MODULE, rawPsbt: psbt, spendPath: RECOVERY_SPEND_MODULE },
+  )
+  expect(initiation.view).toMatchObject({
+    destScript: initiation.expectedDestScript,
+    destSats: 49_260,
+    feeSats: 500,
+    inputVout: 0,
+  })
+
+  await page.getByTestId('recover-key-phone').click()
+  await page.getByTestId('recover-initiate').click()
+  await expect(page.getByText('second dest for this outpoint')).toBeVisible()
+})
+
+test('surfaces a mature recovery and preserves claimant-aware guardian cancellation', async ({ context, page }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://localhost:3003' })
+  const { status } = await openVault(page)
+  const coin: EsploraUtxo = {
+    txid: '72'.repeat(32),
+    vout: 1,
+    value: 20_000,
+    status: { confirmed: true, block_height: 1 },
+  }
+  await installPendingRecovery(page, status.vaultId, 'hardware', coin)
+
+  const alert = page.getByTestId('initiate-alert')
+  await expect(alert).toContainText('Someone started recovery on Savings with hardware.')
+  await alert.click()
+  await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
+  await expect(page.getByText('Recovery in process', { exact: true })).toBeVisible()
+
+  await page.getByTestId('recover-claim-dest').fill(status.savingsAddress)
+  await page.getByTestId('recover-claim').click()
+  const claimPsbt = await page.evaluate(() => navigator.clipboard.readText())
+  const claim = await page.evaluate(
+    async ({ rawPsbt, spendPath }) => {
+      const spend = await import(/* @vite-ignore */ spendPath)
+      return spend.inspectClaimPsbt(rawPsbt)
+    },
+    { rawPsbt: claimPsbt, spendPath: RECOVERY_SPEND_MODULE },
+  )
+  expect(claim).toMatchObject({
+    sequence: 6,
+    destScript: status.savingsScript,
+    destSats: 19_500,
+    feeSats: 500,
+  })
+
+  await page.getByTestId('recover-guardian-exit').click()
+  await expect(page.getByTestId('recover-guardian-signers')).toContainText('This device and Recovery')
+  await expect(page.getByTestId('recover-guardian-signers')).not.toContainText('Hardware and')
+  await expect(page.getByTestId('recover-guardian-device')).toBeVisible()
+  await expect(page.getByTestId('recover-guardian-external')).toContainText('Recovery')
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByTestId('recover-guardian-external-download').click()
+  const download = await downloadPromise
+  const path = await download.path()
+  if (!path) throw new Error('cancel PSBT download path is missing')
+  const unsignedCancel = await readFile(path)
+  await page.getByTestId('recover-guardian-signed-psbt').fill(unsignedCancel.toString('hex'))
+  await page.getByTestId('recover-guardian-external').click()
+  await expect(page.getByText('signed cancel must add exactly one signature')).toBeVisible()
+  await expect(page.getByTestId('recover-guardian-broadcast')).toHaveCount(0)
 })
 
 async function expectNoBlockingAxeViolations(page: Page) {
