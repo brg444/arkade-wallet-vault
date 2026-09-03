@@ -684,16 +684,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           return
         }
         setCanReplaceInFlightSend(false)
-        setReviewedVtxoQuote({
-          operationId: '',
-          bundleDigest: '',
-          destAddress: preview.destAddress,
-          amountSats: preview.amountSats,
-          feeSats: preview.feeSats,
-          feePolicyDigest: '',
-          reservationExpires: '',
-          changeSats: 0,
-        })
+        setReviewedVtxoQuote(preview)
         setSpend((current) =>
           current.address === spend.address && current.amount === spend.amount
             ? { ...current, fee: preview.feeSats }

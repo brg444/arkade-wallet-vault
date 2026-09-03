@@ -24,7 +24,6 @@ import {
   createVtxoOperationId,
   createVtxoSpendUnlocker,
   createPhoneSignedPendingProof,
-  everyReservedInputIsTerminal,
   isVtxoLivePendingError,
   isVtxoReceiptPendingError,
   isVtxoReservedReplaceError,
@@ -1304,6 +1303,32 @@ describe('regular VTXO spend coordinator', () => {
     clearPersistedVtxoSpend('vault-a')
   })
 
+  it('waits for an accepted Operator submission to appear in pending lookup', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    persistVtxoSpend({ ...fixture.pending, operatorSubmitAttempted: true })
+    let pendingCalls = 0
+    const operator = {
+      async submitTx() {
+        throw new Error('must not resubmit')
+      },
+      async getPendingTxs() {
+        pendingCalls++
+        return pendingCalls < 3 ? [] : [fixture.candidate]
+      },
+    } as unknown as ArkProvider
+
+    const recovered = await advanceAuthorizedVtxoSpend(
+      operator,
+      loadPersistedVtxoSpend('vault-a')!,
+      fixture.current,
+      fixture.operatorPub,
+    )
+    expect(pendingCalls).toBe(3)
+    expect(recovered.stage).toBe('operator-submitted')
+    clearPersistedVtxoSpend('vault-a')
+  })
+
   it('treats a reloaded write-ahead marker as ambiguous and uses lookup only', async () => {
     clearPersistedVtxoSpend('vault-a')
     const fixture = await authorizedPendingFixture()
@@ -1349,7 +1374,7 @@ describe('regular VTXO spend coordinator', () => {
       /exactly one/,
     )
     expect(submitCalls).toBe(0)
-    expect(pendingCalls).toBe(1)
+    expect(pendingCalls).toBe(20)
     expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('authorized')
     expect(loadPersistedVtxoSpend('vault-a')?.operatorSubmitAttempted).toBe(true)
 
@@ -1832,26 +1857,7 @@ describe('regular VTXO spend coordinator', () => {
     ).toBe('live-pending')
   })
 
-  it('requires exact terminal SDK facts for every reserved input', () => {
-    const pending = sdkReservedPending()
-    const facts = pending.reservedInputs!.map((input) => ({ ...input, terminal: true }))
-    expect(everyReservedInputIsTerminal(pending, facts)).toBe(true)
-    expect(everyReservedInputIsTerminal(pending, facts.slice(1))).toBe(false)
-    expect(
-      everyReservedInputIsTerminal(
-        pending,
-        facts.map((fact, index) => (index ? fact : { ...fact, valueSats: fact.valueSats + 1 })),
-      ),
-    ).toBe(false)
-    expect(
-      everyReservedInputIsTerminal(
-        pending,
-        facts.map((fact, index) => (index ? fact : { ...fact, terminal: false })),
-      ),
-    ).toBe(false)
-  })
-
-  it('reconciles every journal entry after restart and prunes only authoritatively terminal records', async () => {
+  it('reconciles every journal entry after restart but never discards a signed operation', async () => {
     const restoreLocks = installImmediateNavigatorLock()
     clearPersistedVtxoSpend('vault-a')
     const signed = {
@@ -1865,7 +1871,6 @@ describe('regular VTXO spend coordinator', () => {
     const reserved = { ...sdkReservedPending(), operationId: OP_2, stage: 'reserved' as const }
     persistVtxoSpend(signed)
     persistVtxoSpend(reserved)
-    const terminalFacts = signed.reservedInputs!.map((input) => ({ ...input, terminal: true }))
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async () =>
         new Response(JSON.stringify({ error: 'vtxo operation not found', code: 'NOT_FOUND' }), {
@@ -1874,10 +1879,14 @@ describe('regular VTXO spend coordinator', () => {
         }),
     )
     try {
-      await expect(reconcilePersistedVtxoSpend(status(), terminalFacts)).resolves.toEqual({ kind: 'idle' })
+      await expect(reconcilePersistedVtxoSpend(status())).resolves.toEqual({
+        kind: 'pending',
+        operationId: OP_1,
+        stage: 'authorized',
+      })
       expect(fetchMock).toHaveBeenCalledTimes(2)
-      expect(listPersistedVtxoSpends('vault-a')).toEqual([])
-      expect(vtxoJournalSendAction(listPersistedVtxoSpends('vault-a'), destination(), 20_000)).toBe('start')
+      expect(listPersistedVtxoSpends('vault-a').map((record) => record.operationId)).toEqual([OP_1])
+      expect(vtxoJournalSendAction(listPersistedVtxoSpends('vault-a'), destination(), 20_000)).toBe('live-pending')
     } finally {
       fetchMock.mockRestore()
       clearPersistedVtxoSpend('vault-a')
@@ -1903,7 +1912,7 @@ describe('regular VTXO spend coordinator', () => {
       }),
     )
     try {
-      await expect(reconcilePersistedVtxoSpend(status(), [])).resolves.toEqual({
+      await expect(reconcilePersistedVtxoSpend(status())).resolves.toEqual({
         kind: 'pending',
         operationId: OP_1,
         stage: 'authorized',
@@ -1917,7 +1926,7 @@ describe('regular VTXO spend coordinator', () => {
     }
   })
 
-  it('clears an unresolved server operation only after exact SDK terminal proof', async () => {
+  it('keeps an unresolved server operation even with exact SDK terminal proof', async () => {
     const restoreLocks = installImmediateNavigatorLock()
     clearPersistedVtxoSpend('vault-a')
     const signed = {
@@ -1942,10 +1951,13 @@ describe('regular VTXO spend coordinator', () => {
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
     )
-    const terminalFacts = signed.reservedInputs!.map((input) => ({ ...input, terminal: true }))
     try {
-      await expect(reconcilePersistedVtxoSpend(status(), terminalFacts)).resolves.toEqual({ kind: 'idle' })
-      expect(loadPersistedVtxoSpendById('vault-a', OP_1)).toBeUndefined()
+      await expect(reconcilePersistedVtxoSpend(status())).resolves.toEqual({
+        kind: 'pending',
+        operationId: OP_1,
+        stage: 'authorized',
+      })
+      expect(loadPersistedVtxoSpendById('vault-a', OP_1)).toBeTruthy()
     } finally {
       fetchMock.mockRestore()
       clearPersistedVtxoSpend('vault-a')
@@ -1982,7 +1994,7 @@ describe('regular VTXO spend coordinator', () => {
       )
     })
     try {
-      await expect(reconcilePersistedVtxoSpend(status(), [])).resolves.toEqual({
+      await expect(reconcilePersistedVtxoSpend(status())).resolves.toEqual({
         kind: 'receipt-finalized',
         txid: signed.arkTxid,
         operationId: signed.operationId,
@@ -2102,15 +2114,41 @@ describe('regular VTXO spend coordinator', () => {
     Object.defineProperty(navigator, 'credentials', { configurable: true, value: { get: getCredential } })
     try {
       await expect(previewVaultVtxoSend(status(), destination(), 12_000)).resolves.toEqual({
+        operationId: '',
+        bundleDigest: '',
         destAddress: destination(),
         amountSats: 12_000,
         feeSats: 0,
+        feePolicyDigest: '',
+        reservationExpires: '',
+        changeSats: 0,
       })
       expect(getCredential).not.toHaveBeenCalled()
     } finally {
       if (original) Object.defineProperty(navigator, 'credentials', { configurable: true, value: original })
       else Reflect.deleteProperty(navigator, 'credentials')
     }
+  })
+
+  it('restores the exact persisted quote so an accepted payment can resume after reload', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const pending = {
+      ...sdkReservedPending(),
+      stage: 'authorized' as const,
+      operatorSubmitAttempted: true,
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    }
+    persistVtxoSpend(pending)
+    await expect(previewVaultVtxoSend(status(), pending.destAddress, pending.amountSats)).resolves.toMatchObject({
+      operationId: pending.operationId,
+      bundleDigest: pending.bundleDigest,
+      destAddress: pending.destAddress,
+      amountSats: pending.amountSats,
+      feeSats: pending.feeSats,
+      changeSats: pending.changeSats,
+    })
+    clearPersistedVtxoSpend('vault-a')
   })
 
   it('does not let Send anyway or a different amount erase a signed operation', async () => {
