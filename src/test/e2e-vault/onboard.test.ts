@@ -3,25 +3,25 @@ import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
 
 async function setupToThisDevice(page: Page) {
   await page.goto('/')
-  await expect(page.getByText('Spend freely. Recover safely.')).toBeVisible()
-  await page.getByRole('button', { name: 'Set up a new vault' }).click()
+  await expect(page.getByRole('heading', { name: /Spend freely/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Get started' }).click()
 
-  await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Different money needs different protection' })).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Hardware key' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Add your hardware key' })).toBeVisible()
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
   await page.getByRole('button', { name: 'Use this hardware key' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Protection' })).toBeVisible()
-  await expect(page.getByText('No recovery key', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Use Standard' }).click()
+  await expect(page.getByRole('heading', { name: 'How should recovery work?' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue with Standard' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Spending limits' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Set comfortable limits' })).toBeVisible()
   await page.getByRole('button', { name: 'Review setup' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
-  await expect(page.getByText('Not enrolled with Standard.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review your Vault' })).toBeVisible()
+  await expect(page.getByText('Not enrolled')).toBeVisible()
+  await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: 'Continue' }).click()
 }
 

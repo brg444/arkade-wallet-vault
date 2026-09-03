@@ -1,20 +1,11 @@
 import { useContext, useEffect, useState } from 'react'
-import Button from '../../components/Button'
-import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import CenterScreen from '../../components/CenterScreen'
 import Checkbox from '../../components/Checkbox'
-import Content from './Content'
 import { EmptyLogsList } from '../../components/Empty'
-import FlexCol from '../../components/FlexCol'
-import Header from './Header'
-import Padded from '../../components/Padded'
 import Select from '../../components/Select'
 import Table from '../../components/Table'
-import Text, { TextLabel, TextSecondary } from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import Toggle from '../../components/Toggle'
 import ArrowIcon from '../../icons/Arrow'
-import { WalletAlternativeIcon } from '../../icons/Wallet'
 import { gitCommit } from '../../_gitCommit'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAgo, prettyAmount, prettyLongText } from '../../lib/format'
@@ -32,6 +23,7 @@ import {
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import { useVaultReadiness } from '../../vault/useVaultReadiness'
+import QgScreen, { QgPrimary } from './qg/QgScreen'
 
 type View = 'menu' | 'theme' | 'about' | 'haptics' | 'logs' | 'reset'
 
@@ -72,70 +64,57 @@ function LogsView({ onBack }: { onBack: () => void }) {
   const [logs, setLogs] = useState<LogLine[]>(() => getLogs())
 
   return (
-    <>
-      <Header
-        text='Logs'
-        back={onBack}
-        auxText='Clear'
-        auxFunc={() => {
-          clearLogs()
-          setLogs([])
-        }}
-      />
-      <Content noRefresh className='vault-settings-subview vault-logs-content'>
-        {logs.length === 0 ? (
-          <EmptyLogsList />
-        ) : (
-          <div className='vault-logs-list scroll-fade'>
-            <FlexCol gap='0.5rem'>
-              {[...logs].reverse().map((line) => (
-                <button
-                  type='button'
-                  className='vault-settings-row'
-                  key={`${line.time}${line.msg}${line.level}`}
-                  onClick={() => {
-                    void copyToClipboard(line.msg)
-                    toast('Copied to clipboard')
-                  }}
-                >
-                  <span className={line.level === 'error' ? 'vault-log-time is-error' : 'vault-log-time'}>
-                    {Date.now() - new Date(line.time).getTime() < 60_000 ? 'Just now' : prettyAgo(line.time)}
-                  </span>
-                  <span className='vault-settings-value'>{prettyLongText(line.msg.replace('...', ''), 12)}</span>
-                </button>
-              ))}
-            </FlexCol>
-          </div>
-        )}
-      </Content>
-    </>
+    <QgScreen
+      title='Logs'
+      back={onBack}
+      aux={<span>Clear</span>}
+      auxAriaLabel='Clear'
+      auxOnClick={() => {
+        clearLogs()
+        setLogs([])
+      }}
+    >
+      {logs.length === 0 ? (
+        <EmptyLogsList />
+      ) : (
+        <div className='qg-methods'>
+          {[...logs].reverse().map((line) => (
+            <button
+              type='button'
+              className='vault-settings-row'
+              key={`${line.time}${line.msg}${line.level}`}
+              onClick={() => {
+                void copyToClipboard(line.msg)
+                toast('Copied to clipboard')
+              }}
+            >
+              <span>
+                <strong className={line.level === 'error' ? 'vault-log-time is-error' : 'vault-log-time'}>
+                  {Date.now() - new Date(line.time).getTime() < 60_000 ? 'Just now' : prettyAgo(line.time)}
+                </strong>
+                <small>{prettyLongText(line.msg.replace('...', ''), 12)}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </QgScreen>
   )
 }
 
 function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => void }) {
   const [ok, setOk] = useState(false)
   return (
-    <>
-      <Header text='Sign out' back={onBack} />
-      <Content noRefresh className='vault-settings-subview vault-signout-content'>
-        <Padded>
-          <CenterScreen>
-            <WalletAlternativeIcon />
-            <Text>Sign out of this browser</Text>
-            <TextSecondary>
-              Coins stay on the vault. Sign in again with your passkey. This does not close the vault or delete the
-              passkey.
-            </TextSecondary>
-          </CenterScreen>
-        </Padded>
-      </Content>
-      <ButtonsOnBottom>
-        <FlexCol gap='0.75rem'>
-          <Checkbox onChange={() => setOk((value) => !value)} text='I understand' />
-          <Button disabled={!ok} label='Sign out' onClick={onReset} red />
-        </FlexCol>
-      </ButtonsOnBottom>
-    </>
+    <QgScreen title='Sign out' back={onBack} footer={<QgPrimary onClick={onReset} disabled={!ok} label='Sign out' />}>
+      <p className='qg-eyebrow'>This browser</p>
+      <h1>Sign out of this browser</h1>
+      <p className='qg-copy'>
+        Coins stay on the vault. Sign in again with your passkey. This does not close the vault or delete the passkey.
+      </p>
+      <div className='qg-consent'>
+        <Checkbox onChange={() => setOk((value) => !value)} text='I understand' />
+      </div>
+    </QgScreen>
   )
 }
 
@@ -157,46 +136,36 @@ export default function VaultSettings() {
 
   if (view === 'theme') {
     return (
-      <>
-        <Header text='Theme' back={() => setView('menu')} />
-        <Content noRefresh className='vault-settings-subview vault-theme-content'>
-          <Padded>
-            <Select
-              accessibleName='Theme'
-              labels={[`Auto (${systemTheme()})`, 'Dark', 'Light']}
-              options={[Themes.Auto, Themes.Dark, Themes.Light]}
-              selected={theme}
-              onChange={(value) => {
-                const next = value as Themes
-                setTheme(next)
-                saveVaultTheme(next)
-              }}
-            />
-          </Padded>
-        </Content>
-      </>
+      <QgScreen title='Theme' back={() => setView('menu')}>
+        <Select
+          accessibleName='Theme'
+          labels={[`Auto (${systemTheme()})`, 'Dark', 'Light']}
+          options={[Themes.Auto, Themes.Dark, Themes.Light]}
+          selected={theme}
+          onChange={(value) => {
+            const next = value as Themes
+            setTheme(next)
+            saveVaultTheme(next)
+          }}
+        />
+      </QgScreen>
     )
   }
 
   if (view === 'haptics') {
     return (
-      <>
-        <Header text='Haptics' back={() => setView('menu')} />
-        <Content noRefresh className='vault-settings-subview vault-haptics-content'>
-          <Padded>
-            <Toggle
-              checked={haptics}
-              onClick={() => {
-                const next = !haptics
-                setHaptics(next)
-                saveVaultHaptics(next)
-              }}
-              text='Haptic feedback'
-              subtext='Vibration on taps'
-            />
-          </Padded>
-        </Content>
-      </>
+      <QgScreen title='Haptics' back={() => setView('menu')}>
+        <Toggle
+          checked={haptics}
+          onClick={() => {
+            const next = !haptics
+            setHaptics(next)
+            saveVaultHaptics(next)
+          }}
+          text='Haptic feedback'
+          subtext='Vibration on taps'
+        />
+      </QgScreen>
     )
   }
 
@@ -227,16 +196,11 @@ export default function VaultSettings() {
       ['RP ID', status?.rpId],
     ] as [string, string | undefined][]
     return (
-      <>
-        <Header text='About' back={() => setView('menu')} />
-        <Content noRefresh className='vault-settings-subview vault-about-content'>
-          <Padded>
-            <div className='vault-about-table'>
-              <Table data={data} />
-            </div>
-          </Padded>
-        </Content>
-      </>
+      <QgScreen title='About' back={() => setView('menu')}>
+        <div className='vault-about-table'>
+          <Table data={data} />
+        </div>
+      </QgScreen>
     )
   }
 
@@ -244,60 +208,53 @@ export default function VaultSettings() {
   if (view === 'reset') return <ResetView onBack={() => setView('menu')} onReset={reset} />
 
   return (
-    <>
-      <Header text='Settings' />
-      <Content noRefresh className='vault-settings-content'>
-        <Padded>
-          <FlexCol gap='1.25rem' className='vault-settings-menu'>
-            <FlexCol gap='0'>
-              <TextLabel>General</TextLabel>
-              <Row
-                label='Theme'
-                testId='settings-theme'
-                value={theme === Themes.Auto ? `Auto (${resolveVaultTheme(Themes.Auto)})` : theme}
-                onClick={() => setView('theme')}
-              />
-              <Row
-                label='Haptics'
-                testId='settings-haptics'
-                value={haptics ? 'On' : 'Off'}
-                onClick={() => setView('haptics')}
-              />
-              <Row label='About' testId='settings-about' onClick={() => setView('about')} />
-            </FlexCol>
-            <FlexCol gap='0'>
-              <TextLabel>Advanced</TextLabel>
-              <Row
-                label={checkingUpdate ? 'Checking…' : 'Check for update'}
-                testId='settings-update'
-                onClick={() => {
-                  if (checkingUpdate) return
-                  setCheckingUpdate(true)
-                  void reloadIfNewerWallet()
-                    .then((reloaded) => {
-                      if (!reloaded) toast('You’re up to date')
-                    })
-                    .finally(() => setCheckingUpdate(false))
-                }}
-              />
-              <Row
-                label={refreshingBalance || busy ? 'Checking…' : 'Refresh balance'}
-                testId='settings-refresh'
-                value={balanceError ? 'Failed' : undefined}
-                onClick={() => {
-                  if (refreshingBalance) return
-                  void refreshBalance()
-                }}
-              />
-              <Row label='Logs' testId='settings-logs' onClick={() => setView('logs')} />
-            </FlexCol>
-            <FlexCol gap='0'>
-              <TextLabel>This browser</TextLabel>
-              <Row label='Sign out' testId='settings-signout' danger onClick={() => setView('reset')} />
-            </FlexCol>
-          </FlexCol>
-        </Padded>
-      </Content>
-    </>
+    <QgScreen title='Settings'>
+      <p className='qg-eyebrow'>General</p>
+      <div className='qg-methods'>
+        <Row
+          label='Theme'
+          testId='settings-theme'
+          value={theme === Themes.Auto ? `Auto (${resolveVaultTheme(Themes.Auto)})` : theme}
+          onClick={() => setView('theme')}
+        />
+        <Row
+          label='Haptics'
+          testId='settings-haptics'
+          value={haptics ? 'On' : 'Off'}
+          onClick={() => setView('haptics')}
+        />
+        <Row label='About' testId='settings-about' onClick={() => setView('about')} />
+      </div>
+      <p className='qg-eyebrow'>Advanced</p>
+      <div className='qg-methods'>
+        <Row
+          label={checkingUpdate ? 'Checking…' : 'Check for update'}
+          testId='settings-update'
+          onClick={() => {
+            if (checkingUpdate) return
+            setCheckingUpdate(true)
+            void reloadIfNewerWallet()
+              .then((reloaded) => {
+                if (!reloaded) toast('You’re up to date')
+              })
+              .finally(() => setCheckingUpdate(false))
+          }}
+        />
+        <Row
+          label={refreshingBalance || busy ? 'Checking…' : 'Refresh balance'}
+          testId='settings-refresh'
+          value={balanceError ? 'Failed' : undefined}
+          onClick={() => {
+            if (refreshingBalance) return
+            void refreshBalance()
+          }}
+        />
+        <Row label='Logs' testId='settings-logs' onClick={() => setView('logs')} />
+      </div>
+      <p className='qg-eyebrow'>This browser</p>
+      <div className='qg-methods'>
+        <Row label='Sign out' testId='settings-signout' danger onClick={() => setView('reset')} />
+      </div>
+    </QgScreen>
   )
 }

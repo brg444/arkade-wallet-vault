@@ -57,7 +57,7 @@ test('enrolls the reviewed lower-exposure policy as this vault immutable policy'
   passkey,
 }) => {
   void passkey
-  await enrollVaultWithPasskey(page, authorizer, 'lower-exposure')
+  await enrollVaultWithPasskey(page, authorizer)
   expect(authorizer.selectedSpendingPolicy()).toMatchObject({
     txRecipientCapSats: 25_000,
     periodAllowanceSats: 50_000,

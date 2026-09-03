@@ -1,19 +1,12 @@
 import { useContext, useMemo, useState } from 'react'
-import Button from '../../components/Button'
-import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import Content from './Content'
-import FlexCol from '../../components/FlexCol'
-import Header from './Header'
-import Padded from '../../components/Padded'
-import QrCode from '../../components/QrCode'
-import Text from '../../components/Text'
+import { ShieldCheck } from 'lucide-react'
 import { useToast } from '../../components/Toast'
+import QrCode from '../../components/QrCode'
 import { copyToClipboard } from '../../lib/clipboard'
 import { encodeVaultBip21 } from '../../lib/vault/bip21'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
-import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
-import { HubGroup, HubRow } from './ui'
+import QgScreen, { QgMark, QgPrimary } from './qg/QgScreen'
 
 export default function VaultReceive() {
   const { account, boardingAddress, navigate, savingsAddress, spendingArkAddress } = useContext(VaultContext)
@@ -28,7 +21,6 @@ export default function VaultReceive() {
     [boardingAddress, spendingArkAddress],
   )
   const request = spending ? unified : savingsAddress
-  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 
   const copy = async (value: string, label: string) => {
     if (!value) return
@@ -37,90 +29,81 @@ export default function VaultReceive() {
     toast(`${label} copied`)
   }
 
-  const share = async () => {
-    if (!request || !canShare) return
-    try {
-      await navigator.share({
-        title: spending ? 'Arkade Vault payment request' : 'Arkade Vault Savings address',
-        text: request,
-      })
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      toast('Sharing is unavailable. Copy the request instead.')
-    }
-  }
-
   return (
-    <>
-      <Header text='Receive' back={() => navigate('home')} />
-      <Content noRefresh className='vault-receive-content'>
-        <Padded>
-          <FlexCol>
-            <div className='vault-receive-stage'>
-              {spending ? (
-                <span className='vault-receive-protected'>
-                  <ShieldCheckOutlineIcon />
-                  Protected
-                </span>
-              ) : null}
-              <h2>{spending ? 'Receive to Spending' : 'Add to Savings'}</h2>
-              <p>
-                {spending ? 'Works with Arkade and Bitcoin wallets.' : 'Use this Bitcoin address to add to Savings.'}
-              </p>
-              {request ? (
-                <QrCode large value={request} />
-              ) : (
-                <Text>
-                  {spending
-                    ? 'Spending receive is unavailable. Return to the wallet and try again.'
-                    : 'Savings is not restored on this device. Sign in again to restore it.'}
-                </Text>
-              )}
-            </div>
-            {!spending ? (
-              <p className='vault-receive-addr' data-testid='receive-address'>
-                {request || '—'}
-              </p>
-            ) : null}
-            {spending ? (
-              <div className='vault-receive-addresses'>
-                <HubGroup label='Payment addresses'>
-                  <HubRow
-                    title='Arkade'
-                    detail={truncateAddress(spendingArkAddress, 10)}
-                    status={copied === spendingArkAddress ? 'Copied' : 'Copy'}
-                    onClick={() => void copy(spendingArkAddress, 'Arkade address')}
-                    testId='receive-arkade-address'
-                  />
-                  <HubRow
-                    title='Bitcoin'
-                    detail={truncateAddress(boardingAddress, 10)}
-                    status={copied === boardingAddress ? 'Copied' : 'Copy'}
-                    onClick={() => void copy(boardingAddress, 'Bitcoin address')}
-                    testId='receive-bitcoin-address'
-                  />
-                </HubGroup>
-              </div>
-            ) : null}
-          </FlexCol>
-        </Padded>
-      </Content>
-      <ButtonsOnBottom>
-        <Button
-          className='vault-commit-action'
+    <QgScreen
+      title='Receive'
+      back={() => navigate('home')}
+      footer={
+        <QgPrimary
           onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
           disabled={!request}
           label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}
         />
-        {canShare ? (
-          <Button
-            secondary
-            onClick={() => void share()}
-            disabled={!request}
-            label={spending ? 'Share payment request' : 'Share Savings address'}
-          />
+      }
+    >
+      <div className='qg-receive'>
+        <section className='qg-receive-copy'>
+          {spending ? (
+            <span className='qg-protected'>
+              <ShieldCheck />
+              Protected
+            </span>
+          ) : (
+            <p className='qg-eyebrow'>Bitcoin address</p>
+          )}
+          <h3>{spending ? 'Receive to Spending' : 'Add to Savings'}</h3>
+          <p>
+            {spending
+              ? 'Works with Arkade and Bitcoin wallets.'
+              : 'Use this Bitcoin address. Moving it later needs this device and your hardware key.'}
+          </p>
+        </section>
+        {request ? (
+          <div className='qg-qr' aria-label='Payment request QR code'>
+            <QrCode large value={request} />
+            <span className='qg-qr-mark' aria-hidden='true'>
+              <QgMark />
+            </span>
+          </div>
+        ) : (
+          <p className='qg-copy'>
+            {spending
+              ? 'Spending receive is unavailable. Return to the wallet and try again.'
+              : 'Savings is not restored on this device. Sign in again to restore it.'}
+          </p>
+        )}
+        {!spending ? (
+          <p className='qg-receive-addr' data-testid='receive-address'>
+            {request || '—'}
+          </p>
         ) : null}
-      </ButtonsOnBottom>
-    </>
+        {spending ? (
+          <section className='qg-addresses' aria-label='Payment addresses'>
+            <button
+              type='button'
+              data-testid='receive-arkade-address'
+              onClick={() => void copy(spendingArkAddress, 'Arkade address')}
+            >
+              <span>
+                <small>Arkade</small>
+                <strong>{truncateAddress(spendingArkAddress, 10)}</strong>
+              </span>
+              <b>{copied === spendingArkAddress ? 'Copied' : 'Copy'}</b>
+            </button>
+            <button
+              type='button'
+              data-testid='receive-bitcoin-address'
+              onClick={() => void copy(boardingAddress, 'Bitcoin address')}
+            >
+              <span>
+                <small>Bitcoin</small>
+                <strong>{truncateAddress(boardingAddress, 10)}</strong>
+              </span>
+              <b>{copied === boardingAddress ? 'Copied' : 'Copy'}</b>
+            </button>
+          </section>
+        ) : null}
+      </div>
+    </QgScreen>
   )
 }

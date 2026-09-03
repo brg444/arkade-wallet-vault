@@ -1,15 +1,10 @@
 import { useContext } from 'react'
-import Button from '../../components/Button'
-import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import Content from './Content'
+import { Clock3 } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
-import FlexCol from '../../components/FlexCol'
-import Header from './Header'
-import Padded from '../../components/Padded'
-import { prettyAmount, prettyDate } from '../../lib/format'
+import { prettyAmount, prettyDate, prettyNumber } from '../../lib/format'
 import { vaultTransactionExplorer } from '../../lib/vault/explorer'
 import { VaultContext } from '../../vault/context'
-import { Detail } from './ui'
+import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
 
 export default function VaultTx() {
   const { busy, error, navigate, retryLightningRefund, selectedTx, status: vaultStatus } = useContext(VaultContext)
@@ -38,52 +33,79 @@ export default function VaultTx() {
         ? 'Confirmed'
         : 'Pending'
     : 'Unknown'
+  const amount = selectedTx?.displayAmount ?? selectedTx?.amount ?? 0
 
   return (
-    <>
-      <Header text={lightning ? 'Lightning payment' : sent ? 'Sent' : 'Received'} back={() => navigate('home')} />
-      <Content noRefresh className='vault-detail-content vault-tx-content'>
-        <Padded>
-          <FlexCol gap='1.15rem' className='vault-flow vault-tx-layout'>
-            <div className='vault-hero'>
-              <p className='vault-kicker'>{lightning ? 'You paid' : sent ? 'You sent' : 'You received'}</p>
-              <p className='vault-money'>
-                {selectedTx ? prettyAmount(selectedTx.displayAmount ?? selectedTx.amount) : '—'}
-              </p>
-            </div>
-            <Detail label='Status' value={status} />
-            <Detail
-              label='When'
-              value={selectedTx?.blockTime ? prettyDate(selectedTx.blockTime) : 'Not available yet'}
+    <QgScreen
+      title={lightning ? 'Lightning payment' : 'Transaction'}
+      back={() => navigate('home')}
+      footer={
+        <>
+          <ErrorMessage error={Boolean(error)} text={error} />
+          {selectedTx?.lightningState === 'needs_counterparty' && selectedTx.lightningRfqId ? (
+            <QgPrimary
+              onClick={() => retryLightningRefund(selectedTx.lightningRfqId!)}
+              disabled={busy}
+              loading={busy}
+              label='Return to Spending'
             />
-            <Detail label='Account' value={selectedTx?.account === 'savings' ? 'Savings' : 'Spending'} />
-            <Detail label='Network' value={vaultStatus?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'} />
-            {lightning && selectedTx?.fee !== undefined ? (
-              <Detail label='Fee' value={prettyAmount(selectedTx.fee)} />
-            ) : null}
-            {selectedTx ? <Detail label='Transaction' value={selectedTx.txid} mono /> : null}
-            <ErrorMessage error={Boolean(error)} text={error} />
-          </FlexCol>
-        </Padded>
-      </Content>
-      <ButtonsOnBottom>
-        {selectedTx?.lightningState === 'needs_counterparty' && selectedTx.lightningRfqId ? (
-          <Button
-            onClick={() => retryLightningRefund(selectedTx.lightningRfqId!)}
-            label='Return to Spending'
-            disabled={busy}
-            loading={busy}
-          />
+          ) : null}
+          <QgPrimary onClick={() => navigate('home')} label='Back to Wallet' />
+          {explorer ? (
+            <QgSecondary
+              onClick={() => window.open(explorer.url, '_blank', 'noopener,noreferrer')}
+              label={explorer.label}
+            />
+          ) : null}
+        </>
+      }
+    >
+      <div className='qg-pending-label'>
+        <Clock3 />
+        <span>
+          <strong>{status}</strong>
+          <small>
+            {selectedTx?.account === 'savings' ? 'From Savings' : lightning ? 'Lightning' : sent ? 'Sent' : 'Received'}
+          </small>
+        </span>
+      </div>
+      <h1>
+        {sent ? '−' : '+'}
+        {prettyNumber(amount, 0)} <small>SATS</small>
+      </h1>
+      <section className='qg-details'>
+        <div>
+          <span>{sent ? 'Sent' : 'Received'}</span>
+          <strong>{prettyAmount(amount)}</strong>
+        </div>
+        {lightning && selectedTx?.fee !== undefined ? (
+          <div>
+            <span>Fee</span>
+            <strong>{prettyAmount(selectedTx.fee)}</strong>
+          </div>
         ) : null}
-        <Button onClick={() => navigate('home')} label='Done' />
-        {explorer ? (
-          <Button
-            onClick={() => window.open(explorer.url, '_blank', 'noopener,noreferrer')}
-            label={explorer.label}
-            secondary
-          />
-        ) : null}
-      </ButtonsOnBottom>
-    </>
+        <div>
+          <span>Status</span>
+          <strong>{status}</strong>
+        </div>
+        <div>
+          <span>When</span>
+          <strong>{selectedTx?.blockTime ? prettyDate(selectedTx.blockTime) : 'Not available yet'}</strong>
+        </div>
+        <div>
+          <span>Account</span>
+          <strong>{selectedTx?.account === 'savings' ? 'Savings' : 'Spending'}</strong>
+        </div>
+        <div>
+          <span>Network</span>
+          <strong>{vaultStatus?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'}</strong>
+        </div>
+      </section>
+      <p className='qg-copy'>
+        {selectedTx?.confirmed
+          ? 'This payment is confirmed.'
+          : 'This will update automatically after Bitcoin confirmation.'}
+      </p>
+    </QgScreen>
   )
 }

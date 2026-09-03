@@ -1,14 +1,48 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { QRCanvas, frameLoop, frontalCamera } from 'qr/dom.js'
 import QrScanner from 'qr-scanner'
-import Button from '../../components/Button'
-import ButtonsOnBottom from '../../components/ButtonsOnBottom'
+import { SlidersHorizontal } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
-import Padded from '../../components/Padded'
-import QrIcon from '../../icons/Qr'
 import { extractError } from '../../lib/error'
-import Content from './Content'
-import Header from './Header'
+import QgScreen, { QgSecondary } from './qg/QgScreen'
+
+function ScanFrame({
+  label,
+  error,
+  onClose,
+  onSwitch,
+  video,
+}: {
+  label: string
+  error: boolean
+  onClose: () => void
+  onSwitch: () => void
+  video: ReactNode
+}) {
+  return (
+    <QgScreen
+      variant='scan'
+      title={label}
+      back={onClose}
+      aux={<SlidersHorizontal />}
+      auxAriaLabel='Try another scanner'
+      auxOnClick={onSwitch}
+      footer={<QgSecondary onClick={onClose} label='Cancel' />}
+    >
+      <ErrorMessage error={error} text='Camera not available' />
+      <div id='video-wrapper' className='qg-camera'>
+        {video}
+        <div className='qg-scan-guide' aria-hidden>
+          <i />
+          <i />
+          <i />
+          <i />
+        </div>
+        <p>Place the QR code inside the frame</p>
+      </div>
+    </QgScreen>
+  )
+}
 
 interface ScannerProps {
   close: () => void
@@ -92,28 +126,13 @@ function ScannerMills({ close, label, onData, onError, onSwitch }: ScannerProps)
   }
 
   return (
-    <>
-      <Header
-        auxAriaLabel='Try another scanner'
-        auxFunc={switchScanner}
-        auxIcon={<QrIcon />}
-        text={label}
-        back={closeScanner}
-      />
-      <Content noRefresh className='vault-scanner-content'>
-        <Padded>
-          <ErrorMessage error={error} text='Camera not available' />
-          <div className='vault-scanner-stage'>
-            <video className='vault-scanner-video' ref={videoRef} />
-            <span className='vault-scanner-guide' aria-hidden />
-          </div>
-          <p className='vault-scanner-help'>Hold the QR code inside the frame.</p>
-        </Padded>
-      </Content>
-      <ButtonsOnBottom>
-        <Button onClick={closeScanner} label='Cancel' />
-      </ButtonsOnBottom>
-    </>
+    <ScanFrame
+      label={label}
+      error={error}
+      onClose={closeScanner}
+      onSwitch={switchScanner}
+      video={<video className='qg-scanner-video' ref={videoRef} />}
+    />
   )
 }
 
@@ -166,28 +185,13 @@ function ScannerQr({ calculateScanRegion, close, label, onData, onError, onSwitc
   }
 
   return (
-    <>
-      <Header
-        auxAriaLabel='Try another scanner'
-        auxFunc={switchScanner}
-        auxIcon={<QrIcon />}
-        text={label}
-        back={closeScanner}
-      />
-      <Content noRefresh className='vault-scanner-content'>
-        <Padded>
-          <ErrorMessage error={error} text='Camera not available' />
-          <div id='video-wrapper' className='vault-scanner-stage'>
-            <video id='qr-scanner' ref={videoRef} className='vault-scanner-video' />
-            <span className='vault-scanner-guide' aria-hidden />
-          </div>
-          <p className='vault-scanner-help'>Hold the QR code inside the frame.</p>
-        </Padded>
-      </Content>
-      <ButtonsOnBottom>
-        <Button onClick={closeScanner} label='Cancel' />
-      </ButtonsOnBottom>
-    </>
+    <ScanFrame
+      label={label}
+      error={error}
+      onClose={closeScanner}
+      onSwitch={switchScanner}
+      video={<video id='qr-scanner' ref={videoRef} className='qg-scanner-video' />}
+    />
   )
 }
 

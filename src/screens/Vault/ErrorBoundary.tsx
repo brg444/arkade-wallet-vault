@@ -1,10 +1,6 @@
 import { Component, type ReactNode } from 'react'
-import Button from '../../components/Button'
-import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import FlexRow from '../../components/FlexRow'
 import { createIncidentReference, recordVaultIncident } from '../../lib/logs'
-import Content from './Content'
-import Header from './Header'
+import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
 
 interface Props {
   children: ReactNode
@@ -32,25 +28,26 @@ export default class VaultErrorBoundary extends Component<Props, State> {
     if (!this.state.crashed) return this.props.children
     return (
       <div className='page vault-error-page' data-testid='vault-app'>
-        <Header text='Arkade Vault' />
-        <Content noRefresh className='vault-error-content'>
-          <div className='vault-error-layout'>
-            <div className='vault-error-copy'>
-              <p>Arkade Vault could not display this screen.</p>
-              <p className='vault-error-reference'>Incident reference: {this.state.incidentReference}</p>
+        <QgScreen
+          title='Can’t continue'
+          footer={
+            <>
+              <QgPrimary label='Reload' onClick={this.props.reload || (() => window.location.reload())} />
+              <QgSecondary label='Try again' onClick={() => this.setState({ crashed: false, incidentReference: '' })} />
+            </>
+          }
+        >
+          <p className='qg-eyebrow'>Something went wrong</p>
+          <h1>Arkade Vault could not display this screen.</h1>
+          <p className='qg-copy'>Nothing was sent. This device was not changed.</p>
+          <section className='qg-alert'>
+            <div>
+              <strong>Incident reference</strong>
+              <p>{this.state.incidentReference}</p>
             </div>
-          </div>
-        </Content>
-        <ButtonsOnBottom>
-          <FlexRow>
-            <Button
-              secondary
-              label='Try again'
-              onClick={() => this.setState({ crashed: false, incidentReference: '' })}
-            />
-            <Button label='Reload' onClick={this.props.reload || (() => window.location.reload())} />
-          </FlexRow>
-        </ButtonsOnBottom>
+          </section>
+          <p className='qg-copy'>Incident reference: {this.state.incidentReference}</p>
+        </QgScreen>
       </div>
     )
   }

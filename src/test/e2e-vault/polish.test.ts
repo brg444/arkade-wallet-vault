@@ -18,8 +18,8 @@ async function expectNoBlockingAxeViolations(page: Page) {
 
 test('@polish welcome is accessible and visually stable', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Spend freely. Recover safely.')).toBeVisible()
-  await expect(page.getByText('Mutinynet only. Don’t send real Bitcoin.')).toBeVisible()
+  await expect(page.getByText('Spend freely.')).toBeVisible()
+  await expect(page.getByText('Have your hardware public key and invite ready')).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('welcome.png', { animations: 'disabled', fullPage: true })
 
@@ -40,13 +40,13 @@ test('@polish welcome is accessible and visually stable', async ({ page }) => {
     { fixture: PROGRAM_FIXTURE, modulePath: ENROLLMENT_MODULE },
   )
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign in with your passkey' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('sign-in.png', { animations: 'disabled', fullPage: true })
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Set up a new vault' }).click()
+  await page.getByRole('button', { name: 'Get started' }).click()
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-how-it-works.png', { animations: 'disabled', fullPage: true })
@@ -67,7 +67,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   })
 
   await page.goto('/')
-  await page.getByRole('button', { name: 'Set up a new vault' }).click()
+  await page.getByRole('button', { name: 'Get started' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByRole('heading', { name: 'Hardware key' })).toBeVisible()
   const hardwarePub = page.getByTestId('hardware-pub')
@@ -91,7 +91,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
     fullPage: true,
   })
   await page.getByTestId('protection-standard').click()
-  await page.getByRole('button', { name: 'Use Standard' }).click()
+  await page.getByRole('button', { name: 'Continue with Standard' }).click()
 
   await expect(page.getByRole('heading', { name: 'Spending limits' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
@@ -99,19 +99,18 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
     animations: 'disabled',
     fullPage: true,
   })
-  await page.getByTestId('policy-preset-custom').click()
   await expect(page.getByTestId('policy-tx-cap')).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-spending-limits-custom.png', {
     animations: 'disabled',
     fullPage: true,
   })
-  await page.getByTestId('policy-preset-everyday').click()
   await page.getByRole('button', { name: 'Review setup' }).click()
 
   await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-review.png', { animations: 'disabled', fullPage: true })
+  await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await expect(page.getByRole('heading', { name: 'Secure this device' })).toBeVisible()

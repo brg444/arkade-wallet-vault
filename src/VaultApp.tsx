@@ -3,6 +3,7 @@ import { VaultContext } from './vault/context'
 import './screens/Vault/vault.css'
 import './screens/Vault/vault-system.css'
 import './screens/Vault/quiet-guardian-flows.css'
+import './screens/Vault/quiet-guardian-screens.css'
 import VaultHome from './screens/Vault/Home'
 import VaultReceive from './screens/Vault/Receive'
 import VaultReview from './screens/Vault/Review'
@@ -13,10 +14,15 @@ import VaultWelcome from './screens/Vault/Welcome'
 import VaultKeys from './screens/Vault/Keys'
 import VaultSettings from './screens/Vault/Settings'
 import VaultConditions from './screens/Vault/onboard/Conditions'
+import VaultCreated from './screens/Vault/onboard/Created'
+import VaultCreating from './screens/Vault/onboard/Creating'
 import VaultDesign from './screens/Vault/onboard/Design'
 import VaultHardware from './screens/Vault/onboard/Hardware'
+import VaultKit from './screens/Vault/onboard/Kit'
 import VaultPasskey from './screens/Vault/onboard/Passkey'
 import VaultPlan from './screens/Vault/onboard/Plan'
+import VaultProblem from './screens/Vault/onboard/Problem'
+import VaultReady from './screens/Vault/onboard/Ready'
 import VaultRecovery from './screens/Vault/onboard/Recovery'
 import VaultRecover from './screens/Vault/Recover'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
@@ -43,6 +49,11 @@ export default function VaultApp() {
     conditions: <VaultConditions />,
     plan: <VaultPlan />,
     passkey: <VaultPasskey />,
+    creating: <VaultCreating />,
+    created: <VaultCreated />,
+    kit: <VaultKit />,
+    ready: <VaultReady />,
+    problem: <VaultProblem />,
     home: <VaultHome />,
     receive: <VaultReceive />,
     send: <VaultSend />,
