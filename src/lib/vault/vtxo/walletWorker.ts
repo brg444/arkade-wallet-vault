@@ -563,6 +563,30 @@ export interface VaultWalletVtxoSnapshot {
   history: VaultHistoryItem[]
 }
 
+export interface VaultVtxoLifecycleFact {
+  txid: string
+  vout: number
+  valueSats: number
+  scriptHex: string
+  terminal: boolean
+}
+
+export async function fetchVaultWalletVtxoLifecycle(status: VaultStatus): Promise<VaultVtxoLifecycleFact[]> {
+  const current = await ensureVaultWalletWorker(status)
+  const manager = await current.wallet.getContractManager()
+  const script = String(status.spendingArkScript || '').toLowerCase()
+  const contracts = await manager.getContractsWithVtxos({ script })
+  return contracts.flatMap((contract) =>
+    contract.vtxos.map((vtxo) => ({
+      txid: vtxo.txid.toLowerCase(),
+      vout: vtxo.vout,
+      valueSats: vtxo.value,
+      scriptHex: vtxo.script.toLowerCase(),
+      terminal: hasTerminalSpend(vtxo),
+    })),
+  )
+}
+
 export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise<VaultWalletVtxoSnapshot> {
   const current = await ensureVaultWalletWorker(status)
   const manager = await current.wallet.getContractManager()

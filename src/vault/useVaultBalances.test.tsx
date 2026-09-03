@@ -8,6 +8,7 @@ import type { VaultStatus } from '../lib/vault/types'
 import { defaultSpendingPolicy, spendingPolicyDigest } from '../lib/vault/spendingPolicy'
 import {
   fetchVaultWalletVtxoSnapshot,
+  fetchVaultWalletVtxoLifecycle,
   reloadVaultWalletWorker,
   subscribeVaultWalletEvents,
 } from '../lib/vault/vtxo/walletWorker'
@@ -24,6 +25,7 @@ vi.mock('../lib/vault/vtxo/spend', () => ({
 }))
 vi.mock('../lib/vault/vtxo/walletWorker', () => ({
   fetchVaultWalletVtxoSnapshot: vi.fn(),
+  fetchVaultWalletVtxoLifecycle: vi.fn().mockResolvedValue([]),
   reloadVaultWalletWorker: vi.fn().mockResolvedValue(undefined),
   subscribeVaultWalletEvents: vi.fn().mockReturnValue(() => undefined),
 }))
@@ -66,6 +68,7 @@ const mockedStatus = vi.mocked(fetchVaultStatus)
 const mockedUtxos = vi.mocked(fetchAddressUtxos)
 const mockedTxs = vi.mocked(fetchAddressTxs)
 const mockedSnapshot = vi.mocked(fetchVaultWalletVtxoSnapshot)
+const mockedLifecycle = vi.mocked(fetchVaultWalletVtxoLifecycle)
 const mockedWorkerReload = vi.mocked(reloadVaultWalletWorker)
 const mockedWorkerEvents = vi.mocked(subscribeVaultWalletEvents)
 
@@ -108,6 +111,7 @@ beforeEach(() => {
   mockedUtxos.mockResolvedValue([])
   mockedTxs.mockResolvedValue([])
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
+  mockedLifecycle.mockResolvedValue([])
   mockedWorkerReload.mockResolvedValue(undefined)
   mockedWorkerEvents.mockReturnValue(() => undefined)
 })

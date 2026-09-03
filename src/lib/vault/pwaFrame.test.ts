@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyVaultFrameHeight, currentVaultFrameHeight } from './pwaFrame'
+import { applyVaultFrameHeight, bootVaultFrame, currentVaultFrameHeight } from './pwaFrame'
 
 describe('vault PWA frame', () => {
   afterEach(() => {
@@ -14,11 +14,11 @@ describe('vault PWA frame', () => {
     expect(currentVaultFrameHeight()).toBe(420)
   })
 
-  it('fills the physical screen when the keyboard is closed', () => {
+  it('uses the visual viewport when the keyboard is closed instead of the physical screen', () => {
     vi.stubGlobal('visualViewport', { height: 812, addEventListener() {}, removeEventListener() {} })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 })
     Object.defineProperty(window.screen, 'height', { configurable: true, value: 874 })
-    expect(currentVaultFrameHeight()).toBe(874)
+    expect(currentVaultFrameHeight()).toBe(812)
   })
 
   it('does not pin a desktop frame height', () => {
@@ -32,5 +32,38 @@ describe('vault PWA frame', () => {
     )
     applyVaultFrameHeight()
     expect(document.documentElement.style.getPropertyValue('--vault-frame-height')).toBe('')
+  })
+
+  it('coalesces keyboard viewport changes into one animation frame and cancels cleanup work', () => {
+    const listeners = new Map<string, EventListener>()
+    vi.stubGlobal('visualViewport', {
+      height: 420,
+      addEventListener(name: string, listener: EventListener) {
+        listeners.set(name, listener)
+      },
+      removeEventListener(name: string) {
+        listeners.delete(name)
+      },
+    })
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockReturnValue({ matches: true, addEventListener() {}, removeEventListener() {} }),
+    )
+    const callbacks = new Map<number, FrameRequestCallback>()
+    let nextFrame = 0
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      callbacks.set(++nextFrame, callback)
+      return nextFrame
+    })
+    const cancel = vi.fn((id: number) => callbacks.delete(id))
+    vi.stubGlobal('cancelAnimationFrame', cancel)
+
+    const dispose = bootVaultFrame()
+    listeners.get('resize')?.(new Event('resize'))
+    listeners.get('resize')?.(new Event('resize'))
+    expect(callbacks.size).toBe(1)
+    dispose()
+    expect(cancel).toHaveBeenCalledTimes(1)
+    expect(listeners.has('resize')).toBe(false)
   })
 })

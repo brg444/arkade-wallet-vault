@@ -24,6 +24,7 @@ import {
   createVtxoOperationId,
   createVtxoSpendUnlocker,
   createPhoneSignedPendingProof,
+  everyReservedInputIsTerminal,
   isVtxoLivePendingError,
   isVtxoReceiptPendingError,
   isVtxoReservedReplaceError,
@@ -1829,6 +1830,127 @@ describe('regular VTXO spend coordinator', () => {
     expect(
       vtxoJournalSendAction([signed, matchingReserved], matchingReserved.destAddress, matchingReserved.amountSats),
     ).toBe('live-pending')
+  })
+
+  it('requires exact terminal SDK facts for every reserved input', () => {
+    const pending = sdkReservedPending()
+    const facts = pending.reservedInputs!.map((input) => ({ ...input, terminal: true }))
+    expect(everyReservedInputIsTerminal(pending, facts)).toBe(true)
+    expect(everyReservedInputIsTerminal(pending, facts.slice(1))).toBe(false)
+    expect(
+      everyReservedInputIsTerminal(
+        pending,
+        facts.map((fact, index) => (index ? fact : { ...fact, valueSats: fact.valueSats + 1 })),
+      ),
+    ).toBe(false)
+    expect(
+      everyReservedInputIsTerminal(
+        pending,
+        facts.map((fact, index) => (index ? fact : { ...fact, terminal: false })),
+      ),
+    ).toBe(false)
+  })
+
+  it('reconciles every journal entry after restart and prunes only authoritatively terminal records', async () => {
+    const restoreLocks = installImmediateNavigatorLock()
+    clearPersistedVtxoSpend('vault-a')
+    const signed = {
+      ...sdkReservedPending(),
+      operationId: OP_1,
+      stage: 'authorized' as const,
+      operatorSubmitAttempted: true,
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    }
+    const reserved = { ...sdkReservedPending(), operationId: OP_2, stage: 'reserved' as const }
+    persistVtxoSpend(signed)
+    persistVtxoSpend(reserved)
+    const terminalFacts = signed.reservedInputs!.map((input) => ({ ...input, terminal: true }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: 'vtxo operation not found', code: 'NOT_FOUND' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    )
+    try {
+      await expect(reconcilePersistedVtxoSpend(status(), terminalFacts)).resolves.toEqual({ kind: 'idle' })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(listPersistedVtxoSpends('vault-a')).toEqual([])
+      expect(vtxoJournalSendAction(listPersistedVtxoSpends('vault-a'), destination(), 20_000)).toBe('start')
+    } finally {
+      fetchMock.mockRestore()
+      clearPersistedVtxoSpend('vault-a')
+      restoreLocks()
+    }
+  })
+
+  it('keeps a signed 404 operation across restart without complete exact terminal proof', async () => {
+    const restoreLocks = installImmediateNavigatorLock()
+    clearPersistedVtxoSpend('vault-a')
+    const signed = {
+      ...sdkReservedPending(),
+      stage: 'authorized' as const,
+      operatorSubmitAttempted: true,
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    }
+    persistVtxoSpend(signed)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'vtxo operation not found', code: 'NOT_FOUND' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    try {
+      await expect(reconcilePersistedVtxoSpend(status(), [])).resolves.toEqual({
+        kind: 'pending',
+        operationId: OP_1,
+        stage: 'authorized',
+      })
+      expect(loadPersistedVtxoSpendById('vault-a', OP_1)).toBeTruthy()
+      expect(vtxoJournalSendAction(listPersistedVtxoSpends('vault-a'), destination(), 20_000)).toBe('live-pending')
+    } finally {
+      fetchMock.mockRestore()
+      clearPersistedVtxoSpend('vault-a')
+      restoreLocks()
+    }
+  })
+
+  it('clears an unresolved server operation only after exact SDK terminal proof', async () => {
+    const restoreLocks = installImmediateNavigatorLock()
+    clearPersistedVtxoSpend('vault-a')
+    const signed = {
+      ...sdkReservedPending(),
+      stage: 'authorized' as const,
+      operatorSubmitAttempted: true,
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    }
+    persistVtxoSpend(signed)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...reviewedOperation(signed),
+          state: 'unresolved',
+          feeSats: signed.feeSats,
+          feePolicyDigest: signed.feePolicyDigest,
+          changeSats: signed.changeSats,
+          changeVout: signed.changeVout,
+          changeScript: fragmentedReserve().changeScript,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    const terminalFacts = signed.reservedInputs!.map((input) => ({ ...input, terminal: true }))
+    try {
+      await expect(reconcilePersistedVtxoSpend(status(), terminalFacts)).resolves.toEqual({ kind: 'idle' })
+      expect(loadPersistedVtxoSpendById('vault-a', OP_1)).toBeUndefined()
+    } finally {
+      fetchMock.mockRestore()
+      clearPersistedVtxoSpend('vault-a')
+      restoreLocks()
+    }
   })
 
   it('refuses a different-amount send without aborting a reserved operation or erasing a signed one', async () => {

@@ -10,6 +10,7 @@ import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import {
   fetchVaultWalletVtxoSnapshot,
+  fetchVaultWalletVtxoLifecycle,
   reloadVaultWalletWorker,
   subscribeVaultWalletEvents,
 } from '../lib/vault/vtxo/walletWorker'
@@ -225,7 +226,11 @@ export function useVaultBalances({
     const current = statusRef.current
     if (!current?.enrolled || !current.vaultId) return
     try {
-      const result = await reconcilePersistedVtxoSpend(current)
+      const lifecycleVtxos = await fetchVaultWalletVtxoLifecycle(current).catch((error) => {
+        consoleError(error, 'wallet VTXO lifecycle refresh')
+        return []
+      })
+      const result = await reconcilePersistedVtxoSpend(current, lifecycleVtxos)
       if (result.kind === 'receipt-finalized') await refreshBalance(current.vaultId)
     } catch (error) {
       consoleError(error, 'VTXO spend recovery')
