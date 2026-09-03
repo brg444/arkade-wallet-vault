@@ -2,6 +2,12 @@ import { useEffect, useRef, type PointerEvent, type ReactNode } from 'react'
 import BackIcon from '../../../icons/Back'
 import { hapticLight } from '../../../lib/haptics'
 
+function revealFocusedField(target: HTMLElement) {
+  if (typeof target.scrollIntoView === 'function') {
+    target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+}
+
 export function QgMark({ className = 'qg-mark' }: { className?: string }) {
   return (
     <span className={className} aria-hidden='true'>
@@ -181,7 +187,7 @@ export default function QgScreen({
         if (generation !== focusGenerationRef.current || document.activeElement !== target || !target.isConnected) {
           return
         }
-        target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        revealFocusedField(target)
       })
     }
     window.visualViewport?.addEventListener('resize', ensureFocusedFieldVisible)
@@ -353,7 +359,7 @@ export default function QgScreen({
             if (generation !== focusGenerationRef.current || document.activeElement !== target || !target.isConnected) {
               return
             }
-            target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+            revealFocusedField(target)
           })
         }}
         onBlur={() => {

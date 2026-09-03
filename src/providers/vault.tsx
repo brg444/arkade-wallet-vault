@@ -46,6 +46,7 @@ import {
   isVtxoReservedReplaceError,
   isVtxoReviewedReservationError,
   isVtxoSameSendInProgressError,
+  isSameVtxoPayment,
   isVtxoSpendInFlightError,
   loadPersistedVtxoSpend,
   loadPersistedVtxoSpendById,
@@ -651,6 +652,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     const source = account === 'savings' ? savingsAvailableSats : spendingAvailableSats
+    const persistedVtxo = account === 'spend' ? loadPersistedVtxoSpend(status.vaultId) : undefined
+    const resumingVtxo = Boolean(persistedVtxo && isSameVtxoPayment(persistedVtxo, spend.address, spend.amount))
     if (account !== 'savings') {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
@@ -658,7 +661,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     }
     const preliminaryTotal = account === 'savings' ? spend.amount + spend.fee : spend.amount
-    if (preliminaryTotal > source) {
+    if (preliminaryTotal > source && !resumingVtxo) {
       setError(account === 'savings' ? 'Not enough confirmed savings.' : 'Not enough confirmed spending funds.')
       return
     }

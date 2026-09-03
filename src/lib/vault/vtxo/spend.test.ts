@@ -1141,6 +1141,44 @@ describe('regular VTXO spend coordinator', () => {
     ).not.toThrow()
   })
 
+  it('resumes after reload when the Operator SDK normalized taptree metadata', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    const fixture = await authorizedPendingFixture()
+    persistVtxoSpend(fixture.pending)
+    const reloaded = loadPersistedVtxoSpend('vault-a')!
+    const normalizedCheckpoint = Transaction.fromPSBT(base64.decode(fixture.candidate.signedCheckpointTxs[0]))
+    const input = (
+      normalizedCheckpoint as unknown as {
+        inputs: { unknown?: [{ type: number; key: Uint8Array }, Uint8Array][] }[]
+      }
+    ).inputs[0]
+    const entry = input.unknown?.find(([key]) => key.type === 222 && hex.encode(key.key) === '74617074726565')
+    expect(entry).toBeTruthy()
+    const normalized = Uint8Array.from(entry![1])
+    for (let index = 0; index + 1 < normalized.length; index++) {
+      if (normalized[index] === 1 && normalized[index + 1] === 0xc0) normalized[index] = 2
+    }
+    entry![1] = normalized
+
+    const matched = matchPendingOperatorSubmission(
+      reloaded,
+      [
+        {
+          ...fixture.candidate,
+          signedCheckpointTxs: [
+            base64.encode(normalizedCheckpoint.toPSBT()),
+            ...fixture.candidate.signedCheckpointTxs.slice(1),
+          ],
+        },
+      ],
+      fixture.current,
+      fixture.operatorPub,
+    )
+
+    expect(matched.arkTxid).toBe(fixture.pending.arkTxid)
+    clearPersistedVtxoSpend('vault-a')
+  })
+
   it('binds pending lookup to the exact checkpoints and requires phone plus VaultCosigner', async () => {
     const fixture = await authorizedPendingFixture()
     expect(

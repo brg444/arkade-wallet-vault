@@ -10,6 +10,7 @@ import {
 } from '../../lib/vault/lightningConfig'
 import { decodeVaultLightningInvoice } from '../../lib/vault/lightningInvoice'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
+import { isSameVtxoPayment, loadPersistedVtxoSpend } from '../../lib/vault/vtxo/spend'
 import { VaultContext } from '../../vault/context'
 import Scanner from './Scanner'
 import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
@@ -74,12 +75,15 @@ export default function VaultSend() {
   const used = Math.max(0, setup.dailyLimitSats - availableSpend)
   const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
   const available = fromSavings ? positions.savings.availableSats : availableSpend
+  const pendingSend = !fromSavings && status?.vaultId ? loadPersistedVtxoSpend(status.vaultId) : undefined
+  const resumingPayment = Boolean(pendingSend && isSameVtxoPayment(pendingSend, spend.address, spend.amount))
+  const reservedSats = pendingSend?.reservedInputs?.reduce((total, input) => total + input.valueSats, 0)
   const amountError =
     spend.amount <= 0
       ? ''
       : spend.amount < 330
         ? 'The smallest send is 330 sats.'
-        : spend.amount > available
+        : spend.amount > available && !resumingPayment
           ? fromSavings
             ? 'That is more than Savings can move now.'
             : 'That is more than you can send now.'
@@ -159,12 +163,16 @@ export default function VaultSend() {
             loading={busy}
             label={
               busy
-                ? 'Confirming fee…'
+                ? resumingPayment
+                  ? 'Resuming…'
+                  : 'Confirming fee…'
                 : movingToSpending
                   ? 'Review move'
                   : fromSavings
                     ? 'Review send'
-                    : 'Review payment'
+                    : resumingPayment
+                      ? 'Resume payment'
+                      : 'Review payment'
             }
           />
         </>
@@ -221,8 +229,12 @@ export default function VaultSend() {
       ) : (
         <section className='qg-capacity' aria-label='Spending capacity'>
           <div>
-            <span>Available</span>
-            <strong>{prettyNumber(positions.spending.availableSats, 0)} sats</strong>
+            <span>{resumingPayment ? 'Payment in progress' : 'Available'}</span>
+            <strong>
+              {resumingPayment
+                ? `${prettyNumber(reservedSats || pendingSend?.amountSats || spend.amount, 0)} sats reserved`
+                : `${prettyNumber(positions.spending.availableSats, 0)} sats`}
+            </strong>
           </div>
           <div>
             <span>Rolling 24-hour limit</span>

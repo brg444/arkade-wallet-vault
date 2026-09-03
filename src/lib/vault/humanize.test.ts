@@ -54,16 +54,16 @@ describe('humanizeVaultError', () => {
 
   it('explains an exact-amount send that is still in progress', () => {
     expect(humanizeVaultError(new Error('A send of this exact amount to this address is still in progress.'))).toMatch(
-      /exact amount.*wait for it to finish/i,
+      /reserved.*resume payment/i,
     )
   })
 
   it('keeps active-operation, unsafe-abort, and lookup failures specific', () => {
     expect(humanizeVaultError(new Error('A send is already with the operator and cannot be cancelled.'))).toMatch(
-      /cannot be cancelled.*wait for it to finish/i,
+      /cannot be cancelled.*resume payment/i,
     )
     expect(humanizeVaultError(new Error('vtxo operation already active'))).toMatch(
-      /already in progress.*cannot be cancelled/i,
+      /with the operator.*cannot be cancelled/i,
     )
     expect(humanizeVaultError(new Error('The reserved send could not be aborted.'))).toMatch(/could not be aborted/i)
     expect(
