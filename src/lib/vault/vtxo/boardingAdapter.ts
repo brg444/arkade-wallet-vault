@@ -8,6 +8,7 @@ import {
 } from '../cosignerClient'
 import { hexToBytes } from '../hex'
 import type { BoardingDescriptor } from '../types'
+import { waitForVaultSettlementStream } from './settlementEventSource'
 
 function exactRecipient(recipient: Recipient): BoardingRecipientWire {
   if (
@@ -75,6 +76,7 @@ export function createBoardingSigningAdapter(vaultId: string, descriptor: Boardi
   if (publicKey.length !== 32 || hex.encode(publicKey) !== descriptor.vaultBoardCosignerPub.slice(2)) {
     throw new Error('vault-board-v1 cosigner key is invalid')
   }
+  let preparedStream: { handle: string; topic: string } | undefined
   return {
     publicKey,
     async prepareRegistration(request) {
@@ -85,13 +87,22 @@ export function createBoardingSigningAdapter(vaultId: string, descriptor: Boardi
       if (!/^[0-9a-f]{64}$/.test(input.txid) || !Number.isSafeInteger(input.vout) || input.vout < 0) {
         throw new Error('vault-board-v1 outpoint is invalid')
       }
-      return vaultCosignerClient.boarding.prepare({
+      const prepared = await vaultCosignerClient.boarding.prepare({
         vaultId,
         inputs: [{ txid: input.txid, vout: input.vout }],
         recipients: [exactRecipient(request.recipients[0])],
       })
+      preparedStream =
+        prepared.status === 'ready' && prepared.handle
+          ? { handle: prepared.handle, topic: `${input.txid}:${input.vout}` }
+          : undefined
+      return prepared
     },
-    registerIntent(request) {
+    async registerIntent(request) {
+      if (!preparedStream || preparedStream.handle !== request.handle) {
+        throw new Error('vault-board-v1 registration is not bound to the prepared outpoint')
+      }
+      await waitForVaultSettlementStream(preparedStream.topic)
       return vaultCosignerClient.boarding.register({
         handle: request.handle,
         psbt: request.psbt,

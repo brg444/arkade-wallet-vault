@@ -18,6 +18,7 @@ import {
   BOARDING_PROGRAM,
 } from './lib/vault/vtxo/board'
 import { createBoardingSigningAdapter } from './lib/vault/vtxo/boardingAdapter'
+import { installVaultSettlementEventSource } from './lib/vault/vtxo/settlementEventSource'
 import {
   vaultWalletIntentDatabaseForNamespace,
   vaultWalletUpdaterTagForNamespace,
@@ -29,6 +30,7 @@ declare const self: ServiceWorkerGlobalScope
 
 const namespace = new URL(self.location.href).searchParams.get('vault') || ''
 
+installVaultSettlementEventSource()
 registerVaultPolicyV1ContractHandler()
 
 const walletRepository = new IndexedDBWalletRepository(vaultWalletDatabaseForNamespace(namespace))

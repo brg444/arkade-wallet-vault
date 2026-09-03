@@ -1,11 +1,16 @@
 import {
+  ArkAddress,
+  Estimator,
   IndexedDBContractRepository,
   IndexedDBWalletRepository,
   ReadonlySingleKey,
+  RestArkProvider,
   RestIndexerProvider,
   ServiceWorkerWallet,
   hasTerminalSpend,
+  type ExtendedCoin,
   type IContractManager,
+  type SettleParams,
 } from '@arkade-os/sdk'
 import {
   IndexedDbAssetSwapRepository,
@@ -458,21 +463,52 @@ export async function reloadVaultWalletWorker(status: VaultStatus) {
 }
 
 export interface VaultBoardingSettlementRuntime {
-  wallet: Pick<ServiceWorkerWallet, 'settle'>
   listeners: Set<() => void>
   boardingSettle?: Promise<void>
 }
 
 /**
- * Starts one page-owned boarding request. The worker message remains pending
- * for the full Operator batch, so MessageBus can attach the settlement to the
+ * Builds the one-input named boarding request with the stock Operator's exact
+ * public fee policy. Spending VTXOs are deliberately excluded.
+ */
+export async function vaultBoardingSettleParams(
+  boardingUtxos: ExtendedCoin[],
+  spendingAddress: string,
+  provider: Pick<RestArkProvider, 'getInfo'> = new RestArkProvider(vaultArkServer()),
+): Promise<SettleParams | undefined> {
+  const confirmed = boardingUtxos
+    .filter((candidate) => candidate.status.confirmed)
+    .sort((a, b) => a.txid.localeCompare(b.txid) || a.vout - b.vout)
+  if (confirmed.length === 0) return undefined
+
+  const { fees, vtxoMaxAmount } = await provider.getInfo()
+  const estimator = new Estimator(fees.intentFee)
+  const outputScript = hex.encode(ArkAddress.decode(spendingAddress).pkScript)
+  for (const input of confirmed) {
+    if (!Number.isSafeInteger(input.value) || input.value <= 0) continue
+    const inputFee = estimator.evalOnchainInput({ amount: BigInt(input.value) })
+    if (inputFee.satoshis >= input.value) continue
+
+    let amount = BigInt(input.value - inputFee.satoshis)
+    amount -= BigInt(estimator.evalOffchainOutput({ amount, script: outputScript }).satoshis)
+    if (amount <= 0n || (vtxoMaxAmount >= 0n && amount > vtxoMaxAmount)) continue
+    return { inputs: [input], outputs: [{ address: spendingAddress, amount }] }
+  }
+  throw new Error('vault-board-v1 has no economical confirmed input within the Operator limit')
+}
+
+/**
+ * Starts one page-owned boarding request. Its worker message remains pending
+ * for the full Operator batch, so MessageBus attaches the settlement to the
  * service worker event's waitUntil lifetime.
  */
-export function scheduleVaultBoardingSettlement(current: VaultBoardingSettlementRuntime): Promise<void> {
+export function scheduleVaultBoardingSettlement(
+  current: VaultBoardingSettlementRuntime,
+  settle: () => Promise<string>,
+): Promise<void> {
   if (current.boardingSettle) return current.boardingSettle
   let tracked: Promise<void>
-  tracked = current.wallet
-    .settle()
+  tracked = settle()
     .then(() => {
       current.listeners.forEach((listener) => listener())
     })
@@ -516,7 +552,11 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
     current.wallet.getBalance(),
   ])
   if (balance.boarding.confirmed > 0) {
-    void scheduleVaultBoardingSettlement(current)
+    void scheduleVaultBoardingSettlement(current, async () => {
+      const params = await vaultBoardingSettleParams(boardingUtxos, String(status.spendingArkAddress || ''))
+      if (!params) throw new Error('No inputs found')
+      return current.wallet.settle(params)
+    })
   }
   const lightningRfqIds = new Set(
     swapRecords.filter((record) => record.kind === 'lightning_send').map((record) => record.rfqId),
