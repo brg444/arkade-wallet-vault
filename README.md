@@ -1,60 +1,33 @@
 # Arkade Vault Wallet
 
+A passkey-first Arkade wallet that separates everyday spending from
+hardware-protected savings.
+
 > [!WARNING]
-> This release candidate runs only on Mutinynet. Real-fund use is out of scope.
-> Mainnet activation requires reviewed network, Emulator, and Vault Program
-> pins described below.
+> The public release candidate runs on **Mutinynet only**. Do not use real
+> funds. Mainnet activation remains gated by the qualification work described
+> below.
 
-Arkade Vault Wallet separates funds into two programs:
+[Open the Mutinynet release candidate](https://arkade-vault-mutinynet-rc.vercel.app)
+· [Read the documentation](docs/README.md)
+· [View the Vault service](https://github.com/brg444/arkade-vault-server)
 
-- Spending holds VTXOs governed by `vault-policy-v1`. The device, Vault
-  service, and Arkade Operator collaborate on ordinary sends, while the service
-  enforces the rolling allowance.
-- Savings is the L1 `arkade-vault/savings-v1` program. Ordinary Savings
-  transfers require the device and an external hardware signature. Optional
-  recovery can start a delayed path but cannot spend Savings immediately.
+## What it does
 
-Spending receive presents one BIP21 request containing an Arkade address and a
-Bitcoin boarding address. Arkade-aware payments arrive as VTXOs. Confirmed
-onchain payments enter the vault's enrolled boarding program, then the official
-SDK settles them into Spending. Savings-to-Spending uses that same path. The
-only supported boarding program is `vault-board-v1`, documented in
-[docs/boarding.md](docs/boarding.md).
+- **Spending** holds Arkade VTXOs for fast payments. The device, Vault service,
+  and Arkade Operator collaborate on sends while the service enforces the
+  enrolled per-payment and rolling 24-hour limits.
+- **Savings** holds bitcoin in the L1 `arkade-vault/savings-v1` program.
+  Ordinary transfers require both this device and an external hardware signer.
+- **Recovery** gives Advanced vaults delayed, cancellable recovery paths and a
+  portable Recovery Kit without placing private keys in the browser.
+- **Unified receive** provides one BIP21 request containing both an Arkade
+  address and a Bitcoin boarding address.
 
-The browser never receives the VaultCosigner key. Hardware and recovery
-private keys are not accepted by production screens; those workflows exchange
-PSBTs with an external signer.
+Enrollment requires an invitation from the Vault service operator. It freezes
+the selected protection tier and spending policy before the passkey is created.
 
-Enrollment freezes a protection tier and one fixed `vault-policy-v1` policy
-before passkey creation. Standard has no recovery key; Advanced requires one
-and exposes only the delayed recovery paths already implemented by the Vault
-Program. Spending offers Lower exposure (25,000 sats per payment and 50,000
-sats per rolling 24 hours), Everyday (50,000 and 100,000), or custom values for
-those two limits. The authenticated fee ceilings remain release-managed at
-5,000 sats and 10 sat/vB. The complete descriptor, tier, and canonical policy
-digest are pinned locally and in Recovery Kit version 3.
-
-## Components
-
-| Component                                                            | Responsibility                                                                                                          |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| This wallet                                                          | Enrollment, transaction construction, device authorization, external PSBT handoff, Operator coordination, and recovery. |
-| [Arkade Vault Server](https://github.com/brg444/arkade-vault-server) | Immutable Vault Program records, rolling allowance, VaultCosigner policy, and transaction verification.                 |
-| Arkade Operator                                                      | VTXO index, batch coordination, and the release-pinned Operator signatures.                                             |
-
-The browser calls the Vault service and Arkade Operator through same-origin
-routes. Enrollment requires an invitation created by the service operator.
-See [the documentation index](docs/README.md) for the program and release
-boundaries.
-
-VTXO state follows the official Arkade Wallet worker architecture. One scoped
-worker owns the official SDK Wallet, Contract Manager, repositories, and a
-boarding key provisioned only after the existing PRF unlock succeeds. The page
-never receives that key or owns a parallel settlement lifecycle. Exact upstream
-revisions and intentional Vault adapters are recorded in
-[docs/upstream-alignment.md](docs/upstream-alignment.md).
-
-## Wallet screenshots
+## Wallet
 
 ### Home
 
@@ -101,12 +74,52 @@ revisions and intentional Vault adapters are recorded in
   </tr>
 </table>
 
-The documentation images are high-density Pixel 7 captures generated from the
-current source against deterministic wallet states.
+These high-density Pixel 7 captures are generated from the current source
+against deterministic wallet states. Run the `@docs` Playwright test to refresh
+them.
+
+## Programs and policy
+
+Spending uses `vault-policy-v1`. The available presets are Lower exposure
+(25,000 sats per payment and 50,000 sats per rolling 24 hours), Everyday
+(50,000 and 100,000), or custom values for both limits. Authenticated fee
+ceilings are release-managed at 5,000 sats and 10 sat/vB.
+
+Standard protection has no recovery key. Advanced protection requires one and
+exposes only the delayed recovery paths implemented by the Vault Program. The
+complete descriptor, tier, and canonical policy digest are pinned locally and
+in Recovery Kit version 3.
+
+Confirmed Bitcoin payments enter the enrolled `vault-board-v1` program before
+the official SDK settles them into Spending. Savings-to-Spending uses the same
+path. See [VTXO boarding](docs/boarding.md) and the
+[Vault Program specification](docs/program.md).
+
+## Security model
+
+The browser never receives the VaultCosigner key. Production screens do not
+accept hardware or recovery private keys; those workflows exchange PSBTs with
+an external signer.
+
+One scoped worker owns the official SDK Wallet, Contract Manager, repositories,
+and the boarding key provisioned after PRF unlock. The page does not receive
+that key or run a parallel settlement lifecycle. Exact upstream revisions and
+intentional adapters are recorded in
+[upstream alignment](docs/upstream-alignment.md).
+
+| Component                                                            | Responsibility                                                                                                          |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| This wallet                                                          | Enrollment, transaction construction, device authorization, external PSBT handoff, Operator coordination, and recovery. |
+| [Arkade Vault Server](https://github.com/brg444/arkade-vault-server) | Immutable Vault Program records, rolling allowance, VaultCosigner policy, and transaction verification.                 |
+| Arkade Operator                                                      | VTXO index, batch coordination, and release-pinned Operator signatures.                                                 |
+
+The browser reaches the Vault service and Arkade Operator through same-origin
+routes. Security guarantees, trust boundaries, and excluded claims are detailed
+in [the security documentation](docs/security.md).
 
 ## Local development
 
-Use Node.js and pnpm:
+Requires Node.js 20.19+ (or 22.12+) and pnpm:
 
 ```bash
 pnpm install
@@ -116,16 +129,15 @@ pnpm start
 The development server listens on
 [http://localhost:3003](http://localhost:3003).
 
-When the local Vault service has a gateway secret, pass the same value only to
-the Vite process:
+When a local Vault service uses a gateway secret, pass the value only to Vite:
 
 ```bash
 VAULT_GATEWAY_SECRET=<local-gateway-secret> pnpm start
 ```
 
-The development proxy adds the private header to `/v1` requests. Never expose
-this value through a `VITE_` variable; variables with that prefix are compiled
-into browser code.
+The development proxy adds the private header to `/v1` requests. Never use a
+`VITE_` variable for this secret; Vite compiles those variables into browser
+code.
 
 Run the release checks with:
 
@@ -136,35 +148,39 @@ pnpm format:check
 pnpm build
 ```
 
-## Mainnet candidate build
+End-to-end and release qualification procedures are documented in
+[docs/testing.md](docs/testing.md).
 
-Mainnet uses a separate Vercel project and must not replace the Mutinynet
-deployment. Build it with `pnpm build:mainnet` and deploy with
-`vercel --local-config vercel.mainnet.json`. Configure a fresh mainnet
-authorizer through `AUTHORIZER_ORIGIN` and `AUTHORIZER_GATEWAY_SECRET`, set
-`VAULT_RELEASE_NETWORK=mainnet`, and provide `UPSTASH_REDIS_REST_URL` plus
-`UPSTASH_REDIS_REST_TOKEN` for the shared durable gateway limit. The bundle,
-gateway, and service each reject a mismatched network. Lightning remains
-disabled because no mainnet solver profile is bundled.
+## Mainnet candidate
 
-Do not reuse the Mutinynet Vercel project, hostname, WebAuthn RP ID, secrets,
-vault records, database, or policy-sequence state.
+Mainnet must use a separate Vercel project and must not replace the Mutinynet
+deployment. Build with `pnpm build:mainnet` and deploy using
+`vercel --local-config vercel.mainnet.json`.
+
+The mainnet environment requires a fresh authorizer through `AUTHORIZER_ORIGIN`
+and `AUTHORIZER_GATEWAY_SECRET`, `VAULT_RELEASE_NETWORK=mainnet`, and
+`UPSTASH_REDIS_REST_URL` plus `UPSTASH_REDIS_REST_TOKEN` for shared durable rate
+limiting. The bundle, gateway, and service reject mismatched networks.
+Lightning remains disabled because no mainnet solver profile is bundled.
+
+Do not reuse the Mutinynet hostname, WebAuthn RP ID, secrets, vault records,
+database, policy-sequence state, or Vercel project.
 
 ## Release status
 
-The application contains only Arkade Vault workflows. Ordinary VTXO Spending
-supports fragmented inputs, exact no-change sends, the Operator's bounded
-intent fee policy, and recovery after an ambiguous Operator submission through
-the official SDK pending-transaction interface. Mainnet activation remains blocked on
-live lifecycle qualification, browser concurrency tests, production key
-isolation, and audited infrastructure provisioning. The confirmed mainnet Emulator
-endpoint advertises the same signer already pinned by the official SDK, but it
-has not yet passed Vault release qualification. Vault Program and policy
-schema bounds require a separate mainnet release review. A disabled outbound
-BOLT11 lifecycle delegates RFQ, VHTLC, persistence, restart, and refund handling
-to the published swap package, then funds through the ordinary VTXO send path.
-Its solver, refund, expiry, and live-payment gates are recorded in
-[docs/lightning.md](docs/lightning.md). The complete release gate is in
+Ordinary VTXO Spending supports fragmented inputs, exact no-change sends, the
+Operator's bounded intent-fee policy, and recovery after ambiguous Operator
+submission through the official SDK pending-transaction interface.
+
+Mainnet activation remains blocked on live lifecycle qualification, browser
+concurrency testing, production key isolation, and audited infrastructure
+provisioning. The confirmed mainnet Emulator advertises the signer pinned by
+the official SDK, but has not passed Vault release qualification. Vault Program
+and policy-schema bounds also require a separate mainnet review.
+
+Outbound BOLT11 support remains disabled. Its solver, refund, expiry, and
+live-payment gates are recorded in [docs/lightning.md](docs/lightning.md). The
+complete activation gate is in
 [docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
