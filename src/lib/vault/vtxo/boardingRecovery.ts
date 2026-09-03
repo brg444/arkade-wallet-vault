@@ -16,7 +16,8 @@ import type { VaultStatus } from '../types'
 import { unlockPhoneBip340 } from '../savingsSpend'
 import { withVaultWalletState } from './walletWorker'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
-import { MUTINYNET_OPERATOR_SIGNER_PUB, requireBoardingStatus, BOARDING_EXIT_DELAY, BOARDING_PROGRAM } from './board'
+import { networkPins } from '../networkPins'
+import { requireBoardingStatus, BOARDING_PROGRAM } from './board'
 
 type RecoveryDependencies = {
   getBoardingUtxos?: (status: VaultStatus) => Promise<ExtendedCoin[]>
@@ -36,8 +37,9 @@ function exactProgram(status: VaultStatus) {
     cosignerPubKey: hex.decode(descriptor.vaultBoardCosignerPub).slice(1),
     recoveryPubKey: hex.decode(descriptor.recoveryPhonePub).slice(1),
   } as const
-  const operatorPubKey = hex.decode(MUTINYNET_OPERATOR_SIGNER_PUB).slice(1)
-  const boardingTimelock = { type: 'seconds' as const, value: BigInt(BOARDING_EXIT_DELAY) }
+  const pins = networkPins(status.network)
+  const operatorPubKey = hex.decode(pins.operatorSignerPub).slice(1)
+  const boardingTimelock = { type: 'seconds' as const, value: BigInt(pins.boardExitDelay) }
   const encoded = createBoardingProgramScript(program, operatorPubKey, boardingTimelock).encode()
   return { descriptor, program, operatorPubKey, boardingTimelock, encoded }
 }
@@ -90,9 +92,10 @@ export async function recoverMatureBoardingInputs(
         const { descriptor, program, operatorPubKey, boardingTimelock } = exactProgram(status)
         phoneSecret = await (dependencies.unlockPhone || unlockPhoneBip340)(enrollment, status)
         const recoveryIdentity = SingleKey.fromPrivateKey(phoneSecret)
-        const destination = p2tr(await recoveryIdentity.xOnlyPublicKey(), undefined, getNetwork('mutinynet')).address
+        const chain = getNetwork(networkPins(status.network).sdkNetwork)
+        const destination = p2tr(await recoveryIdentity.xOnlyPublicKey(), undefined, chain).address
         if (!destination) throw new Error('Could not derive the boarding recovery destination')
-        if (destination !== p2tr(program.recoveryPubKey, undefined, getNetwork('mutinynet')).address) {
+        if (destination !== p2tr(program.recoveryPubKey, undefined, chain).address) {
           throw new Error('Recovered phone key does not match the vault-board-v1 descriptor')
         }
         const txid = await (dependencies.recover || recoverBoardingProgram)({
