@@ -66,11 +66,21 @@ describe('vault history', () => {
         txid: 'vault-send',
         type: 'sent',
         amount: 12_000,
-        confirmed: false,
+        confirmed: true,
         blockTime: 1_700_000_000,
         account: 'spend',
       },
     ])
+  })
+
+  it('does not put spendable Arkade VTXO payments in Pending', () => {
+    const vault = sdkTx('vault-receive', TxType.TxReceived, 12_000, false)
+    const rows = historyFromSdkActivities(
+      [{ id: 'vault-receive', txs: [vault], amount: 12_000, createdAt: vault.createdAt, settled: false }],
+      { vaultTxids: new Set(['vault-receive']), lightningRfqIds: new Set() },
+    )
+    expect(rows[0]?.confirmed).toBe(true)
+    expect(groupVaultHistory(rows, 1_700_000_000)[0].label).toBe('Today')
   })
 
   it('uses a settled SDK boarding activity in the v2 dated feed', () => {
