@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
@@ -95,6 +95,23 @@ describe('Vault navigation', () => {
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeTruthy()
   })
+
+  it('moves vertically without opening and restores its saved position', () => {
+    renderNav()
+    const tab = screen.getByRole('button', { name: 'Open navigation' })
+
+    dragTabVertically(tab, 220, 420)
+
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
+    const saved = Number(window.localStorage.getItem('vault-launcher-position'))
+    expect(saved).toBeGreaterThan(0)
+
+    cleanup()
+    renderNav()
+    expect(screen.getByRole('button', { name: 'Open navigation' }).parentElement).toHaveStyle({
+      '--qg-launcher-position': `${saved * 100}dvh`,
+    })
+  })
 })
 
 function pullTab(tab: HTMLElement, distance: number) {
@@ -104,6 +121,14 @@ function pullTab(tab: HTMLElement, distance: number) {
     tab.dispatchEvent(pointer('pointerdown', startX, y))
     tab.dispatchEvent(pointer('pointermove', startX - distance, y))
     tab.dispatchEvent(pointer('pointerup', startX - distance, y))
+  })
+}
+
+function dragTabVertically(tab: HTMLElement, startY: number, endY: number) {
+  act(() => {
+    tab.dispatchEvent(pointer('pointerdown', 390, startY))
+    tab.dispatchEvent(pointer('pointermove', 390, endY))
+    tab.dispatchEvent(pointer('pointerup', 390, endY))
   })
 }
 
