@@ -39,7 +39,7 @@ export function buildSavingsPsbt(input: {
   if (!pin) throw new Error('deposit address is not pinned locally')
   requireStatusMatchesPin(input.status, pin)
   if (pin.savingsAddress !== input.status.savingsAddress) throw new Error('savings address pin mismatch')
-  if (!Number.isInteger(input.amountSats) || input.amountSats < DUST_SATS) throw new Error('at least 330 ₿SATS')
+  if (!Number.isInteger(input.amountSats) || input.amountSats < DUST_SATS) throw new Error('at least ₿330')
   if (!Number.isInteger(input.feeSats) || input.feeSats < 0) throw new Error('fee required')
   const total = input.amountSats + input.feeSats
   if (input.coins.length === 0) throw new Error('confirmed Savings coins required')
@@ -58,7 +58,7 @@ export function buildSavingsPsbt(input: {
   }
   if (!Number.isSafeInteger(inputValue) || inputValue < total) throw new Error('not enough confirmed Savings')
   const change = inputValue - total
-  if (change > 0 && change < DUST_SATS) throw new Error('leave 330 ₿SATS of change, or send the rest')
+  if (change > 0 && change < DUST_SATS) throw new Error('leave ₿330 of change, or send the rest')
 
   const stored = loadLocalKit(input.status.vaultId)
   if (!stored) throw new Error('Savings needs the Recovery Kit saved on this device')

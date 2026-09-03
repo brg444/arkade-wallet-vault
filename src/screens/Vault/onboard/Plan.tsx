@@ -41,11 +41,11 @@ export default function VaultPlan() {
         </div>
         <div>
           <span>Per payment</span>
-          <strong>{prettyNumber(setup.txCapSats, 0)} ₿SATS</strong>
+          <strong>₿{prettyNumber(setup.txCapSats, 0)}</strong>
         </div>
         <div>
           <span>Rolling 24 hours</span>
-          <strong>{prettyNumber(setup.dailyLimitSats, 0)} ₿SATS</strong>
+          <strong>₿{prettyNumber(setup.dailyLimitSats, 0)}</strong>
         </div>
         <div>
           <span>Vault design</span>

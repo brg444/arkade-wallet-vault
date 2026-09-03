@@ -640,7 +640,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     if (!Number.isInteger(spend.amount) || spend.amount < DUST_SATS) {
-      setError('At least 330 ₿SATS.')
+      setError('At least ₿330.')
       return
     }
     const arkDestination = isVaultArkAddress(spend.address, destNetwork)
@@ -667,7 +667,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       return
     }
     if (account === 'savings' && spend.amount + spend.fee < source && source - (spend.amount + spend.fee) < DUST_SATS) {
-      setError('Leave 330 ₿SATS of change, or send the rest.')
+      setError('Leave ₿330 of change, or send the rest.')
       return
     }
     if (account !== 'savings') {

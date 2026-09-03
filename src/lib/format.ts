@@ -28,7 +28,7 @@ export const prettyAgo = (timestamp: number | string, long = false): string => {
 
 export const prettyAmount = (sats: number, suffix?: string, decimals = 2): string => {
   if (suffix) return `${prettyNumber(sats, decimals)} ${suffix}`
-  return `${prettyNumber(sats, 0)} ₿SATS`
+  return `₿${prettyNumber(sats, 0)}`
 }
 
 export const prettyFiatAmount = (amount: number, currency: Fiats): string => {
@@ -77,9 +77,10 @@ const hideDots = (value: string | number): string => {
   return '·'.repeat(length)
 }
 
-export const prettyHide = (value: string | number, suffix = '₿SATS'): string => {
+export const prettyHide = (value: string | number, suffix?: string): string => {
   if (!value) return ''
   const dots = hideDots(value)
+  if (suffix === undefined) return `₿${dots}`
   return suffix ? `${dots} ${suffix}` : dots
 }
 

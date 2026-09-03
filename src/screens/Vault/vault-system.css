@@ -1985,7 +1985,7 @@ html.palette-dark [data-testid='vault-app'] {
 }
 
 .vault-send-form > div:first-child .shadow-surface::after {
-  content: '₿SATS';
+  content: '₿';
   flex: 0 0 auto;
   color: var(--vault-ink);
   font-size: 0.8125rem;

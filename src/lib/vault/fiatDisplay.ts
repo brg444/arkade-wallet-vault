@@ -27,8 +27,8 @@ export function homeBalanceDisplay(
     const amount = prettyFiatAmount(usdFromSats(sats, rate.pricePerBtc), rate.currency)
     return { amount, unit: '', label: amount }
   }
-  const amount = prettyNumber(sats)
-  return { amount, unit: '₿SATS', label: `${amount} ₿SATS` }
+  const amount = `₿${prettyNumber(sats)}`
+  return { amount, unit: '', label: amount }
 }
 
 export function approximateFiatLabel(sats: number, rate?: VaultFiatDisplayRate | null): string {
