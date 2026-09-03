@@ -1,6 +1,6 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultNavigation from './Navigation'
 
@@ -38,17 +38,6 @@ function renderNav(overrides: Partial<VaultContextProps> = {}) {
 }
 
 describe('Vault navigation', () => {
-  beforeEach(() => window.localStorage.clear())
-
-  it('starts at the original safe-area anchored position', () => {
-    renderNav()
-    expect(
-      screen
-        .getByRole('button', { name: 'Open navigation' })
-        .parentElement?.style.getPropertyValue('--qg-launcher-position'),
-    ).toBe('')
-  })
-
   it('opens a Home launcher and navigates without a tab bar', async () => {
     const user = userEvent.setup()
     const value = renderNav()
@@ -106,24 +95,6 @@ describe('Vault navigation', () => {
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeTruthy()
   })
-
-  it('moves vertically without opening and restores its saved position', () => {
-    renderNav()
-    const tab = screen.getByRole('button', { name: 'Open navigation' })
-
-    dragTabVertically(tab, 220, 420)
-
-    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
-    const saved = Number(window.localStorage.getItem('vault-launcher-position-v3'))
-    expect(saved).toBeGreaterThan(0)
-    expect(tab.parentElement).toHaveStyle({ '--qg-launcher-position': `${saved * 100}dvh` })
-
-    cleanup()
-    renderNav()
-    expect(screen.getByRole('button', { name: 'Open navigation' }).parentElement).toHaveStyle({
-      '--qg-launcher-position': `${saved * 100}dvh`,
-    })
-  })
 })
 
 function pullTab(tab: HTMLElement, distance: number) {
@@ -133,14 +104,6 @@ function pullTab(tab: HTMLElement, distance: number) {
     tab.dispatchEvent(pointer('pointerdown', startX, y))
     tab.dispatchEvent(pointer('pointermove', startX - distance, y))
     tab.dispatchEvent(pointer('pointerup', startX - distance, y))
-  })
-}
-
-function dragTabVertically(tab: HTMLElement, startY: number, endY: number) {
-  act(() => {
-    tab.dispatchEvent(pointer('pointerdown', 390, startY))
-    tab.dispatchEvent(pointer('pointermove', 390, endY))
-    tab.dispatchEvent(pointer('pointerup', 390, endY))
   })
 }
 

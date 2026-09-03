@@ -2155,18 +2155,10 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-launcher {
-  --qg-launcher-default-top: calc(
-    100dvh - 72px - max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))))
-  );
-
   position: fixed;
   z-index: 120;
   right: 0;
-  top: clamp(
-    calc(56px + env(safe-area-inset-top, 0px)),
-    var(--qg-launcher-position, var(--qg-launcher-default-top)),
-    calc(100dvh - 100px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
-  );
+  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
   pointer-events: none;
 }
 
@@ -2177,6 +2169,7 @@ body:has(.vault-screen-unlock) {
   left: 0;
 }
 
+.qg-launcher .qg-launcher-trigger,
 .qg-launcher .qg-launcher-close {
   display: grid;
   width: 46px;
@@ -2193,48 +2186,12 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-launcher-trigger {
-  display: grid;
-  width: 72px;
-  height: 96px;
-  padding: 0 12px 0 0;
-  place-items: center end;
-  border: 0;
-  background: transparent;
-  color: var(--qg-ink);
   position: fixed;
   right: 0;
-  top: calc(
-    clamp(
-        calc(56px + env(safe-area-inset-top, 0px)),
-        var(--qg-launcher-position, var(--qg-launcher-default-top)),
-        calc(100dvh - 100px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
-      ) -
-      12px
-  );
+  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
   z-index: 122;
-  pointer-events: auto;
   touch-action: none;
   user-select: none;
-  will-change: top;
-  cursor: pointer;
-}
-
-.qg-launcher-trigger::before {
-  position: absolute;
-  top: 12px;
-  right: 0;
-  width: 46px;
-  height: 72px;
-  border: 1px solid var(--qg-line);
-  border-right: 0;
-  border-radius: 18px 0 0 18px;
-  background: var(--qg-paper);
-  box-shadow: -10px 0 22px -18px rgb(20 18 15 / 55%);
-  content: '';
-}
-
-.qg-launcher-trigger.is-dragging {
-  cursor: grabbing;
 }
 
 .qg-launcher-trigger.is-intro {
@@ -2257,8 +2214,6 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-launcher-mark {
-  position: relative;
-  z-index: 1;
   display: grid;
   width: 22px;
   height: 22px;
@@ -2316,22 +2271,10 @@ body:has(.vault-screen-unlock) {
 .qg-launcher-stack {
   position: absolute;
   right: 0;
-  top: clamp(
-    calc(16px + env(safe-area-inset-top, 0px)),
-    calc(var(--qg-launcher-position, var(--qg-launcher-default-top)) - 168px),
-    calc(100dvh - 364px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
-  );
+  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
   display: grid;
   justify-items: end;
   gap: 14px;
-}
-
-.qg-launcher.is-upper .qg-launcher-stack {
-  top: clamp(
-    calc(140px + env(safe-area-inset-top, 0px)),
-    calc(var(--qg-launcher-position) + 84px),
-    calc(100dvh - 364px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
-  );
 }
 
 .qg-launcher-item {

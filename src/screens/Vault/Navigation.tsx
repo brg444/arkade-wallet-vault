@@ -2,7 +2,7 @@ import { Landmark, Settings, Shield, Wallet, X } from 'lucide-react'
 import HollowPixelMark from '../../icons/HollowPixelMark'
 import { prettyNumber } from '../../lib/format'
 import { hapticLight, hapticSubtle } from '../../lib/haptics'
-import { useContext, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { VaultContext, type VaultAccount, type VaultScreen } from '../../vault/context'
 
 export type VaultDestination = 'wallet' | 'security' | 'settings'
@@ -25,29 +25,12 @@ const ACCOUNTS: { id: VaultAccount; label: string; testId: string; icon: ReactNo
 const LOCK = 8
 const OPEN_DISTANCE = 52
 const PEEK = 96
-const LAUNCHER_POSITION_KEY = 'vault-launcher-position-v3'
-const TRIGGER_HEIGHT = 72
-
-function readLauncherPosition(): number | null {
-  try {
-    const value = window.localStorage.getItem(LAUNCHER_POSITION_KEY)
-    if (value === null) return null
-    const stored = Number(value)
-    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : null
-  } catch {
-    return null
-  }
-}
 
 export default function VaultNavigation() {
   const { account, balancesLoaded, navigate, positions, setAccount } = useContext(VaultContext)
   const [open, setOpen] = useState(false)
   const [intro, setIntro] = useState(true)
   const [pull, setPull] = useState(0)
-  const [launcherPosition, setLauncherPosition] = useState(readLauncherPosition)
-  const launcherPositionRef = useRef(launcherPosition)
-  const launcherRef = useRef<HTMLDivElement>(null)
-  const positionFrame = useRef<number | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const restoreTriggerFocus = useRef(false)
   const drag = useRef({
@@ -55,7 +38,7 @@ export default function VaultNavigation() {
     startY: 0,
     dx: 0,
     active: false,
-    axis: null as 'horizontal' | 'vertical' | null,
+    locked: false,
     suppressClick: false,
   })
 
@@ -64,13 +47,6 @@ export default function VaultNavigation() {
     restoreTriggerFocus.current = false
     triggerRef.current?.focus()
   }, [open])
-
-  useEffect(
-    () => () => {
-      if (positionFrame.current !== null) window.cancelAnimationFrame(positionFrame.current)
-    },
-    [],
-  )
 
   useEffect(() => {
     if (!open) return
@@ -110,12 +86,7 @@ export default function VaultNavigation() {
   }
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    try {
-      event.currentTarget.setPointerCapture?.(event.pointerId)
-    } catch {
-      // Older WebKit builds can reject capture while a pointer is becoming active.
-    }
+    if (event.button) return
     setIntro(false)
     hapticLight()
     drag.current = {
@@ -123,7 +94,7 @@ export default function VaultNavigation() {
       startY: event.clientY,
       dx: 0,
       active: true,
-      axis: null,
+      locked: false,
       suppressClick: false,
     }
   }
@@ -132,60 +103,27 @@ export default function VaultNavigation() {
     if (!drag.current.active) return
     const dx = event.clientX - drag.current.startX
     const dy = event.clientY - drag.current.startY
-    if (!drag.current.axis) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) <= LOCK) return
-      if (Math.abs(dy) > Math.abs(dx)) {
-        drag.current.axis = 'vertical'
-      } else if (dx < 0) {
-        drag.current.axis = 'horizontal'
-      } else {
+    if (!drag.current.locked) {
+      if (Math.abs(dy) > LOCK && Math.abs(dy) > Math.abs(dx)) {
         drag.current.active = false
+        setPull(0)
         return
       }
+      if (dx > -LOCK) return
+      drag.current.locked = true
       drag.current.suppressClick = true
-      event.currentTarget.classList.add('is-dragging')
-    }
-
-    if (drag.current.axis === 'vertical') {
-      event.preventDefault()
-      const nextPosition = Math.min(1, Math.max(0, event.clientY - TRIGGER_HEIGHT / 2) / window.innerHeight)
-      launcherPositionRef.current = nextPosition
-      launcherRef.current?.classList.toggle('is-upper', nextPosition < 0.5)
-      if (positionFrame.current === null) {
-        positionFrame.current = window.requestAnimationFrame(() => {
-          launcherRef.current?.style.setProperty(
-            '--qg-launcher-position',
-            `${(launcherPositionRef.current ?? nextPosition) * 100}dvh`,
-          )
-          positionFrame.current = null
-        })
-      }
-      return
+      event.currentTarget.setPointerCapture?.(event.pointerId)
     }
     const travel = Math.max(0, -dx)
     drag.current.dx = -travel
     setPull(Math.min(1, travel / PEEK))
   }
 
-  const onPointerUp = (event: PointerEvent<HTMLButtonElement>) => {
+  const onPointerUp = () => {
     if (!drag.current.active) return
-    const axis = drag.current.axis
-    const opened = axis === 'horizontal' && -drag.current.dx >= OPEN_DISTANCE
+    const opened = drag.current.locked && -drag.current.dx >= OPEN_DISTANCE
     drag.current.active = false
-    drag.current.axis = null
-    event.currentTarget.classList.remove('is-dragging')
-    if (axis === 'vertical') {
-      if (positionFrame.current !== null) {
-        window.cancelAnimationFrame(positionFrame.current)
-        positionFrame.current = null
-      }
-      setLauncherPosition(launcherPositionRef.current)
-      try {
-        window.localStorage.setItem(LAUNCHER_POSITION_KEY, String(launcherPositionRef.current))
-      } catch {
-        // Position persistence is optional when storage is unavailable.
-      }
-    }
+    drag.current.locked = false
     if (opened) {
       openLauncher()
       return
@@ -195,16 +133,6 @@ export default function VaultNavigation() {
 
   const progress = open ? 1 : pull
   const peeking = !open && pull > 0
-  const positionStyle = (
-    launcherPosition === null ? undefined : { '--qg-launcher-position': `${launcherPosition * 100}dvh` }
-  ) as CSSProperties | undefined
-  const launcherClassName = [
-    'qg-launcher',
-    open ? 'is-open' : peeking ? 'is-peeking' : '',
-    launcherPosition !== null && launcherPosition < 0.5 ? 'is-upper' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
 
   const stack = (
     <nav
@@ -271,7 +199,7 @@ export default function VaultNavigation() {
   )
 
   return (
-    <div ref={launcherRef} className={launcherClassName} style={positionStyle}>
+    <div className={open ? 'qg-launcher is-open' : peeking ? 'qg-launcher is-peeking' : 'qg-launcher'}>
       {open || peeking ? (
         <div
           className='qg-launcher-backdrop'
@@ -304,7 +232,6 @@ export default function VaultNavigation() {
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
-          onLostPointerCapture={onPointerUp}
           onClick={(event) => {
             if (drag.current.suppressClick) {
               event.preventDefault()
