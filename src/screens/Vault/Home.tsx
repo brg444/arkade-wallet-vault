@@ -141,7 +141,7 @@ export default function VaultHome() {
             </button>
             <button
               type='button'
-              aria-label={spending ? 'Receive to Spending' : 'Add to Savings'}
+              aria-label={spending ? 'Receive to Spending' : 'Deposit'}
               data-testid='account-receive'
               onClick={() => navigate('receive')}
             >
@@ -183,7 +183,7 @@ export default function VaultHome() {
           >
             <span>
               <ArrowUpRight />
-              <b>{spending ? 'Send' : 'Move to Spending'}</b>
+              <b>{spending ? 'Send' : 'Spending'}</b>
             </span>
           </button>
           <button
@@ -195,7 +195,7 @@ export default function VaultHome() {
           >
             <span>
               <ArrowDownLeft />
-              <b>{spending ? 'Receive' : 'Add to Savings'}</b>
+              <b>{spending ? 'Receive' : 'Deposit'}</b>
             </span>
           </button>
         </div>
