@@ -3,6 +3,7 @@ import { hex } from '@scure/base'
 
 const encoder = new TextEncoder()
 export const VTXO_RESERVE_TAG = 'arkade-vault/vtxo-reserve/v1'
+export const VTXO_ABORT_TAG = 'arkade-vault/vtxo-abort/v1'
 const VTXO_RESERVE_VERSION = 1
 const VTXO_RESERVE_PURPOSE = 'spend'
 
@@ -79,4 +80,31 @@ export function verifyVtxoReserveSignature(
 ): boolean {
   if (!/^[0-9a-f]{128}$/.test(phoneSignature) || phonePub.length !== 32) return false
   return schnorr.verify(hex.decode(phoneSignature), vtxoReserveDigest(input), phonePub)
+}
+
+export interface VtxoAbortDigestInput {
+  operationId: string
+  vaultId: string
+}
+
+export function vtxoAbortDigest(input: VtxoAbortDigestInput): Uint8Array {
+  const vaultId = encoder.encode(input.vaultId)
+  if (vaultId.length === 0) throw new Error('vault id required')
+  const payload = concat(
+    uint32LE(VTXO_RESERVE_VERSION),
+    field(operationBytes(input.operationId)),
+    field(vaultId),
+    field(encoder.encode(VTXO_RESERVE_PURPOSE)),
+  )
+  return schnorr.utils.taggedHash(VTXO_ABORT_TAG, payload)
+}
+
+export function signVtxoAbortDigest(
+  input: VtxoAbortDigestInput,
+  phoneSecret: Uint8Array,
+  auxRand?: Uint8Array,
+): Uint8Array {
+  if (phoneSecret.length !== 32) throw new Error('phone private key must be 32 bytes')
+  if (auxRand && auxRand.length !== 32) throw new Error('BIP340 auxiliary randomness must be 32 bytes')
+  return schnorr.sign(vtxoAbortDigest(input), phoneSecret, auxRand)
 }

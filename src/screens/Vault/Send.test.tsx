@@ -9,6 +9,8 @@ vi.mock('../../lib/haptics', () => ({
   hapticSubtle: vi.fn(),
 }))
 
+vi.mock('../../lib/vault/update', () => ({ reloadIfNewerWallet: () => Promise.resolve(false) }))
+
 vi.mock('./Scanner', () => ({
   default: ({ close, label }: { close: () => void; label: string }) => (
     <div>
@@ -80,14 +82,15 @@ describe('Vault send scanner origin', () => {
     expect(screen.getByLabelText('To')).toHaveValue('')
   })
 
-  it('offers Send anyway when an exact in-progress send can be replaced', () => {
+  it('offers abort for a reserved send and never a localStorage-only Send anyway', () => {
     const value = renderSend({
       canReplaceInFlightSend: true,
-      error: 'A send of this exact amount to this address is still in progress.',
+      error: 'A reserved send is still open. Abort it before sending a different amount.',
       replaceInFlightSend: vi.fn(),
       spend: { address: 'tark1same', amount: 20_000, fee: 0 },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Send anyway' }))
+    expect(screen.queryByRole('button', { name: 'Send anyway' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Abort reserved send' }))
     expect(value.replaceInFlightSend).toHaveBeenCalled()
   })
 })

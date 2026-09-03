@@ -27,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   getLightningStatus: vi.fn(),
   loadHandoff: vi.fn(),
   lightningEnabled: vi.fn(),
+  unlockSpend: vi.fn(async () => ({
+    assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+    phoneSecret: new Uint8Array(32).fill(7),
+    scalar: new Uint8Array(32).fill(8),
+  })),
 }))
 
 vi.mock('../lib/vault/status', async (importOriginal) => {
@@ -51,11 +56,7 @@ vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => {
     }),
     newVtxoSpendChallenge: () => 'aa'.repeat(32),
     createVtxoSpendUnlocker: () => ({
-      unlock: async () => ({
-        assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
-        phoneSecret: new Uint8Array(32).fill(7),
-        scalar: new Uint8Array(32).fill(8),
-      }),
+      unlock: mocks.unlockSpend,
       dispose: () => undefined,
     }),
   }
@@ -232,6 +233,12 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
     mocks.sdkWallet.mockImplementation(async (_secret, _status, run) => run({ repository: {} }))
     mocks.unlock.mockResolvedValue(new Uint8Array(32).fill(7))
+    mocks.unlockSpend.mockClear()
+    mocks.unlockSpend.mockResolvedValue({
+      assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+      phoneSecret: new Uint8Array(32).fill(7),
+      scalar: new Uint8Array(32).fill(8),
+    })
     mocks.beginLightningFunding.mockResolvedValue({
       rfqId: '44'.repeat(32),
       address: destination,
@@ -274,6 +281,30 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
     expect(screen.getByTestId('screen')).toHaveTextContent('send')
     expect(screen.getByTestId('destination')).toHaveTextContent('')
+  })
+
+  it('reviews a VTXO send with zero Face ID calls and unlocks once on Approve', async () => {
+    mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 0, operationId: reviewed.operationId })
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
+    expect(mocks.unlock).not.toHaveBeenCalled()
+    expect(mocks.unlockSpend).not.toHaveBeenCalled()
+    expect(mocks.reserve).not.toHaveBeenCalled()
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
+    expect(mocks.unlockSpend).toHaveBeenCalledTimes(1)
+    expect(mocks.unlock).not.toHaveBeenCalled()
+    expect(mocks.reserve).toHaveBeenCalledTimes(1)
   })
 
   it('clears a stale review and returns to Send without reporting success', async () => {

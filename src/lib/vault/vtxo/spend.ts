@@ -33,7 +33,12 @@ import type { VaultStatus } from '../types'
 import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
-import { signVtxoReserveDigest, verifyVtxoReserveSignature, type VtxoReserveDigestInput } from './reserveAuth'
+import {
+  signVtxoAbortDigest,
+  signVtxoReserveDigest,
+  verifyVtxoReserveSignature,
+  type VtxoReserveDigestInput,
+} from './reserveAuth'
 import { submitExactVaultSdkOperation, type VaultSdkOperationValidation } from './sdkOperationAdapter'
 import {
   VAULT_POLICY_V1_EXIT_DELAY,
@@ -133,6 +138,33 @@ export class VtxoSameSendInProgressError extends Error {
   }
 }
 
+export class VtxoReservedReplaceError extends Error {
+  readonly operationId: string
+
+  constructor(operationId: string) {
+    super('A reserved send is still open. Abort it before sending a different amount.')
+    this.name = 'VtxoReservedReplaceError'
+    this.operationId = operationId
+  }
+}
+
+export class VtxoLivePendingError extends Error {
+  readonly operationIds: string[]
+
+  constructor(operationIds: string[]) {
+    super('A send is already with the operator and cannot be cancelled.')
+    this.name = 'VtxoLivePendingError'
+    this.operationIds = operationIds
+  }
+}
+
+export class VtxoAbortFailedError extends Error {
+  constructor(message = 'The reserved send could not be aborted.') {
+    super(message)
+    this.name = 'VtxoAbortFailedError'
+  }
+}
+
 export function isVtxoReceiptPendingError(err: unknown): err is VtxoReceiptPendingError {
   return err instanceof VtxoReceiptPendingError
 }
@@ -151,6 +183,18 @@ export function isVtxoReviewedReservationError(err: unknown): err is VtxoReviewe
 
 export function isVtxoSameSendInProgressError(err: unknown): err is VtxoSameSendInProgressError {
   return err instanceof VtxoSameSendInProgressError
+}
+
+export function isVtxoReservedReplaceError(err: unknown): err is VtxoReservedReplaceError {
+  return err instanceof VtxoReservedReplaceError
+}
+
+export function isVtxoLivePendingError(err: unknown): err is VtxoLivePendingError {
+  return err instanceof VtxoLivePendingError
+}
+
+export function isVtxoAbortFailedError(err: unknown): err is VtxoAbortFailedError {
+  return err instanceof VtxoAbortFailedError
 }
 
 export type PersistedVtxoSpendStage =
@@ -192,6 +236,12 @@ export interface PersistedVtxoSpend {
 export function vtxoSpendStorageKey(vaultId: string): string {
   return `arkade-vault-vtxo-spend:${vaultId}`
 }
+
+export function vtxoSpendJournalKey(vaultId: string): string {
+  return `arkade-vault-vtxo-spend-journal:${vaultId}`
+}
+
+const MAX_VTXO_SPEND_JOURNAL = 32
 
 function persistedReservationFactsAreValid(record: Partial<PersistedVtxoSpend>): boolean {
   if (record.stage === 'pre-reserve') return true
@@ -242,29 +292,70 @@ function persistedReservationFactsAreValid(record: Partial<PersistedVtxoSpend>):
   return inputTotal === record.amountSats! + record.feeSats! + record.changeSats!
 }
 
-export function loadPersistedVtxoSpend(vaultId: string): PersistedVtxoSpend | undefined {
-  if (typeof localStorage === 'undefined' || !vaultId) return undefined
-  try {
-    const parsed = JSON.parse(
-      localStorage.getItem(vtxoSpendStorageKey(vaultId)) || 'null',
-    ) as Partial<PersistedVtxoSpend>
-    if (
-      parsed &&
-      parsed.vaultId === vaultId &&
-      isVtxoOperationId(parsed.operationId) &&
-      parsed.stage &&
-      parsed.destAddress &&
-      typeof parsed.amountSats === 'number' &&
-      (parsed.reservePhoneSignature === undefined || /^[0-9a-f]{128}$/.test(parsed.reservePhoneSignature)) &&
-      persistedReservationFactsAreValid(parsed) &&
-      (parsed.stage === 'pre-reserve' || (parsed.bundleDigest && (parsed.stage === 'reserved' || parsed.arkTxid)))
-    ) {
-      return parsed as PersistedVtxoSpend
-    }
-  } catch {
-    return undefined
+function parsePersistedVtxoSpend(
+  vaultId: string,
+  parsed: Partial<PersistedVtxoSpend> | null,
+): PersistedVtxoSpend | undefined {
+  if (
+    parsed &&
+    parsed.vaultId === vaultId &&
+    isVtxoOperationId(parsed.operationId) &&
+    parsed.stage &&
+    parsed.destAddress &&
+    typeof parsed.amountSats === 'number' &&
+    (parsed.reservePhoneSignature === undefined || /^[0-9a-f]{128}$/.test(parsed.reservePhoneSignature)) &&
+    persistedReservationFactsAreValid(parsed) &&
+    (parsed.stage === 'pre-reserve' || (parsed.bundleDigest && (parsed.stage === 'reserved' || parsed.arkTxid)))
+  ) {
+    return parsed as PersistedVtxoSpend
   }
   return undefined
+}
+
+function readVtxoSpendJournal(vaultId: string): PersistedVtxoSpend[] {
+  if (typeof localStorage === 'undefined' || !vaultId) return []
+  try {
+    const parsed = JSON.parse(localStorage.getItem(vtxoSpendJournalKey(vaultId)) || 'null') as {
+      version?: number
+      operations?: Partial<PersistedVtxoSpend>[]
+    } | null
+    if (parsed?.version === 1 && Array.isArray(parsed.operations)) {
+      return parsed.operations
+        .map((record) => parsePersistedVtxoSpend(vaultId, record))
+        .filter((record): record is PersistedVtxoSpend => Boolean(record))
+        .slice(0, MAX_VTXO_SPEND_JOURNAL)
+    }
+  } catch {
+    // Fall through to the retired one-slot key.
+  }
+  try {
+    const legacy = parsePersistedVtxoSpend(
+      vaultId,
+      JSON.parse(localStorage.getItem(vtxoSpendStorageKey(vaultId)) || 'null') as Partial<PersistedVtxoSpend>,
+    )
+    return legacy ? [legacy] : []
+  } catch {
+    return []
+  }
+}
+
+function writeVtxoSpendJournal(vaultId: string, operations: PersistedVtxoSpend[]) {
+  if (typeof localStorage === 'undefined' || !vaultId) return
+  localStorage.setItem(vtxoSpendJournalKey(vaultId), JSON.stringify({ version: 1, operations }))
+  localStorage.removeItem(vtxoSpendStorageKey(vaultId))
+}
+
+export function listPersistedVtxoSpends(vaultId: string): PersistedVtxoSpend[] {
+  return readVtxoSpendJournal(vaultId)
+}
+
+export function loadPersistedVtxoSpend(vaultId: string): PersistedVtxoSpend | undefined {
+  const operations = readVtxoSpendJournal(vaultId)
+  return operations[operations.length - 1]
+}
+
+export function loadPersistedVtxoSpendById(vaultId: string, operationId: string): PersistedVtxoSpend | undefined {
+  return readVtxoSpendJournal(vaultId).find((record) => record.operationId === operationId)
 }
 
 export function isVtxoOperationId(value: unknown): value is string {
@@ -317,12 +408,27 @@ export function vtxoReserveRequest(pending: PersistedVtxoSpend, status: VaultSta
 
 export function persistVtxoSpend(record: PersistedVtxoSpend) {
   if (typeof localStorage === 'undefined') return
-  localStorage.setItem(vtxoSpendStorageKey(record.vaultId), JSON.stringify(record))
+  const operations = readVtxoSpendJournal(record.vaultId)
+  const index = operations.findIndex((candidate) => candidate.operationId === record.operationId)
+  if (index >= 0) operations.splice(index, 1)
+  else if (operations.length >= MAX_VTXO_SPEND_JOURNAL) {
+    throw new VtxoLivePendingError(operations.map((candidate) => candidate.operationId))
+  }
+  operations.push(record)
+  writeVtxoSpendJournal(record.vaultId, operations)
 }
 
-export function clearPersistedVtxoSpend(vaultId: string) {
+export function clearPersistedVtxoSpend(vaultId: string, operationId?: string) {
   if (typeof localStorage === 'undefined' || !vaultId) return
-  localStorage.removeItem(vtxoSpendStorageKey(vaultId))
+  if (!operationId) {
+    localStorage.removeItem(vtxoSpendJournalKey(vaultId))
+    localStorage.removeItem(vtxoSpendStorageKey(vaultId))
+    return
+  }
+  writeVtxoSpendJournal(
+    vaultId,
+    readVtxoSpendJournal(vaultId).filter((record) => record.operationId !== operationId),
+  )
 }
 
 function requireHex(value: string | undefined, bytes: number, name: string): Uint8Array<ArrayBuffer> {
@@ -1164,7 +1270,21 @@ export function isSameVtxoPayment(pending: PersistedVtxoSpend, destAddress: stri
   return pending.destAddress === destAddress.trim() && pending.amountSats === amountSats
 }
 
-export type VtxoNewSendAction = 'start' | 'resume' | 'replace' | 'warn'
+export type VtxoNewSendAction = 'start' | 'resume' | 'abort-reserved' | 'warn' | 'live-pending'
+
+export function vtxoSpendIsAbortable(pending: PersistedVtxoSpend): boolean {
+  return pending.stage === 'pre-reserve' || pending.stage === 'reserved'
+}
+
+export function vtxoSpendIsLivePending(pending: PersistedVtxoSpend): boolean {
+  return (
+    pending.operatorSubmitAttempted === true ||
+    pending.stage === 'authorized' ||
+    pending.stage === 'operator-submitted' ||
+    pending.stage === 'checkpoints-authorized' ||
+    pending.stage === 'operator-finalized'
+  )
+}
 
 export function vtxoNewSendAction(
   pending: PersistedVtxoSpend | undefined,
@@ -1172,16 +1292,34 @@ export function vtxoNewSendAction(
   amountSats: number,
 ): VtxoNewSendAction {
   if (!pending) return 'start'
-  if (!isSameVtxoPayment(pending, destAddress, amountSats)) return 'replace'
-  if (
-    pending.operatorSubmitAttempted ||
-    pending.stage === 'operator-submitted' ||
-    pending.stage === 'checkpoints-authorized' ||
-    pending.stage === 'operator-finalized'
-  ) {
-    return 'warn'
+  if (isSameVtxoPayment(pending, destAddress, amountSats)) {
+    if (
+      pending.operatorSubmitAttempted ||
+      pending.stage === 'operator-submitted' ||
+      pending.stage === 'checkpoints-authorized' ||
+      pending.stage === 'operator-finalized'
+    ) {
+      return 'warn'
+    }
+    return 'resume'
   }
-  return 'resume'
+  if (vtxoSpendIsAbortable(pending)) return 'abort-reserved'
+  return 'live-pending'
+}
+
+export function vtxoJournalSendAction(
+  operations: readonly PersistedVtxoSpend[],
+  destAddress: string,
+  amountSats: number,
+): VtxoNewSendAction {
+  const matching = operations.find((record) => isSameVtxoPayment(record, destAddress, amountSats))
+  if (operations.some((record) => record.operationId !== matching?.operationId && vtxoSpendIsLivePending(record))) {
+    return 'live-pending'
+  }
+  if (matching) return vtxoNewSendAction(matching, destAddress, amountSats)
+  if (operations.some(vtxoSpendIsLivePending)) return 'live-pending'
+  if (operations.some(vtxoSpendIsAbortable)) return 'abort-reserved'
+  return operations.length ? vtxoNewSendAction(operations[operations.length - 1], destAddress, amountSats) : 'start'
 }
 
 export async function withVtxoSendLock<T>(
@@ -1253,7 +1391,7 @@ export function applyVtxoOperationView(
   if (view.operationId !== pending.operationId) throw new Error('VTXO operation id mismatch')
   if (pending.stage === 'pre-reserve') {
     if (view.state === 'aborted') {
-      clearPersistedVtxoSpend(pending.vaultId)
+      clearPersistedVtxoSpend(pending.vaultId, pending.operationId)
       return undefined
     }
     if (view.state === 'reserved') return pending
@@ -1266,7 +1404,7 @@ export function applyVtxoOperationView(
   const arkTxid = view.arkTxid || pending.arkTxid
   switch (view.state) {
     case 'aborted':
-      clearPersistedVtxoSpend(pending.vaultId)
+      clearPersistedVtxoSpend(pending.vaultId, pending.operationId)
       return undefined
     case 'unresolved':
       persistVtxoSpend({ ...pending, arkTxid })
@@ -1458,6 +1596,38 @@ export function requireReviewedVtxoReservation(
   return pending
 }
 
+export async function abortPersistedVtxoSpend(
+  pending: PersistedVtxoSpend,
+  status: VaultStatus,
+  phoneSecret?: Uint8Array,
+): Promise<void> {
+  if (!vtxoSpendIsAbortable(pending)) {
+    throw new VtxoLivePendingError([pending.operationId])
+  }
+  if (pending.stage === 'pre-reserve') {
+    clearPersistedVtxoSpend(pending.vaultId, pending.operationId)
+    return
+  }
+  if (!phoneSecret) throw new VtxoAbortFailedError('The reserved send could not be aborted.')
+  try {
+    const result = await vaultCosignerClient.spending.abort({
+      vaultId: pending.vaultId,
+      operationId: pending.operationId,
+      purpose: 'spend',
+      phoneSignature: hex.encode(
+        signVtxoAbortDigest({ operationId: pending.operationId, vaultId: pending.vaultId }, phoneSecret),
+      ),
+    })
+    if (result.operationId !== pending.operationId || result.state !== 'aborted') {
+      throw new VtxoAbortFailedError()
+    }
+  } catch (err) {
+    if (isVtxoAbortFailedError(err) || isVtxoLivePendingError(err)) throw err
+    throw new VtxoAbortFailedError(err instanceof Error ? err.message : 'The reserved send could not be aborted.')
+  }
+  clearPersistedVtxoSpend(pending.vaultId, pending.operationId)
+}
+
 async function prepareVtxoSpendLocked(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
@@ -1466,17 +1636,29 @@ async function prepareVtxoSpendLocked(
   replaceExisting = false,
   phoneSecret?: Uint8Array,
 ): Promise<PersistedVtxoSpend> {
-  let pending = loadPersistedVtxoSpend(status.vaultId)
-  if (pending) pending = await syncPersistedSpendWithOperation(pending)
-  const action = vtxoNewSendAction(pending, destAddress, amountSats)
-  if (pending && action === 'warn' && !replaceExisting) {
-    throw new VtxoSameSendInProgressError(pending)
+  const operations = listPersistedVtxoSpends(status.vaultId)
+  const synced: PersistedVtxoSpend[] = []
+  for (const record of operations) {
+    const next = await syncPersistedSpendWithOperation(record)
+    if (next) synced.push(next)
   }
-  if (pending && (action === 'replace' || replaceExisting)) {
-    clearPersistedVtxoSpend(status.vaultId)
-    pending = undefined
+  const matching = synced.find((record) => isSameVtxoPayment(record, destAddress, amountSats))
+  const action = vtxoJournalSendAction(synced, destAddress, amountSats)
+  if (action === 'warn' && matching && !replaceExisting) throw new VtxoSameSendInProgressError(matching)
+  if (action === 'live-pending') {
+    throw new VtxoLivePendingError(synced.filter(vtxoSpendIsLivePending).map((record) => record.operationId))
   }
-  if (!pending) pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
+  if (action === 'abort-reserved' && !replaceExisting) {
+    throw new VtxoReservedReplaceError(synced.find(vtxoSpendIsAbortable)?.operationId || '')
+  }
+  if (action === 'abort-reserved' && replaceExisting) {
+    for (const record of synced.filter(vtxoSpendIsAbortable)) {
+      await abortPersistedVtxoSpend(record, status, phoneSecret)
+    }
+  }
+  let pending =
+    matching && action === 'resume' ? matching : loadPersistedVtxoSpendById(status.vaultId, matching?.operationId || '')
+  if (action === 'abort-reserved' || !pending) pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
   if (pending.stage === 'pre-reserve') {
     pending = await reservePersistedVtxoSpend(enrollment, status, pending, phoneSecret)
   }
@@ -1492,9 +1674,16 @@ export async function previewVaultVtxoSend(
   requireMutinynetStatus(status)
   if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
   vtxoDestinationScript(status, destAddress)
-  const pending = loadPersistedVtxoSpend(status.vaultId)
-  const action = vtxoNewSendAction(pending, destAddress, amountSats)
-  if (pending && action === 'warn' && !options?.replaceExisting) throw new VtxoSameSendInProgressError(pending)
+  const operations = listPersistedVtxoSpends(status.vaultId)
+  const action = vtxoJournalSendAction(operations, destAddress, amountSats)
+  const pending = operations.find((record) => isSameVtxoPayment(record, destAddress, amountSats))
+  if (action === 'warn' && pending && !options?.replaceExisting) throw new VtxoSameSendInProgressError(pending)
+  if (action === 'live-pending') {
+    throw new VtxoLivePendingError(operations.filter(vtxoSpendIsLivePending).map((record) => record.operationId))
+  }
+  if (action === 'abort-reserved' && !options?.replaceExisting) {
+    throw new VtxoReservedReplaceError(operations.find(vtxoSpendIsAbortable)?.operationId || '')
+  }
   return { destAddress: destAddress.trim(), amountSats, feeSats: 0 }
 }
 
@@ -1554,7 +1743,7 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
   if (pending.stage === 'operator-finalized') {
     try {
       await finalizeVaultOperation(pending.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
-      clearPersistedVtxoSpend(status.vaultId)
+      clearPersistedVtxoSpend(status.vaultId, pending.operationId)
       return { kind: 'receipt-finalized', txid: pending.arkTxid, operationId: pending.operationId }
     } catch {
       return { kind: 'pending', operationId: pending.operationId, stage: pending.stage }
@@ -1572,7 +1761,7 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
       await operator.finalizeTx(pending.arkTxid, checkpointPsbts)
       persistVtxoSpend({ ...pending, stage: 'operator-finalized', checkpointPsbts })
       await finalizeVaultOperation(pending.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
-      clearPersistedVtxoSpend(status.vaultId)
+      clearPersistedVtxoSpend(status.vaultId, pending.operationId)
       return { kind: 'receipt-finalized', txid: pending.arkTxid, operationId: pending.operationId }
     } catch {
       return { kind: 'pending', operationId: pending.operationId, stage: pending.stage }
@@ -1599,7 +1788,7 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
 async function finishOperatorFinalized(pending: PersistedVtxoSpend): Promise<VaultVtxoSpendResult> {
   const { feeSats } = quoteFromPersistedVtxoSpend(pending)
   await finalizeVaultOperation(pending.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
-  clearPersistedVtxoSpend(pending.vaultId)
+  clearPersistedVtxoSpend(pending.vaultId, pending.operationId)
   return { txid: pending.arkTxid, operationId: pending.operationId, feeSats }
 }
 
@@ -1659,7 +1848,7 @@ async function authorizeReservedVtxoSpend(
     authorizedPendingProof,
   }
   persistVtxoSpend(next)
-  const persisted = loadPersistedVtxoSpend(next.vaultId)
+  const persisted = loadPersistedVtxoSpendById(next.vaultId, next.operationId)
   if (
     persisted?.operationId !== next.operationId ||
     persisted.stage !== 'authorized' ||
@@ -1712,7 +1901,7 @@ async function submitAuthorizedVtxoSpendOnce(
 function persistOperatorSubmitAttempt(pending: PersistedVtxoSpend): PersistedVtxoSpend {
   const next = { ...pending, operatorSubmitAttempted: true }
   persistVtxoSpend(next)
-  const persisted = loadPersistedVtxoSpend(next.vaultId)
+  const persisted = loadPersistedVtxoSpendById(next.vaultId, next.operationId)
   if (
     persisted?.operationId !== next.operationId ||
     persisted.stage !== 'authorized' ||
@@ -1786,7 +1975,7 @@ async function authorizeSubmittedVtxoCheckpoints(
   )
   const next: PersistedVtxoSpend = { ...pending, stage: 'checkpoints-authorized', checkpointPsbts }
   persistVtxoSpend(next)
-  const persisted = loadPersistedVtxoSpend(next.vaultId)
+  const persisted = loadPersistedVtxoSpendById(next.vaultId, next.operationId)
   if (
     persisted?.operationId !== next.operationId ||
     persisted.stage !== 'checkpoints-authorized' ||
@@ -1863,7 +2052,7 @@ async function completeFreshSdkVtxoSpend(
         } catch {
           throw new VtxoReceiptPendingError(pending.arkTxid, pending.operationId, feeSats)
         }
-        clearPersistedVtxoSpend(status.vaultId)
+        clearPersistedVtxoSpend(status.vaultId, pending.operationId)
       },
     },
   })
@@ -1927,7 +2116,7 @@ async function continueSameVtxoSpend(
       quoteFromPersistedVtxoSpend(pending).feeSats,
     )
   }
-  clearPersistedVtxoSpend(status.vaultId)
+  clearPersistedVtxoSpend(status.vaultId, pending.operationId)
   return {
     txid: pending.arkTxid,
     operationId: pending.operationId,
@@ -1945,19 +2134,23 @@ export async function sendVaultVtxo(
   if (!Number.isSafeInteger(reviewed.amountSats) || reviewed.amountSats < VTXO_DUST_SATS) {
     throw new VtxoReviewedReservationError()
   }
-  const local = requireLocalReviewedVtxoQuote(loadPersistedVtxoSpend(status.vaultId), reviewed)
+  const local = requireLocalReviewedVtxoQuote(
+    loadPersistedVtxoSpendById(status.vaultId, reviewed.operationId) || loadPersistedVtxoSpend(status.vaultId),
+    reviewed,
+  )
   const unlocker = createUnlocker(enrollment, status, reviewed.bundleDigest)
   try {
     if (vtxoSpendNeedsPasskey(local.stage)) await unlocker.unlock()
     return await withVtxoSendLock(status.vaultId, async () => {
-      const pending = loadPersistedVtxoSpend(status.vaultId)
+      const pending =
+        loadPersistedVtxoSpendById(status.vaultId, reviewed.operationId) || loadPersistedVtxoSpend(status.vaultId)
       if (!pending) throw new VtxoReviewedReservationError()
       let view: VtxoOperationView
       try {
         view = await fetchVtxoOperation(status.vaultId, reviewed.operationId)
       } catch (err) {
         if (operationNotFound(err) || (err instanceof Error && err.message.toLowerCase().includes('expired'))) {
-          clearPersistedVtxoSpend(status.vaultId)
+          clearPersistedVtxoSpend(status.vaultId, reviewed.operationId)
           throw new VtxoReviewedReservationError()
         }
         throw err

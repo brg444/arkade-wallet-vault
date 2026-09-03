@@ -1,5 +1,10 @@
 import { isVaultConcurrencyUnavailableError } from './vtxo/lock'
-import { isVtxoSameSendInProgressError } from './vtxo/spend'
+import {
+  isVtxoAbortFailedError,
+  isVtxoLivePendingError,
+  isVtxoReservedReplaceError,
+  isVtxoSameSendInProgressError,
+} from './vtxo/spend'
 
 export function humanizeVaultError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
@@ -32,7 +37,31 @@ export function humanizeVaultError(err: unknown): string {
     return 'This fee quote expired or changed. Review the send again.'
   }
   if (isVtxoSameSendInProgressError(err) || msg.includes('exact amount to this address is still in progress')) {
-    return 'A send of this exact amount to this address is still in progress. You can wait, or start a new send anyway.'
+    return 'A send of this exact amount to this address is still in progress. Wait for it to finish before trying again.'
+  }
+  if (isVtxoReservedReplaceError(err) || msg.includes('abort it before sending a different amount')) {
+    return 'A reserved send is still open. Abort it before sending a different amount.'
+  }
+  if (
+    isVtxoLivePendingError(err) ||
+    msg.includes('already with the operator and cannot be cancelled') ||
+    msg.includes('vtxo operation is not abortable') ||
+    msg.includes('vtxo operation already active')
+  ) {
+    return 'A send is already in progress and cannot be cancelled. Wait for it to finish before trying again.'
+  }
+  if (
+    isVtxoAbortFailedError(err) ||
+    msg.includes('could not be aborted') ||
+    msg.includes('reserved vtxo input state')
+  ) {
+    return 'The reserved send could not be aborted. Try again.'
+  }
+  if (name === 'notallowederror' || name === 'aborterror') {
+    return 'The passkey prompt was cancelled. Try again and approve Face ID.'
+  }
+  if (msg.includes('pending send lookup failed')) {
+    return 'The current send status could not be confirmed. New sends remain blocked; try again later.'
   }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
@@ -58,7 +87,7 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('mutated') && msg.includes('phone')) {
     return 'The vault rejected a changed signature. Refresh your balance before trying again.'
   }
-  if (msg.includes('invalid scalar') || msg.includes('scalar: out of range')) {
+  if (msg.includes('invalid scalar') || msg.includes('scalar: out of range') || msg.includes('scalar out of range')) {
     return 'Couldn’t unlock Spending. Sign in again.'
   }
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
@@ -95,7 +124,7 @@ export function humanizeVaultError(err: unknown): string {
   ) {
     return 'This browser can’t create the device key. Open the invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
   }
-  if (msg.includes('not allowed') || msg.includes('abort') || msg.includes('timed out')) {
+  if (msg.includes('not allowed') || msg.includes('timed out') || msg.includes('the operation was aborted')) {
     return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open the invite in Safari or Chrome.'
   }
   if (msg.includes('already set up') || msg.includes('already enrolled')) {

@@ -40,15 +40,20 @@ import { decodeVaultLightningInvoice } from '../lib/vault/lightningInvoice'
 import type { VaultLightningQuote } from '../lib/vault/lightningLifecycle'
 import {
   createVtxoSpendUnlocker,
+  isVtxoAbortFailedError,
+  isVtxoLivePendingError,
   isVtxoReceiptPendingError,
+  isVtxoReservedReplaceError,
   isVtxoReviewedReservationError,
   isVtxoSameSendInProgressError,
   isVtxoSpendInFlightError,
   loadPersistedVtxoSpend,
+  loadPersistedVtxoSpendById,
   newVtxoSpendChallenge,
   previewVaultVtxoSend,
   reserveVaultVtxo,
   sendVaultVtxo,
+  vtxoSpendIsLivePending,
   type VaultVtxoSpendQuote,
   vaultArkServer,
 } from '../lib/vault/vtxo/spend'
@@ -695,9 +700,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             : current,
         )
       } catch (err) {
-        if (isVtxoSameSendInProgressError(err) || isVtxoSpendInFlightError(err)) {
-          setCanReplaceInFlightSend(true)
-        }
+        setCanReplaceInFlightSend(isVtxoReservedReplaceError(err))
         setError(humanizeVaultError(err))
         return
       } finally {
@@ -923,8 +926,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             return
           }
           if (status.vaultId) await refreshBalance(status.vaultId)
-          if (isVtxoSpendInFlightError(err) || isVtxoSameSendInProgressError(err)) {
-            setCanReplaceInFlightSend(true)
+          if (
+            isVtxoSpendInFlightError(err) ||
+            isVtxoSameSendInProgressError(err) ||
+            isVtxoLivePendingError(err) ||
+            isVtxoAbortFailedError(err)
+          ) {
+            setCanReplaceInFlightSend(isVtxoReservedReplaceError(err))
             setError(humanizeVaultError(err))
             setScreen('send')
             return
@@ -948,13 +956,26 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         try {
           const replaceExisting = replaceExistingVtxoRef.current
           replaceExistingVtxoRef.current = false
-          const unlocker = createVtxoSpendUnlocker(enrollment, status, newVtxoSpendChallenge())
+          const existing = loadPersistedVtxoSpendById(status.vaultId, reviewed.operationId)
+          const resumePending = Boolean(
+            reviewed.operationId &&
+              existing &&
+              vtxoSpendIsLivePending(existing) &&
+              reviewedVtxoQuoteMatchesDraft(reviewed, spend),
+          )
+          const unlocker = createVtxoSpendUnlocker(
+            enrollment,
+            status,
+            resumePending ? reviewed.bundleDigest : newVtxoSpendChallenge(),
+          )
           try {
             const auth = await unlocker.unlock()
-            const quote = await reserveVaultVtxo(enrollment, status, reviewed.destAddress, reviewed.amountSats, {
-              replaceExisting,
-              phoneSecret: auth.phoneSecret,
-            })
+            const quote = resumePending
+              ? reviewed
+              : await reserveVaultVtxo(enrollment, status, reviewed.destAddress, reviewed.amountSats, {
+                  replaceExisting,
+                  phoneSecret: auth.phoneSecret,
+                })
             const result = await sendVaultVtxo(enrollment, status, quote, () => unlocker)
             await finishBroadcast(result.txid, 'vtxo', result.feeSats)
           } finally {
@@ -974,8 +995,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             return
           }
           if (status.vaultId) await refreshBalance(status.vaultId)
-          if (isVtxoSpendInFlightError(err) || isVtxoSameSendInProgressError(err)) {
-            setCanReplaceInFlightSend(true)
+          if (
+            isVtxoSpendInFlightError(err) ||
+            isVtxoSameSendInProgressError(err) ||
+            isVtxoLivePendingError(err) ||
+            isVtxoAbortFailedError(err) ||
+            isVtxoReservedReplaceError(err)
+          ) {
+            setCanReplaceInFlightSend(isVtxoReservedReplaceError(err))
             setError(humanizeVaultError(err))
             setScreen('send')
             return

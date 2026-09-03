@@ -27,7 +27,7 @@ export function accessMode(
 }
 
 export function passkeyProofDigest(purpose: string, challenge: Uint8Array, credentialId: Uint8Array): Uint8Array {
-  if (purpose !== 'recover' && purpose !== 'install-envelope') {
+  if (purpose !== 'recover' && purpose !== 'install-envelope' && purpose !== 'transition' && purpose !== 'map-write') {
     throw new Error('invalid passkey purpose')
   }
   return sha256(concat(PROOF_DOMAIN, ZERO, encoder.encode(purpose), ZERO, challenge, ZERO, credentialId))
