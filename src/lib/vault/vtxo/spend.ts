@@ -501,6 +501,12 @@ export function createVtxoSpendUnlocker(
   }
 }
 
+export type VtxoSpendUnlocker = ReturnType<typeof createVtxoSpendUnlocker>
+
+function vtxoSpendNeedsPasskey(stage: PersistedVtxoSpendStage): boolean {
+  return stage !== 'checkpoints-authorized' && stage !== 'operator-finalized'
+}
+
 export function vtxoDestinationScript(status: VaultStatus, destAddress: string): Uint8Array {
   const spendingAddress = ArkAddress.decode(String(status.spendingArkAddress || ''))
   let destination: ArkAddress
@@ -1346,7 +1352,31 @@ function sameExpiry(left: string | undefined, right: string): boolean {
   return Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs === rightMs
 }
 
-/** Verify the durable and server-side facts shown on Review before any passkey prompt. */
+function requireLocalReviewedVtxoQuote(
+  pending: PersistedVtxoSpend | undefined,
+  reviewed: VaultVtxoSpendQuote,
+  nowMs = Date.now(),
+): PersistedVtxoSpend {
+  if (
+    !pending ||
+    pending.stage === 'pre-reserve' ||
+    pending.operationId !== reviewed.operationId ||
+    pending.bundleDigest !== reviewed.bundleDigest ||
+    pending.destAddress.trim() !== reviewed.destAddress.trim() ||
+    pending.amountSats !== reviewed.amountSats ||
+    pending.feeSats !== reviewed.feeSats ||
+    pending.feePolicyDigest !== reviewed.feePolicyDigest ||
+    !sameExpiry(pending.reservationExpires, reviewed.reservationExpires) ||
+    pending.changeSats !== reviewed.changeSats ||
+    pending.changeVout !== reviewed.changeVout ||
+    (pending.stage === 'reserved' && Date.parse(reviewed.reservationExpires) <= nowMs)
+  ) {
+    reviewedReservationError()
+  }
+  return pending
+}
+
+/** Verify the durable and server-side facts shown on Review before Operator submit. */
 export function requireReviewedVtxoReservation(
   pending: PersistedVtxoSpend | undefined,
   view: VtxoOperationView,
@@ -1686,9 +1716,9 @@ async function authorizeSubmittedVtxoCheckpoints(
 }
 
 async function completeFreshSdkVtxoSpend(
-  enrollment: EnrollmentSecrets,
   status: VaultStatus,
   initial: PersistedVtxoSpend,
+  unlocker: VtxoSpendUnlocker,
 ): Promise<VaultVtxoSpendResult> {
   const bundle = buildPersistedVtxoSdkBundle(status, initial)
   const operator = new RestArkProvider(vaultArkServer())
@@ -1696,81 +1726,77 @@ async function completeFreshSdkVtxoSpend(
   const operatorPub = xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey')
   let pending = initial
   const feeSats = quoteFromPersistedVtxoSpend(initial).feeSats
-  const unlocker = createVtxoSpendUnlocker(enrollment, status, initial.bundleDigest)
-  try {
-    const txid = await submitExactVaultSdkOperation({
-      inputs: bundle.inputs,
-      outputs: bundle.outputs,
-      serverUnrollScript: bundle.serverUnrollScript,
-      verifyServerSignatures: { serverPubkey: operatorPub },
-      validation: createVaultSdkOperationValidation(status, bundle.rebuilt.arkTx, operatorPub),
-      timeoutMs: 3 * 60_000,
-      callbacks: {
-        async authorizeArk({ unsignedArkPsbt, unsignedCheckpointPsbts, signal }) {
-          if (signal.aborted) throw signal.reason
-          if (
-            unsignedArkPsbt !== pending.unsignedArkPsbt ||
-            !sameStrings(unsignedCheckpointPsbts, pending.unsignedCheckpointPsbts)
-          ) {
-            throw new Error('SDK rebuilt a different reserved transaction bundle')
-          }
-          pending = await authorizeReservedVtxoSpend(status, pending, await unlocker.unlock())
-          if (!pending.authorizedPsbt) throw new Error('Vault authorization omitted the Ark PSBT')
-          return { authorizedArkPsbt: pending.authorizedPsbt }
-        },
-        async submitOperator({ authorizedArkPsbt, unsignedCheckpointPsbts, signal }) {
-          if (signal.aborted) throw signal.reason
-          if (
-            authorizedArkPsbt !== pending.authorizedPsbt ||
-            !sameStrings(unsignedCheckpointPsbts, pending.unsignedCheckpointPsbts)
-          ) {
-            throw new Error('SDK submitted a different Vault-authorized bundle')
-          }
-          pending = await advanceAuthorizedVtxoSpend(operator, pending, status, operatorPub)
-          if (!pending.authorizedPsbt || !pending.operatorArkPsbt || !pending.operatorCheckpointPsbts?.length) {
-            throw new Error('Operator submission was not durably persisted')
-          }
-          return {
-            arkTxid: pending.arkTxid,
-            finalArkTx: pending.operatorArkPsbt,
-            signedCheckpointTxs: pending.operatorCheckpointPsbts,
-          }
-        },
-        async authorizeCheckpoints({ signal }) {
-          if (signal.aborted) throw signal.reason
-          pending = await authorizeSubmittedVtxoCheckpoints(status, pending, operatorPub, await unlocker.unlock())
-          return { authorizedCheckpointPsbts: pending.checkpointPsbts! }
-        },
-        dispose: unlocker.dispose,
-        async finalize({ authorizedCheckpointPsbts }) {
-          pending = { ...pending, checkpointPsbts: authorizedCheckpointPsbts }
-          await requireCurrentReservationPolicy(operator, status, pending)
-          await operator.finalizeTx(pending.arkTxid, authorizedCheckpointPsbts)
-          pending = { ...pending, stage: 'operator-finalized', checkpointPsbts: authorizedCheckpointPsbts }
-          persistVtxoSpend(pending)
-          try {
-            await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
-          } catch {
-            throw new VtxoReceiptPendingError(pending.arkTxid, pending.operationId, feeSats)
-          }
-          clearPersistedVtxoSpend(status.vaultId)
-        },
+  const txid = await submitExactVaultSdkOperation({
+    inputs: bundle.inputs,
+    outputs: bundle.outputs,
+    serverUnrollScript: bundle.serverUnrollScript,
+    verifyServerSignatures: { serverPubkey: operatorPub },
+    validation: createVaultSdkOperationValidation(status, bundle.rebuilt.arkTx, operatorPub),
+    timeoutMs: 3 * 60_000,
+    callbacks: {
+      async authorizeArk({ unsignedArkPsbt, unsignedCheckpointPsbts, signal }) {
+        if (signal.aborted) throw signal.reason
+        if (
+          unsignedArkPsbt !== pending.unsignedArkPsbt ||
+          !sameStrings(unsignedCheckpointPsbts, pending.unsignedCheckpointPsbts)
+        ) {
+          throw new Error('SDK rebuilt a different reserved transaction bundle')
+        }
+        pending = await authorizeReservedVtxoSpend(status, pending, await unlocker.unlock())
+        if (!pending.authorizedPsbt) throw new Error('Vault authorization omitted the Ark PSBT')
+        return { authorizedArkPsbt: pending.authorizedPsbt }
       },
-    })
-    return { txid, operationId: initial.operationId, feeSats }
-  } finally {
-    unlocker.dispose()
-  }
+      async submitOperator({ authorizedArkPsbt, unsignedCheckpointPsbts, signal }) {
+        if (signal.aborted) throw signal.reason
+        if (
+          authorizedArkPsbt !== pending.authorizedPsbt ||
+          !sameStrings(unsignedCheckpointPsbts, pending.unsignedCheckpointPsbts)
+        ) {
+          throw new Error('SDK submitted a different Vault-authorized bundle')
+        }
+        pending = await advanceAuthorizedVtxoSpend(operator, pending, status, operatorPub)
+        if (!pending.authorizedPsbt || !pending.operatorArkPsbt || !pending.operatorCheckpointPsbts?.length) {
+          throw new Error('Operator submission was not durably persisted')
+        }
+        return {
+          arkTxid: pending.arkTxid,
+          finalArkTx: pending.operatorArkPsbt,
+          signedCheckpointTxs: pending.operatorCheckpointPsbts,
+        }
+      },
+      async authorizeCheckpoints({ signal }) {
+        if (signal.aborted) throw signal.reason
+        pending = await authorizeSubmittedVtxoCheckpoints(status, pending, operatorPub, await unlocker.unlock())
+        return { authorizedCheckpointPsbts: pending.checkpointPsbts! }
+      },
+      dispose: unlocker.dispose,
+      async finalize({ authorizedCheckpointPsbts }) {
+        pending = { ...pending, checkpointPsbts: authorizedCheckpointPsbts }
+        await requireCurrentReservationPolicy(operator, status, pending)
+        await operator.finalizeTx(pending.arkTxid, authorizedCheckpointPsbts)
+        pending = { ...pending, stage: 'operator-finalized', checkpointPsbts: authorizedCheckpointPsbts }
+        persistVtxoSpend(pending)
+        try {
+          await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
+        } catch {
+          throw new VtxoReceiptPendingError(pending.arkTxid, pending.operationId, feeSats)
+        }
+        clearPersistedVtxoSpend(status.vaultId)
+      },
+    },
+  })
+  return { txid, operationId: initial.operationId, feeSats }
 }
 
 async function continueSameVtxoSpend(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
   pending: PersistedVtxoSpend,
+  unlocker: VtxoSpendUnlocker,
 ): Promise<VaultVtxoSpendResult> {
   if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(enrollment, status, pending)
   if (pending.stage === 'reserved' && pending.sdkBundleVersion === 1) {
-    return completeFreshSdkVtxoSpend(enrollment, status, pending)
+    return completeFreshSdkVtxoSpend(status, pending, unlocker)
   }
   requireRecoveryProofForAuthorizedSpend(pending)
   const operator = new RestArkProvider(vaultArkServer())
@@ -1786,47 +1812,42 @@ async function continueSameVtxoSpend(
     persistVtxoSpend({ ...pending, stage: 'operator-finalized', checkpointPsbts })
     return finishOperatorFinalized({ ...pending, stage: 'operator-finalized', checkpointPsbts })
   }
-  const unlocker = createVtxoSpendUnlocker(enrollment, status, pending.bundleDigest)
-  try {
-    if (pending.stage === 'reserved') {
-      pending = await authorizeReservedVtxoSpend(status, pending, await unlocker.unlock())
-    }
-    if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
-      const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
-      const operatorPub = xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey')
-      pending = await advanceAuthorizedVtxoSpend(operator, pending, status, operatorPub)
-    }
-    if (pending.stage !== 'operator-submitted' || !pending.operatorCheckpointPsbts?.length) {
-      throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
-    }
+  if (pending.stage === 'reserved') {
+    pending = await authorizeReservedVtxoSpend(status, pending, await unlocker.unlock())
+  }
+  if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
     const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
-    pending = await authorizeSubmittedVtxoCheckpoints(
-      status,
-      pending,
-      xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey'),
-      await unlocker.unlock(),
+    const operatorPub = xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey')
+    pending = await advanceAuthorizedVtxoSpend(operator, pending, status, operatorPub)
+  }
+  if (pending.stage !== 'operator-submitted' || !pending.operatorCheckpointPsbts?.length) {
+    throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
+  }
+  const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
+  pending = await authorizeSubmittedVtxoCheckpoints(
+    status,
+    pending,
+    xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey'),
+    await unlocker.unlock(),
+  )
+  const checkpointPsbts = pending.checkpointPsbts!
+  await requireCurrentReservationPolicy(operator, status, pending)
+  await operator.finalizeTx(pending.arkTxid, checkpointPsbts)
+  persistVtxoSpend({ ...pending, stage: 'operator-finalized', checkpointPsbts })
+  try {
+    await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
+  } catch {
+    throw new VtxoReceiptPendingError(
+      pending.arkTxid,
+      pending.operationId,
+      quoteFromPersistedVtxoSpend(pending).feeSats,
     )
-    const checkpointPsbts = pending.checkpointPsbts!
-    await requireCurrentReservationPolicy(operator, status, pending)
-    await operator.finalizeTx(pending.arkTxid, checkpointPsbts)
-    persistVtxoSpend({ ...pending, stage: 'operator-finalized', checkpointPsbts })
-    try {
-      await finalizeVaultOperation(status.vaultId, pending.operationId, pending.bundleDigest, pending.arkTxid)
-    } catch {
-      throw new VtxoReceiptPendingError(
-        pending.arkTxid,
-        pending.operationId,
-        quoteFromPersistedVtxoSpend(pending).feeSats,
-      )
-    }
-    clearPersistedVtxoSpend(status.vaultId)
-    return {
-      txid: pending.arkTxid,
-      operationId: pending.operationId,
-      feeSats: quoteFromPersistedVtxoSpend(pending).feeSats,
-    }
-  } finally {
-    unlocker.dispose()
+  }
+  clearPersistedVtxoSpend(status.vaultId)
+  return {
+    txid: pending.arkTxid,
+    operationId: pending.operationId,
+    feeSats: quoteFromPersistedVtxoSpend(pending).feeSats,
   }
 }
 
@@ -1834,27 +1855,35 @@ export async function sendVaultVtxo(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
   reviewed: VaultVtxoSpendQuote,
+  createUnlocker: typeof createVtxoSpendUnlocker = createVtxoSpendUnlocker,
 ): Promise<VaultVtxoSpendResult> {
   requireMutinynetStatus(status)
   if (!Number.isSafeInteger(reviewed.amountSats) || reviewed.amountSats < VTXO_DUST_SATS) {
     throw new VtxoReviewedReservationError()
   }
-  return withVtxoSendLock(status.vaultId, async () => {
-    const pending = loadPersistedVtxoSpend(status.vaultId)
-    if (!pending) throw new VtxoReviewedReservationError()
-    let view: VtxoOperationView
-    try {
-      view = await fetchVtxoOperation(status.vaultId, reviewed.operationId)
-    } catch (err) {
-      if (operationNotFound(err) || (err instanceof Error && err.message.toLowerCase().includes('expired'))) {
-        clearPersistedVtxoSpend(status.vaultId)
-        throw new VtxoReviewedReservationError()
+  const local = requireLocalReviewedVtxoQuote(loadPersistedVtxoSpend(status.vaultId), reviewed)
+  const unlocker = createUnlocker(enrollment, status, reviewed.bundleDigest)
+  try {
+    if (vtxoSpendNeedsPasskey(local.stage)) await unlocker.unlock()
+    return await withVtxoSendLock(status.vaultId, async () => {
+      const pending = loadPersistedVtxoSpend(status.vaultId)
+      if (!pending) throw new VtxoReviewedReservationError()
+      let view: VtxoOperationView
+      try {
+        view = await fetchVtxoOperation(status.vaultId, reviewed.operationId)
+      } catch (err) {
+        if (operationNotFound(err) || (err instanceof Error && err.message.toLowerCase().includes('expired'))) {
+          clearPersistedVtxoSpend(status.vaultId)
+          throw new VtxoReviewedReservationError()
+        }
+        throw err
       }
-      throw err
-    }
-    requireReviewedVtxoReservation(pending, view, reviewed)
-    const synced = applyVtxoOperationView(pending, view)
-    if (!synced) throw new VtxoReviewedReservationError()
-    return continueSameVtxoSpend(enrollment, status, synced)
-  })
+      requireReviewedVtxoReservation(pending, view, reviewed)
+      const synced = applyVtxoOperationView(pending, view)
+      if (!synced) throw new VtxoReviewedReservationError()
+      return continueSameVtxoSpend(enrollment, status, synced, unlocker)
+    })
+  } finally {
+    unlocker.dispose()
+  }
 }

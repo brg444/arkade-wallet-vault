@@ -267,6 +267,30 @@ body:has(.vault-screen-welcome) {
   font-size: 12px;
 }
 
+.qg-footer-error,
+.qg-footer .qg-footer-error {
+  padding: 12px 14px;
+  border: 1px solid #efc2b2;
+  border-radius: 14px;
+  background: var(--qg-orange-soft);
+  color: var(--qg-ink);
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+[data-testid='vault-app'] .vault-error-message .shadow-surface {
+  min-height: 0;
+  background: var(--qg-orange-soft, #f9e4d4) !important;
+  border: 1px solid #efc2b2 !important;
+  color: var(--qg-ink, #111015) !important;
+}
+
+[data-testid='vault-app'] .vault-error-message .shadow-surface * {
+  color: var(--qg-ink, #111015) !important;
+}
+
 .qg-primary,
 .qg-secondary {
   display: flex;

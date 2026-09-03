@@ -33,7 +33,9 @@ export function humanizeVaultError(err: unknown): string {
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
     msg.includes('vtxo finalization receipt') ||
-    msg.includes('vtxo spend is still with the operator')
+    msg.includes('vtxo spend is still with the operator') ||
+    msg.includes('did not return exactly one transaction') ||
+    msg.includes('operator pending lookup')
   ) {
     return 'Your send was submitted and is still being confirmed. Refresh your balance before trying again.'
   }
