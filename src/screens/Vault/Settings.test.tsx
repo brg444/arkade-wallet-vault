@@ -31,6 +31,7 @@ function renderSettings(overrides: Partial<VaultContextProps> = {}) {
 describe('Vault settings account boundaries', () => {
   afterEach(() => {
     localStorage.removeItem('arkade-vault-theme')
+    localStorage.removeItem('arkade-vault-privacy-lock')
     document.documentElement.classList.remove('palette-dark')
   })
 
@@ -44,6 +45,7 @@ describe('Vault settings account boundaries', () => {
     expect(screen.getByTestId('settings-update')).toHaveRole('button')
     expect(screen.getByTestId('settings-refresh')).toHaveRole('button')
     expect(screen.getByTestId('settings-logs')).toHaveRole('button')
+    expect(screen.getByTestId('settings-privacy-lock')).toHaveRole('switch')
     expect(screen.getByTestId('settings-signout')).toHaveRole('button')
     expect(screen.getByRole('button', { name: 'Go back' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Adjust this browser.' })).toBeNull()
@@ -63,6 +65,16 @@ describe('Vault settings account boundaries', () => {
     await user.click(dark)
     expect(dark).toHaveAttribute('aria-checked', 'true')
     expect(document.documentElement.classList.contains('palette-dark')).toBe(true)
+  })
+
+  it('turns on passkey privacy lock from This browser', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+    const toggle = screen.getByTestId('settings-privacy-lock')
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(localStorage.getItem('arkade-vault-privacy-lock')).toBe('1')
   })
 
   it('signs out from a Quiet Guardian confirmation sheet', async () => {

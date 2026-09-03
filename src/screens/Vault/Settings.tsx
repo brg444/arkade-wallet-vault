@@ -8,9 +8,11 @@ import { clearLogs, getLogs, type LogLine } from '../../lib/logs'
 import { Themes } from '../../lib/types'
 import {
   loadVaultHaptics,
+  loadVaultPrivacyLock,
   loadVaultTheme,
   resolveVaultTheme,
   saveVaultHaptics,
+  saveVaultPrivacyLock,
   saveVaultTheme,
   systemTheme,
 } from '../../lib/vault/prefs'
@@ -130,12 +132,14 @@ export default function VaultSettings() {
   const [view, setView] = useState<View>('menu')
   const [theme, setTheme] = useState(loadVaultTheme)
   const [haptics, setHaptics] = useState(loadVaultHaptics)
+  const [privacyLock, setPrivacyLock] = useState(loadVaultPrivacyLock)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   useEffect(() => {
     if (view !== 'menu') return
     setTheme(loadVaultTheme())
     setHaptics(loadVaultHaptics())
+    setPrivacyLock(loadVaultPrivacyLock())
   }, [view])
 
   if (view === 'theme') {
@@ -301,6 +305,25 @@ export default function VaultSettings() {
         </HubGroup>
 
         <HubGroup label='This browser'>
+          <button
+            type='button'
+            role='switch'
+            aria-checked={privacyLock}
+            className='vault-hub-row'
+            data-testid='settings-privacy-lock'
+            onClick={() => {
+              const next = !privacyLock
+              setPrivacyLock(next)
+              saveVaultPrivacyLock(next)
+              if (next) hapticLight()
+            }}
+          >
+            <div className='vault-hub-copy'>
+              <p>Require passkey to open</p>
+              <p>Hide balances until this device approves</p>
+            </div>
+            <span className={privacyLock ? 'qg-switch is-on' : 'qg-switch'} aria-hidden />
+          </button>
           <SettingsRow label='Sign out' testId='settings-signout' danger onClick={() => setView('reset')} />
         </HubGroup>
       </div>

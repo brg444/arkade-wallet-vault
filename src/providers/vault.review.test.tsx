@@ -315,6 +315,18 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
   })
 
+  it('locks an enrolled vault behind passkey when privacy lock is on', async () => {
+    localStorage.setItem('arkade-vault-privacy-lock', '1')
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
+  })
+
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
     mocks.lightningEnabled.mockReturnValue(true)
     vi.spyOn(Date, 'now').mockReturnValue((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000)

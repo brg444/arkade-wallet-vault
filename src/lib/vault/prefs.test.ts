@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Themes } from '../types'
-import { applyVaultTheme, loadVaultTheme, saveVaultTheme } from './prefs'
+import { applyVaultTheme, loadVaultPrivacyLock, loadVaultTheme, saveVaultPrivacyLock, saveVaultTheme } from './prefs'
 
 if (typeof window === 'undefined') {
   const store = new Map<string, string>()
@@ -37,5 +37,14 @@ describe('vault prefs', () => {
     expect(document.documentElement.classList.contains('palette-dark')).toBe(true)
     applyVaultTheme(Themes.Light)
     expect(document.documentElement.classList.contains('palette-dark')).toBe(false)
+  })
+
+  it('keeps passkey privacy lock off until it is turned on', () => {
+    window.localStorage.clear()
+    expect(loadVaultPrivacyLock()).toBe(false)
+    saveVaultPrivacyLock(true)
+    expect(loadVaultPrivacyLock()).toBe(true)
+    saveVaultPrivacyLock(false)
+    expect(loadVaultPrivacyLock()).toBe(false)
   })
 })

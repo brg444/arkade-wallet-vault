@@ -777,7 +777,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('home-savings.png', { animations: 'disabled', fullPage: true })
   await page.getByTestId('account-receive').click()
-  await expect(page.getByRole('heading', { name: 'Add to Savings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Receive' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('receive-savings.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()

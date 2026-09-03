@@ -85,17 +85,29 @@ describe('Vault receive', () => {
     })
   })
 
-  it('keeps Savings receive separate when entered from Savings', () => {
+  it('keeps Savings receive on the same QR, address row, and Share layout', async () => {
+    const user = userEvent.setup()
+    const share = vi.fn().mockResolvedValue(undefined)
+    const canShare = vi.fn().mockReturnValue(true)
+    Object.assign(navigator, { share, canShare })
+
     renderReceive('savings')
-    expect(screen.getByRole('heading', { name: 'Add to Savings' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Receive' })).toBeTruthy()
+    expect(screen.queryByText('Add to Savings')).toBeNull()
+    expect(screen.queryByText(/hardware key/i)).toBeNull()
+    expect(screen.getByText('Two keys')).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('tb1qsavings')
     expect(screen.getByTestId('receive-qr')).toHaveAttribute('data-large', 'true')
+    expect(screen.getByTestId('receive-address')).toHaveTextContent('Bitcoin')
     expect(screen.getByTestId('receive-address')).toHaveTextContent('tb1qsavings')
-    expect(screen.queryByText(/Testnet/)).toBeNull()
-    expect(screen.queryByText('Savings address')).toBeNull()
-    expect(screen.queryByText(/Bitcoin sent here stays/)).toBeNull()
     expect(screen.queryByTestId('receive-arkade-address')).toBeNull()
-    expect(screen.queryByTestId('receive-bitcoin-address')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy()
+
+    await user.click(screen.getByTestId('receive-share'))
+    expect(share).toHaveBeenCalledWith({
+      title: 'Arkade Vault Savings address',
+      text: 'tb1qsavings',
+    })
   })
 
   it('explains a missing Savings pin instead of suggesting setup is still processing', () => {
