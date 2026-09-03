@@ -551,6 +551,10 @@ export function scheduleVaultBoardingSettlement(
   return tracked
 }
 
+export function spendableVtxoSats(vtxos: ({ value: number } & Parameters<typeof hasTerminalSpend>[0])[]): number {
+  return vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0)
+}
+
 export interface VaultWalletVtxoSnapshot {
   balance: number
   boardingBalance?: number
@@ -603,7 +607,7 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
     (item) => !knownTransactions.has(item.txid),
   )
   return {
-    balance: vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0),
+    balance: spendableVtxoSats(vtxos),
     commitmentIds: [...commitmentIds],
     boardingBalance: balance.boarding.total,
     boardingConfirmedBalance: balance.boarding.confirmed,

@@ -9,6 +9,7 @@ import {
   vaultLightningSolverProfile,
 } from '../../lib/vault/lightningConfig'
 import { decodeVaultLightningInvoice } from '../../lib/vault/lightningInvoice'
+import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import Scanner from './Scanner'
 import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
@@ -87,6 +88,10 @@ export default function VaultSend() {
             : ''
 
   useEffect(() => {
+    void reloadIfNewerWallet()
+  }, [])
+
+  useEffect(() => {
     if (!scanOnSend) return
     setScan(true)
   }, [scanOnSend])
@@ -146,7 +151,7 @@ export default function VaultSend() {
             </p>
           ) : null}
           {canReplaceInFlightSend ? (
-            <QgSecondary label='Send anyway' onClick={() => void replaceInFlightSend()} disabled={busy} />
+            <QgSecondary label='Abort reserved send' onClick={() => void replaceInFlightSend()} disabled={busy} />
           ) : null}
           <QgPrimary
             onClick={() => void reviewSpend()}

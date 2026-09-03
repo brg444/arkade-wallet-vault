@@ -14,6 +14,7 @@ import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
 import {
+  abortPersistedVtxoSpend,
   applyVtxoOperationView,
   advanceAuthorizedVtxoSpend,
   buildReservedVtxoSpend,
@@ -23,23 +24,30 @@ import {
   createVtxoOperationId,
   createVtxoSpendUnlocker,
   createPhoneSignedPendingProof,
+  isVtxoLivePendingError,
   isVtxoReceiptPendingError,
+  isVtxoReservedReplaceError,
   laterVtxoSpendStage,
+  listPersistedVtxoSpends,
   loadPersistedVtxoSpend,
+  loadPersistedVtxoSpendById,
   matchPendingOperatorSubmission,
   matchOperatorSignedCheckpoints,
   orderAuthorizedCheckpoints,
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
+  vtxoJournalSendAction,
   vtxoNewSendAction,
   persistVtxoSpend,
   persistVtxoReserveSignature,
   preReserveVtxoSpend,
+  previewVaultVtxoSend,
   reconcilePersistedVtxoSpend,
   requireReviewedVtxoReservation,
   requireAuthorizedPendingProof,
   requireOperatorSignedCheckpoint,
   requireUserSignedArkInputs,
+  VtxoLivePendingError,
   VtxoReceiptPendingError,
   VtxoSpendInFlightError,
   VtxoReviewedReservationError,
@@ -54,6 +62,7 @@ import {
   vtxoReserveRequest,
   sendVaultVtxo,
 } from './spend'
+import { vaultCosignerClient } from '../cosignerClient'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { VaultPolicyV1Script } from './script'
 import type { SubmitExactVaultSdkOperationParams } from './sdkOperationAdapter'
@@ -1473,10 +1482,12 @@ describe('regular VTXO spend coordinator', () => {
     expect(isSameVtxoPayment(pending!, 'tark1qqold', 12_000)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqnew', 12_000)).toBe(false)
     expect(vtxoNewSendAction(pending, 'tark1qqold', 12_000)).toBe('warn')
-    expect(vtxoNewSendAction(pending, 'tark1qqold', 20_000)).toBe('replace')
-    expect(vtxoNewSendAction(pending, 'tark1qqnew', 12_000)).toBe('replace')
+    expect(vtxoNewSendAction(pending, 'tark1qqold', 20_000)).toBe('live-pending')
+    expect(vtxoNewSendAction(pending, 'tark1qqnew', 12_000)).toBe('live-pending')
     expect(vtxoNewSendAction({ ...pending!, stage: 'reserved' }, 'tark1qqold', 12_000)).toBe('resume')
+    expect(vtxoNewSendAction({ ...pending!, stage: 'reserved' }, 'tark1qqold', 20_000)).toBe('abort-reserved')
     expect(vtxoNewSendAction({ ...pending!, stage: 'authorized' }, 'tark1qqold', 12_000)).toBe('resume')
+    expect(vtxoNewSendAction({ ...pending!, stage: 'authorized' }, 'tark1qqold', 20_000)).toBe('live-pending')
     expect(
       vtxoNewSendAction({ ...pending!, stage: 'authorized', operatorSubmitAttempted: true }, 'tark1qqold', 12_000),
     ).toBe('warn')
@@ -1780,5 +1791,182 @@ describe('regular VTXO spend coordinator', () => {
         state: 'signed',
       }),
     ).toThrow(/digest mismatch/)
+  })
+
+  it('keeps earlier operations in a bounded journal instead of replacing the one-slot record', () => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      bundleDigest: '11'.repeat(32),
+      destAddress: 'tark1qqold',
+      amountSats: 20_000,
+      arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    })
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_2,
+      bundleDigest: '22'.repeat(32),
+      destAddress: 'tark1qqold',
+      amountSats: 12_000,
+      arkTxid: 'bb'.repeat(32),
+      ...RESERVATION_FACTS,
+      stage: 'reserved',
+    })
+    expect(listPersistedVtxoSpends('vault-a').map((record) => record.operationId)).toEqual([OP_1, OP_2])
+    expect(loadPersistedVtxoSpend('vault-a')?.operationId).toBe(OP_2)
+    expect(loadPersistedVtxoSpendById('vault-a', OP_1)?.stage).toBe('authorized')
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('blocks a matching reserved send when a different signed operation is still active', () => {
+    const signed = { ...reviewedPending(), operationId: OP_1, amountSats: 20_000, stage: 'authorized' as const }
+    const matchingReserved = { ...reviewedPending(), operationId: OP_2, stage: 'reserved' as const }
+    expect(
+      vtxoJournalSendAction([signed, matchingReserved], matchingReserved.destAddress, matchingReserved.amountSats),
+    ).toBe('live-pending')
+  })
+
+  it('refuses a different-amount send without aborting a reserved operation or erasing a signed one', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    })
+    await expect(previewVaultVtxoSend(status(), destination(), 20_000)).rejects.toSatisfy(isVtxoLivePendingError)
+    expect(loadPersistedVtxoSpendById('vault-a', OP_1)?.stage).toBe('authorized')
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      reservationExpires: '2099-08-20T00:02:00Z',
+      ...RESERVATION_FACTS,
+      stage: 'reserved',
+    })
+    await expect(previewVaultVtxoSend(status(), destination(), 20_000)).rejects.toSatisfy(isVtxoReservedReplaceError)
+    expect(loadPersistedVtxoSpendById('vault-a', OP_1)?.stage).toBe('reserved')
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('aborts a reserved operation through the server before clearing it', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      reservationExpires: '2099-08-20T00:02:00Z',
+      ...RESERVATION_FACTS,
+      stage: 'reserved',
+    })
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_2,
+      bundleDigest: '22'.repeat(32),
+      destAddress: destination(),
+      amountSats: 20_000,
+      arkTxid: 'bb'.repeat(32),
+      ...RESERVATION_FACTS,
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    })
+    const abort = vi.spyOn(vaultCosignerClient.spending, 'abort').mockResolvedValue({
+      operationId: OP_1,
+      state: 'aborted',
+    })
+    await abortPersistedVtxoSpend(
+      loadPersistedVtxoSpendById('vault-a', OP_1)!,
+      status(),
+      hex.decode('01'.padStart(64, '0')),
+    )
+    expect(abort).toHaveBeenCalledWith(
+      expect.objectContaining({ operationId: OP_1, vaultId: 'vault-a', purpose: 'spend' }),
+    )
+    expect(loadPersistedVtxoSpendById('vault-a', OP_1)).toBeUndefined()
+    expect(loadPersistedVtxoSpendById('vault-a', OP_2)?.stage).toBe('authorized')
+    abort.mockRestore()
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('never aborts a signed operation from local replace authority', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    })
+    const abort = vi.spyOn(vaultCosignerClient.spending, 'abort')
+    await expect(
+      abortPersistedVtxoSpend(loadPersistedVtxoSpend('vault-a')!, status(), hex.decode('01'.padStart(64, '0'))),
+    ).rejects.toBeInstanceOf(VtxoLivePendingError)
+    expect(abort).not.toHaveBeenCalled()
+    expect(loadPersistedVtxoSpendById('vault-a', OP_1)?.stage).toBe('authorized')
+    abort.mockRestore()
+    clearPersistedVtxoSpend('vault-a')
+  })
+
+  it('does not call credentials.get while previewing a fee quote', async () => {
+    const getCredential = vi.fn()
+    const original = navigator.credentials
+    Object.defineProperty(navigator, 'credentials', { configurable: true, value: { get: getCredential } })
+    try {
+      await expect(previewVaultVtxoSend(status(), destination(), 12_000)).resolves.toEqual({
+        destAddress: destination(),
+        amountSats: 12_000,
+        feeSats: 0,
+      })
+      expect(getCredential).not.toHaveBeenCalled()
+    } finally {
+      if (original) Object.defineProperty(navigator, 'credentials', { configurable: true, value: original })
+      else Reflect.deleteProperty(navigator, 'credentials')
+    }
+  })
+
+  it('does not let Send anyway or a different amount erase a signed operation', async () => {
+    clearPersistedVtxoSpend('vault-a')
+    persistVtxoSpend({
+      vaultId: 'vault-a',
+      operationId: OP_1,
+      bundleDigest: '11'.repeat(32),
+      destAddress: destination(),
+      amountSats: 12_000,
+      arkTxid: 'aa'.repeat(32),
+      ...RESERVATION_FACTS,
+      stage: 'authorized',
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: 'cHNidP9p',
+    })
+    await expect(previewVaultVtxoSend(status(), destination(), 20_000, { replaceExisting: true })).rejects.toSatisfy(
+      isVtxoLivePendingError,
+    )
+    expect(loadPersistedVtxoSpendById('vault-a', OP_1)?.stage).toBe('authorized')
+    expect(listPersistedVtxoSpends('vault-a')).toHaveLength(1)
+    clearPersistedVtxoSpend('vault-a')
   })
 })
