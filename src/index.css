@@ -496,10 +496,12 @@ input:focus::placeholder {
   outline: none;
 }
 
-.focusable {
-  &:focus-visible {
-    background-color: var(--background-focused);
-  }
+.focusable:focus-visible {
+  background-color: var(--background-focused);
+}
+
+[data-testid='vault-app'] .focusable:focus-visible {
+  background-color: transparent;
 }
 
 hr {
