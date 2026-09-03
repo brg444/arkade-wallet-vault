@@ -313,7 +313,18 @@ export default function QgScreen({
           )}
         </header>
       )}
-      <main ref={mainRef} className='qg-main'>
+      <main
+        ref={mainRef}
+        className='qg-main'
+        onFocus={(event) => {
+          const target = event.target
+          if (!(target instanceof HTMLElement)) return
+          if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return
+          window.setTimeout(() => {
+            target.scrollIntoView({ block: 'center', inline: 'nearest' })
+          }, 50)
+        }}
+      >
         {children}
       </main>
       {footer ? <footer className='qg-footer'>{footer}</footer> : null}

@@ -173,6 +173,26 @@ export default function VaultSend() {
           </p>
         ) : null}
       </section>
+      <label className='qg-dest-field'>
+        <span>To</span>
+        <div>
+          <input
+            value={spend.address}
+            aria-label='To'
+            autoComplete='off'
+            autoCapitalize='none'
+            autoCorrect='off'
+            spellCheck={false}
+            enterKeyHint='done'
+            placeholder={fromSavings ? 'Bitcoin address' : 'Arkade address or Lightning invoice'}
+            onChange={(event) => setAddress(event.target.value)}
+          />
+          <button type='button' aria-label='Scan destination' onClick={() => setScan(true)}>
+            <ScanLine />
+          </button>
+        </div>
+        {fromSavings ? <small>Bitcoin address</small> : null}
+      </label>
       {fromSavings ? (
         <p className='qg-available'>{prettyNumber(positions.savings.availableSats, 0)} sats available to move</p>
       ) : (
@@ -199,21 +219,6 @@ export default function VaultSend() {
           </div>
         </section>
       )}
-      <label className='qg-dest-field'>
-        <span>To</span>
-        <div>
-          <input
-            value={spend.address}
-            aria-label='To'
-            placeholder={fromSavings ? 'Bitcoin address' : 'Arkade address or Lightning invoice'}
-            onChange={(event) => setAddress(event.target.value)}
-          />
-          <button type='button' aria-label='Scan destination' onClick={() => setScan(true)}>
-            <ScanLine />
-          </button>
-        </div>
-        {fromSavings ? <small>Bitcoin address</small> : null}
-      </label>
       {fromSavings ? (
         <section className='qg-note'>
           <KeyRound />
