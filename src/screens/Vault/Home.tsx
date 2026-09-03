@@ -4,9 +4,9 @@ import Button from '../../components/Button'
 import Content from './Content'
 import ErrorMessage from '../../components/Error'
 import ChevronDownIcon from '../../icons/ChevronDown'
+import ClockIcon from '../../icons/Clock'
 import HollowPixelMark from '../../icons/HollowPixelMark'
 import QrIcon from '../../icons/Qr'
-import ReceiveIcon from '../../icons/Receive'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import ScanIcon from '../../icons/Scan'
 import TransferArrowIcon from '../../icons/TransferArrow'
@@ -166,21 +166,19 @@ export default function VaultHome() {
                 </button>
               </div>
             </div>
-            <div className='vault-home-balance'>
-              <p
-                className='vault-balance-figure'
-                data-testid='vault-balance'
-                aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
-                aria-live='polite'
-                aria-label={
-                  balancesLoaded
-                    ? `${spending ? 'Spending' : 'Savings'} balance: ${prettyNumber(sats)} ${satsUnit}`
-                    : `${spending ? 'Spending' : 'Savings'} balance loading`
-                }
-              >
-                {balancesLoaded ? prettyNumber(sats) : '—'}
-                {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
-              </p>
+            <div
+              className='vault-home-balance'
+              data-testid='vault-balance'
+              aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
+              aria-live='polite'
+              aria-label={
+                balancesLoaded
+                  ? `${spending ? 'Spending' : 'Savings'} balance: ${prettyNumber(sats)} ${satsUnit}`
+                  : `${spending ? 'Spending' : 'Savings'} balance loading`
+              }
+            >
+              <strong className='vault-balance-figure'>{balancesLoaded ? prettyNumber(sats) : '—'}</strong>
+              {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
             </div>
             <div className='vault-home-actions'>
               <Button
@@ -196,6 +194,7 @@ export default function VaultHome() {
               />
               <Button
                 main
+                secondary
                 className='vault-home-action-receive'
                 icon={<TransferArrowIcon incoming />}
                 label={spending ? 'Receive' : 'Add to Savings'}
@@ -210,7 +209,7 @@ export default function VaultHome() {
             {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
               <div className='vault-status-card is-active' role='status' data-testid='spending-pending'>
                 <span className='vault-status-icon' aria-hidden>
-                  <ReceiveIcon />
+                  <ClockIcon />
                 </span>
                 <span className='vault-status-content'>
                   <span className='vault-status-label'>
@@ -227,7 +226,7 @@ export default function VaultHome() {
             {balancesLoaded && !spending && positions.savings.pendingSats > 0 ? (
               <div className='vault-status-card is-active' role='status' data-testid='savings-pending'>
                 <span className='vault-status-icon' aria-hidden>
-                  <ReceiveIcon />
+                  <ClockIcon />
                 </span>
                 <span className='vault-status-content'>
                   <span className='vault-status-label'>{prettyNumber(positions.savings.pendingSats)} sats pending</span>
@@ -244,13 +243,14 @@ export default function VaultHome() {
                 onClick={() => openRecover('lost', 'home')}
               >
                 <span className='vault-status-icon' aria-hidden>
-                  !
+                  <ShieldCheckOutlineIcon />
                 </span>
                 <span className='vault-status-content'>
-                  <span className='vault-status-label'>Recovery in process</span>
-                  <span className='vault-status-copy'>
-                    {initiateAlert} Open Recovery to review the available cancellation paths.
-                  </span>
+                  <span className='vault-status-label'>Recovery started with hardware</span>
+                  <span className='vault-status-copy'>Open Recovery to review the available cancellation paths.</span>
+                </span>
+                <span className='vault-status-chevron' aria-hidden='true'>
+                  ›
                 </span>
               </button>
             ) : null}

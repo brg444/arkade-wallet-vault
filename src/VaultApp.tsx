@@ -22,12 +22,14 @@ import VaultSignIn from './screens/Vault/onboard/SignIn'
 import VaultTx from './screens/Vault/Tx'
 import VaultNavigation, { destinationForScreen } from './screens/Vault/Navigation'
 import { bootVaultPrefs } from './lib/vault/prefs'
+import { bootVaultFrame } from './lib/vault/pwaFrame'
 
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
   useEffect(() => {
     document.title = 'Arkade Vault'
     bootVaultPrefs()
+    return bootVaultFrame()
   }, [])
   const destination = destinationForScreen(screen)
   const pages = {

@@ -570,7 +570,10 @@ test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({
   await openVault(page)
 
   const app = page.getByTestId('vault-app')
-  await app.evaluate((element) => element.style.setProperty('--vault-safe-area-top', '47px'))
+  await app.evaluate((element) => {
+    element.style.setProperty('--vault-safe-area-top', '47px')
+    element.style.setProperty('--vault-safe-area-bottom', '34px')
+  })
 
   const viewport = page.viewportSize()
   const frame = await app.boundingBox()
@@ -586,6 +589,7 @@ test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({
   expect(frame!.height).toBe(viewport!.height)
   expect(accountBar!.y).toBeGreaterThanOrEqual(47)
   expect(navigationTrigger!.y + navigationTrigger!.height).toBe(viewport!.height)
+  expect(navigationTrigger!.height).toBe(46)
   expect(statusBarOverlay).toBe('none')
   await expectNoHorizontalOverflow(page)
 })
@@ -625,6 +629,20 @@ test('@polish covers accessible account, send, Security, and Settings states', a
     .toBe('none')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('home-with-pending.png', { animations: 'disabled', fullPage: true })
+  const homeViewport = page.viewportSize()
+  for (const width of [320, 430, 768] as const) {
+    await page.setViewportSize({ width, height: homeViewport?.height || 844 })
+    await expectNoHorizontalOverflow(page)
+    const balance = await page.getByTestId('vault-balance').boundingBox()
+    const send = await page.getByRole('button', { name: 'Send', exact: true }).boundingBox()
+    const receive = await page.getByRole('button', { name: 'Receive', exact: true }).boundingBox()
+    expect(balance).not.toBeNull()
+    expect(send).not.toBeNull()
+    expect(receive).not.toBeNull()
+    expect(balance!.x + balance!.width).toBeLessThanOrEqual(width)
+    expect(send!.x + send!.width).toBeLessThanOrEqual(receive!.x + 1)
+  }
+  await page.setViewportSize(homeViewport || { width: 390, height: 844 })
 
   const accountTrigger = page.getByTestId('account-switcher')
   await accountTrigger.click()

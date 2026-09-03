@@ -68,6 +68,15 @@ describe('Vault home account boundaries', () => {
     expect(screen.queryByText(/hardware key/i)).toBeNull()
   })
 
+  it('surfaces recovery attention as a compact alert instead of an emergency block', () => {
+    renderHome({ initiateAlert: 'Someone started recovery' })
+    expect(screen.getByTestId('initiate-alert')).toHaveTextContent('Recovery started with hardware')
+    expect(screen.getByTestId('initiate-alert')).toHaveTextContent(
+      'Open Recovery to review the available cancellation paths.',
+    )
+    expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
+  })
+
   it('keeps pending boarding separate from the sendable Spending balance', () => {
     renderHome({
       account: 'spend',

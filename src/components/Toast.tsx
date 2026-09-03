@@ -5,8 +5,8 @@ export { toast }
 
 export const useToast = () => ({ toast })
 
-const topToastOffset = 'max(32px, calc(env(safe-area-inset-top, 0px) + 12px))'
-const mobileTopToastOffset = 'max(16px, calc(env(safe-area-inset-top, 0px) + 12px))'
+const topToastOffset = 'max(32px, calc(var(--vault-safe-area-top, 0px) + 12px))'
+const mobileTopToastOffset = 'max(16px, calc(var(--vault-safe-area-top, 0px) + 12px))'
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
