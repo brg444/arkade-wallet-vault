@@ -2023,6 +2023,29 @@ html.palette-dark [data-testid='vault-app'] {
   padding-top: 10px;
 }
 
+.vault-send-form .label.has-buttons {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.vault-send-form .label.has-buttons > input {
+  width: 100%;
+  min-width: 0;
+  padding-right: 0;
+  overflow: hidden;
+  font-size: clamp(0.875rem, 3.85cqi, 1rem) !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-send-form .label.has-buttons > div {
+  position: static;
+  transform: none;
+}
+
 .vault-send-form > div:first-child .shadow-surface {
   min-height: 112px;
   display: flex;
