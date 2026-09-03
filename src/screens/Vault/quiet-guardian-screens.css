@@ -1610,17 +1610,6 @@ body:has(.vault-screen-unlock) {
   line-height: 1.45;
 }
 
-.qg-screen:has(.qg-dest-field input:focus) .qg-capacity,
-.qg-screen:has(.qg-dest-field input:focus) .qg-helper,
-.qg-screen:has(.qg-dest-field input:focus) .qg-available,
-.qg-screen:has(.qg-dest-field input:focus) .qg-note {
-  display: none;
-}
-
-.qg-screen:has(.qg-dest-field input:focus) .qg-amount-entry input {
-  font-size: 36px;
-}
-
 .qg-review-amount {
   padding: 12px 0 22px;
   text-align: center;

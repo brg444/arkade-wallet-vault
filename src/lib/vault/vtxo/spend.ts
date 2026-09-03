@@ -14,6 +14,7 @@ import { SigHash } from '@scure/btc-signer'
 import { tapLeafHash } from '@scure/btc-signer/payment.js'
 import { base64, hex } from '@scure/base'
 import { deriveDirectP256, signDirectP256, zeroBytes } from '../ceremony/directauth'
+import { VaultRequestError } from '../api'
 import {
   UnknownVtxoOperationStateError,
   vaultCosignerClient,
@@ -231,6 +232,14 @@ export interface PersistedVtxoSpend {
   reservedInputs?: { txid: string; vout: number; valueSats: number; scriptHex: string }[]
   reservedOutputs?: { scriptHex: string; amountSats: number }[]
   operatorArkPsbt?: string
+}
+
+export interface VaultVtxoLifecycleFact {
+  txid: string
+  vout: number
+  valueSats: number
+  scriptHex: string
+  terminal: boolean
 }
 
 export function vtxoSpendStorageKey(vaultId: string): string {
@@ -1342,8 +1351,32 @@ export function fetchVtxoOperation(vaultId: string, operationId: string): Promis
 }
 
 function operationNotFound(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err || '')).toLowerCase()
-  return msg.includes('not found') || msg.includes('404')
+  return err instanceof VaultRequestError && err.status === 404
+}
+
+export function everyReservedInputIsTerminal(
+  pending: PersistedVtxoSpend,
+  lifecycleVtxos: readonly VaultVtxoLifecycleFact[],
+): boolean {
+  if (!pending.reservedInputs?.length) return false
+  const terminal = new Set(
+    lifecycleVtxos
+      .filter(
+        (vtxo) =>
+          vtxo.terminal &&
+          /^[0-9a-f]{64}$/i.test(vtxo.txid) &&
+          Number.isSafeInteger(vtxo.vout) &&
+          vtxo.vout >= 0 &&
+          Number.isSafeInteger(vtxo.valueSats) &&
+          vtxo.valueSats > 0 &&
+          /^[0-9a-f]+$/i.test(vtxo.scriptHex) &&
+          vtxo.scriptHex.length % 2 === 0,
+      )
+      .map((vtxo) => `${vtxo.txid.toLowerCase()}:${vtxo.vout}:${vtxo.valueSats}:${vtxo.scriptHex.toLowerCase()}`),
+  )
+  return pending.reservedInputs.every((input) =>
+    terminal.has(`${input.txid.toLowerCase()}:${input.vout}:${input.valueSats}:${input.scriptHex.toLowerCase()}`),
+  )
 }
 
 const VTXO_SPEND_STAGE_RANK: Record<PersistedVtxoSpendStage, number> = {
@@ -1717,17 +1750,42 @@ export type VtxoSpendReconcile =
   | { kind: 'receipt-finalized'; txid: string; operationId: string }
 
 /** Finish vault-service receipt only. Never invents a newly approved payment. */
-export async function reconcilePersistedVtxoSpend(status: VaultStatus): Promise<VtxoSpendReconcile> {
+export async function reconcilePersistedVtxoSpend(
+  status: VaultStatus,
+  lifecycleVtxos: readonly VaultVtxoLifecycleFact[] = [],
+): Promise<VtxoSpendReconcile> {
   requireMutinynetStatus(status)
-  return withVtxoSendLock(status.vaultId, () => reconcilePersistedVtxoSpendLocked(status))
+  return withVtxoSendLock(status.vaultId, () => reconcilePersistedVtxoSpendLocked(status, lifecycleVtxos))
 }
 
-async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<VtxoSpendReconcile> {
-  let pending = loadPersistedVtxoSpend(status.vaultId)
-  if (!pending) return { kind: 'idle' }
+async function reconcileOnePersistedVtxoSpend(
+  status: VaultStatus,
+  initial: PersistedVtxoSpend,
+  lifecycleVtxos: readonly VaultVtxoLifecycleFact[],
+): Promise<VtxoSpendReconcile> {
+  let pending: PersistedVtxoSpend | undefined = initial
   const stageBeforeSync = pending.stage
+  let view: VtxoOperationView
   try {
-    pending = await syncPersistedSpendWithOperation(pending)
+    view = await fetchVtxoOperation(pending.vaultId, pending.operationId)
+  } catch (err) {
+    if (operationNotFound(err)) {
+      if (vtxoSpendIsAbortable(pending) || everyReservedInputIsTerminal(pending, lifecycleVtxos)) {
+        clearPersistedVtxoSpend(status.vaultId, pending.operationId)
+        return { kind: 'idle' }
+      }
+    }
+    return { kind: 'pending', operationId: pending.operationId, stage: pending.stage }
+  }
+  if (
+    (view.state === 'signed' || view.state === 'submitted' || view.state === 'unresolved') &&
+    everyReservedInputIsTerminal(pending, lifecycleVtxos)
+  ) {
+    clearPersistedVtxoSpend(status.vaultId, pending.operationId)
+    return { kind: 'idle' }
+  }
+  try {
+    pending = applyVtxoOperationView(pending, view)
   } catch (err) {
     if (err instanceof VtxoSpendUnresolvedError) {
       return { kind: 'pending', operationId: err.operationId, stage: stageBeforeSync }
@@ -1783,6 +1841,21 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
     }
   }
   return { kind: 'pending', operationId: pending.operationId, stage: pending.stage }
+}
+
+async function reconcilePersistedVtxoSpendLocked(
+  status: VaultStatus,
+  lifecycleVtxos: readonly VaultVtxoLifecycleFact[],
+): Promise<VtxoSpendReconcile> {
+  const operations = listPersistedVtxoSpends(status.vaultId)
+  if (!operations.length) return { kind: 'idle' }
+  let result: VtxoSpendReconcile = { kind: 'idle' }
+  for (const operation of operations) {
+    const current = await reconcileOnePersistedVtxoSpend(status, operation, lifecycleVtxos)
+    if (current.kind === 'receipt-finalized') result = current
+    else if (current.kind === 'pending' && result.kind === 'idle') result = current
+  }
+  return result
 }
 
 async function finishOperatorFinalized(pending: PersistedVtxoSpend): Promise<VaultVtxoSpendResult> {

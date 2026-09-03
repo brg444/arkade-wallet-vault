@@ -141,6 +141,8 @@ export default function QgScreen({
   const rootRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLElement>(null)
   const mainRef = useRef<HTMLElement>(null)
+  const focusFrameRef = useRef(0)
+  const focusGenerationRef = useRef(0)
   const drag = useRef({ startY: 0, startX: 0, dy: 0, active: false, locked: false, suppressClick: false })
   const sheet = Boolean(dismiss && !back && !close)
   const activate = (fn?: () => void) => () => {
@@ -165,6 +167,30 @@ export default function QgScreen({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [sheet, dismiss])
+
+  useEffect(() => {
+    const ensureFocusedFieldVisible = () => {
+      const main = mainRef.current
+      const target = document.activeElement
+      if (!main || !(target instanceof HTMLElement) || !main.contains(target)) return
+      if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return
+      const generation = focusGenerationRef.current
+      if (focusFrameRef.current) window.cancelAnimationFrame(focusFrameRef.current)
+      focusFrameRef.current = window.requestAnimationFrame(() => {
+        focusFrameRef.current = 0
+        if (generation !== focusGenerationRef.current || document.activeElement !== target || !target.isConnected) {
+          return
+        }
+        target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      })
+    }
+    window.visualViewport?.addEventListener('resize', ensureFocusedFieldVisible)
+    return () => {
+      focusGenerationRef.current += 1
+      if (focusFrameRef.current) window.cancelAnimationFrame(focusFrameRef.current)
+      window.visualViewport?.removeEventListener('resize', ensureFocusedFieldVisible)
+    }
+  }, [])
 
   useEffect(() => {
     if (!sheet) return
@@ -320,10 +346,20 @@ export default function QgScreen({
           const target = event.target
           if (!(target instanceof HTMLElement)) return
           if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return
-          window.setTimeout(() => {
-            if (!target.isConnected || typeof target.scrollIntoView !== 'function') return
-            target.scrollIntoView({ block: 'center', inline: 'nearest' })
-          }, 50)
+          const generation = ++focusGenerationRef.current
+          if (focusFrameRef.current) window.cancelAnimationFrame(focusFrameRef.current)
+          focusFrameRef.current = window.requestAnimationFrame(() => {
+            focusFrameRef.current = 0
+            if (generation !== focusGenerationRef.current || document.activeElement !== target || !target.isConnected) {
+              return
+            }
+            target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+          })
+        }}
+        onBlur={() => {
+          focusGenerationRef.current += 1
+          if (focusFrameRef.current) window.cancelAnimationFrame(focusFrameRef.current)
+          focusFrameRef.current = 0
         }}
       >
         {children}
