@@ -21,16 +21,16 @@ describe('vault fiat display', () => {
     expect(satsFromUsd(1, 0)).toBe(0)
   })
 
-  it('formats the Home hero as ₿SATS or USD using the live display rate', () => {
+  it('formats the Home hero as bitcoin or USD using the live display rate', () => {
     expect(homeBalanceDisplay(10_000, 'sats')).toEqual({
-      amount: '10,000',
-      unit: '₿SATS',
-      label: '10,000 ₿SATS',
+      amount: '₿10,000',
+      unit: '',
+      label: '₿10,000',
     })
     expect(homeBalanceDisplay(128_000, 'sats')).toEqual({
-      amount: '128,000',
-      unit: '₿SATS',
-      label: '128,000 ₿SATS',
+      amount: '₿128,000',
+      unit: '',
+      label: '₿128,000',
     })
     expect(homeBalanceDisplay(128_000, 'usd', { currency: Fiats.USD, pricePerBtc: 125_000 })).toEqual({
       amount: '$160.00',
@@ -43,9 +43,7 @@ describe('vault fiat display', () => {
   })
 
   it('falls back to sats when a USD rate is unavailable or invalid', () => {
-    expect(homeBalanceDisplay(128_000, 'usd', null).label).toBe('128,000 ₿SATS')
-    expect(homeBalanceDisplay(128_000, 'usd', { currency: Fiats.USD, pricePerBtc: Number.NaN }).label).toBe(
-      '128,000 ₿SATS',
-    )
+    expect(homeBalanceDisplay(128_000, 'usd', null).label).toBe('₿128,000')
+    expect(homeBalanceDisplay(128_000, 'usd', { currency: Fiats.USD, pricePerBtc: Number.NaN }).label).toBe('₿128,000')
   })
 })

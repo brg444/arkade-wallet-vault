@@ -87,11 +87,11 @@ describe('Vault send scanner origin', () => {
     expect(screen.getByLabelText('To')).toHaveValue('')
   })
 
-  it('enters in ₿SATS by default and converts USD edits to integer satoshis', async () => {
+  it('enters bitcoin by default and converts USD edits to integer satoshis', async () => {
     const user = userEvent.setup()
     const value = renderSend()
     const denomination = screen.getByRole('button', { name: /Amount in bitcoin satoshis/i })
-    expect(denomination).toHaveTextContent('₿SATS')
+    expect(denomination).toHaveTextContent('₿')
 
     await user.click(denomination)
     expect(screen.getByRole('button', { name: /Amount in US dollars/i })).toHaveTextContent('$')
@@ -136,7 +136,7 @@ describe('Vault send scanner origin', () => {
     })
 
     expect(screen.getByText('Payment in progress')).toBeTruthy()
-    expect(screen.getByText('15,000 ₿SATS reserved')).toBeTruthy()
+    expect(screen.getByText('₿15,000 reserved')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Resume payment' }))
     expect(reviewSpend).toHaveBeenCalled()
   })

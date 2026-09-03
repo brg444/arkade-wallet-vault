@@ -90,7 +90,7 @@ export default function VaultSend() {
     spend.amount <= 0
       ? ''
       : spend.amount < 330
-        ? 'The smallest send is 330 ₿SATS.'
+        ? 'The smallest send is ₿330.'
         : spend.amount > available && !resumingPayment
           ? fromSavings
             ? 'That is more than Savings can move now.'
@@ -211,6 +211,14 @@ export default function VaultSend() {
       <section className='qg-amount-entry'>
         <label htmlFor='qg-send-amount'>Amount</label>
         <div>
+          <button
+            type='button'
+            className='qg-denomination'
+            aria-label={`Amount in ${amountUnit === 'usd' ? 'US dollars' : 'bitcoin satoshis'}. Change denomination`}
+            onClick={() => void toggleAmountUnit()}
+          >
+            {amountUnit === 'usd' ? '$' : '₿'}
+          </button>
           <input
             id='qg-send-amount'
             value={amountUnit === 'usd' ? usdInput : spend.amount ? prettyNumber(spend.amount, 0) : ''}
@@ -220,14 +228,6 @@ export default function VaultSend() {
             placeholder={amountUnit === 'usd' ? '0.00' : '20,000'}
             onChange={(event) => setAmount(event.target.value)}
           />
-          <button
-            type='button'
-            className='qg-denomination'
-            aria-label={`Amount in ${amountUnit === 'usd' ? 'US dollars' : 'bitcoin satoshis'}. Change denomination`}
-            onClick={() => void toggleAmountUnit()}
-          >
-            {amountUnit === 'usd' ? '$' : '₿SATS'}
-          </button>
           {lightning ? null : (
             <button
               type='button'
@@ -271,15 +271,15 @@ export default function VaultSend() {
         {fromSavings ? <small>Bitcoin address</small> : null}
       </label>
       {fromSavings ? (
-        <p className='qg-available'>{prettyNumber(positions.savings.availableSats, 0)} ₿SATS available to move</p>
+        <p className='qg-available'>₿{prettyNumber(positions.savings.availableSats, 0)} available to move</p>
       ) : (
         <section className='qg-capacity' aria-label='Spending capacity'>
           <div>
             <span>{resumingPayment ? 'Payment in progress' : 'Available'}</span>
             <strong>
               {resumingPayment
-                ? `${prettyNumber(reservedSats || pendingSend?.amountSats || spend.amount, 0)} ₿SATS reserved`
-                : `${prettyNumber(positions.spending.availableSats, 0)} ₿SATS`}
+                ? `₿${prettyNumber(reservedSats || pendingSend?.amountSats || spend.amount, 0)} reserved`
+                : `₿${prettyNumber(positions.spending.availableSats, 0)}`}
             </strong>
           </div>
           <div>

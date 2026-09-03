@@ -108,7 +108,8 @@ export default function VaultHistory() {
                 </span>
                 <span className={sent ? 'vault-history-amt' : 'vault-history-amt is-in'}>
                   {sent ? '−' : '+'}
-                  {prettyNumber(amount)} <span className='vault-history-unit'>₿SATS</span>
+                  <span className='vault-history-unit'>₿</span>
+                  {prettyNumber(amount)}
                 </span>
               </button>
             )

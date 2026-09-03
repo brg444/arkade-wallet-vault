@@ -64,6 +64,7 @@ export default function VaultConditions() {
       <label className='qg-money-field'>
         <span>Per payment</span>
         <div>
+          <b>₿</b>
           <input
             value={displaySats(txCap)}
             inputMode='numeric'
@@ -71,12 +72,12 @@ export default function VaultConditions() {
             data-testid='policy-tx-cap'
             onChange={(event) => setTxCap(digitsOnly(event.target.value))}
           />
-          <b>₿SATS</b>
         </div>
       </label>
       <label className='qg-money-field'>
         <span>Rolling 24-hour limit</span>
         <div>
+          <b>₿</b>
           <input
             value={displaySats(allowance)}
             inputMode='numeric'
@@ -84,7 +85,6 @@ export default function VaultConditions() {
             data-testid='policy-period-allowance'
             onChange={(event) => setAllowance(digitsOnly(event.target.value))}
           />
-          <b>₿SATS</b>
         </div>
       </label>
       {selected ? (
@@ -101,10 +101,10 @@ export default function VaultConditions() {
           <div>
             <strong>Check these limits</strong>
             <p>
-              Per payment {prettyNumber(bounds.txRecipientCapSats.min, 0)}–
-              {prettyNumber(bounds.txRecipientCapSats.max, 0)} ₿SATS. Rolling 24-hour{' '}
-              {prettyNumber(bounds.periodAllowanceSats.min, 0)}–{prettyNumber(bounds.periodAllowanceSats.max, 0)} ₿SATS,
-              and it must cover at least one payment.
+              Per payment ₿{prettyNumber(bounds.txRecipientCapSats.min, 0)}–₿
+              {prettyNumber(bounds.txRecipientCapSats.max, 0)}. Rolling 24-hour ₿
+              {prettyNumber(bounds.periodAllowanceSats.min, 0)}–₿{prettyNumber(bounds.periodAllowanceSats.max, 0)}, and
+              it must cover at least one payment.
             </p>
           </div>
         </section>

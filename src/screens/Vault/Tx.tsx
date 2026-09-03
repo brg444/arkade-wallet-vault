@@ -71,7 +71,8 @@ export default function VaultTx() {
       </div>
       <h1>
         {sent ? '−' : '+'}
-        {prettyNumber(amount, 0)} <small>₿SATS</small>
+        <small>₿</small>
+        {prettyNumber(amount, 0)}
       </h1>
       <section className='qg-details'>
         <div>
