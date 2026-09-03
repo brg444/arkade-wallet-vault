@@ -1,42 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-const trigger = vi.fn().mockResolvedValue(undefined)
-
-vi.mock('web-haptics', () => ({
-  WebHaptics: vi.fn(function WebHaptics() {
-    return { trigger }
-  }),
-}))
+import { bootHaptics, hapticLight, hapticSubtle, hapticTap, setHapticsEnabled } from './haptics'
 
 describe('vault haptics', () => {
   beforeEach(() => {
-    trigger.mockClear()
-    window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as unknown as typeof window.matchMedia
+    setHapticsEnabled(true)
+    document.body.replaceChildren()
+    vi.spyOn(HTMLLabelElement.prototype, 'click')
   })
 
   afterEach(() => {
-    vi.resetModules()
+    vi.restoreAllMocks()
+    document.body.replaceChildren()
   })
 
-  it('uses Arkade wallet light and selection patterns', async () => {
-    const { hapticLight, hapticSubtle, hapticTap } = await import('./haptics')
+  it('clicks an on-screen iOS switch so Taptic Engine can fire', () => {
     hapticLight()
+    const input = document.querySelector('input[switch]') as HTMLInputElement | null
+    const label = document.querySelector('label[for="qg-haptic-switch"]') as HTMLLabelElement | null
+    expect(input).toBeTruthy()
+    expect(label).toBeTruthy()
+    expect(input?.style.display).not.toBe('none')
+    expect(label?.style.display).not.toBe('none')
+    expect(HTMLLabelElement.prototype.click).toHaveBeenCalled()
+  })
+
+  it('reuses the same switch after boot', () => {
+    bootHaptics()
     hapticSubtle()
     hapticTap()
-    expect(trigger).toHaveBeenNthCalledWith(1, 'light')
-    expect(trigger).toHaveBeenNthCalledWith(2, 'selection')
-    expect(trigger).toHaveBeenNthCalledWith(3, 'selection')
+    expect(document.querySelectorAll('input[switch]')).toHaveLength(1)
   })
 
-  it('stays quiet when haptics are off or reduced motion is preferred', async () => {
-    const { hapticLight, setHapticsEnabled } = await import('./haptics')
+  it('stays quiet when haptics are off', () => {
     setHapticsEnabled(false)
     hapticLight()
-    expect(trigger).not.toHaveBeenCalled()
-
-    setHapticsEnabled(true)
-    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as unknown as typeof window.matchMedia
-    hapticLight()
-    expect(trigger).not.toHaveBeenCalled()
+    expect(HTMLLabelElement.prototype.click).not.toHaveBeenCalled()
   })
 })

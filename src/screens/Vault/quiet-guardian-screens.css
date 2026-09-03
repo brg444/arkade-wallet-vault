@@ -2139,20 +2139,22 @@ body:has(.vault-screen-welcome) {
   cursor: pointer;
 }
 
-.qg-launcher-trigger.is-intro {
-  animation: qg-launcher-pulse 2.1s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
-}
-
 .qg-launcher-trigger {
+  position: fixed;
+  right: 0;
+  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+  z-index: 122;
   touch-action: none;
   user-select: none;
 }
 
-.qg-launcher.is-peeking {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+.qg-launcher-trigger.is-intro {
+  animation: qg-launcher-pulse 2.1s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
+}
+
+.qg-launcher.is-peeking .qg-launcher-backdrop,
+.qg-launcher.is-peeking .qg-launcher-stack {
+  position: fixed;
 }
 
 .qg-launcher-trigger.is-pulling {

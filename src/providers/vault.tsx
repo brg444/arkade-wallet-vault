@@ -73,6 +73,7 @@ import { requireProtectionTier, type ProtectionTier } from '../lib/vault/protect
 import type { VaultFiatDisplayRate } from '../lib/vault/fiatDisplay'
 import { getPriceFeed } from '../lib/fiat'
 import { Fiats } from '../lib/types'
+import { loadVaultPrivacyLock } from '../lib/vault/prefs'
 
 import type { VaultStatus } from '../lib/vault/types'
 import {
@@ -168,7 +169,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const pinId = existing?.vaultId || selected
       existingPin = pinId ? loadAddressPin(localStorage, pinId) : null
       setAddressPin(existingPin)
-      const sessionLocked = loadSessionLocked()
+      const sessionLocked = loadSessionLocked() || Boolean(existing && loadVaultPrivacyLock())
       setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
       if (existing && sessionLocked) {

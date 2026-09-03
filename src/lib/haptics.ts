@@ -1,44 +1,79 @@
-import { WebHaptics } from 'web-haptics'
-
 let enabled = true
-let haptics: WebHaptics | null = null
+let iosLabel: HTMLLabelElement | null = null
 
 export function setHapticsEnabled(value: boolean): void {
   enabled = value
 }
 
-function getHaptics(): WebHaptics | null {
-  if (haptics) return haptics
-  if (typeof window === 'undefined') return null
+export function bootHaptics(): void {
+  if (typeof document === 'undefined') return
+  ensureSwitch()
+}
+
+function ensureSwitch(): HTMLLabelElement | null {
+  if (iosLabel?.isConnected) return iosLabel
+  if (typeof document === 'undefined') return null
   try {
-    haptics = new WebHaptics()
-    return haptics
+    const id = 'qg-haptic-switch'
+    document.getElementById(id)?.remove()
+    document.querySelector(`label[for="${id}"]`)?.remove()
+
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.id = id
+    input.setAttribute('switch', '')
+    input.setAttribute('aria-hidden', 'true')
+    input.tabIndex = -1
+    Object.assign(input.style, {
+      position: 'fixed',
+      right: '8px',
+      bottom: '8px',
+      width: '32px',
+      height: '20px',
+      margin: '0',
+      opacity: '0.01',
+      pointerEvents: 'none',
+      zIndex: '0',
+    })
+
+    const label = document.createElement('label')
+    label.htmlFor = id
+    label.setAttribute('aria-hidden', 'true')
+    Object.assign(label.style, {
+      position: 'fixed',
+      right: '8px',
+      bottom: '8px',
+      width: '32px',
+      height: '20px',
+      margin: '0',
+      opacity: '0.01',
+      pointerEvents: 'none',
+      zIndex: '0',
+    })
+
+    document.body.append(input, label)
+    iosLabel = label
+    return label
   } catch {
     return null
   }
 }
 
-function shouldSkipHaptics(): boolean {
-  if (!enabled) return true
-  if (typeof window === 'undefined') return true
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
-}
-
-function triggerHaptic(pattern: 'selection' | 'light' | 'medium'): void {
-  if (shouldSkipHaptics()) return
-  void getHaptics()
-    ?.trigger(pattern)
-    .catch(() => undefined)
+function triggerHaptic(durationMs: number): void {
+  if (!enabled) return
+  if (typeof navigator === 'undefined') return
+  ensureSwitch()?.click()
+  navigator.vibrate?.(durationMs)
 }
 
 export function hapticTap(): void {
-  triggerHaptic('selection')
+  triggerHaptic(12)
 }
 
 export function hapticLight(): void {
-  triggerHaptic('light')
+  triggerHaptic(15)
 }
 
 export function hapticSubtle(): void {
-  triggerHaptic('selection')
+  triggerHaptic(8)
 }
