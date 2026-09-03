@@ -36,6 +36,7 @@
     "build:worker": "vite build -c vite.worker.config.ts",
     "start": "pnpm build:worker && vite --port 3003 --host localhost",
     "build": "pnpm build:worker && vite build",
+    "verify:deployment": "node scripts/verify-deployment.mjs",
     "test": "vitest run",
     "test:ui": "vitest run --ui",
     "test:unit": "vitest run --exclude '**/e2e/**'",

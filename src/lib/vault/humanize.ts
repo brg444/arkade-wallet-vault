@@ -4,6 +4,7 @@ import {
   isVtxoLivePendingError,
   isVtxoReservedReplaceError,
   isVtxoSameSendInProgressError,
+  isVtxoSpendInFlightError,
 } from './vtxo/spend'
 
 export function humanizeVaultError(err: unknown): string {
@@ -37,7 +38,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'This fee quote expired or changed. Review the send again.'
   }
   if (isVtxoSameSendInProgressError(err) || msg.includes('exact amount to this address is still in progress')) {
-    return 'A send of this exact amount to this address is still in progress. Wait for it to finish before trying again.'
+    return 'This payment is reserved. Tap Resume payment to continue it.'
   }
   if (isVtxoReservedReplaceError(err) || msg.includes('abort it before sending a different amount')) {
     return 'A reserved send is still open. Abort it before sending a different amount.'
@@ -48,7 +49,7 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('vtxo operation is not abortable') ||
     msg.includes('vtxo operation already active')
   ) {
-    return 'A send is already in progress and cannot be cancelled. Wait for it to finish before trying again.'
+    return 'This payment is with the Operator and cannot be cancelled. Open the original payment and tap Resume payment.'
   }
   if (
     isVtxoAbortFailedError(err) ||
@@ -63,10 +64,12 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('pending send lookup failed')) {
     return 'The current send status could not be confirmed. New sends remain blocked; try again later.'
   }
+  if (isVtxoSpendInFlightError(err) || msg.includes('vtxo spend is still with the operator')) {
+    return 'The Operator has this payment. Tap Resume payment to finish its approvals.'
+  }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
     msg.includes('vtxo finalization receipt') ||
-    msg.includes('vtxo spend is still with the operator') ||
     msg.includes('did not return exactly one transaction') ||
     msg.includes('operator pending lookup')
   ) {

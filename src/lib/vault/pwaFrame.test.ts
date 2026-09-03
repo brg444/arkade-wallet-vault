@@ -14,11 +14,11 @@ describe('vault PWA frame', () => {
     expect(currentVaultFrameHeight()).toBe(420)
   })
 
-  it('uses the visual viewport when the keyboard is closed instead of the physical screen', () => {
+  it('covers the physical screen when the keyboard is closed so the iOS safe area is painted', () => {
     vi.stubGlobal('visualViewport', { height: 812, addEventListener() {}, removeEventListener() {} })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 })
     Object.defineProperty(window.screen, 'height', { configurable: true, value: 874 })
-    expect(currentVaultFrameHeight()).toBe(812)
+    expect(currentVaultFrameHeight()).toBe(874)
   })
 
   it('does not pin a desktop frame height', () => {

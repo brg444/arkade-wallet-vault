@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultSend from './Send'
@@ -54,6 +54,8 @@ function renderSend(overrides: Partial<VaultContextProps> = {}) {
 }
 
 describe('Vault send scanner origin', () => {
+  afterEach(() => localStorage.clear())
+
   it('returns Home when the Home camera is cancelled', () => {
     const value = renderSend({
       scanOnSend: true,
@@ -92,5 +94,35 @@ describe('Vault send scanner origin', () => {
     expect(screen.queryByRole('button', { name: 'Send anyway' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Abort reserved send' }))
     expect(value.replaceInFlightSend).toHaveBeenCalled()
+  })
+
+  it('shows the reserved value and resumes the exact persisted payment instead of displaying zero', () => {
+    localStorage.setItem(
+      'arkade-vault-vtxo-spend:vault-a',
+      JSON.stringify({
+        vaultId: 'vault-a',
+        operationId: '11'.repeat(16),
+        bundleDigest: '',
+        destAddress: 'tark1same',
+        amountSats: 15_000,
+        arkTxid: '',
+        stage: 'pre-reserve',
+      }),
+    )
+    const reviewSpend = vi.fn()
+    renderSend({
+      reviewSpend,
+      spend: { address: 'tark1same', amount: 15_000, fee: 0 },
+      status: { network: 'mutinynet', vaultId: 'vault-a' } as VaultContextProps['status'],
+      positions: {
+        spending: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+        savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+      },
+    })
+
+    expect(screen.getByText('Payment in progress')).toBeTruthy()
+    expect(screen.getByText('15,000 sats reserved')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Resume payment' }))
+    expect(reviewSpend).toHaveBeenCalled()
   })
 })
