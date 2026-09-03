@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import gatewayHandler, {
   allowAuthorizerPath,
   allowGatewayRate,
+  allowMainnetGatewayRate,
   MAX_GATEWAY_BYTES,
   publicAuthorizerPath,
   readBoundedUpstream,
@@ -114,6 +115,22 @@ describe('same-origin authorizer gateway', () => {
     for (let i = 0; i < 60; i++) expect(allowGatewayRate(key, 1)).toBe(true)
     expect(allowGatewayRate(key, 1)).toBe(false)
     expect(allowGatewayRate(key, 61_000)).toBe(true)
+  })
+
+  it('uses a shared durable counter for mainnet client and vault limits', async () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify([{ result: 1 }, { result: 1 }, { result: 1 }, { result: 1 }]), { status: 200 }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(allowMainnetGatewayRate('203.0.113.1', 'vault-a')).resolves.toBe(true)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://redis.example/pipeline',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('rejects an oversize upstream body', async () => {

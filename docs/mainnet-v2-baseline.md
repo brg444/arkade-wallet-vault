@@ -106,3 +106,13 @@ of scope.
 
 Mainnet constants require explicit values, with all Mutinynet defaults excluded
 from that configuration.
+
+## Candidate profile status
+
+The candidate profile now pins the mainnet Operator, Emulator, checkpoint,
+program delays, Arkade HRP, and Contract Pack independently from Mutinynet.
+The mainnet Vercel manifest builds a network-bound bundle, uses the mainnet
+Esplora route, excludes Mutinynet origins from CSP, and fails closed unless a
+shared durable gateway counter is configured. This closes configuration work;
+it does not close the live lifecycle, hardware, storage-audit, upstream
+Emulator package, licensing, or staged-release gates above.

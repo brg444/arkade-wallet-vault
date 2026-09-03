@@ -5,6 +5,7 @@ import type { VaultStatus } from '../types'
 import { buildVaultProgramDescriptor } from './descriptor'
 import { buildRecoveryKit, parseRecoveryKit, type RecoveryKit } from './kit'
 import { SAVINGS_TEMPLATE } from './constants'
+import { isSupportedVaultNetwork } from '../constants'
 
 export const MAP_BACKUP_NAME = 'arkade-vault-map'
 export const MAP_BACKUP_VERSION = 3
@@ -67,13 +68,13 @@ export function kitFromFacts(input: {
     spendingPolicy &&
     statusSpendingPolicyDigest &&
     protectionTier &&
-    input.status?.network === 'mutinynet' &&
+    isSupportedVaultNetwork(input.status?.network) &&
     liveTemplate === SAVINGS_TEMPLATE
   ) {
     try {
       const descriptor = buildVaultProgramDescriptor({
         vaultId,
-        network: 'mutinynet',
+        network: input.status!.network,
         phonePub,
         hardwarePub,
         recoveryPub,

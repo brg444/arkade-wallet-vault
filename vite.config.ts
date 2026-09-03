@@ -45,8 +45,12 @@ function vaultAuthorizerProxy(): ProxyOptions {
 
 function esploraProxy(): ProxyOptions {
   const testTarget = process.env.VAULT_E2E_ESPLORA_PROXY_TARGET?.trim()
+  const releaseTarget =
+    process.env.VITE_VAULT_RELEASE_NETWORK === 'mainnet'
+      ? 'https://mempool.space'
+      : 'https://mempool.mutinynet.arkade.sh'
   return {
-    target: testTarget || 'https://mempool.mutinynet.arkade.sh',
+    target: testTarget || releaseTarget,
     changeOrigin: true,
     ...(testTarget ? { secure: false } : {}),
     rewrite: (path) => path.replace(/^\/esplora/, '/api'),

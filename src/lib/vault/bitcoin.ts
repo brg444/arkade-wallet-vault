@@ -4,7 +4,7 @@ import { Address, NETWORK, OutScript, TEST_NETWORK } from '@scure/btc-signer'
 
 export function vaultAddressNetwork(network: string) {
   if (network === 'mutinynet') return TEST_NETWORK
-  if (network === 'bitcoin') return NETWORK
+  if (network === 'bitcoin' || network === 'mainnet') return NETWORK
   throw new Error('unsupported network')
 }
 
@@ -35,7 +35,9 @@ export function isVaultArkAddress(value: string, network?: string): boolean {
   try {
     const decoded = ArkAddress.decode(value.trim())
     if (!network) return decoded.hrp === 'ark' || decoded.hrp === 'tark'
-    return decoded.hrp === (network === 'bitcoin' ? 'ark' : network === 'mutinynet' ? 'tark' : '')
+    return (
+      decoded.hrp === (network === 'bitcoin' || network === 'mainnet' ? 'ark' : network === 'mutinynet' ? 'tark' : '')
+    )
   } catch {
     return false
   }
