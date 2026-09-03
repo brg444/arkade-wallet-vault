@@ -101,7 +101,7 @@ export default function VaultKeys() {
               <h2>{vaultReady ? 'Your vault is ready.' : 'Review your vault.'}</h2>
               <p>
                 {vaultReady
-                  ? 'Device unlock and the Vault service protect everyday payments. Your recovery path remains available.'
+                  ? 'Your passkey and the Vault service protect everyday payments. Your recovery path remains available.'
                   : 'Check device access, addresses, and service readiness before relying on this vault.'}
               </p>
             </section>
@@ -168,7 +168,7 @@ export default function VaultKeys() {
                 <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
                 {canEnableOther ? (
                   <HubRow
-                    title={busy ? 'Waiting for device unlock…' : 'Use on another device'}
+                    title={busy ? 'Waiting for passkey…' : 'Use on another device'}
                     onClick={() => {
                       if (!busy) void enablePasskeyLogin()
                     }}
