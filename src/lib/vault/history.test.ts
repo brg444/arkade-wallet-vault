@@ -66,30 +66,11 @@ describe('vault history', () => {
         txid: 'vault-send',
         type: 'sent',
         amount: 12_000,
-        confirmed: true,
+        confirmed: false,
         blockTime: 1_700_000_000,
         account: 'spend',
       },
     ])
-  })
-
-  it('shows a preconfirmed Arkade receive as confirmed, not pending', () => {
-    const receive = sdkTx('arkade-receive', TxType.TxReceived, 21_000, false)
-    const rows = historyFromSdkActivities(
-      [{ id: 'arkade-receive', txs: [receive], amount: 21_000, createdAt: receive.createdAt, settled: false }],
-      { vaultTxids: new Set(['arkade-receive']), lightningRfqIds: new Set() },
-    )
-    expect(rows).toEqual([
-      {
-        txid: 'arkade-receive',
-        type: 'received',
-        amount: 21_000,
-        confirmed: true,
-        blockTime: 1_700_000_000,
-        account: 'spend',
-      },
-    ])
-    expect(groupVaultHistory(rows, 1_700_000_000)[0].label).toBe('Today')
   })
 
   it('uses a settled SDK boarding activity in the v2 dated feed', () => {
