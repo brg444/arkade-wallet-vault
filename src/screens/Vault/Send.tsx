@@ -1,7 +1,6 @@
 import { useContext, useEffect, useState } from 'react'
 import type { NetworkName } from '@arkade-os/sdk'
 import { KeyRound, ScanLine } from 'lucide-react'
-import ErrorMessage from '../../components/Error'
 import { prettyAmount, prettyNumber } from '../../lib/format'
 import { decodeVaultBip21, isVaultBip21 } from '../../lib/vault/bip21'
 import {
@@ -139,7 +138,11 @@ export default function VaultSend() {
       dismiss={() => navigate('home')}
       footer={
         <>
-          <ErrorMessage error={Boolean(error)} text={error} />
+          {error ? (
+            <p className='qg-footer-error' role='alert'>
+              {error}
+            </p>
+          ) : null}
           <QgPrimary
             onClick={() => void reviewSpend()}
             disabled={busy || Boolean(amountError) || spend.amount <= 0}

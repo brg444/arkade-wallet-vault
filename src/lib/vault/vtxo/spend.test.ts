@@ -259,6 +259,20 @@ function installImmediateNavigatorLock(): () => void {
   }
 }
 
+function stubPasskeyUnlocker(): typeof createVtxoSpendUnlocker {
+  return (enrollment, current, digestHex) =>
+    createVtxoSpendUnlocker(enrollment, current, digestHex, async () => ({
+      assertion: {
+        credentialId: 'aa',
+        clientDataJSON: 'bb',
+        authenticatorData: 'cc',
+        signature: 'dd',
+      },
+      directSig: 'ee',
+      phoneSecret: new Uint8Array(32).fill(1),
+    }))
+}
+
 function currentOperatorInfo(pending: PersistedVtxoSpend) {
   return {
     network: 'mutinynet',
@@ -438,12 +452,15 @@ describe('regular VTXO spend coordinator', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response(pending))
 
     try {
-      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toBeInstanceOf(
-        VtxoReviewedReservationError,
-      )
-      expect(fetch).toHaveBeenCalledTimes(1)
-      expect(fetch.mock.calls[0][0]).toContain(`/v1/vtxo/operation?vaultId=vault-a&operationId=${OP_1}`)
-      expect(fetch.mock.calls[0][1]).toMatchObject({ method: 'GET' })
+      if (kind === 'expired') {
+        await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toBeInstanceOf(
+          VtxoReviewedReservationError,
+        )
+        expect(fetch).not.toHaveBeenCalled()
+      } else {
+        await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toThrow(/deployment RP ID/)
+        expect(fetch).not.toHaveBeenCalled()
+      }
       expect(getCredential).not.toHaveBeenCalled()
     } finally {
       clearPersistedVtxoSpend('vault-a')
@@ -452,6 +469,54 @@ describe('regular VTXO spend coordinator', () => {
       } else {
         Reflect.deleteProperty(navigator, 'locks')
       }
+      if (originalCredentials) {
+        Object.defineProperty(navigator, 'credentials', { configurable: true, value: originalCredentials })
+      } else {
+        Reflect.deleteProperty(navigator, 'credentials')
+      }
+    }
+  })
+
+  it('requests Face ID before talking to the vault or Operator', async () => {
+    const pending = freshPolicyPending()
+    persistVtxoSpend(pending)
+    const restoreLock = installImmediateNavigatorLock()
+    const originalCredentials = navigator.credentials
+    const fetch = vi.spyOn(globalThis, 'fetch')
+    const getCredential = vi.fn(async () => {
+      expect(fetch).not.toHaveBeenCalled()
+      return null
+    })
+    Object.defineProperty(navigator, 'credentials', {
+      configurable: true,
+      value: { get: getCredential },
+    })
+    const current = {
+      ...status(),
+      rpId: window.location.hostname,
+      clientOrigin: window.location.origin,
+    }
+
+    try {
+      await expect(
+        sendVaultVtxo(
+          {
+            credId: 'aa'.repeat(32),
+            nonce: 'bb'.repeat(12),
+            ciphertext: 'cc',
+            phoneBip340Pub: '',
+            phoneDirectP256: '',
+          } as never,
+          current,
+          reviewedQuote(pending),
+        ),
+      ).rejects.toThrow(/The operation was aborted/)
+      expect(getCredential).toHaveBeenCalledTimes(1)
+      expect(fetch).not.toHaveBeenCalled()
+      expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
+    } finally {
+      clearPersistedVtxoSpend('vault-a')
+      restoreLock()
       if (originalCredentials) {
         Object.defineProperty(navigator, 'credentials', { configurable: true, value: originalCredentials })
       } else {
@@ -508,7 +573,9 @@ describe('regular VTXO spend coordinator', () => {
     })
 
     try {
-      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).resolves.toEqual({
+      await expect(
+        sendVaultVtxo({} as never, status(), reviewedQuote(pending), stubPasskeyUnlocker()),
+      ).resolves.toEqual({
         txid: pending.arkTxid,
         operationId: pending.operationId,
         feeSats: pending.feeSats,
@@ -578,7 +645,7 @@ describe('regular VTXO spend coordinator', () => {
     )
 
     try {
-      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toThrow(
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending), stubPasskeyUnlocker())).rejects.toThrow(
         /different reserved transaction bundle/,
       )
       expect(sdkOperationAdapterMocks.submit).toHaveBeenCalledTimes(1)
@@ -612,7 +679,7 @@ describe('regular VTXO spend coordinator', () => {
     )
 
     try {
-      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending))).rejects.toThrow(
+      await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending), stubPasskeyUnlocker())).rejects.toThrow(
         /Operator checkpoint tapscript is missing/,
       )
       expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
@@ -651,9 +718,9 @@ describe('regular VTXO spend coordinator', () => {
         /deployment RP ID/,
       )
       expect(sdkOperationAdapterMocks.submit).not.toHaveBeenCalled()
-      expect(submit).toHaveBeenCalledTimes(1)
+      expect(submit).not.toHaveBeenCalled()
       expect(getPending).not.toHaveBeenCalled()
-      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+      expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('reserved')
     } finally {
       clearPersistedVtxoSpend('vault-a')
       restoreLock()

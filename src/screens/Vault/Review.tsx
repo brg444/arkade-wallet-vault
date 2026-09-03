@@ -1,6 +1,5 @@
 import { useContext, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
-import ErrorMessage from '../../components/Error'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount, prettyNumber } from '../../lib/format'
@@ -40,7 +39,11 @@ export default function VaultReview() {
       back={() => navigate('send')}
       footer={
         <>
-          <ErrorMessage error={Boolean(error)} text={error} />
+          {error ? (
+            <p className='qg-footer-error' role='alert'>
+              {error}
+            </p>
+          ) : null}
           <QgPrimary
             onClick={() => void approveSend()}
             disabled={busy}
