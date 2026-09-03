@@ -1278,6 +1278,16 @@ body:has(.vault-screen-unlock) {
   gap: 6px;
   margin-top: 38px;
   padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qg-balance:disabled {
+  cursor: default;
 }
 
 .qg-balance strong {
