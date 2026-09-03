@@ -60,4 +60,23 @@ describe('Vercel worker caching', () => {
       destination: '/api/kit',
     })
   })
+
+  it('keeps the mainnet deployment explicit and isolated from Mutinynet', () => {
+    const config = JSON.parse(readFileSync('vercel.mainnet.json', 'utf8')) as {
+      buildCommand: string
+      headers: { source: string; headers: { key: string; value: string }[] }[]
+      rewrites: { source: string; destination: string }[]
+    }
+    const csp = config.headers
+      .find((entry) => entry.source === '/(.*)')
+      ?.headers.find((header) => header.key === 'Content-Security-Policy')?.value
+
+    expect(config.buildCommand).toBe('pnpm build:mainnet')
+    expect(config.rewrites).toContainEqual({
+      source: '/esplora/:path*',
+      destination: 'https://mempool.space/api/:path*',
+    })
+    expect(csp).toContain('https://arkade.computer')
+    expect(csp).not.toContain('mutinynet')
+  })
 })

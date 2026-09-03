@@ -71,7 +71,7 @@ export default function VaultSuccess() {
             ) : null}
             <div>
               <span>Network</span>
-              <strong>{status?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'}</strong>
+              <strong>{status?.network === 'mainnet' ? 'Bitcoin' : 'Mutinynet'}</strong>
             </div>
           </section>
         ) : null}

@@ -86,14 +86,28 @@ pnpm format:check
 pnpm build
 ```
 
+## Mainnet candidate build
+
+Mainnet uses a separate Vercel project and must not replace the Mutinynet
+deployment. Build it with `pnpm build:mainnet` and deploy with
+`vercel --local-config vercel.mainnet.json`. Configure a fresh mainnet
+authorizer through `AUTHORIZER_ORIGIN` and `AUTHORIZER_GATEWAY_SECRET`, set
+`VAULT_RELEASE_NETWORK=mainnet`, and provide `UPSTASH_REDIS_REST_URL` plus
+`UPSTASH_REDIS_REST_TOKEN` for the shared durable gateway limit. The bundle,
+gateway, and service each reject a mismatched network. Lightning remains
+disabled because no mainnet solver profile is bundled.
+
+Do not reuse the Mutinynet Vercel project, hostname, WebAuthn RP ID, secrets,
+vault records, database, or policy-sequence state.
+
 ## Release status
 
 The application contains only Arkade Vault workflows. Ordinary VTXO Spending
 supports fragmented inputs, exact no-change sends, the Operator's bounded
 intent fee policy, and recovery after an ambiguous Operator submission through
-the official SDK pending-transaction interface. Mainnet remains blocked on
+the official SDK pending-transaction interface. Mainnet activation remains blocked on
 live lifecycle qualification, browser concurrency tests, production key
-isolation, and mainnet-specific program pins. The confirmed mainnet Emulator
+isolation, and audited infrastructure provisioning. The confirmed mainnet Emulator
 endpoint advertises the same signer already pinned by the official SDK, but it
 has not yet passed Vault release qualification. Vault Program and policy
 schema bounds require a separate mainnet release review. A disabled outbound

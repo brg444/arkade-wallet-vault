@@ -328,7 +328,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const spendingArkAddress = status?.spendingArkAddress || ''
   const boardingAddress = status?.vtxoBoardingAddress || ''
   const savingsAddress = addressPin?.savingsAddress || ''
-  const liveNetwork = (status?.network || deployment?.network) === 'mutinynet'
+  const activeNetwork = status?.network || deployment?.network
+  const liveNetwork = activeNetwork === 'mutinynet'
   const selectAccount = useCallback(
     (next: VaultAccount) => {
       setAccount(next)
@@ -352,7 +353,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const dailyLimit = status?.enrolled ? (status.periodAllowance ?? setup.dailyLimitSats) : setup.dailyLimitSats
   const dailyRemaining = status?.enrolled ? (status.periodRemaining ?? dailyLimit) : 0
   const enrolled = Boolean(status?.enrolled)
-  const networkLabel = liveNetwork ? 'Mutinynet' : 'Test network'
+  const networkLabel = activeNetwork === 'mainnet' ? 'Bitcoin' : liveNetwork ? 'Mutinynet' : 'Unavailable'
   const clearError = useCallback(() => reportError(''), [reportError])
 
   useEffect(() => {

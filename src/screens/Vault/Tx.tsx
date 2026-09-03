@@ -98,7 +98,7 @@ export default function VaultTx() {
         </div>
         <div>
           <span>Network</span>
-          <strong>{vaultStatus?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'}</strong>
+          <strong>{vaultStatus?.network === 'mainnet' ? 'Bitcoin' : 'Mutinynet'}</strong>
         </div>
       </section>
       <p className='qg-copy'>

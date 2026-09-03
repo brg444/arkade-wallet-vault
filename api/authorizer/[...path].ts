@@ -83,6 +83,42 @@ export function allowGatewayRate(key: string, now = Date.now()): boolean {
   return true
 }
 
+function rateIdentity(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 32)
+}
+
+function requestVaultId(pathAndQuery: string, body?: Buffer): string {
+  const query = new URLSearchParams(pathAndQuery.split('?')[1] || '')
+  const fromQuery = query.get('vault') || query.get('vaultId') || ''
+  if (fromQuery) return fromQuery
+  if (!body?.byteLength) return ''
+  try {
+    const parsed = JSON.parse(body.toString('utf8')) as { vaultId?: unknown }
+    return typeof parsed.vaultId === 'string' ? parsed.vaultId : ''
+  } catch {
+    return ''
+  }
+}
+
+export async function allowMainnetGatewayRate(client: string, vaultId = ''): Promise<boolean> {
+  const origin = String(process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '')
+  const token = String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim()
+  if (!origin || !token) throw new Error('shared durable rate limit is not configured')
+  const window = Math.floor(Date.now() / RATE_WINDOW_MS)
+  const keys = [`vault-rate:client:${rateIdentity(client)}:${window}`]
+  if (vaultId) keys.push(`vault-rate:vault:${rateIdentity(vaultId)}:${window}`)
+  const commands = keys.flatMap((key) => [['INCR', key], ['PEXPIRE', key, String(RATE_WINDOW_MS * 2), 'NX']])
+  const response = await fetch(`${origin}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(commands),
+    signal: AbortSignal.timeout(5_000),
+  })
+  if (!response.ok) throw new Error('shared durable rate limit is unavailable')
+  const results = (await response.json()) as { result?: unknown; error?: unknown }[]
+  return keys.every((_, index) => Number(results[index * 2]?.result) <= RATE_LIMIT && !results[index * 2]?.error)
+}
+
 export function clientAddress(headers: Record<string, string | string[] | undefined>): string {
   const forwarded = headers['x-forwarded-for']
   const first = Array.isArray(forwarded) ? forwarded[0] : forwarded
@@ -218,11 +254,6 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 403, 'cross-origin authorizer access denied')
     return
   }
-  if (pathOnly !== '/health' && pathOnly !== '/ready' && !allowGatewayRate(clientAddress(req.headers))) {
-    jsonError(res, 429, 'too many requests')
-    return
-  }
-
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     const name = key.toLowerCase()
@@ -238,6 +269,21 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   } catch {
     jsonError(res, 413, 'API request too large')
     return
+  }
+  if (pathOnly !== '/health' && pathOnly !== '/ready') {
+    try {
+      const allowed =
+        process.env.VAULT_RELEASE_NETWORK === 'mainnet'
+          ? await allowMainnetGatewayRate(clientAddress(req.headers), requestVaultId(pathAndQuery, body))
+          : allowGatewayRate(clientAddress(req.headers))
+      if (!allowed) {
+        jsonError(res, 429, 'too many requests')
+        return
+      }
+    } catch {
+      jsonError(res, 503, 'shared rate limit is unavailable')
+      return
+    }
   }
   let upstream: Response
   try {
@@ -266,3 +312,4 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   res.setHeader('Content-Length', String(payload.byteLength))
   res.end(payload)
 }
+import { createHash } from 'node:crypto'
