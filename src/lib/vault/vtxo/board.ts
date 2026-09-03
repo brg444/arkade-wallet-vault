@@ -2,17 +2,18 @@ import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '@scure/base'
 import { createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
+import { requireSupportedVaultNetwork, type VaultNetwork } from '../constants'
 import { bytesToHex, encodeUtf8, hexToBytes, requireLowerHex } from '../hex'
+import { networkPins } from '../networkPins'
 import type { BoardingDescriptor, VaultStatus } from '../types'
 import { vaultWalletNamespace } from './walletWorkerNames'
 
 export const BOARDING_PROGRAM = 'vault-board-v1' as const
 export const BOARDING_SCHEMA = 'arkade-vault/board-v1' as const
 export const BOARDING_TEMPLATE = 'vault-board-v1-boarding-vault-and-operator' as const
-export const BOARDING_EXIT_DELAY = 604_672
+export const BOARDING_EXIT_DELAY = networkPins('mutinynet').boardExitDelay
 export const BOARDING_EXIT_DELAY_UNIT = 'seconds' as const
-export const MUTINYNET_OPERATOR_SIGNER_PUB =
-  '03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a' as const
+export const MUTINYNET_OPERATOR_SIGNER_PUB = networkPins('mutinynet').operatorSignerPub
 
 const BOARDING_KEY_DOMAIN = 'vault-board-v1/boarding-key'
 const BOARDING_KEY_SALT = sha256(encodeUtf8('arkade-vault/vault-board-v1/boarding-key/hkdf-sha256-v1'))
@@ -21,24 +22,29 @@ const KEY_DATABASE_PREFIX = 'arkade-vault-board-v1-key'
 const KEY_STORE = 'key'
 const KEY_DB_VERSION = 1
 
-export const BOARDING_PROGRAM_DIGEST = bytesToHex(
-  sha256(
-    encodeUtf8(
-      JSON.stringify({
-        schema: BOARDING_SCHEMA,
-        program: BOARDING_PROGRAM,
-        template: BOARDING_TEMPLATE,
-        exitDelay: BOARDING_EXIT_DELAY,
-        exitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
-      }),
+export function boardingProgramDigestFor(network: VaultNetwork): string {
+  const pins = networkPins(network)
+  return bytesToHex(
+    sha256(
+      encodeUtf8(
+        JSON.stringify({
+          schema: BOARDING_SCHEMA,
+          program: BOARDING_PROGRAM,
+          template: BOARDING_TEMPLATE,
+          exitDelay: pins.boardExitDelay,
+          exitDelayUnit: BOARDING_EXIT_DELAY_UNIT,
+        }),
+      ),
     ),
-  ),
-)
+  )
+}
+
+export const BOARDING_PROGRAM_DIGEST = boardingProgramDigestFor('mutinynet')
 
 export interface BoardingKeyRecord {
   state: 'staged' | 'active'
   vaultId: string
-  network: 'mutinynet'
+  network: VaultNetwork
   programDigest: string
   descriptorHash: string
   boardingPub: string
@@ -84,7 +90,8 @@ export async function deriveBoardingKey(
 ): Promise<{ secret: Uint8Array; boardingPub: string }> {
   const id = String(vaultId || '').trim()
   if (!id) throw new Error('vault id required for vault-board-v1 key')
-  if (network !== 'mutinynet') throw new Error('vault-board-v1 is not enabled for this network')
+  const pins = networkPins(network)
+  const programDigest = boardingProgramDigestFor(pins.network)
   if (phoneSecret.length !== 32 || !secp256k1.utils.isValidSecretKey(phoneSecret)) {
     throw new Error('recovered phone key is invalid')
   }
@@ -94,7 +101,7 @@ export async function deriveBoardingKey(
     appendLengthPrefixed(parts, BOARDING_KEY_DOMAIN)
     appendLengthPrefixed(parts, id)
     appendLengthPrefixed(parts, network)
-    appendLengthPrefixed(parts, BOARDING_PROGRAM_DIGEST)
+    appendLengthPrefixed(parts, programDigest)
     const suffix = new Uint8Array(4)
     new DataView(suffix.buffer).setUint32(0, counter, false)
     parts.push(suffix)
@@ -146,14 +153,14 @@ export function requireBoardingDescriptor(
   expected: { vaultId: string; phonePub: string; boardingPub: string; network: string },
 ): BoardingDescriptor {
   if (!raw || typeof raw !== 'object') throw new Error('vault-board-v1 descriptor required')
+  const pins = networkPins(expected.network)
   const descriptor = raw as BoardingDescriptor
   if (
     descriptor.schema !== BOARDING_SCHEMA ||
     descriptor.program !== BOARDING_PROGRAM ||
     descriptor.template !== BOARDING_TEMPLATE ||
-    descriptor.network !== 'mutinynet' ||
-    expected.network !== descriptor.network ||
-    descriptor.exitDelay !== BOARDING_EXIT_DELAY ||
+    descriptor.network !== expected.network ||
+    descriptor.exitDelay !== pins.boardExitDelay ||
     descriptor.exitDelayUnit !== BOARDING_EXIT_DELAY_UNIT
   ) {
     throw new Error('vault-board-v1 descriptor does not match this release')
@@ -162,7 +169,7 @@ export function requireBoardingDescriptor(
   const recoveryPub = requireCompressedKey(descriptor.recoveryPhonePub, 'recoveryPhonePub')
   const cosignerPub = requireCompressedKey(descriptor.vaultBoardCosignerPub, 'vaultBoardCosignerPub')
   const operatorPub = requireCompressedKey(descriptor.operatorPub, 'operatorPub')
-  if (operatorPub !== MUTINYNET_OPERATOR_SIGNER_PUB) {
+  if (operatorPub !== pins.operatorSignerPub) {
     throw new Error('vault-board-v1 Operator does not match this release')
   }
   if (
@@ -180,11 +187,11 @@ export function requireBoardingDescriptor(
       cosignerPubKey: hexToBytes(cosignerPub).slice(1),
       recoveryPubKey: hexToBytes(recoveryPub).slice(1),
     },
-    hexToBytes(MUTINYNET_OPERATOR_SIGNER_PUB).slice(1),
-    { type: 'seconds', value: BigInt(BOARDING_EXIT_DELAY) },
+    hexToBytes(pins.operatorSignerPub).slice(1),
+    { type: 'seconds', value: BigInt(pins.boardExitDelay) },
   )
   const script = requireLowerHex(descriptor.script, 'vault-board-v1 script', 34)
-  const address = program.onchainAddress(getNetwork('mutinynet'))
+  const address = program.onchainAddress(getNetwork(pins.sdkNetwork))
   if (hex.encode(program.pkScript) !== script || descriptor.address !== address) {
     throw new Error('vault-board-v1 script or address does not match its exact program')
   }
@@ -264,10 +271,11 @@ export async function stageBoardingKey(input: {
   descriptorHash?: string
 }): Promise<Omit<BoardingKeyRecord, 'state'>> {
   const derived = await deriveBoardingKey(input.phoneSecret, input.vaultId, input.network)
+  const pins = networkPins(input.network)
   const record: Omit<BoardingKeyRecord, 'state'> = {
     vaultId: input.vaultId,
-    network: 'mutinynet',
-    programDigest: BOARDING_PROGRAM_DIGEST,
+    network: pins.network,
+    programDigest: boardingProgramDigestFor(pins.network),
     descriptorHash: String(input.descriptorHash || ''),
     boardingPub: derived.boardingPub,
     secret: derived.secret,
@@ -334,8 +342,7 @@ function requireStoredBoardingKey(
   if (!record || record.state !== state) throw mismatch('state')
   if (
     record.vaultId !== input.vaultId ||
-    record.network !== 'mutinynet' ||
-    record.programDigest !== BOARDING_PROGRAM_DIGEST ||
+    record.programDigest !== boardingProgramDigestFor(requireSupportedVaultNetwork(record.network)) ||
     record.boardingPub !== input.expectedBoardingPub
   ) {
     throw mismatch('binding')
