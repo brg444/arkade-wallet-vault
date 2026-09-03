@@ -23,6 +23,7 @@ describe('QgScreen input viewport lifecycle', () => {
     })
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
     const scrollIntoView = vi.fn()
+    const scrollBy = vi.fn()
 
     render(
       <QgScreen title='Send' footer={<button>Review</button>}>
@@ -30,17 +31,28 @@ describe('QgScreen input viewport lifecycle', () => {
       </QgScreen>,
     )
     const input = screen.getByLabelText('To')
+    const main = screen.getByRole('main')
     Object.defineProperty(input, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+    Object.defineProperty(input, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: 390, bottom: 440 }),
+    })
+    Object.defineProperty(main, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: 60, bottom: 410 }),
+    })
+    Object.defineProperty(main, 'scrollBy', { configurable: true, value: scrollBy })
     act(() => input.focus())
     listeners.get('resize')?.(new Event('resize'))
     act(() => frames.splice(0).forEach((callback) => callback(0)))
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' })
+    expect(scrollBy).toHaveBeenCalledWith({ top: 42, behavior: 'smooth' })
+    expect(scrollIntoView).not.toHaveBeenCalled()
 
-    scrollIntoView.mockClear()
+    scrollBy.mockClear()
     act(() => input.blur())
     listeners.get('resize')?.(new Event('resize'))
     act(() => frames.splice(0).forEach((callback) => callback(0)))
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollBy).not.toHaveBeenCalled()
   })
 
   it('cancels a queued focus scroll when the screen unmounts', () => {

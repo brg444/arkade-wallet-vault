@@ -621,6 +621,40 @@ test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({
   await expectNoHorizontalOverflow(page)
 })
 
+test('@polish keeps a focused send address between the safe header and footer when the keyboard opens', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'Mobile Chrome', 'Mobile keyboard regression')
+  const { status } = await openVault(page)
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])
+  await dispatchUtxoUpdate(page, status.vaultId)
+  await expect(page.getByTestId('vault-balance')).toContainText('20,000')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  const destination = page.getByPlaceholder('Arkade address or Lightning invoice')
+  await destination.focus()
+  await page.setViewportSize({ width: 390, height: 500 })
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')))
+
+  await expect
+    .poll(async () => {
+      const header = await page.locator('.qg-header').boundingBox()
+      const field = await page.locator('.qg-dest-field').boundingBox()
+      const footer = await page.locator('.qg-footer').boundingBox()
+      return {
+        headerTop: Math.round(header?.y ?? -1),
+        fieldBottom: Math.round((field?.y ?? 0) + (field?.height ?? 0)),
+        footerTop: Math.round(footer?.y ?? 0),
+      }
+    })
+    .toMatchObject({ headerTop: 0 })
+
+  const field = await page.locator('.qg-dest-field').boundingBox()
+  const footer = await page.locator('.qg-footer').boundingBox()
+  expect(field).not.toBeNull()
+  expect(footer).not.toBeNull()
+  expect(field!.y + field!.height).toBeLessThanOrEqual(footer!.y)
+})
+
 test('@polish covers accessible account, send, Security, and Settings states', async ({ page }) => {
   const pending: EsploraUtxo = {
     txid: BOARDING_TXID,
