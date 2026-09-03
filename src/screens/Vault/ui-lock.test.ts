@@ -12,21 +12,21 @@ describe('vault UI lock', () => {
   it('keeps the restyle screens that Vercel deploys from git', () => {
     expect(existsSync(resolve(root, 'src/screens/Vault/History.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Tx.tsx'))).toBe(true)
-    expect(existsSync(resolve(root, 'src/screens/Vault/PillNav.tsx'))).toBe(true)
+    expect(existsSync(resolve(root, 'src/screens/Vault/Navigation.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Settings.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Refresher.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/icons/Vault.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/lib/vault/prefs.ts'))).toBe(true)
   })
 
-  it('mounts pill nav and settings from VaultApp', () => {
+  it('mounts the Vault navigation and settings from VaultApp', () => {
     const app = read('src/VaultApp.tsx')
-    expect(app).toContain('VaultPillNav')
+    expect(app).toContain('VaultNavigation')
     expect(app).toContain('VaultSettings')
-    expect(app).toContain('has-pill-navbar')
+    expect(app).toContain('has-vault-navigation')
     const content = read('src/screens/Vault/Content.tsx')
     expect(content).toContain('VaultRefresher')
-    const nav = read('src/screens/Vault/PillNav.tsx')
+    const nav = read('src/screens/Vault/Navigation.tsx')
     expect(nav).not.toMatch(/hwsign/)
   })
 
@@ -111,7 +111,8 @@ describe('vault UI lock', () => {
   it('rejects the retired singleton home chrome', () => {
     const home = read('src/screens/Vault/Home.tsx')
     expect(home).toContain('account-switcher')
-    expect(home).toContain('in your rolling 24-hour')
+    expect(home).not.toContain('in your rolling 24-hour')
+    expect(read('src/screens/Vault/Send.tsx')).toMatch(/in your rolling\s+24-hour/)
     expect(home).not.toMatch(/Phone may spend/)
     expect(home).not.toMatch(/Mutinynet · live coins/)
     expect(home).not.toMatch(/Daily path ready/)

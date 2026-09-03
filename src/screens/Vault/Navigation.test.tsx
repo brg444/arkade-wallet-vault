@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
-import VaultPillNav from './PillNav'
+import VaultNavigation from './Navigation'
 
 describe('Vault navigation', () => {
   it('uses ordinary navigation with the current page identified', async () => {
@@ -10,10 +10,12 @@ describe('Vault navigation', () => {
     const navigate = vi.fn()
     render(
       <VaultContext.Provider value={{ navigate } as unknown as VaultContextProps}>
-        <VaultPillNav visible active='wallet' />
+        <VaultNavigation active='wallet' />
       </VaultContext.Provider>,
     )
 
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }))
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Wallet' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('button', { name: 'Security' })).not.toHaveAttribute('aria-current')
@@ -23,5 +25,11 @@ describe('Vault navigation', () => {
     security.focus()
     await user.keyboard('{Enter}')
     expect(navigate).toHaveBeenCalledWith('keys')
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation' }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveFocus()
   })
 })
