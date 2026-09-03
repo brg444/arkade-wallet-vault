@@ -106,6 +106,8 @@ export function QgTextButton({ label, onClick, testId }: { label: string; onClic
 }
 
 const DISMISS_DISTANCE = 88
+const LOCK_DISTANCE = 12
+const TOP_BAND = 140
 
 export default function QgScreen({
   variant = 'flow',
@@ -137,7 +139,9 @@ export default function QgScreen({
   footer?: ReactNode
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const drag = useRef({ startY: 0, dy: 0, active: false })
+  const headerRef = useRef<HTMLElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  const drag = useRef({ startY: 0, startX: 0, dy: 0, active: false, locked: false, suppressClick: false })
   const sheet = Boolean(dismiss && !back && !close)
   const activate = (fn?: () => void) => () => {
     hapticLight()
@@ -162,6 +166,17 @@ export default function QgScreen({
     return () => window.removeEventListener('keydown', onKey)
   }, [sheet, dismiss])
 
+  useEffect(() => {
+    if (!sheet) return
+    const node = rootRef.current
+    if (!node) return
+    const onTouchMove = (event: TouchEvent) => {
+      if (drag.current.locked) event.preventDefault()
+    }
+    node.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => node.removeEventListener('touchmove', onTouchMove)
+  }, [sheet])
+
   const resetSheet = () => {
     const node = rootRef.current
     if (!node) return
@@ -169,32 +184,62 @@ export default function QgScreen({
     node.style.transition = ''
   }
 
+  const canStartDismiss = (event: PointerEvent<HTMLElement>) => {
+    const header = headerRef.current
+    const main = mainRef.current
+    if (header?.contains(event.target as Node)) return true
+    if ((main?.scrollTop ?? 0) > 0) return false
+    const band = header ? header.getBoundingClientRect().bottom + TOP_BAND : 220
+    return event.clientY <= band
+  }
+
   const onPointerDown = (event: PointerEvent<HTMLElement>) => {
     if (!sheet || event.button !== 0) return
-    drag.current = { startY: event.clientY, dy: 0, active: true }
-    event.currentTarget.setPointerCapture(event.pointerId)
+    if (!canStartDismiss(event)) return
+    drag.current = {
+      startY: event.clientY,
+      startX: event.clientX,
+      dy: 0,
+      active: true,
+      locked: false,
+      suppressClick: false,
+    }
   }
 
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
     if (!drag.current.active) return
-    const dy = Math.max(0, event.clientY - drag.current.startY)
-    drag.current.dy = dy
+    const dy = event.clientY - drag.current.startY
+    const dx = event.clientX - drag.current.startX
+    if (!drag.current.locked) {
+      if (Math.abs(dx) > LOCK_DISTANCE && Math.abs(dx) > dy) {
+        drag.current.active = false
+        return
+      }
+      if (dy < LOCK_DISTANCE) return
+      drag.current.locked = true
+      event.currentTarget.setPointerCapture(event.pointerId)
+    }
+    const travel = Math.max(0, dy)
+    drag.current.dy = travel
     const node = rootRef.current
     if (!node) return
     node.style.transition = 'none'
-    node.style.transform = `translateY(${dy}px)`
+    node.style.transform = `translateY(${travel}px)`
   }
 
   const onPointerUp = () => {
     if (!drag.current.active) return
     const dy = drag.current.dy
+    const locked = drag.current.locked
     drag.current.active = false
-    if (dy >= DISMISS_DISTANCE) {
+    drag.current.suppressClick = locked
+    if (locked && dy >= DISMISS_DISTANCE) {
       hapticLight()
       resetSheet()
       dismiss?.()
       return
     }
+    drag.current.locked = false
     const node = rootRef.current
     if (!node) return
     node.style.transition = 'transform 180ms ease'
@@ -202,7 +247,20 @@ export default function QgScreen({
   }
 
   return (
-    <div ref={rootRef} className={`qg-screen qg-screen-${variant}${sheet ? ' is-sheet' : ''}`}>
+    <div
+      ref={rootRef}
+      className={`qg-screen qg-screen-${variant}${sheet ? ' is-sheet' : ''}`}
+      onPointerDown={sheet ? onPointerDown : undefined}
+      onPointerMove={sheet ? onPointerMove : undefined}
+      onPointerUp={sheet ? onPointerUp : undefined}
+      onPointerCancel={sheet ? onPointerUp : undefined}
+      onClickCapture={(event) => {
+        if (!drag.current.suppressClick) return
+        event.preventDefault()
+        event.stopPropagation()
+        drag.current.suppressClick = false
+      }}
+    >
       {brand ? (
         <header className='qg-brand'>
           <QgMark />
@@ -210,19 +268,15 @@ export default function QgScreen({
           <small>MUTINYNET</small>
         </header>
       ) : variant === 'progress' || variant === 'success' ? null : (
-        <header className={sheet ? 'qg-header qg-header-sheet' : 'qg-header'}>
+        <header ref={headerRef} className={sheet ? 'qg-header qg-header-sheet' : 'qg-header'}>
           {sheet ? (
             <button
               type='button'
               className='qg-handle-btn'
               aria-label={backAriaLabel}
               data-testid='header-back'
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
               onClick={() => {
-                if (drag.current.dy >= DISMISS_DISTANCE) return
+                if (drag.current.locked || drag.current.dy >= DISMISS_DISTANCE) return
                 activate(dismiss)()
               }}
             >
@@ -259,7 +313,9 @@ export default function QgScreen({
           )}
         </header>
       )}
-      <main className='qg-main'>{children}</main>
+      <main ref={mainRef} className='qg-main'>
+        {children}
+      </main>
       {footer ? <footer className='qg-footer'>{footer}</footer> : null}
     </div>
   )

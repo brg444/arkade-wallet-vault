@@ -1,4 +1,5 @@
-import { Plus, Settings, Shield, X } from 'lucide-react'
+import { Settings, Shield, X } from 'lucide-react'
+import HollowPixelMark from '../../icons/HollowPixelMark'
 import { hapticLight } from '../../lib/haptics'
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { VaultContext, type VaultScreen } from '../../vault/context'
@@ -98,7 +99,7 @@ export default function VaultNavigation() {
             setOpen(true)
           }}
         >
-          <Plus />
+          <HollowPixelMark />
         </button>
       )}
     </div>
