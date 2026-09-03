@@ -22,6 +22,7 @@ const LOCAL_CACHE_CONTROL = 'no-store, max-age=0'
 const FLAT_VTXO_PATHS: Record<string, string> = {
   '/api/v1/vtxo-operation': '/v1/vtxo/operation',
   '/api/v1/vtxo-reserve': '/v1/vtxo/reserve',
+  '/api/v1/vtxo-abort': '/v1/vtxo/abort',
   '/api/v1/vtxo-authorize': '/v1/vtxo/authorize',
   '/api/v1/vtxo-checkpoints-authorize': '/v1/vtxo/checkpoints/authorize',
   '/api/v1/vtxo-finalize': '/v1/vtxo/finalize',
