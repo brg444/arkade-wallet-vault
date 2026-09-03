@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultNavigation from './Navigation'
 
@@ -38,6 +38,17 @@ function renderNav(overrides: Partial<VaultContextProps> = {}) {
 }
 
 describe('Vault navigation', () => {
+  beforeEach(() => window.localStorage.clear())
+
+  it('starts at the original safe-area anchored position', () => {
+    renderNav()
+    expect(
+      screen
+        .getByRole('button', { name: 'Open navigation' })
+        .parentElement?.style.getPropertyValue('--qg-launcher-position'),
+    ).toBe('')
+  })
+
   it('opens a Home launcher and navigates without a tab bar', async () => {
     const user = userEvent.setup()
     const value = renderNav()
@@ -103,8 +114,9 @@ describe('Vault navigation', () => {
     dragTabVertically(tab, 220, 420)
 
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
-    const saved = Number(window.localStorage.getItem('vault-launcher-position'))
+    const saved = Number(window.localStorage.getItem('vault-launcher-position-v2'))
     expect(saved).toBeGreaterThan(0)
+    expect(tab.parentElement).toHaveStyle({ '--qg-launcher-position': `${saved * 100}dvh` })
 
     cleanup()
     renderNav()
