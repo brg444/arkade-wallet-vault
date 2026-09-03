@@ -326,7 +326,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
       </VaultProvider>,
     )
 
-    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('unlock'))
   })
 
   it('locks an enrolled vault behind passkey when privacy lock is on', async () => {

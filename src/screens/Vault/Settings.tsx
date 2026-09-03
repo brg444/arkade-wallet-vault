@@ -16,6 +16,7 @@ import {
   saveVaultTheme,
   systemTheme,
 } from '../../lib/vault/prefs'
+import { setSessionLocked } from '../../lib/vault/enrollmentStore'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import { useVaultReadiness } from '../../vault/useVaultReadiness'
@@ -315,6 +316,7 @@ export default function VaultSettings() {
               const next = !privacyLock
               setPrivacyLock(next)
               saveVaultPrivacyLock(next)
+              setSessionLocked(next)
               if (next) hapticLight()
             }}
           >
