@@ -324,18 +324,24 @@ test('drags the launcher vertically from its original bottom anchor', async ({ p
   const viewport = page.viewportSize()
   expect(before).not.toBeNull()
   expect(viewport).not.toBeNull()
-  expect(Math.round(viewport!.height - before!.y - before!.height)).toBe(52)
+  expect(Math.round(viewport!.height - before!.y - before!.height)).toBe(40)
 
   await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2)
   await page.mouse.down()
-  await page.mouse.move(before!.x + before!.width / 2, 320, { steps: 8 })
+  await page.mouse.move(before!.x + before!.width / 2, 40, { steps: 12 })
   await page.mouse.up()
 
-  await expect
-    .poll(async () => Math.round((await trigger.boundingBox())?.y ?? -1))
-    .toBeLessThan(Math.round(before!.y - 200))
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('vault-launcher-position-v2'))).not.toBeNull()
+  await expect.poll(async () => Math.round((await trigger.boundingBox())?.y ?? -1)).toBe(44)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('vault-launcher-position-v3'))).not.toBeNull()
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0)
+
+  await trigger.click()
+  const triggerBottom = 44 + 96
+  await expect
+    .poll(async () =>
+      Math.round((await page.getByRole('navigation', { name: 'Main navigation' }).boundingBox())?.y ?? -1),
+    )
+    .toBeGreaterThanOrEqual(triggerBottom)
 })
 
 test('renders the Spending BIP21 request and copies each underlying address', async ({ context, page }) => {
