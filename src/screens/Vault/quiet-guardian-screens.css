@@ -50,11 +50,16 @@ body:has(.vault-screen-welcome) {
   box-sizing: border-box;
 }
 
-.qg-screen h1:focus,
-.qg-screen h1:focus-visible,
-.qg-screen [data-testid='screen-title']:focus,
-.qg-screen [data-testid='screen-title']:focus-visible {
+.qg-screen :focus,
+.qg-screen :focus-visible,
+.vault-navigation-trigger:focus,
+.vault-navigation-trigger:focus-visible,
+.vault-navigation-item:focus,
+.vault-navigation-item:focus-visible,
+.vault-navigation-close:focus,
+.vault-navigation-close:focus-visible {
   outline: none;
+  box-shadow: none;
   background: transparent;
 }
 

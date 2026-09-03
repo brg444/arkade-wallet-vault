@@ -175,9 +175,9 @@ html.palette-dark [data-testid='vault-app'] {
   transform: translateY(2px);
 }
 
-[data-testid='vault-app'] :where(button, input, a, select, textarea, [tabindex]:not([tabindex='-1'])):focus-visible {
-  outline: 2px solid var(--vault-accent);
-  outline-offset: 3px;
+[data-testid='vault-app'] :focus,
+[data-testid='vault-app'] :focus-visible {
+  outline: none;
 }
 
 /* Type and common surfaces */

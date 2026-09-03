@@ -133,9 +133,9 @@ html.palette-dark [data-testid='vault-app'] {
   transform: translateY(2px);
 }
 
-[data-testid='vault-app'] :where(button, input, a, select, textarea, [tabindex]:not([tabindex='-1'])):focus-visible {
-  outline: 2px solid var(--vault-accent);
-  outline-offset: 3px;
+[data-testid='vault-app'] :focus,
+[data-testid='vault-app'] :focus-visible {
+  outline: none;
 }
 
 [data-testid='vault-app'] .pill-nav-icon,
@@ -872,10 +872,9 @@ button.vault-panel:disabled {
   color: var(--vault-accent, var(--purple-700));
 }
 
+.vault-account-option:focus,
 .vault-account-option:focus-visible {
-  outline: 2px solid var(--vault-accent, var(--purple-700));
-  outline-offset: -2px;
-  border-radius: 12px;
+  outline: none;
 }
 
 .vault-account-option:first-of-type {

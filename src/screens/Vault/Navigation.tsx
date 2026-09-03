@@ -82,7 +82,7 @@ export default function VaultNavigation({ active }: { active: VaultDestination }
             aria-label='Collapse navigation'
             onClick={() => {
               hapticLight()
-              restoreTriggerFocus.current = true
+              restoreTriggerFocus.current = false
               setOpen(false)
             }}
           >
