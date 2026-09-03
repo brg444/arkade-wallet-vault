@@ -2158,7 +2158,11 @@ body:has(.vault-screen-unlock) {
   position: fixed;
   z-index: 120;
   right: 0;
-  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+  top: clamp(
+    calc(16px + env(safe-area-inset-top, 0px)),
+    var(--qg-launcher-position, 78dvh),
+    calc(100dvh - 100px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
+  );
   pointer-events: none;
 }
 
@@ -2188,10 +2192,19 @@ body:has(.vault-screen-unlock) {
 .qg-launcher-trigger {
   position: fixed;
   right: 0;
-  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+  top: clamp(
+    calc(16px + env(safe-area-inset-top, 0px)),
+    var(--qg-launcher-position, 78dvh),
+    calc(100dvh - 100px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
+  );
   z-index: 122;
   touch-action: none;
   user-select: none;
+  will-change: top;
+}
+
+.qg-launcher-trigger.is-dragging {
+  cursor: grabbing;
 }
 
 .qg-launcher-trigger.is-intro {
@@ -2271,7 +2284,11 @@ body:has(.vault-screen-unlock) {
 .qg-launcher-stack {
   position: absolute;
   right: 0;
-  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+  top: clamp(
+    calc(16px + env(safe-area-inset-top, 0px)),
+    calc(var(--qg-launcher-position, 78dvh) - 168px),
+    calc(100dvh - 364px - var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)))
+  );
   display: grid;
   justify-items: end;
   gap: 14px;
