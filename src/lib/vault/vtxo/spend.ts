@@ -1475,7 +1475,7 @@ async function reservePersistedVtxoSpend(
   }
   const reserve: VtxoReserveResponse = await vaultCosignerClient.spending.reserve(vtxoReserveRequest(pending, status))
   if (reserve.operationId !== pending.operationId) throw new Error('VTXO reservation returned a different operation id')
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new RestArkProvider(vaultArkServer(status.network))
   const info = await requirePinnedOperator(operator, status, reserve.checkpointTapscript)
   const expectedFeePolicyDigest = arkadeIntentFeePolicyDigest(info.fees.intentFee)
   const offchain = buildReservedVtxoSpend(
@@ -1791,7 +1791,7 @@ async function reconcileOnePersistedVtxoSpend(
   }
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
     try {
-      const operator = new RestArkProvider(vaultArkServer())
+      const operator = new RestArkProvider(vaultArkServer(status.network))
       const info = await requireCurrentReservationPolicy(operator, status, pending)
       const checkpointPsbts = requireFullyAuthorizedCheckpoints(
         pending,
@@ -1809,7 +1809,7 @@ async function reconcileOnePersistedVtxoSpend(
   }
   if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
     try {
-      const operator = new RestArkProvider(vaultArkServer())
+      const operator = new RestArkProvider(vaultArkServer(status.network))
       const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
       pending = await advanceAuthorizedVtxoSpend(
         operator,
@@ -1852,7 +1852,7 @@ async function authorizeReservedVtxoSpend(
   if (!pending.unsignedArkPsbt || !pending.unsignedCheckpointPsbts?.length) {
     throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
   }
-  await requireCurrentReservationPolicy(new RestArkProvider(vaultArkServer()), status, pending)
+  await requireCurrentReservationPolicy(new RestArkProvider(vaultArkServer(status.network)), status, pending)
   const identity = SingleKey.fromPrivateKey(auth.phoneSecret)
   const arkTx = Transaction.fromPSBT(base64.decode(pending.unsignedArkPsbt))
   const userSignedArk = await identity.sign(arkTx)
@@ -2054,7 +2054,7 @@ async function completeFreshSdkVtxoSpend(
   unlocker: VtxoSpendUnlocker,
 ): Promise<VaultVtxoSpendResult> {
   const bundle = buildPersistedVtxoSdkBundle(status, initial)
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new RestArkProvider(vaultArkServer(status.network))
   const operatorInfo = await requireCurrentReservationPolicy(operator, status, initial)
   const operatorPub = xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey')
   let pending = initial
@@ -2134,7 +2134,7 @@ async function continueSameVtxoSpend(
     return completeFreshSdkVtxoSpend(status, pending, unlocker)
   }
   requireRecoveryProofForAuthorizedSpend(pending)
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new RestArkProvider(vaultArkServer(status.network))
   if (pending.stage === 'operator-finalized') return finishOperatorFinalized(pending)
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
     const info = await requireCurrentReservationPolicy(operator, status, pending)
