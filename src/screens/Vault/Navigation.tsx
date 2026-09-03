@@ -159,9 +159,7 @@ export default function VaultNavigation() {
             <span className='qg-launcher-copy'>
               <span className='qg-launcher-label'>{item.label}</span>
               <span className='qg-launcher-amt'>
-                {balancesLoaded
-                  ? `${prettyNumber(position.totalSats)} ${position.totalSats === 1 ? 'SAT' : 'SATS'}`
-                  : 'Loading…'}
+                {balancesLoaded ? `${prettyNumber(position.totalSats)} ₿SATS` : 'Loading…'}
               </span>
             </span>
             <span className='qg-launcher-icon' aria-hidden='true'>

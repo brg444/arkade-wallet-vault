@@ -306,7 +306,7 @@ export default function QgScreen({
       {brand ? (
         <header className='qg-brand'>
           <QgMark />
-          <strong>Arkade Vault</strong>
+          <strong>Vaulted</strong>
           <small>MUTINYNET</small>
         </header>
       ) : variant === 'progress' || variant === 'success' || variant === 'unlock' ? null : (

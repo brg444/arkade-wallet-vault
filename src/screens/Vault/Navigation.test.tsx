@@ -73,8 +73,8 @@ describe('Vault navigation', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open navigation' }))
     expect(screen.getByTestId('account-spend')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('account-spend')).toHaveTextContent('128,000 SATS')
-    expect(screen.getByTestId('account-savings')).toHaveTextContent('50,000 SATS')
+    expect(screen.getByTestId('account-spend')).toHaveTextContent('128,000 ₿SATS')
+    expect(screen.getByTestId('account-savings')).toHaveTextContent('50,000 ₿SATS')
 
     await user.click(screen.getByTestId('account-savings'))
     expect(value.setAccount).toHaveBeenCalledWith('savings')

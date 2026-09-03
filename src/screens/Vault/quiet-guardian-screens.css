@@ -1,4 +1,4 @@
-/* Quiet Guardian screen compositions. Imported last. Old Header/Content
+/* Vaulted screen compositions. Imported last. Old Header/Content
    chrome is not used by these screens. */
 
 :root,
@@ -1505,9 +1505,19 @@ body:has(.vault-screen-unlock) {
   letter-spacing: -0.05em;
 }
 
-.qg-amount-entry span {
+.qg-amount-entry span,
+.qg-denomination {
   font-size: 13px;
   font-weight: 500;
+}
+
+.qg-denomination {
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--qg-purple);
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .qg-capacity {

@@ -22,7 +22,7 @@ describe('Vault error boundary', () => {
       </VaultErrorBoundary>,
     )
 
-    expect(screen.getByText('Arkade Vault could not display this screen.')).toBeTruthy()
+    expect(screen.getByText('Vaulted could not display this screen.')).toBeTruthy()
     expect(screen.getByText(/^Incident reference: VLT-/)).toBeTruthy()
     expect(document.body).not.toHaveTextContent(raw)
 

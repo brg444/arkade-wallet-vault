@@ -61,7 +61,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Review setup' }))
 
     expect(await screen.findByRole('heading', { name: 'Review your Vault' })).toBeTruthy()
-    expect(screen.getByText('50,000 sats')).toBeTruthy()
+    expect(screen.getByText('50,000 ₿SATS')).toBeTruthy()
     expect(screen.getByText('Not enrolled')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.click(screen.getByRole('checkbox'))

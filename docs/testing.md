@@ -1,6 +1,6 @@
 # Release qualification
 
-Arkade Vault qualifies the standard SDK lifecycle and the Vault-specific
+Vaulted qualifies the standard SDK lifecycle and the Vault-specific
 Face ID boundary separately. Browser automation exercises deterministic state
 transitions without reproducing the Arkade Operator. Live Mutinynet tests cover
 the SDK settlement, signing, and batch behavior against the deployed service.

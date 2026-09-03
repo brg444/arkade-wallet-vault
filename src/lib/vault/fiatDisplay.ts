@@ -13,6 +13,11 @@ export function usdFromSats(sats: number, usdPerBtc: number): number {
   return fromSatoshis(sats) * usdPerBtc
 }
 
+export function satsFromUsd(usd: number, usdPerBtc: number): number {
+  if (!Number.isFinite(usd) || usd < 0 || !Number.isFinite(usdPerBtc) || usdPerBtc <= 0) return 0
+  return Math.round((usd / usdPerBtc) * 100_000_000)
+}
+
 export function homeBalanceDisplay(
   sats: number,
   unit: VaultBalanceUnit,
@@ -22,8 +27,8 @@ export function homeBalanceDisplay(
     const amount = prettyFiatAmount(usdFromSats(sats, rate.pricePerBtc), rate.currency)
     return { amount, unit: '', label: amount }
   }
-  const amount = `₿${prettyNumber(sats)}`
-  return { amount, unit: '', label: amount }
+  const amount = prettyNumber(sats)
+  return { amount, unit: '₿SATS', label: `${amount} ₿SATS` }
 }
 
 export function approximateFiatLabel(sats: number, rate?: VaultFiatDisplayRate | null): string {

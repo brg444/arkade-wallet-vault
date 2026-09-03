@@ -38,7 +38,7 @@ export default class VaultErrorBoundary extends Component<Props, State> {
           }
         >
           <p className='qg-eyebrow'>Something went wrong</p>
-          <h1>Arkade Vault could not display this screen.</h1>
+          <h1>Vaulted could not display this screen.</h1>
           <p className='qg-copy'>Nothing was sent. This device was not changed.</p>
           <section className='qg-alert'>
             <div>

@@ -71,7 +71,7 @@ export default function VaultConditions() {
             data-testid='policy-tx-cap'
             onChange={(event) => setTxCap(digitsOnly(event.target.value))}
           />
-          <b>SATS</b>
+          <b>₿SATS</b>
         </div>
       </label>
       <label className='qg-money-field'>
@@ -84,7 +84,7 @@ export default function VaultConditions() {
             data-testid='policy-period-allowance'
             onChange={(event) => setAllowance(digitsOnly(event.target.value))}
           />
-          <b>SATS</b>
+          <b>₿SATS</b>
         </div>
       </label>
       {selected ? (
@@ -102,8 +102,8 @@ export default function VaultConditions() {
             <strong>Check these limits</strong>
             <p>
               Per payment {prettyNumber(bounds.txRecipientCapSats.min, 0)}–
-              {prettyNumber(bounds.txRecipientCapSats.max, 0)} sats. Rolling 24-hour{' '}
-              {prettyNumber(bounds.periodAllowanceSats.min, 0)}–{prettyNumber(bounds.periodAllowanceSats.max, 0)} sats,
+              {prettyNumber(bounds.txRecipientCapSats.max, 0)} ₿SATS. Rolling 24-hour{' '}
+              {prettyNumber(bounds.periodAllowanceSats.min, 0)}–{prettyNumber(bounds.periodAllowanceSats.max, 0)} ₿SATS,
               and it must cover at least one payment.
             </p>
           </div>
