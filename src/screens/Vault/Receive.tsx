@@ -6,7 +6,7 @@ import { copyToClipboard } from '../../lib/clipboard'
 import { encodeVaultBip21 } from '../../lib/vault/bip21'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
-import QgScreen, { QgMark, QgPrimary } from './qg/QgScreen'
+import QgScreen, { QgPrimary } from './qg/QgScreen'
 
 export default function VaultReceive() {
   const { account, boardingAddress, navigate, savingsAddress, spendingArkAddress } = useContext(VaultContext)
@@ -61,9 +61,6 @@ export default function VaultReceive() {
         {request ? (
           <div className='qg-qr' aria-label='Payment request QR code'>
             <QrCode large value={request} />
-            <span className='qg-qr-mark' aria-hidden='true'>
-              <QgMark />
-            </span>
           </div>
         ) : (
           <p className='qg-copy'>
