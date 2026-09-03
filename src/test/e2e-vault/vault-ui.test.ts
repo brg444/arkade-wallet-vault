@@ -668,13 +668,19 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
   await expect(page.getByRole('heading', { name: 'Review' })).toHaveCount(0)
 })
 
+async function openSecurity(page: Page) {
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByTestId('tab-vault').click()
+  await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible()
+}
+
 test('validates a pasted Recovery Kit against its committed descriptor', async ({ page }) => {
   const { status } = await openVault(page)
   const validKit = await recoveryKitJson(page, status.vaultId)
   const tampered = JSON.parse(validKit) as Record<string, unknown>
   tampered.descriptorHash = '00'.repeat(32)
 
-  await page.getByTestId('tab-vault').click()
+  await openSecurity(page)
   await page.getByTestId('security-kit').click()
   await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
   await page.getByRole('button', { name: 'I already have a kit file' }).click()
@@ -701,7 +707,7 @@ test('starts recovery only from a confirmed Savings coin and fences a second des
     status: { confirmed: true, block_height: 1 },
   }
 
-  await page.getByTestId('tab-vault').click()
+  await openSecurity(page)
   await page.getByTestId('security-lost').click()
   await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
 

@@ -98,7 +98,7 @@ test('creates and resumes a Savings hardware handoff through the passkey-backed 
   await expect(page.getByText('From Savings')).toBeVisible()
   await expect(page.getByText('Spending', { exact: true })).toBeVisible()
   await expect(page.getByText('51,500 SATS', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Sign on this device' }).click()
+  await page.getByRole('button', { name: 'Approve with passkey' }).click()
 
   await expect(page.getByRole('heading', { name: 'Hardware next' })).toBeVisible()
   await page.getByRole('button', { name: 'Copy PSBT' }).click()
