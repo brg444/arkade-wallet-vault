@@ -45,9 +45,11 @@ function renderHome(overrides: Partial<VaultContextProps>) {
 }
 
 describe('Vault home account boundaries', () => {
-  it('uses the Arkade address for Spending', () => {
+  it('keeps receive details behind the explicit Home utilities', () => {
     renderHome({ account: 'spend' })
-    expect(screen.getByTestId('account-address').textContent).toContain('tark1s')
+    expect(screen.queryByTestId('account-address')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Scan a Spending payment' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Receive to Spending' })).toBeTruthy()
     expect(document.querySelector('.vault-refresh')).toBeTruthy()
   })
 
@@ -59,11 +61,11 @@ describe('Vault home account boundaries', () => {
     expect(value.navigate).toHaveBeenCalledWith('send')
   })
 
-  it('makes Savings actions and hardware approval explicit', () => {
+  it('keeps the Savings actions explicit without adding send instructions to Home', () => {
     renderHome({ account: 'savings' })
     expect(screen.getByRole('button', { name: 'Move to Spending' })).toBeTruthy()
     expect(screen.getAllByRole('button', { name: 'Add to Savings' })).toHaveLength(2)
-    expect(screen.getByText(/Moving funds.*hardware key/i)).toBeTruthy()
+    expect(screen.queryByText(/hardware key/i)).toBeNull()
   })
 
   it('keeps pending boarding separate from the sendable Spending balance', () => {
@@ -74,10 +76,10 @@ describe('Vault home account boundaries', () => {
         savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
       },
     })
-    expect(screen.getByText('Available to spend')).toBeTruthy()
+    expect(screen.queryByText('Available to spend')).toBeNull()
     expect(screen.getByTestId('vault-balance')).toHaveTextContent('80,000')
-    expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 sats · Arriving via Bitcoin')
-    expect(screen.getByTestId('spending-total')).toHaveTextContent('Total in Spending: 128,000 sats')
+    expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 sats arriving')
+    expect(screen.getByTestId('spending-total')).toHaveTextContent('128,000 sats total')
   })
 
   it('does not present zero as the balance before the first snapshot loads', () => {
@@ -89,14 +91,13 @@ describe('Vault home account boundaries', () => {
       },
     })
     expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
-    expect(screen.getByText('Loading Spending balance…')).toBeTruthy()
+    expect(screen.getByTestId('vault-balance')).toHaveAccessibleName('Spending balance loading')
   })
 
   it('replaces terminal loading with a clear balance retry action', async () => {
     const user = userEvent.setup()
     const value = renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
 
-    expect(screen.queryByText('Loading Spending balance…')).toBeNull()
     expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(value.refreshBalance).toHaveBeenCalledTimes(1)

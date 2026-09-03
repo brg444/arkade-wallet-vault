@@ -42,7 +42,7 @@ export default function VaultReview() {
             </section>
             <section className='vault-review-approvals' aria-label='Required approvals'>
               <p className='vault-section-label'>Approvals</p>
-              <SignerRow title='You' detail='Device unlock' state='you' mark='1' />
+              <SignerRow title='You' detail='Passkey' state='you' mark='1' />
               {fromSavings ? (
                 <SignerRow title='Hardware' detail='Signs next, on the other device' state='you' mark='2' />
               ) : (
@@ -62,7 +62,7 @@ export default function VaultReview() {
           onClick={approveSend}
           disabled={busy}
           loading={busy}
-          label={busy ? 'Waiting for device unlock…' : fromSavings ? 'Sign on this device' : 'Approve'}
+          label={busy ? 'Waiting for passkey…' : fromSavings ? 'Approve with passkey' : 'Approve with passkey'}
         />
       </ButtonsOnBottom>
     </>

@@ -27,12 +27,26 @@ export default function VaultReceive() {
     [boardingAddress, spendingArkAddress],
   )
   const request = spending ? unified : savingsAddress
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
 
   const copy = async (value: string, label: string) => {
     if (!value) return
     await copyToClipboard(value)
     setCopied(value)
     toast(`${label} copied`)
+  }
+
+  const share = async () => {
+    if (!request || !canShare) return
+    try {
+      await navigator.share({
+        title: spending ? 'Arkade Vault payment request' : 'Arkade Vault Savings address',
+        text: request,
+      })
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      toast('Sharing is unavailable. Copy the request instead.')
+    }
   }
 
   return (
@@ -77,8 +91,17 @@ export default function VaultReceive() {
         </Padded>
       </Content>
       <ButtonsOnBottom>
+        {canShare ? (
+          <Button
+            className='vault-commit-action'
+            onClick={() => void share()}
+            disabled={!request}
+            label={spending ? 'Share payment request' : 'Share Savings address'}
+          />
+        ) : null}
         <Button
-          className='vault-commit-action'
+          secondary={canShare}
+          className={canShare ? undefined : 'vault-commit-action'}
           onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
           disabled={!request}
           label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}

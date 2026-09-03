@@ -30,6 +30,26 @@ export default function VaultHandoff() {
   const [selectedFile, setSelectedFile] = useState('')
   const [fileError, setFileError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  const psbtFile = useMemo(
+    () => (payload ? new File([payload], 'savings-transfer.psbt', { type: 'application/octet-stream' }) : null),
+    [payload],
+  )
+  const canShareFile = Boolean(
+    psbtFile &&
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function' &&
+      (!navigator.canShare || navigator.canShare({ files: [psbtFile] })),
+  )
+
+  const sharePsbt = async () => {
+    if (!psbtFile || !canShareFile) return
+    try {
+      await navigator.share({ files: [psbtFile], title: 'Savings transfer PSBT' })
+    } catch (shareError) {
+      if (shareError instanceof DOMException && shareError.name === 'AbortError') return
+      toast('Sharing is unavailable. Copy the PSBT instead.')
+    }
+  }
 
   const current = frames[Math.min(frame, Math.max(frames.length - 1, 0))] || ''
 
@@ -63,7 +83,9 @@ export default function VaultHandoff() {
             <Text color='neutral-600' tiny wrap>
               {prettyAmount(spend.amount)}
             </Text>
+            {canShareFile ? <Button label='Share PSBT file' onClick={() => void sharePsbt()} /> : null}
             <Button
+              secondary={canShareFile}
               label='Copy PSBT'
               onClick={() => {
                 void (async () => {

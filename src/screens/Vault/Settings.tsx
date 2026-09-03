@@ -123,7 +123,7 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
             <WalletAlternativeIcon />
             <Text>Sign out of this browser</Text>
             <TextSecondary>
-              Coins stay on the vault. Sign in again with device unlock. This does not close the vault or delete the
+              Coins stay on the vault. Sign in again with your passkey. This does not close the vault or delete the
               passkey.
             </TextSecondary>
           </CenterScreen>

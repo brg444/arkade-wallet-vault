@@ -1,8 +1,7 @@
 import { useContext } from 'react'
 import Text from '../../components/Text'
-import ReceivedIcon from '../../icons/Received'
-import SentIcon from '../../icons/Sent'
-import { prettyAmount } from '../../lib/format'
+import TransferArrowIcon from '../../icons/TransferArrow'
+import { prettyAmount, prettyNumber } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
 import { RECENT_HISTORY_LIMIT } from '../../lib/vault/constants'
 import { groupVaultHistory } from '../../lib/vault/history'
@@ -15,7 +14,6 @@ function historyTime(blockTime?: number): string {
 
 export default function VaultHistory() {
   const { account, balanceError, balancesLoaded, history, openTx, refreshingBalance } = useContext(VaultContext)
-  const accountName = account === 'savings' ? 'Savings' : 'Spending'
 
   if (history.length === 0) {
     return (
@@ -26,8 +24,7 @@ export default function VaultHistory() {
         aria-labelledby='vault-activity-title'
       >
         <div className='vault-history-head'>
-          <h2 id='vault-activity-title'>Activity</h2>
-          <span>{refreshingBalance ? `Refreshing ${accountName}` : accountName}</span>
+          <h2 id='vault-activity-title'>Recent</h2>
         </div>
         <div className='vault-history-empty' role={!balancesLoaded && !balanceError ? 'status' : undefined}>
           <Text color='neutral-600' tiny wrap>
@@ -45,14 +42,18 @@ export default function VaultHistory() {
   }
 
   return (
-    <section className='vault-history' data-testid='vault-history' aria-labelledby='vault-activity-title'>
+    <section
+      className='vault-history'
+      data-testid='vault-history'
+      aria-busy={refreshingBalance}
+      aria-labelledby='vault-activity-title'
+    >
       <div className='vault-history-head'>
-        <h2 id='vault-activity-title'>Activity</h2>
-        <span>{refreshingBalance ? `Refreshing ${accountName}` : accountName}</span>
+        <h2 id='vault-activity-title'>Recent</h2>
       </div>
       {groupVaultHistory(history).map((group) => (
         <div className='vault-history-group' key={group.key}>
-          <h3 className='vault-history-group-label'>{group.label}</h3>
+          <h3 className='vault-history-group-label vault-visually-hidden'>{group.label}</h3>
           {group.items.map((tx) => {
             const sent = tx.type === 'sent'
             const lightning = tx.activity === 'lightning'
@@ -89,7 +90,7 @@ export default function VaultHistory() {
                 }}
               >
                 <span className='vault-history-icon' aria-hidden='true'>
-                  {sent ? <SentIcon /> : <ReceivedIcon />}
+                  <TransferArrowIcon incoming={!sent} />
                 </span>
                 <span className='vault-history-copy'>
                   <Text small bold>
@@ -107,7 +108,7 @@ export default function VaultHistory() {
                 </span>
                 <span className={sent ? 'vault-history-amt' : 'vault-history-amt is-in'}>
                   {sent ? '−' : '+'}
-                  {prettyAmount(amount)}
+                  {prettyNumber(amount)} <span className='vault-history-unit'>SATS</span>
                 </span>
               </button>
             )
