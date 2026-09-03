@@ -20,6 +20,7 @@ import {
 } from '@arkade-os/swap'
 import { hex } from '@scure/base'
 import { consoleError } from '../../logs'
+import { ABSOLUTE_FEE_CEILING_SATS, DUST_SATS } from '../constants'
 import { historyFromBoardingUtxos, historyFromSdkActivities, type VaultHistoryItem } from '../history'
 import { tryVaultLightningLifecycleLock } from '../lightningLock'
 import {
@@ -467,28 +468,63 @@ export interface VaultBoardingSettlementRuntime {
   boardingSettle?: Promise<void>
 }
 
+// Each confirmed input is enumerated over 0..cap. Size the budget so later
+// deposits are not starved by earlier uneconomical outpoints.
+const MAX_VAULT_BOARDING_FEE_INPUTS = 16
+const MAX_VAULT_BOARDING_FEE_EVALUATIONS = MAX_VAULT_BOARDING_FEE_INPUTS * (ABSOLUTE_FEE_CEILING_SATS + 1)
+
 export async function vaultBoardingSettleParams(
   boardingUtxos: ExtendedCoin[],
   spendingAddress: string,
+  absoluteFeeCapSats: number,
   provider: Pick<RestArkProvider, 'getInfo'> = new RestArkProvider(vaultArkServer()),
 ): Promise<SettleParams | undefined> {
+  if (
+    !Number.isSafeInteger(absoluteFeeCapSats) ||
+    absoluteFeeCapSats < 0 ||
+    absoluteFeeCapSats > ABSOLUTE_FEE_CEILING_SATS
+  ) {
+    throw new Error('vault-board-v1 fee cap is invalid')
+  }
   const confirmed = boardingUtxos
     .filter((candidate) => candidate.status.confirmed)
     .sort((a, b) => a.txid.localeCompare(b.txid) || a.vout - b.vout)
   if (confirmed.length === 0) return undefined
 
   const { fees, vtxoMaxAmount } = await provider.getInfo()
-  const estimator = new Estimator(fees.intentFee)
+  let estimator: Estimator
+  try {
+    estimator = new Estimator(fees.intentFee)
+  } catch {
+    throw new Error('vault-board-v1 Operator fee policy is invalid')
+  }
   const outputScript = hex.encode(ArkAddress.decode(spendingAddress).pkScript)
+  let remainingFeeEvaluations = MAX_VAULT_BOARDING_FEE_EVALUATIONS
   for (const input of confirmed) {
     if (!Number.isSafeInteger(input.value) || input.value <= 0) continue
-    const inputFee = estimator.evalOnchainInput({ amount: BigInt(input.value) })
-    if (inputFee.satoshis >= input.value) continue
-
-    let amount = BigInt(input.value - inputFee.satoshis)
-    amount -= BigInt(estimator.evalOffchainOutput({ amount, script: outputScript }).satoshis)
-    if (amount <= 0n || (vtxoMaxAmount >= 0n && amount > vtxoMaxAmount)) continue
-    return { inputs: [input], outputs: [{ address: spendingAddress, amount }] }
+    const maxFee = Math.min(absoluteFeeCapSats, input.value - DUST_SATS)
+    if (maxFee < 0) continue
+    for (let candidateFee = 0; candidateFee <= maxFee; candidateFee++) {
+      const amount = BigInt(input.value - candidateFee)
+      if (vtxoMaxAmount >= 0n && amount > vtxoMaxAmount) continue
+      if (remainingFeeEvaluations === 0) {
+        throw new Error('vault-board-v1 Operator fee policy exceeds the evaluation limit')
+      }
+      remainingFeeEvaluations--
+      let evaluated
+      try {
+        evaluated = estimator.evaluate([], [{ amount: BigInt(input.value) }], [{ amount, script: outputScript }], [])
+      } catch {
+        throw new Error('vault-board-v1 Operator fee result is invalid')
+      }
+      if (!Number.isFinite(evaluated.value) || evaluated.value < 0 || !Number.isSafeInteger(evaluated.satoshis)) {
+        throw new Error('vault-board-v1 Operator fee result is invalid')
+      }
+      const exactFee = evaluated.satoshis
+      if (exactFee === candidateFee) {
+        return { inputs: [input], outputs: [{ address: spendingAddress, amount }] }
+      }
+    }
   }
   throw new Error('vault-board-v1 has no economical confirmed input within the Operator limit')
 }
@@ -544,7 +580,11 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
   ])
   if (balance.boarding.confirmed > 0) {
     void scheduleVaultBoardingSettlement(current, async () => {
-      const params = await vaultBoardingSettleParams(boardingUtxos, String(status.spendingArkAddress || ''))
+      const params = await vaultBoardingSettleParams(
+        boardingUtxos,
+        String(status.spendingArkAddress || ''),
+        status.absoluteFeeCap,
+      )
       if (!params) throw new Error('No inputs found')
       return current.wallet.settle(params)
     })
