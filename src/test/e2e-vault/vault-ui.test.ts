@@ -590,6 +590,29 @@ test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({
   await expectNoHorizontalOverflow(page)
 })
 
+test('@polish keeps the Send destination copy clear of its scanner action', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'Mobile Chrome', 'Mobile destination-field regression')
+  const { status } = await openVault(page)
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 80_000, txid: VTXO_TXID })])
+  await refreshHome(page)
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+
+  const destination = page.getByPlaceholder('Arkade address or Lightning invoice')
+  const scan = page.getByRole('button', { name: 'Scan QR' })
+  for (const width of [320, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 })
+    const destinationBox = await destination.boundingBox()
+    const scanBox = await scan.boundingBox()
+    const fontSize = await destination.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+
+    expect(destinationBox).not.toBeNull()
+    expect(scanBox).not.toBeNull()
+    expect(destinationBox!.x + destinationBox!.width).toBeLessThanOrEqual(scanBox!.x)
+    expect(fontSize).toBeLessThanOrEqual(16)
+    await expectNoHorizontalOverflow(page)
+  }
+})
+
 test('@polish covers accessible account, send, Security, and Settings states', async ({ page }) => {
   const pending: EsploraUtxo = {
     txid: BOARDING_TXID,
