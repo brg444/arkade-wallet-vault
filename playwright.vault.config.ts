@@ -13,6 +13,13 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: 'list',
+  expect: {
+    toHaveScreenshot: {
+      // Keep layout regressions strict while tolerating minor glyph rasterization
+      // differences between ARM development containers and GitHub's x86 runner.
+      maxDiffPixelRatio: 0.015,
+    },
+  },
   use: {
     baseURL: appOrigin,
     headless: true,
