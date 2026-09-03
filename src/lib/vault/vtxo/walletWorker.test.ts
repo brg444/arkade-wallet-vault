@@ -70,6 +70,7 @@ describe('Vault service-worker isolation', () => {
         { txid: 'bb'.repeat(32), vout: 0, value: 300_000, status: { confirmed: true } },
       ] as never,
       address,
+      5_000,
       provider as never,
     )
 
@@ -77,6 +78,94 @@ describe('Vault service-worker isolation', () => {
       inputs: [confirmed],
       outputs: [{ address, amount: 99_997n }],
     })
+  })
+
+  it('solves the Operator fee at the final boarding receiver amount', async () => {
+    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+    const provider = {
+      getInfo: vi.fn().mockResolvedValue({
+        fees: { intentFee: { onchainInput: '0.0', offchainOutput: 'amount * 0.01' } },
+        vtxoMaxAmount: -1n,
+      }),
+    }
+    const confirmed = {
+      txid: 'aa'.repeat(32),
+      vout: 1,
+      value: 100_000,
+      status: { confirmed: true },
+    }
+
+    const params = await vaultBoardingSettleParams([confirmed] as never, address, 5_000, provider as never)
+
+    expect(params).toEqual({
+      inputs: [confirmed],
+      outputs: [{ address, amount: 99_009n }],
+    })
+  })
+
+  it('rounds the aggregate Operator fee once', async () => {
+    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+    const provider = {
+      getInfo: vi.fn().mockResolvedValue({
+        fees: { intentFee: { onchainInput: '0.4', offchainOutput: '0.4' } },
+        vtxoMaxAmount: -1n,
+      }),
+    }
+    const confirmed = {
+      txid: 'aa'.repeat(32),
+      vout: 1,
+      value: 100_000,
+      status: { confirmed: true },
+    }
+
+    const params = await vaultBoardingSettleParams([confirmed] as never, address, 5_000, provider as never)
+
+    expect(params?.outputs).toEqual([{ address, amount: 99_999n }])
+  })
+
+  it('fails closed when no exact boarding fee exists within the enrolled cap', async () => {
+    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+    const provider = {
+      getInfo: vi.fn().mockResolvedValue({
+        fees: { intentFee: { onchainInput: '5001.0', offchainOutput: '0.0' } },
+        vtxoMaxAmount: -1n,
+      }),
+    }
+    const confirmed = {
+      txid: 'aa'.repeat(32),
+      vout: 1,
+      value: 100_000,
+      status: { confirmed: true },
+    }
+
+    await expect(vaultBoardingSettleParams([confirmed] as never, address, 5_000, provider as never)).rejects.toThrow(
+      'vault-board-v1 has no economical confirmed input within the Operator limit',
+    )
+  })
+
+  it('rejects a fee cap above the immutable release ceiling', async () => {
+    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+    await expect(vaultBoardingSettleParams([], address, 5_001)).rejects.toThrow('vault-board-v1 fee cap is invalid')
+  })
+
+  it('bounds fee evaluation across all confirmed boarding inputs', async () => {
+    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+    const provider = {
+      getInfo: vi.fn().mockResolvedValue({
+        fees: { intentFee: { onchainInput: '5001.0', offchainOutput: '0.0' } },
+        vtxoMaxAmount: -1n,
+      }),
+    }
+    const confirmed = Array.from({ length: 4 }, (_, index) => ({
+      txid: index.toString(16).padStart(64, '0'),
+      vout: 0,
+      value: 100_000,
+      status: { confirmed: true },
+    }))
+
+    await expect(vaultBoardingSettleParams(confirmed as never, address, 5_000, provider as never)).rejects.toThrow(
+      'vault-board-v1 Operator fee policy exceeds the evaluation limit',
+    )
   })
 
   it('keeps A → B → A registrations on their distinct scope and worker', async () => {
