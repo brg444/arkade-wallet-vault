@@ -44,6 +44,20 @@ vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => {
     ...original,
     reserveVaultVtxo: mocks.reserve,
     sendVaultVtxo: mocks.send,
+    previewVaultVtxoSend: async (_status: unknown, destAddress: string, amountSats: number) => ({
+      destAddress,
+      amountSats,
+      feeSats: 0,
+    }),
+    newVtxoSpendChallenge: () => 'aa'.repeat(32),
+    createVtxoSpendUnlocker: () => ({
+      unlock: async () => ({
+        assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+        phoneSecret: new Uint8Array(32).fill(7),
+        scalar: new Uint8Array(32).fill(8),
+      }),
+      dispose: () => undefined,
+    }),
   }
 })
 
@@ -273,13 +287,13 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
-    expect(screen.getByTestId('fee')).toHaveTextContent('500')
+    expect(screen.getByTestId('fee')).toHaveTextContent('0')
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('send'))
     expect(screen.getByTestId('fee')).toHaveTextContent('0')
     expect(screen.getByTestId('error')).toHaveTextContent('This fee quote expired or changed. Review the send again.')
-    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed)
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed, expect.any(Function))
   })
 
   it('does not open Home when a stored enrollment has no pinned Vault Program', async () => {

@@ -269,8 +269,8 @@ function stubPasskeyUnlocker(): typeof createVtxoSpendUnlocker {
         authenticatorData: 'cc',
         signature: 'dd',
       },
-      directSig: 'ee',
       phoneSecret: new Uint8Array(32).fill(1),
+      scalar: new Uint8Array(32).fill(2),
     }))
 }
 
@@ -593,6 +593,7 @@ describe('regular VTXO spend coordinator', () => {
 
   it('unlocks the passkey once and reuses it for Ark authorization and checkpoint signing', async () => {
     const phoneSecret = new Uint8Array(32).fill(7)
+    const scalar = new Uint8Array(32).fill(8)
     const unlockPasskey = vi.fn(async () => ({
       assertion: {
         credentialId: 'aa',
@@ -600,8 +601,8 @@ describe('regular VTXO spend coordinator', () => {
         authenticatorData: 'cc',
         signature: 'dd',
       },
-      directSig: 'ee',
       phoneSecret,
+      scalar,
     }))
     const unlocker = createVtxoSpendUnlocker({} as never, status(), '11'.repeat(32), unlockPasskey)
 
@@ -616,6 +617,7 @@ describe('regular VTXO spend coordinator', () => {
     unlocker.dispose()
     expect(unlockPasskey).toHaveBeenCalledTimes(1)
     expect([...phoneSecret]).toEqual(Array(32).fill(0))
+    expect([...scalar]).toEqual(Array(32).fill(0))
   })
 
   it('requires the SDK callback bundle to be byte-identical to the persisted reservation before Face ID', async () => {
