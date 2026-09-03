@@ -62,7 +62,7 @@ describe('Vault home account boundaries', () => {
   it('starts Savings to Spending at the pinned boarding address', async () => {
     const user = userEvent.setup()
     const value = renderHome({ account: 'savings' })
-    await user.click(screen.getByRole('button', { name: 'Move to Spending' }))
+    await user.click(screen.getByRole('button', { name: 'Spending' }))
     expect(value.clearSpendDraft).toHaveBeenCalled()
     expect(value.setSpendDraft).toHaveBeenCalledWith({ address: value.boardingAddress })
     expect(value.navigate).toHaveBeenCalledWith('send')
@@ -79,8 +79,8 @@ describe('Vault home account boundaries', () => {
 
   it('keeps the Savings actions explicit without adding send instructions to Home', () => {
     renderHome({ account: 'savings' })
-    expect(screen.getByRole('button', { name: 'Move to Spending' })).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Add to Savings' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Spending' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Deposit' })).toHaveLength(2)
     expect(screen.queryByText(/hardware key/i)).toBeNull()
   })
 
