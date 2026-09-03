@@ -66,6 +66,7 @@ describe('same-origin authorizer gateway', () => {
       '/v1/vtxo/operation?vaultId=x&operationId=y',
     )
     expect(publicAuthorizerPath('/api/v1/vtxo-reserve')).toBe('/v1/vtxo/reserve')
+    expect(publicAuthorizerPath('/api/v1/vtxo-abort')).toBe('/v1/vtxo/abort')
     expect(publicAuthorizerPath('/api/v1/vtxo-authorize')).toBe('/v1/vtxo/authorize')
     expect(publicAuthorizerPath('/api/v1/vtxo-checkpoints-authorize')).toBe('/v1/vtxo/checkpoints/authorize')
     expect(publicAuthorizerPath('/api/v1/vtxo-finalize?operationId=x')).toBe('/v1/vtxo/finalize?operationId=x')
