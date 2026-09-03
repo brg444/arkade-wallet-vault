@@ -21,6 +21,7 @@ import {
   clearPersistedVtxoSpend,
   createVaultSdkOperationValidation,
   createVtxoOperationId,
+  createVtxoSpendUnlocker,
   createPhoneSignedPendingProof,
   isVtxoReceiptPendingError,
   laterVtxoSpendStage,
@@ -520,6 +521,33 @@ describe('regular VTXO spend coordinator', () => {
       clearPersistedVtxoSpend('vault-a')
       restoreLock()
     }
+  })
+
+  it('unlocks the passkey once and reuses it for Ark authorization and checkpoint signing', async () => {
+    const phoneSecret = new Uint8Array(32).fill(7)
+    const unlockPasskey = vi.fn(async () => ({
+      assertion: {
+        credentialId: 'aa',
+        clientDataJSON: 'bb',
+        authenticatorData: 'cc',
+        signature: 'dd',
+      },
+      directSig: 'ee',
+      phoneSecret,
+    }))
+    const unlocker = createVtxoSpendUnlocker({} as never, status(), '11'.repeat(32), unlockPasskey)
+
+    const first = await unlocker.unlock()
+    const second = await unlocker.unlock()
+    expect(unlockPasskey).toHaveBeenCalledTimes(1)
+    expect(second).toBe(first)
+    expect(first.phoneSecret).toBe(phoneSecret)
+    expect([...phoneSecret]).toEqual(Array(32).fill(7))
+
+    unlocker.dispose()
+    unlocker.dispose()
+    expect(unlockPasskey).toHaveBeenCalledTimes(1)
+    expect([...phoneSecret]).toEqual(Array(32).fill(0))
   })
 
   it('requires the SDK callback bundle to be byte-identical to the persisted reservation before Face ID', async () => {
