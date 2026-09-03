@@ -1,5 +1,7 @@
 import { readBounded } from './bounded'
 import { RECENT_HISTORY_LIMIT } from './constants'
+import { hex } from '@scure/base'
+import { Transaction } from '@scure/btc-signer'
 
 export function esploraBase(): string {
   return '/esplora'
@@ -119,8 +121,22 @@ export async function fetchTipHeight(): Promise<number> {
 }
 
 export async function broadcastTx(txHex: string): Promise<string> {
+  const expectedTxid = Transaction.fromRaw(hex.decode(txHex)).id
   const res = await fetch(`${esploraBase()}/tx`, { method: 'POST', body: txHex })
   const text = await readBounded(res)
-  if (!res.ok) throw new Error(text.trim() || 'Could not broadcast')
-  return text.trim()
+  if (res.ok) {
+    const returnedTxid = text.trim()
+    if (returnedTxid !== expectedTxid) throw new Error('Broadcast returned the wrong transaction id')
+    return expectedTxid
+  }
+
+  // A retry after a lost response commonly returns "already in mempool". Only
+  // accept it when Esplora confirms this exact locally-derived transaction id.
+  try {
+    const known = await fetch(`${esploraBase()}/tx/${expectedTxid}/status`, { cache: 'no-store' })
+    if (known.ok) return expectedTxid
+  } catch {
+    // Preserve the original broadcast error below.
+  }
+  throw new Error(text.trim() || 'Could not broadcast')
 }
