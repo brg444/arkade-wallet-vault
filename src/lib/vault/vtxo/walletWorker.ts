@@ -467,10 +467,6 @@ export interface VaultBoardingSettlementRuntime {
   boardingSettle?: Promise<void>
 }
 
-/**
- * Builds the one-input named boarding request with the stock Operator's exact
- * public fee policy. Spending VTXOs are deliberately excluded.
- */
 export async function vaultBoardingSettleParams(
   boardingUtxos: ExtendedCoin[],
   spendingAddress: string,
@@ -497,11 +493,6 @@ export async function vaultBoardingSettleParams(
   throw new Error('vault-board-v1 has no economical confirmed input within the Operator limit')
 }
 
-/**
- * Starts one page-owned boarding request. Its worker message remains pending
- * for the full Operator batch, so MessageBus attaches the settlement to the
- * service worker event's waitUntil lifetime.
- */
 export function scheduleVaultBoardingSettlement(
   current: VaultBoardingSettlementRuntime,
   settle: () => Promise<string>,
