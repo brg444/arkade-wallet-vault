@@ -1,8 +1,9 @@
 import { useContext, useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock3, QrCode, ScanLine, Shield, ShieldAlert } from 'lucide-react'
+import { useToast } from '../../components/Toast'
 import { prettyNumber } from '../../lib/format'
 import { hapticLight, hapticSubtle } from '../../lib/haptics'
-import { homeBalanceDisplay } from '../../lib/vault/fiatDisplay'
+import { homeBalanceDisplay, type VaultFiatDisplayRate } from '../../lib/vault/fiatDisplay'
 import { loadVaultBalanceUnit, saveVaultBalanceUnit } from '../../lib/vault/prefs'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
@@ -18,6 +19,7 @@ export default function VaultHome() {
     boardingAddress,
     canSend,
     error,
+    fiatDisplayRate,
     navigate,
     openSendScan,
     openRecover,
@@ -27,7 +29,9 @@ export default function VaultHome() {
     positions,
     clearSpendDraft,
     setSpendDraft,
+    setFiatDisplay,
   } = useContext(VaultContext)
+  const { toast } = useToast()
 
   useEffect(() => {
     void reloadIfNewerWallet()
@@ -38,17 +42,68 @@ export default function VaultHome() {
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
-  const [balanceUnit, setBalanceUnit] = useState(() => {
+  const [balanceUnit, setBalanceUnit] = useState<'sats' | 'usd'>('sats')
+  const [loadingFiat, setLoadingFiat] = useState(false)
+  const [homeFiatRate, setHomeFiatRate] = useState<VaultFiatDisplayRate | null>(fiatDisplayRate)
+
+  useEffect(() => {
+    if (fiatDisplayRate) setHomeFiatRate(fiatDisplayRate)
+  }, [fiatDisplayRate])
+
+  useEffect(() => {
+    let active = true
+    let preferred: 'sats' | 'usd' = 'sats'
     try {
-      return loadVaultBalanceUnit()
+      preferred = loadVaultBalanceUnit()
     } catch {
-      return 'sats' as const
+      return
     }
-  })
+    if (preferred !== 'usd') return
+    setLoadingFiat(true)
+    void setFiatDisplay(true)
+      .then((rate) => {
+        if (!active) return
+        if (rate) {
+          setHomeFiatRate(rate)
+          setBalanceUnit('usd')
+        } else saveVaultBalanceUnit('sats')
+      })
+      .finally(() => {
+        if (active) setLoadingFiat(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [setFiatDisplay])
   const spending = account === 'spend'
   const position = spending ? positions.spending : positions.savings
   const sats = position.totalSats
-  const balance = homeBalanceDisplay(sats, balanceUnit)
+  const balance = homeBalanceDisplay(sats, balanceUnit, fiatDisplayRate || homeFiatRate)
+
+  const toggleBalanceUnit = async () => {
+    if (!balancesLoaded || loadingFiat) return
+    hapticSubtle()
+    if (balanceUnit === 'usd') {
+      setBalanceUnit('sats')
+      setHomeFiatRate(null)
+      saveVaultBalanceUnit('sats')
+      await setFiatDisplay(false)
+      return
+    }
+    setLoadingFiat(true)
+    try {
+      const rate = fiatDisplayRate || (await setFiatDisplay(true))
+      if (!rate) {
+        toast('USD balance is unavailable. Try again later.')
+        return
+      }
+      setHomeFiatRate(rate)
+      setBalanceUnit('usd')
+      saveVaultBalanceUnit('usd')
+    } finally {
+      setLoadingFiat(false)
+    }
+  }
 
   return (
     <Content className='qg-home-content'>
@@ -99,8 +154,9 @@ export default function VaultHome() {
           type='button'
           className='qg-balance'
           data-testid='vault-balance'
-          disabled={!balancesLoaded}
-          aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
+          data-balance-unit={balanceUnit}
+          disabled={!balancesLoaded || loadingFiat}
+          aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance || loadingFiat ? true : undefined}
           aria-live='polite'
           aria-label={
             balancesLoaded
@@ -109,13 +165,7 @@ export default function VaultHome() {
                 }`
               : `${spending ? 'Spending' : 'Savings'} balance loading`
           }
-          onClick={() => {
-            if (!balancesLoaded) return
-            hapticSubtle()
-            const next = balanceUnit === 'usd' ? 'sats' : 'usd'
-            setBalanceUnit(next)
-            saveVaultBalanceUnit(next)
-          }}
+          onClick={() => void toggleBalanceUnit()}
         >
           <strong>{balancesLoaded ? balance.amount : '—'}</strong>
           {balancesLoaded && balance.unit ? <span>{balance.unit}</span> : null}

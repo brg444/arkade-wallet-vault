@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Fiats } from '../types'
-import { approximateFiatLabel, homeBalanceDisplay, usdFromSatsAtDisplayRate } from './fiatDisplay'
+import { approximateFiatLabel, homeBalanceDisplay, usdFromSats } from './fiatDisplay'
 
 describe('vault fiat display', () => {
   it('formats an approximate display value without changing satoshi amounts', () => {
@@ -9,13 +9,13 @@ describe('vault fiat display', () => {
     expect(approximateFiatLabel(50_000, { currency: Fiats.USD, pricePerBtc: Number.NaN })).toBe('')
   })
 
-  it('converts sats at the $100,000 per bitcoin display rate', () => {
-    expect(usdFromSatsAtDisplayRate(100_000_000)).toBe(100_000)
-    expect(usdFromSatsAtDisplayRate(50_000)).toBe(50)
-    expect(usdFromSatsAtDisplayRate(1_000)).toBe(1)
+  it('converts sats using the supplied USD price', () => {
+    expect(usdFromSats(100_000_000, 125_000)).toBe(125_000)
+    expect(usdFromSats(50_000, 125_000)).toBe(62.5)
+    expect(usdFromSats(1_000, 125_000)).toBe(1.25)
   })
 
-  it('formats the Home hero as ₿sats or USD at $100,000 per bitcoin', () => {
+  it('formats the Home hero as ₿sats or USD using the live display rate', () => {
     expect(homeBalanceDisplay(10_000, 'sats')).toEqual({
       amount: '₿10,000',
       unit: '',
@@ -26,11 +26,18 @@ describe('vault fiat display', () => {
       unit: '',
       label: '₿128,000',
     })
-    expect(homeBalanceDisplay(128_000, 'usd')).toEqual({
-      amount: '$128.00',
+    expect(homeBalanceDisplay(128_000, 'usd', { currency: Fiats.USD, pricePerBtc: 125_000 })).toEqual({
+      amount: '$160.00',
       unit: '',
-      label: '$128.00',
+      label: '$160.00',
     })
-    expect(homeBalanceDisplay(100_000_000, 'usd').amount).toBe('$100,000.00')
+    expect(homeBalanceDisplay(100_000_000, 'usd', { currency: Fiats.USD, pricePerBtc: 125_000 }).amount).toBe(
+      '$125,000.00',
+    )
+  })
+
+  it('falls back to sats when a USD rate is unavailable or invalid', () => {
+    expect(homeBalanceDisplay(128_000, 'usd', null).amount).toBe('₿128,000')
+    expect(homeBalanceDisplay(128_000, 'usd', { currency: Fiats.USD, pricePerBtc: Number.NaN }).amount).toBe('₿128,000')
   })
 })

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
+import { Fiats } from '../../lib/types'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultHome from './Home'
 
@@ -92,10 +93,14 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
   })
 
-  it('toggles the hero between ₿sats and USD at $100,000 per bitcoin', async () => {
+  it('toggles the hero between ₿sats and USD using the fetched price', async () => {
     const user = userEvent.setup()
+    const rate = { currency: Fiats.USD, pricePerBtc: 125_000 }
+    const setFiatDisplay = vi.fn(async (enabled: boolean) => (enabled ? rate : null))
     renderHome({
       account: 'spend',
+      fiatDisplayRate: null,
+      setFiatDisplay,
       positions: {
         spending: { availableSats: 80_000, pendingSats: 48_000, totalSats: 128_000 },
         savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
@@ -105,10 +110,25 @@ describe('Vault home account boundaries', () => {
     expect(hero).toHaveTextContent('₿128,000')
     expect(hero).not.toHaveTextContent('SATS')
     await user.click(hero)
-    expect(hero).toHaveTextContent('$128.00')
+    expect(hero).toHaveTextContent('$160.00')
+    expect(setFiatDisplay).toHaveBeenCalledWith(true)
     expect(localStorage.getItem('arkade-vault-balance-unit')).toBe('usd')
     await user.click(hero)
     expect(hero).toHaveTextContent('₿128,000')
+    expect(setFiatDisplay).toHaveBeenCalledWith(false)
+  })
+
+  it('keeps sats selected when the USD price is unavailable', async () => {
+    const user = userEvent.setup()
+    const setFiatDisplay = vi.fn().mockResolvedValue(null)
+    renderHome({ fiatDisplayRate: null, setFiatDisplay })
+
+    const hero = screen.getByTestId('vault-balance')
+    await user.click(hero)
+
+    expect(hero).toHaveTextContent('₿12,000')
+    expect(localStorage.getItem('arkade-vault-balance-unit')).toBeNull()
+    expect(await screen.findByText('USD balance is unavailable. Try again later.')).toBeTruthy()
   })
 
   it('shows total Spending balance even when some sats are still arriving', () => {
