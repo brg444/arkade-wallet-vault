@@ -1,8 +1,8 @@
 # Vaulted, a Bitcoin wallet
 
 Vaulted is a passkey-first Bitcoin wallet that separates everyday spending
-from hardware-protected savings. It uses Arkade as a fast payment rail while
-keeping Bitcoin ownership, policy, and recovery at the center of the product.
+from hardware-protected savings, with Bitcoin ownership, policy, and recovery
+at the center of the product.
 
 > [!WARNING]
 > The public release candidate runs on **Mutinynet only**. Do not use real
@@ -15,15 +15,14 @@ keeping Bitcoin ownership, policy, and recovery at the center of the product.
 
 ## What it does
 
-- **Spending** is the fast, policy-controlled side of the wallet. Payments can
-  travel over Arkade, with the enrolled per-payment and rolling 24-hour limits
-  enforced by the Vault service.
+- **Spending** is the fast, policy-controlled side of the wallet, with enrolled
+  per-payment and rolling 24-hour limits enforced by the Vault service.
 - **Savings** holds bitcoin in the L1 `arkade-vault/savings-v1` program.
   Ordinary transfers require both this device and an external hardware signer.
 - **Recovery** gives Advanced vaults delayed, cancellable recovery paths and a
   portable Recovery Kit without placing private keys in the browser.
-- **Unified receive** provides one Bitcoin payment request with compatible
-  onchain and Arkade destinations.
+- **Unified receive** provides one Bitcoin payment request for both fast and
+  onchain receipt.
 
 Enrollment requires an invitation from the Vault service operator. It freezes
 the selected protection tier and spending policy before the passkey is created.
