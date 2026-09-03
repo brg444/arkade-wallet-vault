@@ -421,8 +421,16 @@ async function requireCurrentReservationPolicy(
 
 export type VtxoSpendPasskey = {
   assertion: Pick<VtxoAuthorizeRequest, 'credentialId' | 'clientDataJSON' | 'authenticatorData' | 'signature'>
-  directSig: string
   phoneSecret: Uint8Array
+  scalar: Uint8Array
+}
+
+export function vtxoSpendDirectSig(auth: VtxoSpendPasskey, digestHex: string): string {
+  return hex.encode(signDirectP256(auth.scalar, requireHex(digestHex, 32, 'bundle digest')))
+}
+
+export function newVtxoSpendChallenge(): string {
+  return hex.encode(crypto.getRandomValues(new Uint8Array(32)))
 }
 
 async function authorizeWithPasskey(
@@ -480,6 +488,7 @@ async function authorizeWithPasskey(
       throw new Error('phone key does not match this vault')
     }
     const response = credential.response as AuthenticatorAssertionResponse
+    const scalarCopy = new Uint8Array(scalar)
     return {
       assertion: {
         credentialId: enrollment.credId,
@@ -487,8 +496,8 @@ async function authorizeWithPasskey(
         authenticatorData: hex.encode(new Uint8Array(response.authenticatorData)),
         signature: hex.encode(new Uint8Array(response.signature)),
       },
-      directSig: hex.encode(signDirectP256(scalar, digest)),
       phoneSecret,
+      scalar: scalarCopy,
     }
   } finally {
     zeroBytes(prf, scalar as Uint8Array)
@@ -513,7 +522,7 @@ export function createVtxoSpendUnlocker(
     },
     dispose() {
       if (!session) return
-      zeroBytes(session.phoneSecret)
+      zeroBytes(session.phoneSecret, session.scalar)
       session = undefined
     },
   }
@@ -1300,6 +1309,7 @@ async function reservePersistedVtxoSpend(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
   pending: PersistedVtxoSpend,
+  providedPhoneSecret?: Uint8Array,
 ): Promise<PersistedVtxoSpend> {
   if (!pending.reservePhoneSignature) {
     if (
@@ -1310,11 +1320,11 @@ async function reservePersistedVtxoSpend(
     ) {
       throw new Error('enrollment phone key does not match this vault')
     }
-    const phoneSecret = await unlockPhoneBip340(enrollment, status)
+    const phoneSecret = providedPhoneSecret || (await unlockPhoneBip340(enrollment, status))
     try {
       pending = persistVtxoReserveSignature(pending, status, phoneSecret)
     } finally {
-      zeroBytes(phoneSecret)
+      if (!providedPhoneSecret) zeroBytes(phoneSecret)
     }
   }
   const reserve: VtxoReserveResponse = await vaultCosignerClient.spending.reserve(vtxoReserveRequest(pending, status))
@@ -1454,6 +1464,7 @@ async function prepareVtxoSpendLocked(
   destAddress: string,
   amountSats: number,
   replaceExisting = false,
+  phoneSecret?: Uint8Array,
 ): Promise<PersistedVtxoSpend> {
   let pending = loadPersistedVtxoSpend(status.vaultId)
   if (pending) pending = await syncPersistedSpendWithOperation(pending)
@@ -1466,23 +1477,47 @@ async function prepareVtxoSpendLocked(
     pending = undefined
   }
   if (!pending) pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
-  if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(enrollment, status, pending)
+  if (pending.stage === 'pre-reserve') {
+    pending = await reservePersistedVtxoSpend(enrollment, status, pending, phoneSecret)
+  }
   return pending
 }
 
-/** Reserve and validate the authoritative fee before the wallet presents Review. */
+export async function previewVaultVtxoSend(
+  status: VaultStatus,
+  destAddress: string,
+  amountSats: number,
+  options?: { replaceExisting?: boolean },
+): Promise<{ destAddress: string; amountSats: number; feeSats: number }> {
+  requireMutinynetStatus(status)
+  if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
+  vtxoDestinationScript(status, destAddress)
+  const pending = loadPersistedVtxoSpend(status.vaultId)
+  const action = vtxoNewSendAction(pending, destAddress, amountSats)
+  if (pending && action === 'warn' && !options?.replaceExisting) throw new VtxoSameSendInProgressError(pending)
+  return { destAddress: destAddress.trim(), amountSats, feeSats: 0 }
+}
+
+/** Reserve and validate the authoritative fee. Pass an already-unlocked phone key to avoid a second Face ID. */
 export async function reserveVaultVtxo(
   enrollment: EnrollmentSecrets,
   status: VaultStatus,
   destAddress: string,
   amountSats: number,
-  options?: { replaceExisting?: boolean },
+  options?: { replaceExisting?: boolean; phoneSecret?: Uint8Array },
 ): Promise<VaultVtxoSpendQuote> {
   requireMutinynetStatus(status)
   if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
   return withVtxoSendLock(status.vaultId, async () =>
     quoteFromPersistedVtxoSpend(
-      await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats, Boolean(options?.replaceExisting)),
+      await prepareVtxoSpendLocked(
+        enrollment,
+        status,
+        destAddress,
+        amountSats,
+        Boolean(options?.replaceExisting),
+        options?.phoneSecret,
+      ),
     ),
   )
 }
@@ -1596,7 +1631,7 @@ async function authorizeReservedVtxoSpend(
     unsignedCheckpointPsbts: pending.unsignedCheckpointPsbts,
     pendingProof,
     ...auth.assertion,
-    directSig: auth.directSig,
+    directSig: vtxoSpendDirectSig(auth, pending.bundleDigest),
   })
   if (
     authorized.operationId !== pending.operationId ||
@@ -1841,7 +1876,9 @@ async function continueSameVtxoSpend(
   pending: PersistedVtxoSpend,
   unlocker: VtxoSpendUnlocker,
 ): Promise<VaultVtxoSpendResult> {
-  if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(enrollment, status, pending)
+  if (pending.stage === 'pre-reserve') {
+    pending = await reservePersistedVtxoSpend(enrollment, status, pending, (await unlocker.unlock()).phoneSecret)
+  }
   if (pending.stage === 'reserved' && pending.sdkBundleVersion === 1) {
     return completeFreshSdkVtxoSpend(status, pending, unlocker)
   }

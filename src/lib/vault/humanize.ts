@@ -46,6 +46,15 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('already bound to a different exact request')) {
     return 'This send is already in progress. Refresh your balance before trying again.'
   }
+  if (msg.includes('challenge mismatch') || msg.includes('webauthn challenge')) {
+    return 'Passkey didn’t match this send. Try Approve again.'
+  }
+  if (msg.includes('vtxo operation state') || msg.includes('changed psbt') || msg.includes('checkpoint count')) {
+    return 'This send could not be authorized. Review the payment again.'
+  }
+  if (msg.includes('not enough') && msg.includes('vtxo')) {
+    return 'Not enough confirmed spending funds after the last send.'
+  }
   if (msg.includes('mutated') && msg.includes('phone')) {
     return 'The vault rejected a changed signature. Refresh your balance before trying again.'
   }

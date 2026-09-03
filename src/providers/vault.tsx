@@ -39,11 +39,14 @@ import {
 import { decodeVaultLightningInvoice } from '../lib/vault/lightningInvoice'
 import type { VaultLightningQuote } from '../lib/vault/lightningLifecycle'
 import {
+  createVtxoSpendUnlocker,
   isVtxoReceiptPendingError,
   isVtxoReviewedReservationError,
   isVtxoSameSendInProgressError,
   isVtxoSpendInFlightError,
   loadPersistedVtxoSpend,
+  newVtxoSpendChallenge,
+  previewVaultVtxoSend,
   reserveVaultVtxo,
   sendVaultVtxo,
   type VaultVtxoSpendQuote,
@@ -625,21 +628,30 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
       setBusy(true)
       try {
-        const replaceExisting = replaceExistingVtxoRef.current
-        replaceExistingVtxoRef.current = false
-        const quote = await reserveVaultVtxo(enrollment, status, spend.address, spend.amount, { replaceExisting })
+        const preview = await previewVaultVtxoSend(status, spend.address, spend.amount, {
+          replaceExisting: replaceExistingVtxoRef.current,
+        })
         if (
-          spendRef.current.address.trim() !== quote.destAddress.trim() ||
-          spendRef.current.amount !== quote.amountSats
+          spendRef.current.address.trim() !== preview.destAddress.trim() ||
+          spendRef.current.amount !== preview.amountSats
         ) {
           setError('Send details changed. Review the send again.')
           return
         }
         setCanReplaceInFlightSend(false)
-        setReviewedVtxoQuote(quote)
+        setReviewedVtxoQuote({
+          operationId: '',
+          bundleDigest: '',
+          destAddress: preview.destAddress,
+          amountSats: preview.amountSats,
+          feeSats: preview.feeSats,
+          feePolicyDigest: '',
+          reservationExpires: '',
+          changeSats: 0,
+        })
         setSpend((current) =>
           current.address === spend.address && current.amount === spend.amount
-            ? { ...current, fee: quote.feeSats }
+            ? { ...current, fee: preview.feeSats }
             : current,
         )
       } catch (err) {
@@ -894,8 +906,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           return
         }
         try {
-          const result = await sendVaultVtxo(enrollment, status, reviewed)
-          await finishBroadcast(result.txid, 'vtxo', result.feeSats)
+          const replaceExisting = replaceExistingVtxoRef.current
+          replaceExistingVtxoRef.current = false
+          const unlocker = createVtxoSpendUnlocker(enrollment, status, newVtxoSpendChallenge())
+          try {
+            const auth = await unlocker.unlock()
+            const quote = await reserveVaultVtxo(enrollment, status, reviewed.destAddress, reviewed.amountSats, {
+              replaceExisting,
+              phoneSecret: auth.phoneSecret,
+            })
+            const result = await sendVaultVtxo(enrollment, status, quote, () => unlocker)
+            await finishBroadcast(result.txid, 'vtxo', result.feeSats)
+          } finally {
+            unlocker.dispose()
+          }
           return
         } catch (err) {
           if (isVtxoReceiptPendingError(err)) {
