@@ -8,6 +8,14 @@ describe('vault PWA frame', () => {
   })
 
   it('uses the visual viewport when the keyboard has shortened the canvas', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(display-mode: standalone)',
+        addEventListener() {},
+        removeEventListener() {},
+      })),
+    )
     vi.stubGlobal('visualViewport', { height: 420, addEventListener() {}, removeEventListener() {} })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 })
     Object.defineProperty(window.screen, 'height', { configurable: true, value: 874 })
@@ -15,10 +23,30 @@ describe('vault PWA frame', () => {
   })
 
   it('covers the physical screen when the keyboard is closed so the iOS safe area is painted', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(display-mode: standalone)',
+        addEventListener() {},
+        removeEventListener() {},
+      })),
+    )
     vi.stubGlobal('visualViewport', { height: 812, addEventListener() {}, removeEventListener() {} })
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 })
     Object.defineProperty(window.screen, 'height', { configurable: true, value: 874 })
     expect(currentVaultFrameHeight()).toBe(874)
+  })
+
+  it('uses the visible viewport in a mobile browser so footer actions stay above browser chrome', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockReturnValue({ matches: false, addEventListener() {}, removeEventListener() {} }),
+    )
+    vi.stubGlobal('visualViewport', { height: 724, addEventListener() {}, removeEventListener() {} })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 724 })
+    Object.defineProperty(window.screen, 'height', { configurable: true, value: 844 })
+
+    expect(currentVaultFrameHeight()).toBe(724)
   })
 
   it('does not pin a desktop frame height', () => {

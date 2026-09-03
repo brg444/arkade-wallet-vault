@@ -13,6 +13,7 @@ function isMobileShell(): boolean {
 
 export function currentVaultFrameHeight(): number {
   const visual = window.visualViewport?.height ?? window.innerHeight
+  if (!isStandalone()) return Math.round(visual)
   const screenHeight = window.screen.height
   const keyboardOpen = visual < screenHeight * 0.75
   if (keyboardOpen) return Math.round(visual)
