@@ -1,7 +1,7 @@
-const [canonicalUrl, deploymentUrl] = process.argv.slice(2)
+const [canonicalUrl, deploymentTarget] = process.argv.slice(2)
 
-if (!canonicalUrl || !deploymentUrl) {
-  throw new Error('usage: pnpm verify:deployment <canonical-url> <deployment-url>')
+if (!canonicalUrl || !deploymentTarget) {
+  throw new Error('usage: pnpm verify:deployment <canonical-url> <deployment-url-or-index-asset>')
 }
 
 async function indexAsset(origin) {
@@ -14,10 +14,10 @@ async function indexAsset(origin) {
   return match[0]
 }
 
-const [canonicalAsset, deploymentAsset] = await Promise.all([
-  indexAsset(canonicalUrl),
-  indexAsset(deploymentUrl),
-])
+const canonicalAsset = await indexAsset(canonicalUrl)
+const deploymentAsset = /^index-[A-Za-z0-9_-]+\.js$/.test(deploymentTarget)
+  ? deploymentTarget
+  : await indexAsset(deploymentTarget)
 
 if (canonicalAsset !== deploymentAsset) {
   throw new Error(`canonical alias is stale: ${canonicalAsset} != ${deploymentAsset}`)
