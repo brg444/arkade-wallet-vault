@@ -1,12 +1,15 @@
-import { ServiceWorkerWallet } from '@arkade-os/sdk'
+import { ArkAddress, ServiceWorkerWallet } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import type { VaultStatus } from '../types'
 import {
   createVaultLightningObserverScheduler,
   isVaultWalletStateUpdate,
   registerVaultWalletServiceWorker,
+  scheduleVaultBoardingSettlement,
   shutdownVaultWalletWorker,
   subscribeVaultLightningObserver,
+  vaultBoardingSettleParams,
   vaultWalletRuntimeKey,
 } from './walletWorker'
 import { vaultWalletUpdaterTag, vaultWalletWorkerPath, vaultWalletWorkerScope } from './walletWorkerNames'
@@ -16,6 +19,66 @@ function activatedWorker(name: string) {
 }
 
 describe('Vault service-worker isolation', () => {
+  it('deduplicates page-owned boarding requests while the worker settlement is pending', async () => {
+    let finish!: (txid: string) => void
+    const settle = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const listener = vi.fn()
+    const current = {
+      listeners: new Set([listener]),
+      boardingSettle: undefined,
+    }
+
+    const first = scheduleVaultBoardingSettlement(current, settle)
+    const duplicate = scheduleVaultBoardingSettlement(current, settle)
+
+    expect(duplicate).toBe(first)
+    expect(settle).toHaveBeenCalledTimes(1)
+    finish('aa'.repeat(32))
+    await first
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    const next = scheduleVaultBoardingSettlement(current, settle)
+    expect(settle).toHaveBeenCalledTimes(2)
+    finish('bb'.repeat(32))
+    await next
+  })
+
+  it('settles exactly one confirmed boarding input to the fixed Spending address', async () => {
+    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+    const provider = {
+      getInfo: vi.fn().mockResolvedValue({
+        fees: { intentFee: { onchainInput: '1.0', offchainOutput: '2.0' } },
+        vtxoMaxAmount: -1n,
+      }),
+    }
+    const confirmed = {
+      txid: 'aa'.repeat(32),
+      vout: 1,
+      value: 100_000,
+      status: { confirmed: true },
+    }
+    const params = await vaultBoardingSettleParams(
+      [
+        { txid: '00'.repeat(32), vout: 0, value: 200_000, status: { confirmed: false } },
+        { txid: '01'.repeat(32), vout: 0, value: 1, status: { confirmed: true } },
+        confirmed,
+        { txid: 'bb'.repeat(32), vout: 0, value: 300_000, status: { confirmed: true } },
+      ] as never,
+      address,
+      provider as never,
+    )
+
+    expect(params).toEqual({
+      inputs: [confirmed],
+      outputs: [{ address, amount: 99_997n }],
+    })
+  })
+
   it('keeps A → B → A registrations on their distinct scope and worker', async () => {
     const stop = vi.spyOn(ServiceWorkerWallet, 'stop')
     const workers = new Map([

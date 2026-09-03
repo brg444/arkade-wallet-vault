@@ -1,11 +1,16 @@
 import {
+  ArkAddress,
+  Estimator,
   IndexedDBContractRepository,
   IndexedDBWalletRepository,
   ReadonlySingleKey,
+  RestArkProvider,
   RestIndexerProvider,
   ServiceWorkerWallet,
   hasTerminalSpend,
+  type ExtendedCoin,
   type IContractManager,
+  type SettleParams,
 } from '@arkade-os/sdk'
 import {
   IndexedDbAssetSwapRepository,
@@ -49,6 +54,7 @@ type WalletRuntime = {
   unsubscribeSwap: () => void
   onWorkerMessage: (event: MessageEvent) => void
   lightningObserver: VaultLightningObserverScheduler
+  boardingSettle?: Promise<void>
 }
 
 let runtime: WalletRuntime | undefined
@@ -456,6 +462,59 @@ export async function reloadVaultWalletWorker(status: VaultStatus) {
   await current.wallet.reload()
 }
 
+export interface VaultBoardingSettlementRuntime {
+  listeners: Set<() => void>
+  boardingSettle?: Promise<void>
+}
+
+export async function vaultBoardingSettleParams(
+  boardingUtxos: ExtendedCoin[],
+  spendingAddress: string,
+  provider: Pick<RestArkProvider, 'getInfo'> = new RestArkProvider(vaultArkServer()),
+): Promise<SettleParams | undefined> {
+  const confirmed = boardingUtxos
+    .filter((candidate) => candidate.status.confirmed)
+    .sort((a, b) => a.txid.localeCompare(b.txid) || a.vout - b.vout)
+  if (confirmed.length === 0) return undefined
+
+  const { fees, vtxoMaxAmount } = await provider.getInfo()
+  const estimator = new Estimator(fees.intentFee)
+  const outputScript = hex.encode(ArkAddress.decode(spendingAddress).pkScript)
+  for (const input of confirmed) {
+    if (!Number.isSafeInteger(input.value) || input.value <= 0) continue
+    const inputFee = estimator.evalOnchainInput({ amount: BigInt(input.value) })
+    if (inputFee.satoshis >= input.value) continue
+
+    let amount = BigInt(input.value - inputFee.satoshis)
+    amount -= BigInt(estimator.evalOffchainOutput({ amount, script: outputScript }).satoshis)
+    if (amount <= 0n || (vtxoMaxAmount >= 0n && amount > vtxoMaxAmount)) continue
+    return { inputs: [input], outputs: [{ address: spendingAddress, amount }] }
+  }
+  throw new Error('vault-board-v1 has no economical confirmed input within the Operator limit')
+}
+
+export function scheduleVaultBoardingSettlement(
+  current: VaultBoardingSettlementRuntime,
+  settle: () => Promise<string>,
+): Promise<void> {
+  if (current.boardingSettle) return current.boardingSettle
+  let tracked: Promise<void>
+  tracked = settle()
+    .then(() => {
+      current.listeners.forEach((listener) => listener())
+    })
+    .catch((error) => {
+      if (!(error instanceof Error) || !error.message.includes('No inputs found')) {
+        consoleError(error, 'Vault boarding settlement')
+      }
+    })
+    .finally(() => {
+      if (current.boardingSettle === tracked) current.boardingSettle = undefined
+    })
+  current.boardingSettle = tracked
+  return tracked
+}
+
 export interface VaultWalletVtxoSnapshot {
   balance: number
   boardingBalance?: number
@@ -483,6 +542,13 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
     current.wallet.getBoardingUtxos(),
     current.wallet.getBalance(),
   ])
+  if (balance.boarding.confirmed > 0) {
+    void scheduleVaultBoardingSettlement(current, async () => {
+      const params = await vaultBoardingSettleParams(boardingUtxos, String(status.spendingArkAddress || ''))
+      if (!params) throw new Error('No inputs found')
+      return current.wallet.settle(params)
+    })
+  }
   const lightningRfqIds = new Set(
     swapRecords.filter((record) => record.kind === 'lightning_send').map((record) => record.rfqId),
   )

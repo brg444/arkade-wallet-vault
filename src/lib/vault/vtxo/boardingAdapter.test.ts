@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { vaultCosignerClient } from '../cosignerClient'
 import type { BoardingDescriptor } from '../types'
 import { createBoardingSigningAdapter } from './boardingAdapter'
+import { waitForVaultSettlementStream } from './settlementEventSource'
 
 vi.mock('../cosignerClient', () => ({
   vaultCosignerClient: {
@@ -12,6 +13,10 @@ vi.mock('../cosignerClient', () => ({
       final: vi.fn(),
     },
   },
+}))
+
+vi.mock('./settlementEventSource', () => ({
+  waitForVaultSettlementStream: vi.fn().mockResolvedValue(undefined),
 }))
 
 const DESCRIPTOR = {
@@ -43,9 +48,19 @@ describe('vault-board-v1 SDK adapter', () => {
 
   it('binds the exact register and release messages to the server handle', async () => {
     const adapter = createBoardingSigningAdapter('vault-a', DESCRIPTOR)
+    const txid = 'aa'.repeat(32)
+    vi.mocked(vaultCosignerClient.boarding.prepare).mockResolvedValue({
+      status: 'ready',
+      handle: 'register-handle',
+      registerExpireAt: 10,
+    })
     vi.mocked(vaultCosignerClient.boarding.register).mockResolvedValue({ status: 'registered', intentId: 'intent' })
     vi.mocked(vaultCosignerClient.boarding.release).mockResolvedValue({ status: 'released' })
 
+    await adapter.prepareRegistration({
+      inputs: [{ txid, vout: 1 }],
+      recipients: [{ address: 'tark1spending', amount: 20_000 }],
+    })
     await adapter.registerIntent({
       handle: 'register-handle',
       psbt: 'register-psbt',
@@ -77,12 +92,71 @@ describe('vault-board-v1 SDK adapter', () => {
         cosigners_public_keys: ['cosigner'],
       },
     })
+    expect(waitForVaultSettlementStream).toHaveBeenCalledWith(`${txid}:1`)
     expect(vaultCosignerClient.boarding.release).toHaveBeenCalledWith({
       handle: 'release-handle',
       psbt: 'release-psbt',
       inputIndexes: [0],
       message: { type: 'delete', expire_at: 3 },
     })
+  })
+
+  it('does not register before an open stream is bound to the prepared outpoint', async () => {
+    const adapter = createBoardingSigningAdapter('vault-a', DESCRIPTOR)
+    await expect(
+      adapter.registerIntent({
+        handle: 'unprepared',
+        psbt: 'register-psbt',
+        inputIndexes: [0],
+        message: {
+          type: 'register',
+          onchain_output_indexes: [0],
+          valid_at: 1,
+          expire_at: 2,
+          cosigners_public_keys: ['cosigner'],
+        },
+      }),
+    ).rejects.toThrow(/not bound to the prepared outpoint/)
+    expect(vaultCosignerClient.boarding.register).not.toHaveBeenCalled()
+  })
+
+  it('holds the server registration until the prepared settlement stream is ready', async () => {
+    const adapter = createBoardingSigningAdapter('vault-a', DESCRIPTOR)
+    const txid = 'bb'.repeat(32)
+    vi.mocked(vaultCosignerClient.boarding.prepare).mockResolvedValue({
+      status: 'ready',
+      handle: 'ready-handle',
+      registerExpireAt: 10,
+    })
+    let open!: () => void
+    vi.mocked(waitForVaultSettlementStream).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        open = resolve
+      }),
+    )
+    vi.mocked(vaultCosignerClient.boarding.register).mockResolvedValue({ status: 'registered', intentId: 'intent' })
+    await adapter.prepareRegistration({
+      inputs: [{ txid, vout: 0 }],
+      recipients: [{ address: 'tark1spending', amount: 20_000 }],
+    })
+
+    const registration = adapter.registerIntent({
+      handle: 'ready-handle',
+      psbt: 'register-psbt',
+      inputIndexes: [0],
+      message: {
+        type: 'register',
+        onchain_output_indexes: [0],
+        valid_at: 1,
+        expire_at: 2,
+        cosigners_public_keys: ['cosigner'],
+      },
+    })
+    await Promise.resolve()
+    expect(vaultCosignerClient.boarding.register).not.toHaveBeenCalled()
+
+    open()
+    await expect(registration).resolves.toEqual({ status: 'registered', intentId: 'intent' })
   })
 
   it('forwards only SDK-validated final evidence, including batch expiry', async () => {
