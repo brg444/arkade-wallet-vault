@@ -1,7 +1,6 @@
 import { useContext } from 'react'
 import Button from '../../../components/Button'
 import FingerprintIcon from '../../../icons/Fingerprint'
-import SafeIcon from '../../../icons/Safe'
 import ServerIcon from '../../../icons/Server'
 import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
 import Text from '../../../components/Text'
@@ -18,28 +17,17 @@ export default function VaultDesign() {
       onBack={() => navigate('welcome')}
       actions={<Button onClick={acceptDesign} label='Continue' />}
     >
+      <p className='vault-onboard-eyebrow'>One Vault, two accounts</p>
+      <h2 className='vault-onboard-title'>Different money needs different protection</h2>
       <Text wrap>
-        Spending and Savings use different approval paths. Spending stays available within your limits, while every
-        Savings transfer requires your hardware key.
+        Spending stays ready for everyday payments. Savings requires an additional hardware approval. Optional recovery
+        can start a waiting period after a key is lost.
       </Text>
       <Section>
-        <KeyCard icon={<FingerprintIcon />} title='This device' role='Approves every send' />
-        <KeyCard
-          icon={<ShieldCheckOutlineIcon />}
-          title='Hardware'
-          role='Required to send from Savings or move everything without the service'
-        />
-        <KeyCard
-          icon={<ServerIcon />}
-          title='Vault service'
-          role='Co-signs Spending within your limits. Can’t move Savings.'
-        />
+        <KeyCard icon={<FingerprintIcon />} title='Passkey' role='Approves every send on this device' />
+        <KeyCard icon={<ShieldCheckOutlineIcon />} title='Hardware key' role='Required to move Savings' />
+        <KeyCard icon={<ServerIcon />} title='Vault service' role='Approves Spending within your limits' />
       </Section>
-      <KeyCard
-        icon={<SafeIcon />}
-        title='Recovery'
-        role='Optional: start a waiting period after losing a key, then cancel it if the request wasn’t yours.'
-      />
     </OnboardLayout>
   )
 }

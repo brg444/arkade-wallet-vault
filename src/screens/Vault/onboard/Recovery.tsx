@@ -29,7 +29,11 @@ export default function VaultRecovery() {
         )
       }
     >
-      <Text wrap>Choose the keys this vault will require. This choice becomes permanent when setup finishes.</Text>
+      <p className='vault-onboard-eyebrow'>Choose your setup</p>
+      <h2 className='vault-onboard-title'>How should recovery work?</h2>
+      <Text wrap>
+        Both options use this device, a hardware key, and the Vault service. Advanced adds a separate recovery key.
+      </Text>
       <div className='vault-policy-presets' aria-label='Protection tier'>
         <ChoiceCard
           title='Standard'

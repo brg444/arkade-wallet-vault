@@ -18,10 +18,10 @@ export default function VaultPlan() {
   const allowanceFiat = approximateFiatLabel(setup.dailyLimitSats, fiatDisplayRate)
   return (
     <OnboardLayout
-      title='Your setup'
+      title='Review'
       step={5}
       onBack={() => navigate('conditions')}
-      actions={<Button onClick={finishPlan} label='Secure this device' />}
+      actions={<Button onClick={finishPlan} label='Continue' />}
     >
       <Text wrap>
         <strong>{advanced ? 'Advanced protection' : 'Standard protection'}.</strong>{' '}

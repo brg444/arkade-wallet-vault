@@ -118,7 +118,7 @@ export default function VaultKeys() {
                 label='Recovery Kit'
                 value={hasRecoveryKit ? 'Available' : 'Review'}
                 detail={hasRecoveryKit ? 'On this device' : 'Restore or save a copy'}
-                tone='green'
+                tone='ink'
                 onClick={() => openRecover('kit', 'keys')}
                 testId='security-kit'
               />
@@ -127,7 +127,7 @@ export default function VaultKeys() {
                 label='Spending limits'
                 value={`${prettyAmount(perPayment)} each`}
                 detail={`${prettyAmount(limit)} / rolling 24 hours`}
-                tone='orange'
+                tone='ink'
               />
               <SecurityTile
                 icon={<ServerIcon />}

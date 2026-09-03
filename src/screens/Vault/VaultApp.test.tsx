@@ -32,7 +32,7 @@ describe('VaultApp onboarding', () => {
     )
     renderVault()
 
-    expect(await screen.findByText('Spending and Savings, together')).toBeTruthy()
+    expect(await screen.findByText('Spend freely. Recover safely.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Look around first' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Set up a new vault' })).toBeTruthy()
@@ -43,7 +43,7 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByRole('progressbar', { name: 'Vault setup progress' })).toHaveAttribute('aria-valuenow', '1')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
-    expect(await screen.findByRole('heading', { name: 'Add hardware' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Hardware key' })).toBeTruthy()
     fireEvent.change(screen.getByTestId('hardware-pub'), { target: { value: PROGRAM_FIXTURE.hardwarePub } })
     await user.click(screen.getByRole('button', { name: 'Use this hardware key' }))
 
@@ -66,17 +66,17 @@ describe('VaultApp onboarding', () => {
     expect(screen.getAllByText(/about 1 day/)).not.toHaveLength(0)
     await user.click(screen.getByRole('button', { name: 'Review setup' }))
 
-    expect(await screen.findByRole('heading', { name: 'Your setup' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Review' })).toBeTruthy()
     expect(screen.getAllByText(/50,000 SATS per payment/).length).toBeGreaterThan(0)
     expect(screen.getByText('Not enrolled with Standard.')).toBeTruthy()
     expect(screen.getAllByText(/approximately \$50\.00/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/about 1 hour/)).not.toHaveLength(0)
     expect(screen.getAllByText(/about 1 day/)).not.toHaveLength(0)
-    await user.click(screen.getByRole('button', { name: 'Secure this device' }))
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByText(/Set this up on the phone or computer/)).toBeTruthy()
     expect(screen.getByTestId('enrollment-token')).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Secure this device' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Create Vault' })).toBeTruthy()
     expect(screen.getByTestId('passkey-unavailable')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()
     expect(screen.queryByTestId('vault-balance')).toBeNull()

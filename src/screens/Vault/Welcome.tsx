@@ -56,14 +56,22 @@ export default function VaultWelcome() {
               </div>
               <div className='vault-welcome-copy'>
                 <div className='vault-welcome-title'>
-                  <p className='vault-kicker'>Arkade Vault</p>
+                  <p className='vault-kicker'>Money with a guardian</p>
                   <Text heading big wrap>
-                    Spending and Savings, together
+                    Spend freely. Recover safely.
                   </Text>
                 </div>
                 <Text color='neutral-600' small wrap>
-                  Use Spending on this device, while moving Savings also requires your hardware key.
+                  A wallet with enrolled limits and recovery paths you control.
                 </Text>
+                <div className='vault-welcome-assurances'>
+                  <span>
+                    <ShieldCheckOutlineIcon /> Passkey protected
+                  </span>
+                  <span>
+                    <SafeIcon /> Protected recovery
+                  </span>
+                </div>
                 <div className='vault-welcome-points'>
                   <Point
                     icon={<BoltOutlineIcon />}

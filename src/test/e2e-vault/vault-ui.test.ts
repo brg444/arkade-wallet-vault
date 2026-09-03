@@ -375,7 +375,8 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await seedReviewedSpend(page, status, destination, 12_000, 500, 7_500)
 
   await page.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(page.getByText('20,000 remaining of 100,000 in your rolling 24-hour limit')).toBeVisible()
+  await expect(page.getByText('Rolling 24-hour limit')).toBeVisible()
+  await expect(page.getByText('20,000 of 100,000 remaining')).toBeVisible()
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
   await page.getByRole('button', { name: 'Review payment' }).click()
@@ -386,9 +387,8 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await expect(page.getByText('500 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText('12,500 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText('Vault service', { exact: true })).toBeVisible()
-  await expect(page.getByText('Approves within your enrolled limits', { exact: true })).toBeVisible()
-  await expect(page.getByText('Hardware', { exact: true })).toBeVisible()
-  await expect(page.getByText('Not needed for this send', { exact: true })).toBeVisible()
+  await expect(page.getByText('Within your enrolled limits', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Approve with passkey' })).toBeVisible()
 })
 
 test('renders an exact no-change VTXO send with the resolved time before its receive', async ({ page }) => {

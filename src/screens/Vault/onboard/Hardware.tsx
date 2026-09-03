@@ -21,7 +21,7 @@ export default function VaultHardware() {
 
   return (
     <OnboardLayout
-      title='Add hardware'
+      title='Hardware key'
       step={2}
       error={error}
       onBack={() => navigate('design')}
@@ -32,7 +32,7 @@ export default function VaultHardware() {
       <Text wrap>
         {required
           ? 'This vault already has hardware. Confirm this is that key.'
-          : 'This key moves Savings with this device. It can also cancel a recovery you didn’t start.'}
+          : 'Savings transfers require this device and your hardware key. The key can also cancel a recovery you did not start.'}
       </Text>
       {required ? (
         <KeyCard
@@ -58,7 +58,7 @@ export default function VaultHardware() {
             Paste
           </button>
           <Text color='neutral-600' tiny wrap>
-            A public key starts with 02 or 03. Never enter a seed phrase or private key.
+            Public key only. Never enter a seed phrase or private key.
           </Text>
         </>
       )}
