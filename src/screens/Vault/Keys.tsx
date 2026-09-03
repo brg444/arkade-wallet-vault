@@ -1,9 +1,4 @@
 import { useContext, type ReactNode } from 'react'
-import Content from './Content'
-import FlexCol from '../../components/FlexCol'
-import Header from './Header'
-import Padded from '../../components/Padded'
-import Text from '../../components/Text'
 import FingerprintIcon from '../../icons/Fingerprint'
 import SafeIcon from '../../icons/Safe'
 import ServerIcon from '../../icons/Server'
@@ -13,13 +8,14 @@ import { shortKey } from '../../lib/vault/setupPlan'
 import { VaultContext } from '../../vault/context'
 import { useVaultReadiness } from '../../vault/useVaultReadiness'
 import { HubGroup, HubRow } from './ui'
+import QgScreen from './qg/QgScreen'
 
 function SecurityTile({
   icon,
   label,
   value,
   detail,
-  tone = 'purple',
+  tone = 'paper',
   onClick,
   testId,
 }: {
@@ -27,7 +23,7 @@ function SecurityTile({
   label: string
   value: string
   detail?: string
-  tone?: 'purple' | 'green' | 'orange' | 'ink'
+  tone?: 'paper' | 'green' | 'orange'
   onClick?: () => void
   testId?: string
 }) {
@@ -60,6 +56,7 @@ export default function VaultKeys() {
     enablePasskeyLogin,
     hasLocalEnrollment,
     hasRecoveryKit,
+    navigate,
     openRecover,
     savingsAddress,
     setup,
@@ -88,103 +85,93 @@ export default function VaultKeys() {
   const vaultReady = phoneCovered && addressCovered && readiness.state === 'ready'
 
   return (
-    <>
-      <Header text='Security' />
-      <Content noRefresh className='vault-security-content'>
-        <Padded>
-          <FlexCol gap='1.35rem' className='vault-security'>
-            <section className='vault-security-hero' aria-label='Vault protection status'>
-              <div className='vault-security-hero-head'>
-                <strong>Vault protection</strong>
-                <span className={vaultReady ? 'is-ready' : 'is-attention'}>{vaultReady ? 'Ready' : 'Review'}</span>
-              </div>
-              <h2>{vaultReady ? 'Your vault is ready.' : 'Review your vault.'}</h2>
-              <p>
-                {vaultReady
-                  ? 'Your passkey and the Vault service protect everyday payments. Your recovery path remains available.'
-                  : 'Check device access, addresses, and service readiness before relying on this vault.'}
-              </p>
-            </section>
+    <QgScreen title='Security' dismiss={() => navigate('home')}>
+      <div className='vault-security'>
+        <section className='vault-security-hero' aria-label='Vault protection status'>
+          <div className='vault-security-hero-head'>
+            <strong>Vault protection</strong>
+            <span className={vaultReady ? 'is-ready' : 'is-attention'}>{vaultReady ? 'Ready' : 'Review'}</span>
+          </div>
+          <h2>{vaultReady ? 'Your vault is ready.' : 'Review your vault.'}</h2>
+          <p>
+            {vaultReady
+              ? 'Your passkey and the Vault service protect everyday payments. Your recovery path remains available.'
+              : 'Check device access, addresses, and service readiness before relying on this vault.'}
+          </p>
+        </section>
 
-            <div className='vault-security-grid'>
-              <SecurityTile
-                icon={<FingerprintIcon />}
-                label='Protection tier'
-                value={protectionTier === 'advanced' ? 'Advanced' : 'Standard'}
-                detail={protectionTier === 'advanced' ? 'Separate recovery key' : 'No separate recovery key'}
-              />
-              <SecurityTile
-                icon={<SafeIcon />}
-                label='Recovery Kit'
-                value={hasRecoveryKit ? 'Available' : 'Review'}
-                detail={hasRecoveryKit ? 'On this device' : 'Restore or save a copy'}
-                tone='green'
-                onClick={() => openRecover('kit', 'keys')}
-                testId='security-kit'
-              />
-              <SecurityTile
-                icon={<ShieldCheckOutlineIcon />}
-                label='Spending limits'
-                value={`${prettyAmount(perPayment)} each`}
-                detail={`${prettyAmount(limit)} / rolling 24 hours`}
-                tone='orange'
-              />
-              <SecurityTile
-                icon={<ServerIcon />}
-                label='Vault service'
-                value={readinessLabel}
-                detail='Signing readiness'
-                tone='ink'
-                testId='security-readiness'
-              />
-            </div>
+        <div className='vault-security-grid'>
+          <SecurityTile
+            icon={<FingerprintIcon />}
+            label='Protection tier'
+            value={protectionTier === 'advanced' ? 'Advanced' : 'Standard'}
+            detail={protectionTier === 'advanced' ? 'Separate recovery key' : 'No separate recovery key'}
+          />
+          <SecurityTile
+            icon={<SafeIcon />}
+            label='Recovery Kit'
+            value={hasRecoveryKit ? 'Available' : 'Review'}
+            detail={hasRecoveryKit ? 'On this device' : 'Restore or save a copy'}
+            onClick={() => openRecover('kit', 'keys')}
+            testId='security-kit'
+          />
+          <SecurityTile
+            icon={<ShieldCheckOutlineIcon />}
+            label='Spending limits'
+            value={`${prettyAmount(perPayment)} each`}
+            detail={`${prettyAmount(limit)} / rolling 24 hours`}
+          />
+          <SecurityTile
+            icon={<ServerIcon />}
+            label='Vault service'
+            value={readinessLabel}
+            detail='Signing readiness'
+            testId='security-readiness'
+          />
+        </div>
 
-            <div className='vault-security-groups'>
-              <HubGroup label='Keys'>
-                <HubRow
-                  icon={<FingerprintIcon />}
-                  title='This device'
-                  status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
-                  onClick={
-                    canEnableOther
-                      ? () => {
-                          if (!busy) void enablePasskeyLogin()
-                        }
-                      : undefined
-                  }
-                />
-                <HubRow icon={<ShieldCheckOutlineIcon />} title='Hardware' status={shortKey(hardwarePub)} />
-                {hasRecovery ? (
-                  <HubRow
-                    icon={<SafeIcon />}
-                    title='Recovery'
-                    detail='Starts a wait you can cancel'
-                    status={shortKey(recoveryPub)}
-                  />
-                ) : null}
-              </HubGroup>
-
-              <HubGroup label='Recovery and access'>
-                <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
-                {canEnableOther ? (
-                  <HubRow
-                    title={busy ? 'Waiting for passkey…' : 'Use on another device'}
-                    onClick={() => {
+        <div className='vault-security-groups'>
+          <HubGroup label='Keys'>
+            <HubRow
+              icon={<FingerprintIcon />}
+              title='This device'
+              status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
+              onClick={
+                canEnableOther
+                  ? () => {
                       if (!busy) void enablePasskeyLogin()
-                    }}
-                  />
-                ) : null}
-              </HubGroup>
-            </div>
-
-            {!addressCovered && status?.enrolled ? (
-              <Text color='neutral-600' tiny wrap>
-                Vault addresses are not restored on this device. Sign in again to restore them.
-              </Text>
+                    }
+                  : undefined
+              }
+            />
+            <HubRow icon={<ShieldCheckOutlineIcon />} title='Hardware' status={shortKey(hardwarePub)} />
+            {hasRecovery ? (
+              <HubRow
+                icon={<SafeIcon />}
+                title='Recovery'
+                detail='Starts a wait you can cancel'
+                status={shortKey(recoveryPub)}
+              />
             ) : null}
-          </FlexCol>
-        </Padded>
-      </Content>
-    </>
+          </HubGroup>
+
+          <HubGroup label='Recovery and access'>
+            <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
+            {canEnableOther ? (
+              <HubRow
+                title={busy ? 'Waiting for passkey…' : 'Use on another device'}
+                onClick={() => {
+                  if (!busy) void enablePasskeyLogin()
+                }}
+              />
+            ) : null}
+          </HubGroup>
+        </div>
+
+        {!addressCovered && status?.enrolled ? (
+          <p className='qg-copy'>Vault addresses are not restored on this device. Sign in again to restore them.</p>
+        ) : null}
+      </div>
+    </QgScreen>
   )
 }

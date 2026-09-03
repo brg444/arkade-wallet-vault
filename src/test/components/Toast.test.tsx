@@ -17,7 +17,7 @@ describe('ToastProvider', () => {
       return element as HTMLElement
     })
     expect(toaster.style.getPropertyValue('--mobile-offset-top')).toBe(
-      'max(16px, calc(env(safe-area-inset-top, 0px) + 12px))',
+      'max(16px, calc(var(--vault-safe-area-top, 0px) + 12px))',
     )
   })
 })

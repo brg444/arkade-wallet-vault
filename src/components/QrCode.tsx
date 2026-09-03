@@ -93,7 +93,7 @@ export default function QrCode({ large = false, value }: QrCodeProps) {
     // Hardcoded for scanner reliability — QR must always be dark-on-white regardless of theme
     const fgColor = '#040404'
     const bgColor = '#ffffff'
-    const logoColor = '#391998'
+    const logoColor = '#111015'
 
     const logoModules = Math.ceil(size * 0.2)
     const logoZoneSize = logoModules % 2 === 0 ? logoModules + 1 : logoModules
@@ -168,17 +168,17 @@ export default function QrCode({ large = false, value }: QrCodeProps) {
 
     elements.push(<circle key='logo-bg' cx={centerX} cy={centerY} r={logoCircleR} fill={bgColor} />)
 
-    const logoInnerSize = logoCircleR * 1.2
+    const logoInnerSize = logoCircleR * 1.05
     const logoOffsetX = centerX - logoInnerSize / 2
     const logoOffsetY = centerY - logoInnerSize / 2
-    const scale = logoInnerSize / 35
+    const scale = logoInnerSize / 23
 
     elements.push(
       <g key='logo' transform={`translate(${logoOffsetX}, ${logoOffsetY}) scale(${scale})`}>
-        <path d='M0 8.75L8.75 0H26.25L35 8.75V17.5H26.25V8.75H8.75V17.5H2.45431e-07L0 8.75Z' fill={logoColor} />
-        <path d='M8.75 26.25V17.5H26.25V26.25H8.75Z' fill={logoColor} />
-        <path d='M8.75 26.25H2.45431e-07V35H8.75V26.25Z' fill={logoColor} />
-        <path d='M26.25 26.25V35H35V26.25H26.25Z' fill={logoColor} />
+        <rect x='8' width='7' height='7' fill={logoColor} />
+        <rect y='8' width='7' height='7' fill={logoColor} />
+        <rect x='16' y='8' width='7' height='7' fill={logoColor} />
+        <rect x='8' y='16' width='7' height='7' fill={logoColor} />
       </g>,
     )
 

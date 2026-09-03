@@ -1,0 +1,473 @@
+/* Quiet Guardian flow surfaces. Imported last so every remaining screen
+   uses the approved oat/paper/ink language instead of leftover wallet chrome. */
+
+[data-testid='vault-app'] {
+  --vault-meter-track: #ddd6cd;
+}
+
+[data-testid='vault-app'] .header {
+  min-height: 68px;
+  background: var(--vault-surface);
+}
+
+[data-testid='vault-app'] .header .title {
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+[data-testid='vault-app'] .content,
+[data-testid='vault-app'] .content-shell {
+  background: var(--vault-surface);
+}
+
+[data-testid='vault-app'] .buttons-on-bottom {
+  background: var(--vault-surface);
+}
+
+[data-testid='vault-app'] .label.has-buttons > input {
+  min-width: 0;
+  padding-right: 5.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-testid='vault-app'] .shadow-surface {
+  border: 1px solid var(--vault-line) !important;
+  border-radius: 18px !important;
+  background: var(--vault-paper) !important;
+  box-shadow: none !important;
+}
+
+/* Welcome */
+
+.vault-screen-welcome .vault-welcome-title > p:last-child,
+.vault-welcome-title > p:last-child {
+  max-width: 14ch;
+  font-size: clamp(2.4rem, 11cqi, 3.4rem);
+  font-weight: 450;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.vault-welcome-assurances {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 18px;
+  color: var(--vault-muted);
+  font-size: 0.75rem;
+}
+
+.vault-welcome-assurances span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Send */
+
+.vault-send-capacity {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 10px;
+  padding: 16px 0 8px;
+  border-top: 1px solid var(--vault-line);
+}
+
+.vault-send-capacity > div {
+  display: grid;
+  gap: 4px;
+}
+
+.vault-send-capacity span {
+  color: var(--vault-muted);
+  font-size: 0.625rem;
+}
+
+.vault-send-capacity strong {
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+.vault-send-capacity .vault-meter {
+  grid-column: 1 / -1;
+}
+
+.vault-send-note {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--vault-line);
+  border-radius: 16px;
+  background: var(--vault-paper);
+}
+
+.vault-send-note strong {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.vault-send-note p {
+  margin: 4px 0 0;
+  color: var(--vault-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+/* Receive */
+
+.vault-receive-stage {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  text-align: center;
+}
+
+.vault-receive-protected {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: var(--vault-positive-surface);
+  color: var(--vault-positive);
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+
+.vault-receive-stage h2 {
+  margin: 10px 0 4px;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.vault-receive-stage p {
+  margin: 0;
+  color: var(--vault-muted);
+  font-size: 0.6875rem;
+}
+
+.vault-receive-qr {
+  position: relative;
+  width: min(220px, 100%);
+  margin: 24px auto 8px;
+  padding: 15px;
+  border: 1px solid var(--vault-line);
+  border-radius: 22px;
+  background: var(--vault-paper);
+}
+
+.vault-qr-mark {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 5px solid var(--vault-paper);
+  border-radius: 50%;
+  background: var(--vault-ink);
+  color: var(--vault-paper);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.vault-receive-addresses {
+  width: 100%;
+  margin-top: 8px;
+  border-top: 1px solid var(--vault-line);
+}
+
+.vault-receive-addresses .vault-hub,
+.vault-receive-addresses .vault-hub-row {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.vault-receive-addresses .vault-hub-row {
+  min-height: 52px;
+  border-bottom: 1px solid var(--vault-line) !important;
+}
+
+.vault-receive-addresses .vault-hub-end,
+.vault-receive-addresses .vault-hub-chevron {
+  color: var(--vault-accent);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+/* Scanner */
+
+.vault-scanner-content,
+.vault-scanner-content .content-shell,
+.vault-scanner-content .padded {
+  background: #17151a !important;
+  color: var(--vault-paper);
+}
+
+.vault-screen-send:has(.vault-scanner-content) .header,
+.vault-screen-send:has(.vault-scanner-content) .buttons-on-bottom,
+.vault-screen-home:has(.vault-scanner-content) .header,
+.vault-screen-home:has(.vault-scanner-content) .buttons-on-bottom,
+.vault-screen-send:has(.vault-scanner-content) .header .title,
+.vault-screen-home:has(.vault-scanner-content) .header .title,
+.vault-screen-send:has(.vault-scanner-content) .vault-header-button,
+.vault-screen-home:has(.vault-scanner-content) .vault-header-button {
+  background: #17151a;
+  color: #fffdf9;
+}
+
+.vault-scanner-stage {
+  position: relative;
+  overflow: hidden;
+  min-height: 320px;
+  border-radius: 18px;
+  background: radial-gradient(circle at 50% 42%, #57515b 0, #2a272d 42%, #17151a 76%);
+}
+
+.vault-scanner-video {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  object-fit: cover;
+}
+
+.vault-scanner-guide {
+  position: absolute;
+  inset: 18% 14%;
+  border: 3px solid rgb(255 253 249 / 82%);
+  border-radius: 18px;
+  box-shadow: 0 0 0 999px rgb(17 15 18 / 28%);
+  pointer-events: none;
+}
+
+.vault-scanner-help {
+  margin: 16px 0 0;
+  color: rgb(255 253 249 / 72%);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+/* Review / details */
+
+.vault-review-amount,
+.vault-hero {
+  padding: 12px 0 22px;
+  text-align: center;
+}
+
+.vault-kicker {
+  color: var(--vault-muted);
+  font-size: 0.75rem;
+}
+
+.vault-review-source {
+  margin: 4px 0 0;
+  color: var(--vault-muted);
+  font-size: 0.6875rem;
+}
+
+.vault-row,
+.vault-signer-row,
+.vault-hub-row,
+.vault-settings-row {
+  min-height: 44px;
+  border-color: var(--vault-line) !important;
+}
+
+.vault-row-k,
+.vault-section-label,
+.vault-review-receipt-label,
+.vault-success-receipt-label {
+  color: var(--vault-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: transparent;
+}
+
+.vault-check.on {
+  background: var(--vault-ink);
+  color: var(--vault-paper);
+}
+
+.vault-signer-row:has(.vault-check.on) + .vault-signer-row .vault-check.on {
+  background: var(--vault-positive-surface);
+  color: var(--vault-positive);
+}
+
+/* Onboarding */
+
+.vault-onboard-flow .vault-step-label span {
+  color: var(--vault-muted);
+  font-size: 0.75rem;
+}
+
+.vault-onboard-eyebrow {
+  margin: 0;
+  color: var(--vault-muted);
+  font-size: 0.75rem;
+}
+
+.vault-onboard-flow h2,
+.vault-onboard-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+
+.vault-callout,
+.vault-note,
+.vault-send-note {
+  border: 1px solid var(--vault-line);
+  border-radius: 16px;
+  background: var(--vault-paper);
+}
+
+.vault-policy-presets .vault-panel {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.vault-policy-presets .vault-panel.selected {
+  border-color: var(--vault-ink) !important;
+}
+
+.vault-progress-screen,
+.vault-centered-status {
+  display: grid;
+  min-height: 52vh;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.vault-spinner-lg {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--vault-line);
+  border-top-color: var(--vault-ink);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.vault-success-line,
+.vault-status-line {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  text-align: left;
+}
+
+/* Handoff */
+
+.vault-handoff-transfer {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--vault-line);
+  border-radius: 16px;
+  background: var(--vault-paper);
+}
+
+.vault-handoff-methods button,
+.vault-handoff-method {
+  display: flex;
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--vault-line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+/* Security / settings */
+
+.vault-security-hero,
+.vault-security-tile,
+.vault-security-tile.is-green,
+.vault-security-tile.is-orange,
+.vault-security-tile.is-ink,
+.vault-security-tile.is-purple {
+  border: 1px solid var(--vault-line) !important;
+  background: var(--vault-paper) !important;
+  color: var(--vault-ink) !important;
+  box-shadow: none !important;
+}
+
+.vault-security-tile-icon,
+.vault-security-hero-head .is-ready,
+.vault-security-hero-head .is-attention {
+  background: transparent !important;
+  color: var(--vault-ink) !important;
+}
+
+.vault-security-hero-head .is-ready {
+  color: var(--vault-positive) !important;
+}
+
+.vault-settings-row {
+  width: 100%;
+  min-height: 52px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--vault-line);
+  background: transparent;
+  color: inherit;
+}
+
+.vault-settings-row.is-danger {
+  color: var(--vault-warning);
+}
+
+/* History empty / errors / tx */
+
+.vault-history-empty,
+.vault-error-layout,
+.vault-success-hero {
+  color: var(--vault-ink);
+}
+
+.vault-error-page,
+.vault-error-content,
+.vault-error-layout {
+  background: var(--vault-surface);
+}
+
+.vault-tx-layout .vault-hero .vault-money,
+.vault-success-hero h1,
+.vault-success-hero p {
+  color: var(--vault-ink);
+}
+
+@media (max-width: 320px) {
+  .vault-home .vault-balance-figure,
+  .vault-send-amount-input {
+    font-size: 2.5rem !important;
+  }
+
+  [data-testid='vault-app'] .label.has-buttons > input {
+    font-size: 0.875rem;
+  }
+}

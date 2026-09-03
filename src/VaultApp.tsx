@@ -2,6 +2,8 @@ import { useContext, useEffect } from 'react'
 import { VaultContext } from './vault/context'
 import './screens/Vault/vault.css'
 import './screens/Vault/vault-system.css'
+import './screens/Vault/quiet-guardian-flows.css'
+import './screens/Vault/quiet-guardian-screens.css'
 import VaultHome from './screens/Vault/Home'
 import VaultReceive from './screens/Vault/Receive'
 import VaultReview from './screens/Vault/Review'
@@ -9,29 +11,40 @@ import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
 import VaultHandoff from './screens/Vault/Handoff'
 import VaultWelcome from './screens/Vault/Welcome'
+import VaultUnlock from './screens/Vault/Unlock'
 import VaultKeys from './screens/Vault/Keys'
 import VaultSettings from './screens/Vault/Settings'
 import VaultConditions from './screens/Vault/onboard/Conditions'
+import VaultCreated from './screens/Vault/onboard/Created'
+import VaultCreating from './screens/Vault/onboard/Creating'
 import VaultDesign from './screens/Vault/onboard/Design'
 import VaultHardware from './screens/Vault/onboard/Hardware'
+import VaultKit from './screens/Vault/onboard/Kit'
 import VaultPasskey from './screens/Vault/onboard/Passkey'
 import VaultPlan from './screens/Vault/onboard/Plan'
+import VaultProblem from './screens/Vault/onboard/Problem'
+import VaultReady from './screens/Vault/onboard/Ready'
 import VaultRecovery from './screens/Vault/onboard/Recovery'
 import VaultRecover from './screens/Vault/Recover'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
 import VaultTx from './screens/Vault/Tx'
 import VaultNavigation, { destinationForScreen } from './screens/Vault/Navigation'
 import { bootVaultPrefs } from './lib/vault/prefs'
+import { bootVaultFrame } from './lib/vault/pwaFrame'
+import { reloadIfNewerWallet } from './lib/vault/update'
 
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
   useEffect(() => {
     document.title = 'Arkade Vault'
     bootVaultPrefs()
+    void reloadIfNewerWallet()
+    return bootVaultFrame()
   }, [])
-  const destination = destinationForScreen(screen)
+  const launcher = destinationForScreen(screen)
   const pages = {
     welcome: <VaultWelcome />,
+    unlock: <VaultUnlock />,
     handoff: <VaultHandoff />,
     design: <VaultDesign />,
     hardware: <VaultHardware />,
@@ -40,6 +53,11 @@ export default function VaultApp() {
     conditions: <VaultConditions />,
     plan: <VaultPlan />,
     passkey: <VaultPasskey />,
+    creating: <VaultCreating />,
+    created: <VaultCreated />,
+    kit: <VaultKit />,
+    ready: <VaultReady />,
+    problem: <VaultProblem />,
     home: <VaultHome />,
     receive: <VaultReceive />,
     send: <VaultSend />,
@@ -51,13 +69,11 @@ export default function VaultApp() {
     tx: <VaultTx />,
   }
   const page = pages[screen] || <VaultWelcome />
-  const className = ['page', `vault-screen-${screen}`, destination ? 'has-vault-navigation' : '']
-    .filter(Boolean)
-    .join(' ')
+  const className = ['page', `vault-screen-${screen}`, launcher ? 'has-vault-navigation' : ''].filter(Boolean).join(' ')
   return (
     <div className={className} data-testid='vault-app'>
       {page}
-      {destination ? <VaultNavigation active={destination} /> : null}
+      {launcher ? <VaultNavigation /> : null}
     </div>
   )
 }

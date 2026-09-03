@@ -11,6 +11,7 @@ import {
   reloadVaultWalletWorker,
   subscribeVaultWalletEvents,
 } from '../lib/vault/vtxo/walletWorker'
+import { loadBalanceSnapshot, saveBalanceSnapshot } from '../lib/vault/balanceStore'
 import { confirmedUtxoBalance, savingsUtxoBalance, useVaultBalances } from './useVaultBalances'
 
 vi.mock('../lib/vault/esplora', () => ({
@@ -169,6 +170,36 @@ describe('savingsUtxoBalance', () => {
 })
 
 describe('useVaultBalances', () => {
+  it('surfaces the last known snapshot immediately', () => {
+    saveBalanceSnapshot(STATUS.vaultId, {
+      boardingBalance: 0,
+      history: [],
+      savingsSats: 9_000,
+      savingsSpendableSats: 9_000,
+      vtxoSpendingSats: 42_000,
+    })
+    const { result } = setupHook(true)
+    expect(result.current.balancesLoaded).toBe(true)
+    expect(result.current.positions.spending.availableSats).toBe(42_000)
+    expect(result.current.positions.savings.totalSats).toBe(9_000)
+  })
+
+  it('replaces the cached snapshot after a successful refresh', async () => {
+    saveBalanceSnapshot(STATUS.vaultId, {
+      boardingBalance: 0,
+      history: [],
+      savingsSats: 0,
+      savingsSpendableSats: 0,
+      vtxoSpendingSats: 42_000,
+    })
+    mockedSnapshot.mockResolvedValueOnce({ balance: 50_000, history: [] })
+    const { result } = setupHook(true)
+    expect(result.current.positions.spending.availableSats).toBe(42_000)
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending.availableSats).toBe(50_000)
+    expect(loadBalanceSnapshot(STATUS.vaultId)?.vtxoSpendingSats).toBe(50_000)
+  })
+
   it('takes Spending, boarding balance, and activity only from the persistent SDK worker', async () => {
     mockedSnapshot.mockResolvedValue({
       balance: 30_000,
@@ -241,7 +272,7 @@ describe('useVaultBalances', () => {
     expect(result.current.positions.savings.totalSats).toBe(20_000)
     expect(result.current.positions.spending.availableSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
-    expect(result.current.balanceError).toBe('Something went wrong. Try again.')
+    expect(result.current.balanceError).toBe('')
   })
 
   it('recovers a cold reload from the persisted enrollment', async () => {

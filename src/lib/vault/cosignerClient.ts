@@ -203,6 +203,18 @@ export interface VtxoFinalizeResponse {
   arkTxid: string
 }
 
+export interface VtxoAbortRequest {
+  operationId: string
+  vaultId: string
+  purpose: 'spend'
+  phoneSignature: string
+}
+
+export interface VtxoAbortResponse {
+  operationId: string
+  state: string
+}
+
 export type VtxoOperationState = 'reserved' | 'signed' | 'submitted' | 'finalized' | 'aborted' | 'unresolved'
 
 export class UnknownVtxoOperationStateError extends Error {
@@ -366,6 +378,7 @@ export interface VaultCosignerSpendingClient {
   authorize(request: VtxoAuthorizeRequest): Promise<VtxoAuthorizeResponse>
   authorizeCheckpoints(request: VtxoCheckpointAuthorizeRequest): Promise<VtxoCheckpointAuthorizeResponse>
   finalize(request: VtxoFinalizeRequest): Promise<VtxoFinalizeResponse>
+  abort(request: VtxoAbortRequest): Promise<VtxoAbortResponse>
   operation(vaultId: string, operationId: string): Promise<VtxoOperationWireView>
 }
 
@@ -435,6 +448,9 @@ export const vaultCosignerClient: VaultCosignerClient = {
     },
     finalize(request) {
       return vaultPost('/v1/vtxo/finalize', request)
+    },
+    abort(request) {
+      return vaultPost('/v1/vtxo/abort', request)
     },
     operation(vaultId, operationId) {
       return vaultGet(

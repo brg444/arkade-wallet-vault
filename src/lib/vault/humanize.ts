@@ -1,4 +1,11 @@
 import { isVaultConcurrencyUnavailableError } from './vtxo/lock'
+import {
+  isVtxoAbortFailedError,
+  isVtxoLivePendingError,
+  isVtxoReservedReplaceError,
+  isVtxoSameSendInProgressError,
+  isVtxoSpendInFlightError,
+} from './vtxo/spend'
 
 export function humanizeVaultError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
@@ -30,20 +37,60 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('fee quote expired or changed')) {
     return 'This fee quote expired or changed. Review the send again.'
   }
+  if (isVtxoSameSendInProgressError(err) || msg.includes('exact amount to this address is still in progress')) {
+    return 'This payment is reserved. Tap Resume payment to continue it.'
+  }
+  if (isVtxoReservedReplaceError(err) || msg.includes('abort it before sending a different amount')) {
+    return 'A reserved send is still open. Abort it before sending a different amount.'
+  }
+  if (
+    isVtxoLivePendingError(err) ||
+    msg.includes('already with the operator and cannot be cancelled') ||
+    msg.includes('vtxo operation is not abortable') ||
+    msg.includes('vtxo operation already active')
+  ) {
+    return 'This payment is with the Operator and cannot be cancelled. Open the original payment and tap Resume payment.'
+  }
+  if (
+    isVtxoAbortFailedError(err) ||
+    msg.includes('could not be aborted') ||
+    msg.includes('reserved vtxo input state')
+  ) {
+    return 'The reserved send could not be aborted. Try again.'
+  }
+  if (name === 'notallowederror' || name === 'aborterror') {
+    return 'The passkey prompt was cancelled. Try again and approve Face ID.'
+  }
+  if (msg.includes('pending send lookup failed')) {
+    return 'The current send status could not be confirmed. New sends remain blocked; try again later.'
+  }
+  if (isVtxoSpendInFlightError(err) || msg.includes('vtxo spend is still with the operator')) {
+    return 'The Operator has this payment. Tap Resume payment to finish its approvals.'
+  }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||
     msg.includes('vtxo finalization receipt') ||
-    msg.includes('vtxo spend is still with the operator')
+    msg.includes('did not return exactly one transaction') ||
+    msg.includes('operator pending lookup')
   ) {
     return 'Your send was submitted and is still being confirmed. Refresh your balance before trying again.'
   }
   if (msg.includes('already bound to a different exact request')) {
     return 'This send is already in progress. Refresh your balance before trying again.'
   }
+  if (msg.includes('challenge mismatch') || msg.includes('webauthn challenge')) {
+    return 'Passkey didn’t match this send. Try Approve again.'
+  }
+  if (msg.includes('vtxo operation state') || msg.includes('changed psbt') || msg.includes('checkpoint count')) {
+    return 'This send could not be authorized. Review the payment again.'
+  }
+  if (msg.includes('not enough') && msg.includes('vtxo')) {
+    return 'Not enough confirmed spending funds after the last send.'
+  }
   if (msg.includes('mutated') && msg.includes('phone')) {
     return 'The vault rejected a changed signature. Refresh your balance before trying again.'
   }
-  if (msg.includes('invalid scalar') || msg.includes('scalar: out of range')) {
+  if (msg.includes('invalid scalar') || msg.includes('scalar: out of range') || msg.includes('scalar out of range')) {
     return 'Couldn’t unlock Spending. Sign in again.'
   }
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
@@ -80,7 +127,7 @@ export function humanizeVaultError(err: unknown): string {
   ) {
     return 'This browser can’t create the device key. Open the invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
   }
-  if (msg.includes('not allowed') || msg.includes('abort') || msg.includes('timed out')) {
+  if (msg.includes('not allowed') || msg.includes('timed out') || msg.includes('the operation was aborted')) {
     return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open the invite in Safari or Chrome.'
   }
   if (msg.includes('already set up') || msg.includes('already enrolled')) {

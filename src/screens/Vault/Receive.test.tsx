@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { VaultContext, type VaultAccount, type VaultContextProps } from '../../vault/context'
 import VaultReceive from './Receive'
@@ -49,9 +50,14 @@ function renderReceiveWithoutAddresses(account: VaultAccount) {
 }
 
 describe('Vault receive', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('shows one Spending BIP21 request with Arkade and boarding addresses', () => {
     renderReceive('spend')
-    expect(screen.getByRole('heading', { name: 'Receive to Spending' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Receive' })).toBeTruthy()
+    expect(screen.queryByText('Works with Arkade and Bitcoin wallets.')).toBeNull()
     expect(screen.getByTestId('receive-qr').textContent).toBe('bitcoin:tb1qboarding?ark=tark1spending')
     expect(screen.getByTestId('receive-qr')).toHaveAttribute('data-large', 'true')
     expect(screen.queryByTestId('receive-address')).toBeNull()
@@ -61,19 +67,47 @@ describe('Vault receive', () => {
     expect(screen.queryByText('One payment request')).toBeNull()
     expect(screen.queryByText(/Confirmed Bitcoin deposits/)).toBeNull()
     expect(screen.queryByText('Savings')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Copy payment request' })).toBeNull()
   })
 
-  it('keeps Savings receive separate when entered from Savings', () => {
+  it('opens the native share sheet with the BIP21 payment request', async () => {
+    const user = userEvent.setup()
+    const share = vi.fn().mockResolvedValue(undefined)
+    const canShare = vi.fn().mockReturnValue(true)
+    Object.assign(navigator, { share, canShare })
+
+    renderReceive('spend')
+    await user.click(screen.getByTestId('receive-share'))
+    expect(share).toHaveBeenCalledWith({
+      title: 'Arkade Vault payment request',
+      text: 'bitcoin:tb1qboarding?ark=tark1spending',
+    })
+  })
+
+  it('keeps Savings receive on the same QR, address row, and Share layout', async () => {
+    const user = userEvent.setup()
+    const share = vi.fn().mockResolvedValue(undefined)
+    const canShare = vi.fn().mockReturnValue(true)
+    Object.assign(navigator, { share, canShare })
+
     renderReceive('savings')
-    expect(screen.getByRole('heading', { name: 'Add to Savings' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Receive' })).toBeTruthy()
+    expect(screen.queryByText('Add to Savings')).toBeNull()
+    expect(screen.queryByText(/hardware key/i)).toBeNull()
+    expect(screen.getByText('Two keys')).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('tb1qsavings')
     expect(screen.getByTestId('receive-qr')).toHaveAttribute('data-large', 'true')
+    expect(screen.getByTestId('receive-address')).toHaveTextContent('Bitcoin')
     expect(screen.getByTestId('receive-address')).toHaveTextContent('tb1qsavings')
-    expect(screen.queryByText(/Testnet/)).toBeNull()
-    expect(screen.queryByText('Savings address')).toBeNull()
-    expect(screen.queryByText(/Bitcoin sent here stays/)).toBeNull()
     expect(screen.queryByTestId('receive-arkade-address')).toBeNull()
-    expect(screen.queryByTestId('receive-bitcoin-address')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy()
+
+    await user.click(screen.getByTestId('receive-share'))
+    expect(share).toHaveBeenCalledWith({
+      title: 'Arkade Vault Savings address',
+      text: 'tb1qsavings',
+    })
   })
 
   it('explains a missing Savings pin instead of suggesting setup is still processing', () => {

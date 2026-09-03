@@ -46,7 +46,8 @@ describe('Savings hardware handoff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy PSBT' }))
 
     await waitFor(() => expect(copyToClipboard).toHaveBeenCalledExactlyOnceWith('AA=='))
-    expect(screen.getByRole('button', { name: 'Upload signed PSBT' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'I’ve signed it' }))
+    expect(screen.getByRole('button', { name: /Upload file/ })).toBeTruthy()
   })
 
   it('uploads a signed PSBT file and broadcasts that payload', async () => {
@@ -56,9 +57,10 @@ describe('Savings hardware handoff', () => {
       type: 'application/octet-stream',
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'I’ve signed it' }))
     fireEvent.change(screen.getByTestId('savings-signed-psbt-file'), { target: { files: [file] } })
     expect(await screen.findByText('hardware-signed.psbt is ready to broadcast.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Broadcast' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Broadcast transaction' }))
 
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt'))
   })
@@ -66,13 +68,14 @@ describe('Savings hardware handoff', () => {
   it('accepts a pasted hardware-signed PSBT alongside file upload', async () => {
     const { completeSavingsHandoff } = renderHandoff()
 
+    fireEvent.click(screen.getByRole('button', { name: 'I’ve signed it' }))
     fireEvent.change(screen.getByTestId('savings-signed-psbt-paste'), {
       target: { value: 'hardware-signed-psbt-base64' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Broadcast' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use this PSBT' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Broadcast transaction' }))
 
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt-base64'))
-    expect(screen.getByRole('button', { name: 'Upload signed PSBT' })).toBeTruthy()
   })
 
   it('can delete the locally pending transfer', () => {

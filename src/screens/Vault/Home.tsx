@@ -1,20 +1,15 @@
-import { Menu } from '@base-ui/react/menu'
-import { useContext, useEffect, useRef } from 'react'
-import Button from '../../components/Button'
-import Content from './Content'
-import ErrorMessage from '../../components/Error'
-import ChevronDownIcon from '../../icons/ChevronDown'
-import HollowPixelMark from '../../icons/HollowPixelMark'
-import QrIcon from '../../icons/Qr'
-import ReceiveIcon from '../../icons/Receive'
-import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
-import ScanIcon from '../../icons/Scan'
-import TransferArrowIcon from '../../icons/TransferArrow'
+import { useContext, useEffect, useState } from 'react'
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock3, QrCode, ScanLine, Shield, ShieldAlert } from 'lucide-react'
+import { useToast } from '../../components/Toast'
 import { prettyNumber } from '../../lib/format'
-import { hapticSubtle } from '../../lib/haptics'
+import { hapticLight, hapticSubtle } from '../../lib/haptics'
+import { homeBalanceDisplay, type VaultFiatDisplayRate } from '../../lib/vault/fiatDisplay'
+import { loadVaultBalanceUnit, saveVaultBalanceUnit } from '../../lib/vault/prefs'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
-import { VaultContext, type VaultAccount } from '../../vault/context'
+import { VaultContext } from '../../vault/context'
+import Content from './Content'
 import VaultHistory from './History'
+import { QgMark } from './qg/QgScreen'
 
 export default function VaultHome() {
   const {
@@ -24,6 +19,7 @@ export default function VaultHome() {
     boardingAddress,
     canSend,
     error,
+    fiatDisplayRate,
     navigate,
     openSendScan,
     openRecover,
@@ -31,11 +27,11 @@ export default function VaultHome() {
     refreshBalance,
     refreshingBalance,
     positions,
-    setAccount,
+    clearSpendDraft,
     setSpendDraft,
+    setFiatDisplay,
   } = useContext(VaultContext)
-  const spendingItem = useRef<HTMLElement>(null)
-  const savingsItem = useRef<HTMLElement>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
     void reloadIfNewerWallet()
@@ -46,223 +42,220 @@ export default function VaultHome() {
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
+  const [balanceUnit, setBalanceUnit] = useState<'sats' | 'usd'>('sats')
+  const [loadingFiat, setLoadingFiat] = useState(false)
+  const [homeFiatRate, setHomeFiatRate] = useState<VaultFiatDisplayRate | null>(fiatDisplayRate)
+
+  useEffect(() => {
+    if (fiatDisplayRate) setHomeFiatRate(fiatDisplayRate)
+  }, [fiatDisplayRate])
+
+  useEffect(() => {
+    let active = true
+    let preferred: 'sats' | 'usd' = 'sats'
+    try {
+      preferred = loadVaultBalanceUnit()
+    } catch {
+      return
+    }
+    if (preferred !== 'usd') return
+    setLoadingFiat(true)
+    void setFiatDisplay(true)
+      .then((rate) => {
+        if (!active) return
+        if (rate) {
+          setHomeFiatRate(rate)
+          setBalanceUnit('usd')
+        } else saveVaultBalanceUnit('sats')
+      })
+      .finally(() => {
+        if (active) setLoadingFiat(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [setFiatDisplay])
   const spending = account === 'spend'
   const position = spending ? positions.spending : positions.savings
-  const sats = spending ? position.availableSats : position.totalSats
-  const satsUnit = sats === 1 ? 'SAT' : 'SATS'
+  const sats = position.totalSats
+  const balance = homeBalanceDisplay(sats, balanceUnit, fiatDisplayRate || homeFiatRate)
 
-  const choose = (next: VaultAccount) => {
+  const toggleBalanceUnit = async () => {
+    if (!balancesLoaded || loadingFiat) return
     hapticSubtle()
-    setAccount(next)
+    if (balanceUnit === 'usd') {
+      setBalanceUnit('sats')
+      setHomeFiatRate(null)
+      saveVaultBalanceUnit('sats')
+      await setFiatDisplay(false)
+      return
+    }
+    setLoadingFiat(true)
+    try {
+      const rate = fiatDisplayRate || (await setFiatDisplay(true))
+      if (!rate) {
+        toast('USD balance is unavailable. Try again later.')
+        return
+      }
+      setHomeFiatRate(rate)
+      setBalanceUnit('usd')
+      saveVaultBalanceUnit('usd')
+    } finally {
+      setLoadingFiat(false)
+    }
   }
 
   return (
-    <Content className='vault-home-content'>
-      <div className='vault-home'>
-        <section className='vault-home-hero'>
-          <div className='vault-home-hero-inner'>
-            <div className='vault-account-bar'>
-              <div className='vault-account-lead'>
-                <Menu.Root
-                  onOpenChangeComplete={(open) => {
-                    if (open) (spending ? spendingItem : savingsItem).current?.focus()
-                  }}
-                >
-                  <Menu.Trigger
-                    type='button'
-                    className='vault-account-switch'
-                    data-testid='account-switcher'
-                    onClick={hapticSubtle}
-                  >
-                    <span className='vault-account-logo' aria-hidden>
-                      <HollowPixelMark />
-                    </span>
-                    <span className='vault-account-index'>{spending ? '1/2' : '2/2'}</span>
-                    <span className='vault-account-name'>{spending ? 'Spending' : 'Savings'}</span>
-                    <span className='vault-account-chevron'>
-                      <ChevronDownIcon />
-                    </span>
-                  </Menu.Trigger>
-                  <Menu.Portal>
-                    <Menu.Positioner className='vault-account-positioner' sideOffset={8} align='start'>
-                      <Menu.Popup className='vault-account-menu' aria-label='Accounts'>
-                        <Menu.RadioGroup value={account} onValueChange={(value) => choose(value as VaultAccount)}>
-                          <Menu.RadioItem
-                            ref={spendingItem}
-                            value='spend'
-                            closeOnClick
-                            className={spending ? 'vault-account-option is-on' : 'vault-account-option'}
-                            data-testid='account-spend'
-                          >
-                            <span>
-                              <span className='vault-account-option-name'>Spending</span>
-                              <span className='vault-account-option-meta'>This device, within your limits</span>
-                            </span>
-                            <span className='vault-account-option-amt'>
-                              {balancesLoaded
-                                ? `${prettyNumber(positions.spending.availableSats)} ${positions.spending.availableSats === 1 ? 'SAT' : 'SATS'} available`
-                                : 'Loading…'}
-                            </span>
-                          </Menu.RadioItem>
-                          <Menu.RadioItem
-                            ref={savingsItem}
-                            value='savings'
-                            closeOnClick
-                            className={!spending ? 'vault-account-option is-on' : 'vault-account-option'}
-                            data-testid='account-savings'
-                          >
-                            <span>
-                              <span className='vault-account-option-name'>Savings</span>
-                              <span className='vault-account-option-meta'>This device and hardware</span>
-                            </span>
-                            <span className='vault-account-option-amt'>
-                              {balancesLoaded
-                                ? `${prettyNumber(positions.savings.totalSats)} ${positions.savings.totalSats === 1 ? 'SAT' : 'SATS'} total`
-                                : 'Loading…'}
-                            </span>
-                          </Menu.RadioItem>
-                        </Menu.RadioGroup>
-                      </Menu.Popup>
-                    </Menu.Positioner>
-                  </Menu.Portal>
-                </Menu.Root>
-              </div>
-              <div className='vault-account-actions'>
-                <button
-                  type='button'
-                  className={
-                    initiateAlert
-                      ? 'vault-account-qr vault-recovery-shortcut needs-attention'
-                      : 'vault-account-qr vault-recovery-shortcut'
-                  }
-                  aria-label='Open Recovery'
-                  data-testid='account-recovery'
-                  onClick={() => openRecover('lost', 'home')}
-                >
-                  <ShieldCheckOutlineIcon />
-                  {initiateAlert ? <span className='vault-recovery-indicator' aria-hidden='true' /> : null}
-                </button>
-                <span className='vault-account-action-divider' aria-hidden='true' />
-                <button
-                  type='button'
-                  className='vault-account-qr'
-                  aria-label={spending ? 'Scan a Spending payment' : 'Scan a Savings destination'}
-                  data-testid='account-scan'
-                  onClick={() => {
-                    hapticSubtle()
-                    openSendScan()
-                  }}
-                >
-                  <ScanIcon />
-                </button>
-                <button
-                  type='button'
-                  className='vault-account-qr'
-                  aria-label={spending ? 'Receive to Spending' : 'Add to Savings'}
-                  data-testid='account-receive'
-                  onClick={() => navigate('receive')}
-                >
-                  <QrIcon />
-                </button>
-              </div>
-            </div>
-            <div className='vault-home-balance'>
-              <p
-                className='vault-balance-figure'
-                data-testid='vault-balance'
-                aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
-                aria-live='polite'
-                aria-label={
-                  balancesLoaded
-                    ? `${spending ? 'Spending' : 'Savings'} balance: ${prettyNumber(sats)} ${satsUnit}`
-                    : `${spending ? 'Spending' : 'Savings'} balance loading`
-                }
-              >
-                {balancesLoaded ? prettyNumber(sats) : '—'}
-                {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
-              </p>
-            </div>
-            <div className='vault-home-actions'>
-              <Button
-                main
-                className='vault-home-action-send'
-                icon={<TransferArrowIcon />}
-                label={spending ? 'Send' : 'Move to Spending'}
-                disabled={spending ? !canSend : positions.savings.availableSats <= 330}
-                onClick={() => {
-                  if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
-                  navigate('send')
-                }}
-              />
-              <Button
-                main
-                className='vault-home-action-receive'
-                icon={<TransferArrowIcon incoming />}
-                label={spending ? 'Receive' : 'Add to Savings'}
-                onClick={() => navigate('receive')}
-              />
-            </div>
+    <Content className='qg-home-content'>
+      <main className='qg-home'>
+        <header className='qg-account-bar vault-account-bar'>
+          <div className='qg-account' data-testid='account-switcher'>
+            <QgMark />
+            <strong>{spending ? 'Spending' : 'Savings'}</strong>
           </div>
-        </section>
+          <div className='qg-utilities'>
+            <button
+              type='button'
+              className={initiateAlert ? 'qg-recovery-shortcut needs-attention' : 'qg-recovery-shortcut'}
+              aria-label='Open Recovery'
+              data-testid='account-recovery'
+              onClick={() => {
+                hapticSubtle()
+                openRecover('lost', 'home')
+              }}
+            >
+              <Shield />
+              {initiateAlert ? <span aria-hidden='true' /> : null}
+            </button>
+            <i className='qg-utility-divider' aria-hidden='true' />
+            <button
+              type='button'
+              aria-label={spending ? 'Scan a Spending payment' : 'Scan a Savings destination'}
+              data-testid='account-scan'
+              onClick={() => {
+                hapticSubtle()
+                openSendScan()
+              }}
+            >
+              <ScanLine />
+            </button>
+            <button
+              type='button'
+              aria-label={spending ? 'Receive to Spending' : 'Deposit'}
+              data-testid='account-receive'
+              onClick={() => navigate('receive')}
+            >
+              <QrCode />
+            </button>
+          </div>
+        </header>
 
-        <section className='vault-home-sheet'>
-          <div className='vault-home-sheet-inner'>
-            {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
-              <div className='vault-status-card is-active' role='status' data-testid='spending-pending'>
-                <span className='vault-status-icon' aria-hidden>
-                  <ReceiveIcon />
-                </span>
-                <span className='vault-status-content'>
-                  <span className='vault-status-label'>
-                    {prettyNumber(positions.spending.pendingSats)} sats arriving
-                  </span>
-                  <span className='vault-status-copy'>Available after Bitcoin confirmation.</span>
-                  <span className='vault-status-total' data-testid='spending-total'>
-                    {prettyNumber(positions.spending.totalSats)} sats total
-                  </span>
-                </span>
-              </div>
-            ) : null}
+        <button
+          type='button'
+          className='qg-balance'
+          data-testid='vault-balance'
+          data-balance-unit={balanceUnit}
+          disabled={!balancesLoaded || loadingFiat}
+          aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance || loadingFiat ? true : undefined}
+          aria-live='polite'
+          aria-label={
+            balancesLoaded
+              ? `${spending ? 'Spending' : 'Savings'} balance: ${balance.label}. Show ${
+                  balanceUnit === 'usd' ? 'bitcoin' : 'USD'
+                }`
+              : `${spending ? 'Spending' : 'Savings'} balance loading`
+          }
+          onClick={() => void toggleBalanceUnit()}
+        >
+          <strong>{balancesLoaded ? balance.amount : '—'}</strong>
+          {balancesLoaded && balance.unit ? <span>{balance.unit}</span> : null}
+        </button>
+        <div className='qg-actions'>
+          <button
+            type='button'
+            disabled={spending ? !canSend : positions.savings.availableSats <= 330}
+            onClick={() => {
+              hapticLight()
+              clearSpendDraft()
+              if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
+              navigate('send')
+            }}
+          >
+            <span>
+              <ArrowUpRight />
+              <b>{spending ? 'Send' : 'Spending'}</b>
+            </span>
+          </button>
+          <button
+            type='button'
+            onClick={() => {
+              hapticLight()
+              navigate('receive')
+            }}
+          >
+            <span>
+              <ArrowDownLeft />
+              <b>{spending ? 'Receive' : 'Deposit'}</b>
+            </span>
+          </button>
+        </div>
 
-            {balancesLoaded && !spending && positions.savings.pendingSats > 0 ? (
-              <div className='vault-status-card is-active' role='status' data-testid='savings-pending'>
-                <span className='vault-status-icon' aria-hidden>
-                  <ReceiveIcon />
-                </span>
-                <span className='vault-status-content'>
-                  <span className='vault-status-label'>{prettyNumber(positions.savings.pendingSats)} sats pending</span>
-                  <span className='vault-status-copy'>Waiting for Bitcoin confirmation.</span>
-                </span>
-              </div>
-            ) : null}
+        {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
+          <section className='qg-arrival' aria-label='Funds arriving' data-testid='spending-pending'>
+            <span className='qg-status-icon' aria-hidden>
+              <Clock3 />
+            </span>
+            <div>
+              <strong>{prettyNumber(positions.spending.pendingSats)} sats arriving</strong>
+              <p>Available after Bitcoin confirmation.</p>
+            </div>
+          </section>
+        ) : null}
 
-            {initiateAlert ? (
-              <button
-                type='button'
-                className='vault-status-card is-warning'
-                data-testid='initiate-alert'
-                onClick={() => openRecover('lost', 'home')}
-              >
-                <span className='vault-status-icon' aria-hidden>
-                  !
-                </span>
-                <span className='vault-status-content'>
-                  <span className='vault-status-label'>Recovery in process</span>
-                  <span className='vault-status-copy'>
-                    {initiateAlert} Open Recovery to review the available cancellation paths.
-                  </span>
-                </span>
+        {balancesLoaded && !spending && positions.savings.pendingSats > 0 ? (
+          <section className='qg-arrival' aria-label='Funds pending' data-testid='savings-pending'>
+            <span className='qg-status-icon' aria-hidden>
+              <Clock3 />
+            </span>
+            <div>
+              <strong>{prettyNumber(positions.savings.pendingSats)} sats pending</strong>
+              <p>Waiting for Bitcoin confirmation.</p>
+            </div>
+          </section>
+        ) : null}
+
+        {initiateAlert ? (
+          <button
+            type='button'
+            className='qg-recovery-alert'
+            data-testid='initiate-alert'
+            onClick={() => openRecover('lost', 'home')}
+          >
+            <span>
+              <ShieldAlert />
+            </span>
+            <div>
+              <strong>Recovery started with hardware</strong>
+              <p>Open Recovery to review the available cancellation paths.</p>
+            </div>
+            <ChevronRight />
+          </button>
+        ) : null}
+
+        {!balancesLoaded && (error || balanceError) ? (
+          <>
+            <p className='qg-copy' role='alert'>
+              {error || balanceError}
+            </p>
+            {balanceError ? (
+              <button type='button' className='qg-secondary' onClick={() => void refreshBalance()}>
+                Retry
               </button>
             ) : null}
-
-            <ErrorMessage error={Boolean(error || balanceError)} text={error || balanceError} />
-            {balanceError ? (
-              <Button secondary label='Retry' loading={refreshingBalance} onClick={() => void refreshBalance()} />
-            ) : null}
-            <VaultHistory />
-          </div>
-        </section>
-      </div>
+          </>
+        ) : null}
+        <VaultHistory />
+      </main>
     </Content>
   )
 }

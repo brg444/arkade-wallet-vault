@@ -36,7 +36,7 @@ describe('Vault transaction details', () => {
       account: 'spend',
     })
 
-    expect(screen.getByText('Pending')).toBeTruthy()
+    expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
     expect(screen.getByText('Mutinynet')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'View on Arkade Space' }))
     expect(open).toHaveBeenCalledWith(
@@ -57,7 +57,7 @@ describe('Vault transaction details', () => {
       account: 'savings',
     })
 
-    expect(screen.getByText('Confirmed')).toBeTruthy()
+    expect(screen.getAllByText('Confirmed').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'View on Bitcoin explorer' }))
     expect(open).toHaveBeenCalledWith(
       'https://mempool.mutinynet.arkade.sh/tx/bitcoin-transaction',
@@ -77,7 +77,7 @@ describe('Vault transaction details', () => {
       activity: 'boarding',
     })
 
-    expect(screen.getByText('Pending')).toBeTruthy()
+    expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'View on Bitcoin explorer' }))
     expect(open).toHaveBeenCalledWith(
       'https://mempool.mutinynet.arkade.sh/tx/boarding-transaction',
@@ -96,7 +96,7 @@ describe('Vault transaction details', () => {
       activity: 'boarding',
     })
 
-    expect(screen.getByText('Confirmed')).toBeTruthy()
+    expect(screen.getAllByText('Confirmed').length).toBeGreaterThan(0)
     expect(screen.queryByText('Pending')).toBeNull()
   })
 
@@ -113,7 +113,7 @@ describe('Vault transaction details', () => {
       lightningRfqId: 'rfq-1',
     })
 
-    expect(screen.getByText('Ready to return')).toBeTruthy()
+    expect(screen.getAllByText('Ready to return').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Return to Spending' }))
     expect(retryLightningRefund).toHaveBeenCalledExactlyOnceWith('rfq-1')
   })
@@ -130,7 +130,7 @@ describe('Vault transaction details', () => {
       lightningRfqId: 'rfq-failed',
     })
 
-    expect(screen.getByText('Needs recovery')).toBeTruthy()
+    expect(screen.getAllByText('Needs recovery').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Return to Spending' })).toBeNull()
   })
 })

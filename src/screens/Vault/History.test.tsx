@@ -30,6 +30,25 @@ describe('Vault history', () => {
     expect(screen.getByText(/Add bitcoin to your Savings address/i)).toBeTruthy()
   })
 
+  it('shows a preconfirmed Arkade receive as confirmed', () => {
+    renderHistory({
+      history: [
+        {
+          txid: 'arkade-receive',
+          type: 'received',
+          amount: 21_000,
+          confirmed: true,
+          blockTime: 1_700_000_000,
+          account: 'spend',
+        },
+      ],
+    })
+
+    expect(screen.getByText(/^Confirmed/)).toBeTruthy()
+    expect(screen.queryByText('Pending')).toBeNull()
+    expect(screen.getByRole('button', { name: /Received 21,000 SATS.*Confirmed/i })).toHaveTextContent('+21,000')
+  })
+
   it('shows pending state, amount units, and opens a transaction', async () => {
     const user = userEvent.setup()
     const tx = {

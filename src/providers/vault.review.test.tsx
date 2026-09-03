@@ -27,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   getLightningStatus: vi.fn(),
   loadHandoff: vi.fn(),
   lightningEnabled: vi.fn(),
+  unlockSpend: vi.fn(async () => ({
+    assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+    phoneSecret: new Uint8Array(32).fill(7),
+    scalar: new Uint8Array(32).fill(8),
+  })),
 }))
 
 vi.mock('../lib/vault/status', async (importOriginal) => {
@@ -44,6 +49,16 @@ vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => {
     ...original,
     reserveVaultVtxo: mocks.reserve,
     sendVaultVtxo: mocks.send,
+    previewVaultVtxoSend: async (_status: unknown, destAddress: string, amountSats: number) => ({
+      destAddress,
+      amountSats,
+      feeSats: 0,
+    }),
+    newVtxoSpendChallenge: () => 'aa'.repeat(32),
+    createVtxoSpendUnlocker: () => ({
+      unlock: mocks.unlockSpend,
+      dispose: () => undefined,
+    }),
   }
 })
 
@@ -155,11 +170,18 @@ function Probe() {
       <span data-testid='screen'>{vault.screen}</span>
       <span data-testid='ready'>{String(Boolean(vault.status?.enrolled))}</span>
       <span data-testid='fee'>{vault.spend.fee}</span>
+      <span data-testid='destination'>{vault.spend.address}</span>
       <span data-testid='error'>{vault.error}</span>
       <span data-testid='kind'>{vault.lastTxKind}</span>
       <span data-testid='activity'>{vault.history[0]?.activity || ''}</span>
       <button type='button' onClick={() => vault.setSpendDraft({ address: destination, amount: 12_000 })}>
         Set draft
+      </button>
+      <button type='button' onClick={() => vault.navigate('home')}>
+        Go home
+      </button>
+      <button type='button' onClick={() => vault.openSendScan()}>
+        Open scan
       </button>
       <button type='button' onClick={vault.reviewSpend}>
         Review
@@ -211,6 +233,12 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.send.mockRejectedValue(new VtxoReviewedReservationError())
     mocks.sdkWallet.mockImplementation(async (_secret, _status, run) => run({ repository: {} }))
     mocks.unlock.mockResolvedValue(new Uint8Array(32).fill(7))
+    mocks.unlockSpend.mockClear()
+    mocks.unlockSpend.mockResolvedValue({
+      assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+      phoneSecret: new Uint8Array(32).fill(7),
+      scalar: new Uint8Array(32).fill(8),
+    })
     mocks.beginLightningFunding.mockResolvedValue({
       rfqId: '44'.repeat(32),
       address: destination,
@@ -233,6 +261,52 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     })
   })
 
+  it('forgets a previous send destination when returning home or opening the Home camera', async () => {
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    expect(screen.getByTestId('destination')).toHaveTextContent(destination)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go home' }))
+    expect(screen.getByTestId('screen')).toHaveTextContent('home')
+    expect(screen.getByTestId('destination')).toHaveTextContent('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    expect(screen.getByTestId('destination')).toHaveTextContent(destination)
+    fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
+    expect(screen.getByTestId('screen')).toHaveTextContent('send')
+    expect(screen.getByTestId('destination')).toHaveTextContent('')
+  })
+
+  it('reviews a VTXO send with zero Face ID calls and unlocks once on Approve', async () => {
+    mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 0, operationId: reviewed.operationId })
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
+    expect(mocks.unlock).not.toHaveBeenCalled()
+    expect(mocks.unlockSpend).not.toHaveBeenCalled()
+    expect(mocks.reserve).not.toHaveBeenCalled()
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
+    expect(mocks.unlockSpend).toHaveBeenCalledTimes(1)
+    expect(mocks.unlock).not.toHaveBeenCalled()
+    expect(mocks.reserve).toHaveBeenCalledTimes(1)
+  })
+
   it('clears a stale review and returns to Send without reporting success', async () => {
     render(
       <VaultProvider>
@@ -244,13 +318,13 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
-    expect(screen.getByTestId('fee')).toHaveTextContent('500')
+    expect(screen.getByTestId('fee')).toHaveTextContent('0')
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('send'))
     expect(screen.getByTestId('fee')).toHaveTextContent('0')
     expect(screen.getByTestId('error')).toHaveTextContent('This fee quote expired or changed. Review the send again.')
-    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed)
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed, expect.any(Function))
   })
 
   it('does not open Home when a stored enrollment has no pinned Vault Program', async () => {
@@ -283,7 +357,19 @@ describe('VaultProvider reviewed VTXO reservation', () => {
       </VaultProvider>,
     )
 
-    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('unlock'))
+  })
+
+  it('locks an enrolled vault behind passkey when privacy lock is on', async () => {
+    localStorage.setItem('arkade-vault-privacy-lock', '1')
+
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('unlock'))
   })
 
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
