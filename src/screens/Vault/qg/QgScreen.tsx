@@ -2,10 +2,20 @@ import { useEffect, useRef, type PointerEvent, type ReactNode } from 'react'
 import BackIcon from '../../../icons/Back'
 import { hapticLight } from '../../../lib/haptics'
 
-function revealFocusedField(target: HTMLElement) {
-  if (typeof target.scrollIntoView === 'function') {
-    target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }
+function revealFocusedField(main: HTMLElement, target: HTMLElement) {
+  const field = (target.closest('.qg-dest-field, .qg-amount-entry') as HTMLElement | null) || target
+  const viewport = main.getBoundingClientRect()
+  const bounds = field.getBoundingClientRect()
+  const margin = 12
+  const delta =
+    bounds.bottom > viewport.bottom - margin
+      ? bounds.bottom - viewport.bottom + margin
+      : bounds.top < viewport.top + margin
+        ? bounds.top - viewport.top - margin
+        : 0
+  if (!delta) return
+  if (typeof main.scrollBy === 'function') main.scrollBy({ top: delta, behavior: 'smooth' })
+  else main.scrollTop += delta
 }
 
 export function QgMark({ className = 'qg-mark' }: { className?: string }) {
@@ -187,7 +197,7 @@ export default function QgScreen({
         if (generation !== focusGenerationRef.current || document.activeElement !== target || !target.isConnected) {
           return
         }
-        revealFocusedField(target)
+        revealFocusedField(main, target)
       })
     }
     window.visualViewport?.addEventListener('resize', ensureFocusedFieldVisible)
@@ -359,7 +369,8 @@ export default function QgScreen({
             if (generation !== focusGenerationRef.current || document.activeElement !== target || !target.isConnected) {
               return
             }
-            revealFocusedField(target)
+            const main = mainRef.current
+            if (main) revealFocusedField(main, target)
           })
         }}
         onBlur={() => {
