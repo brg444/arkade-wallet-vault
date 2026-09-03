@@ -1,33 +1,21 @@
-import SettingsIcon from '../../icons/Settings'
-import VaultIcon from '../../icons/Vault'
-import WalletIcon from '../../icons/Wallet'
-import HollowPixelMark from '../../icons/HollowPixelMark'
+import { Plus, Settings, Shield, X } from 'lucide-react'
 import { hapticLight } from '../../lib/haptics'
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { VaultContext, type VaultScreen } from '../../vault/context'
 
 export type VaultDestination = 'wallet' | 'security' | 'settings'
 
-const DESTINATIONS: {
-  id: VaultDestination
-  label: string
-  screen: VaultScreen
-  testId: string
-  icon: JSX.Element
-}[] = [
-  { id: 'wallet', label: 'Wallet', screen: 'home', testId: 'tab-wallet', icon: <WalletIcon /> },
-  { id: 'security', label: 'Security', screen: 'keys', testId: 'tab-vault', icon: <VaultIcon /> },
-  { id: 'settings', label: 'Settings', screen: 'settings', testId: 'tab-settings', icon: <SettingsIcon /> },
-]
-
 export function destinationForScreen(screen: VaultScreen): VaultDestination | null {
   if (screen === 'home') return 'wallet'
-  if (screen === 'keys') return 'security'
-  if (screen === 'settings') return 'settings'
   return null
 }
 
-export default function VaultNavigation({ active }: { active: VaultDestination }) {
+const ACTIONS: { id: string; label: string; testId: string; icon: ReactNode; screen: VaultScreen }[] = [
+  { id: 'security', label: 'Security', testId: 'tab-vault', icon: <Shield />, screen: 'keys' },
+  { id: 'settings', label: 'Settings', testId: 'tab-settings', icon: <Settings />, screen: 'settings' },
+]
+
+export default function VaultNavigation() {
   const { navigate } = useContext(VaultContext)
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -50,6 +38,12 @@ export default function VaultNavigation({ active }: { active: VaultDestination }
     return () => window.removeEventListener('keydown', collapse)
   }, [open])
 
+  const close = () => {
+    hapticLight()
+    restoreTriggerFocus.current = false
+    setOpen(false)
+  }
+
   const select = (screen: VaultScreen) => {
     hapticLight()
     setOpen(false)
@@ -57,43 +51,45 @@ export default function VaultNavigation({ active }: { active: VaultDestination }
   }
 
   return (
-    <div className={open ? 'vault-navigation-layer is-open' : 'vault-navigation-layer'}>
+    <div className={open ? 'qg-launcher is-open' : 'qg-launcher'}>
       {open ? (
-        <nav className='vault-navigation' aria-label='Main navigation' id='vault-main-navigation'>
-          {DESTINATIONS.map((destination) => (
-            <button
-              key={destination.id}
-              type='button'
-              className={active === destination.id ? 'vault-navigation-item is-active' : 'vault-navigation-item'}
-              onClick={() => select(destination.screen)}
-              aria-current={active === destination.id ? 'page' : undefined}
-              aria-label={destination.label}
-              data-testid={destination.testId}
-            >
-              <span className='vault-navigation-icon' aria-hidden='true'>
-                {destination.icon}
-              </span>
-              <span className='vault-navigation-label'>{destination.label}</span>
-            </button>
-          ))}
-          <button
-            type='button'
-            className='vault-navigation-close'
-            aria-label='Collapse navigation'
-            onClick={() => {
-              hapticLight()
-              restoreTriggerFocus.current = false
-              setOpen(false)
-            }}
+        <div className='qg-launcher-backdrop' onClick={close}>
+          <nav
+            className='qg-launcher-stack'
+            aria-label='Main navigation'
+            id='vault-main-navigation'
+            onClick={(event) => event.stopPropagation()}
           >
-            <span aria-hidden='true'>⌄</span>
-          </button>
-        </nav>
+            {ACTIONS.map((action) => (
+              <button
+                key={action.id}
+                type='button'
+                className='qg-launcher-item'
+                onClick={() => select(action.screen)}
+                aria-label={action.label}
+                data-testid={action.testId}
+              >
+                <span className='qg-launcher-label'>{action.label}</span>
+                <span className='qg-launcher-icon' aria-hidden='true'>
+                  {action.icon}
+                </span>
+              </button>
+            ))}
+            <button
+              type='button'
+              className='qg-launcher-close vault-navigation-close'
+              aria-label='Close navigation'
+              onClick={close}
+            >
+              <X />
+            </button>
+          </nav>
+        </div>
       ) : (
         <button
           ref={triggerRef}
           type='button'
-          className='vault-navigation-trigger'
+          className='qg-launcher-trigger vault-navigation-trigger'
           aria-label='Open navigation'
           aria-expanded='false'
           aria-controls='vault-main-navigation'
@@ -102,7 +98,7 @@ export default function VaultNavigation({ active }: { active: VaultDestination }
             setOpen(true)
           }}
         >
-          <HollowPixelMark />
+          <Plus />
         </button>
       )}
     </div>

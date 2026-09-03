@@ -119,7 +119,7 @@ function ResetView({ onBack, onReset }: { onBack: () => void; onReset: () => voi
 }
 
 export default function VaultSettings() {
-  const { balanceError, busy, liveNetwork, refreshBalance, refreshingBalance, reset, setup, status } =
+  const { balanceError, busy, liveNetwork, navigate, refreshBalance, refreshingBalance, reset, setup, status } =
     useContext(VaultContext)
   const readiness = useVaultReadiness()
   const { toast } = useToast()
@@ -208,7 +208,7 @@ export default function VaultSettings() {
   if (view === 'reset') return <ResetView onBack={() => setView('menu')} onReset={reset} />
 
   return (
-    <QgScreen title='Settings'>
+    <QgScreen title='Settings' dismiss={() => navigate('home')}>
       <p className='qg-eyebrow'>General</p>
       <div className='qg-methods'>
         <Row

@@ -32,7 +32,7 @@ export default function VaultReceive() {
   return (
     <QgScreen
       title='Receive'
-      back={() => navigate('home')}
+      dismiss={() => navigate('home')}
       footer={
         <QgPrimary
           onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}

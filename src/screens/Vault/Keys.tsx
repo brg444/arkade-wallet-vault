@@ -56,6 +56,7 @@ export default function VaultKeys() {
     enablePasskeyLogin,
     hasLocalEnrollment,
     hasRecoveryKit,
+    navigate,
     openRecover,
     savingsAddress,
     setup,
@@ -84,7 +85,7 @@ export default function VaultKeys() {
   const vaultReady = phoneCovered && addressCovered && readiness.state === 'ready'
 
   return (
-    <QgScreen title='Security'>
+    <QgScreen title='Security' dismiss={() => navigate('home')}>
       <div className='vault-security'>
         <section className='vault-security-hero' aria-label='Vault protection status'>
           <div className='vault-security-hero-head'>

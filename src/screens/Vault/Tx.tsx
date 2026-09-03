@@ -38,7 +38,7 @@ export default function VaultTx() {
   return (
     <QgScreen
       title={lightning ? 'Lightning payment' : 'Transaction'}
-      back={() => navigate('home')}
+      dismiss={() => navigate('home')}
       footer={
         <>
           <ErrorMessage error={Boolean(error)} text={error} />
