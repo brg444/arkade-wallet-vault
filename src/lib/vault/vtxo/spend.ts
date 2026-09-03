@@ -1784,6 +1784,13 @@ async function reconcileOnePersistedVtxoSpend(
     clearPersistedVtxoSpend(status.vaultId, pending.operationId)
     return { kind: 'idle' }
   }
+  if (view.state === 'finalized') {
+    if (!view.arkTxid || view.arkTxid !== pending.arkTxid) {
+      return { kind: 'pending', operationId: pending.operationId, stage: pending.stage }
+    }
+    clearPersistedVtxoSpend(status.vaultId, pending.operationId)
+    return { kind: 'receipt-finalized', txid: view.arkTxid, operationId: pending.operationId }
+  }
   try {
     pending = applyVtxoOperationView(pending, view)
   } catch (err) {
