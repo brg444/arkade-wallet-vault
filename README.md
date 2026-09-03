@@ -54,6 +54,56 @@ never receives that key or owns a parallel settlement lifecycle. Exact upstream
 revisions and intentional Vault adapters are recorded in
 [docs/upstream-alignment.md](docs/upstream-alignment.md).
 
+## Wallet screenshots
+
+### Home
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Spending</strong><br><br>
+      <img src="docs/images/wallet/home-spending-mobile.png" alt="Mobile Home screen showing available funds, an incoming Bitcoin payment, and recent activity">
+    </td>
+    <td width="50%">
+      <strong>Savings</strong><br><br>
+      <img src="docs/images/wallet/home-savings-mobile.png" alt="Mobile Home screen showing the hardware-protected Savings balance">
+    </td>
+  </tr>
+</table>
+
+### Send and receive
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Receive on Arkade or Bitcoin</strong><br><br>
+      <img src="docs/images/wallet/receive-mobile.png" alt="Mobile Receive screen with a unified Arkade and Bitcoin payment request">
+    </td>
+    <td width="50%">
+      <strong>Review every payment</strong><br><br>
+      <img src="docs/images/wallet/review-payment-mobile.png" alt="Mobile payment review with amount, fee, network, and approval requirements">
+    </td>
+  </tr>
+</table>
+
+### Protection and recovery
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Security</strong><br><br>
+      <img src="docs/images/wallet/security-mobile.png" alt="Mobile Vault security overview with protection tier, spending limits, keys, and recovery access">
+    </td>
+    <td width="50%">
+      <strong>Recovery Kit</strong><br><br>
+      <img src="docs/images/wallet/recovery-kit-mobile.png" alt="Mobile Recovery Kit page explaining backup and lost-key recovery options">
+    </td>
+  </tr>
+</table>
+
+The documentation images are high-density Pixel 7 captures generated from the
+current source against deterministic wallet states.
+
 ## Local development
 
 Use Node.js and pnpm:

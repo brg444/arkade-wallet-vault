@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
+import { resolve } from 'node:path'
 import { decodeVaultBip21 } from '../../lib/vault/bip21'
 import { POLICY_VERSION } from '../../lib/vault/constants'
 import { SAVINGS_TEMPLATE } from '../../lib/vault/program/constants'
@@ -256,6 +257,85 @@ async function clearVaultWorkers(context: BrowserContext) {
 test.afterEach(async ({ context }) => {
   await clearVaultWorkers(context)
   await setOperatorVtxos()
+})
+
+test('@docs captures the current mobile wallet journey', async ({ page }) => {
+  const output = (name: string) => resolve('docs/images/wallet', name)
+  const pending: EsploraUtxo = {
+    txid: BOARDING_TXID,
+    vout: 0,
+    value: 48_000,
+    status: { confirmed: false },
+  }
+  const { destination, status } = await openVault(page, {
+    boardingUtxos: [pending],
+    savingsUtxos: [
+      {
+        txid: SAVINGS_TXID,
+        vout: 0,
+        value: 100_000,
+        status: { confirmed: true, block_height: 1 },
+      },
+    ],
+  })
+  await setOperatorVtxos([
+    await wireVtxo(page, status, {
+      amount: 80_000,
+      txid: VTXO_TXID,
+      createdAt: Date.UTC(2026, 7, 20, 10, 0, 0),
+    }),
+  ])
+  await refreshHome(page)
+  await page.screenshot({ path: output('home-spending-mobile.png'), animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByTestId('account-savings').click()
+  await expect(page.getByTestId('vault-balance')).toContainText('100,000')
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await page.screenshot({ path: output('home-savings-mobile.png'), animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByTestId('account-spend').click()
+  await page.getByTestId('account-receive').click()
+  await page.screenshot({ path: output('receive-mobile.png'), animations: 'disabled', fullPage: true })
+  await page.getByRole('button', { name: 'Go back' }).click()
+
+  await seedReviewedSpend(page, status, destination, 12_000, 500, 67_500)
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByTestId('vault-send-amount').fill('12000')
+  await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
+  await page.getByRole('button', { name: 'Resume payment' }).click()
+  await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
+  await page.screenshot({ path: output('review-payment-mobile.png'), animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByTestId('tab-vault').click()
+  await page.screenshot({ path: output('security-mobile.png'), animations: 'disabled', fullPage: true })
+  await page.getByTestId('security-kit').click()
+  await page.screenshot({ path: output('recovery-kit-mobile.png'), animations: 'disabled', fullPage: true })
+})
+
+test('drags the launcher vertically from its original bottom anchor', async ({ page }) => {
+  await openVault(page)
+  const trigger = page.getByRole('button', { name: 'Open navigation' })
+  const before = await trigger.boundingBox()
+  const viewport = page.viewportSize()
+  expect(before).not.toBeNull()
+  expect(viewport).not.toBeNull()
+  expect(Math.round(viewport!.height - before!.y - before!.height)).toBe(52)
+
+  await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(before!.x + before!.width / 2, 320, { steps: 8 })
+  await page.mouse.up()
+
+  await expect
+    .poll(async () => Math.round((await trigger.boundingBox())?.y ?? -1))
+    .toBeLessThan(Math.round(before!.y - 200))
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('vault-launcher-position-v2'))).not.toBeNull()
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0)
 })
 
 test('renders the Spending BIP21 request and copies each underlying address', async ({ context, page }) => {
