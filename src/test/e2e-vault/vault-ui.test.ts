@@ -571,6 +571,7 @@ test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({
 
   const app = page.getByTestId('vault-app')
   await app.evaluate((element) => element.style.setProperty('--vault-safe-area-top', '47px'))
+  await app.evaluate((element) => element.style.setProperty('--vault-safe-area-bottom', '34px'))
 
   const viewport = page.viewportSize()
   const frame = await app.boundingBox()
@@ -586,8 +587,26 @@ test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({
   expect(frame!.height).toBe(viewport!.height)
   expect(accountBar!.y).toBeGreaterThanOrEqual(47)
   expect(navigationTrigger!.y + navigationTrigger!.height).toBe(viewport!.height)
+  expect(navigationTrigger!.height).toBe(46)
   expect(statusBarOverlay).toBe('none')
   await expectNoHorizontalOverflow(page)
+  await expect(page).toHaveScreenshot('home-safe-areas.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Receive', exact: true }).click()
+  const footer = await page.locator('.buttons-on-bottom').boundingBox()
+  const footerAction = await page.getByRole('button', { name: 'Copy payment request' }).boundingBox()
+  expect(footer).not.toBeNull()
+  expect(footerAction).not.toBeNull()
+  expect(footer!.y + footer!.height).toBe(viewport!.height)
+  expect(footerAction!.y + footerAction!.height).toBeLessThanOrEqual(viewport!.height - 34)
+  await page.getByRole('button', { name: 'Go back' }).click()
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  const navigation = await page.getByRole('navigation', { name: 'Main navigation' }).boundingBox()
+  expect(navigation).not.toBeNull()
+  expect(navigation!.y + navigation!.height).toBe(viewport!.height)
+  expect(navigation!.height).toBe(105)
+  await expect(page).toHaveScreenshot('home-safe-areas-expanded.png', { animations: 'disabled', fullPage: true })
 })
 
 test('@polish covers accessible account, send, Security, and Settings states', async ({ page }) => {

@@ -35,6 +35,7 @@
   --vault-shadow-sm: 0 1px 2px rgb(16 16 19 / 4%);
   --vault-shadow-frame: 0 30px 80px -52px rgb(24 12 55 / 46%);
   --vault-safe-area-top: env(safe-area-inset-top, 0px);
+  --vault-safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --bottom-anchor-gap: 8px;
   --vault-navigation-height: clamp(68px, 15cqi, 94px);
   --vault-navigation-clearance: calc(var(--vault-navigation-height) + var(--bottom-anchor-gap) + 14px);
@@ -1498,8 +1499,8 @@ html.palette-dark [data-testid='vault-app'] {
   --vault-radius-sm: 12px;
   --vault-radius-md: 18px;
   --vault-radius-lg: 24px;
-  --vault-navigation-height: 72px;
-  --vault-navigation-clearance: 88px;
+  --vault-navigation-height: calc(72px + var(--vault-safe-area-bottom));
+  --vault-navigation-clearance: calc(88px + var(--vault-safe-area-bottom));
   background: var(--vault-surface);
   font-family: 'Geist', sans-serif;
 }
@@ -1567,7 +1568,7 @@ html.palette-dark [data-testid='vault-app'] {
 }
 
 [data-testid='vault-app'] .buttons-on-bottom {
-  padding: 10px clamp(22px, 7.7cqi, 30px) 20px;
+  padding: 10px clamp(22px, 7.7cqi, 30px) max(20px, calc(12px + var(--vault-safe-area-bottom)));
   border-top: 0;
 }
 
@@ -1835,6 +1836,7 @@ html.palette-dark [data-testid='vault-app'] {
   width: 78px;
   height: 46px;
   place-items: center;
+  padding: 0 0 min(8px, var(--vault-safe-area-bottom));
   border: 1px solid var(--vault-line);
   border-bottom: 0;
   border-radius: 16px 16px 0 0;
@@ -1852,9 +1854,10 @@ html.palette-dark [data-testid='vault-app'] {
 .vault-navigation {
   position: static;
   width: min(100%, 560px);
-  min-height: 70px;
+  min-height: calc(70px + var(--vault-safe-area-bottom));
   grid-template-columns: repeat(3, minmax(0, 1fr)) 42px;
   align-items: stretch;
+  padding-bottom: var(--vault-safe-area-bottom);
   border: 1px solid var(--vault-line);
   border-bottom: 0;
   border-radius: 20px 20px 0 0;
@@ -2135,9 +2138,15 @@ html.palette-dark [data-testid='vault-app'] {
   }
 
   [data-testid='vault-app'] {
+    position: fixed;
     top: 0;
+    right: 0;
+    bottom: auto;
+    left: 0;
     width: 100%;
+    height: 100dvh;
     min-width: 0;
+    min-height: 100dvh;
     max-width: none;
     padding-top: var(--vault-safe-area-top);
     border: 0;
