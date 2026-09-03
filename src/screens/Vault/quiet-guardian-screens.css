@@ -765,6 +765,85 @@ body:has(.vault-screen-welcome) {
   }
 }
 
+.qg-screen .vault-security {
+  display: grid;
+  gap: 1.25rem;
+  padding-bottom: 1.5rem;
+}
+
+.qg-screen .vault-security-hero {
+  padding: 18px;
+  border: 1px solid var(--qg-line);
+  border-radius: 18px;
+  background: var(--qg-paper);
+  box-shadow: none;
+  color: var(--qg-ink);
+}
+
+.qg-screen .vault-security-hero-head > strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.qg-screen .vault-security-hero-head > span {
+  color: var(--qg-muted);
+  font-size: 12px;
+}
+
+.qg-screen .vault-security-hero-head > span::before {
+  background: var(--qg-orange);
+}
+
+.qg-screen .vault-security-hero-head > span.is-ready::before {
+  background: var(--qg-green);
+}
+
+.qg-screen .vault-security-hero h2 {
+  margin: 14px 0 8px;
+  color: var(--qg-ink);
+  font-size: 28px;
+  font-weight: 560;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.qg-screen .vault-security-hero p {
+  margin: 0;
+  color: var(--qg-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.qg-screen .vault-security-tile,
+.qg-screen .vault-security-tile.is-ink,
+.qg-screen .vault-security-tile.is-purple,
+.qg-screen .vault-security-tile.is-paper {
+  border: 1px solid var(--qg-line);
+  border-radius: 16px;
+  background: var(--qg-paper);
+  color: var(--qg-ink);
+  box-shadow: none;
+}
+
+.qg-screen .vault-security-tile-icon {
+  border: 1px solid var(--qg-line);
+  background: transparent;
+  color: var(--qg-ink);
+}
+
+.qg-screen .vault-security-tile-label,
+.qg-screen .vault-security-tile-copy small {
+  color: var(--qg-muted);
+  opacity: 1;
+}
+
+.qg-screen .vault-hub,
+.qg-screen .vault-hub-row {
+  border-color: var(--qg-line);
+  background: transparent;
+  box-shadow: none;
+}
+
 .qg-home-content,
 .qg-home-content .content-shell {
   background: var(--qg-oat);
