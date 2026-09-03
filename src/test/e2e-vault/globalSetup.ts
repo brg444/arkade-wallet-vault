@@ -35,7 +35,7 @@ const DEFAULT_INFO = {
   digest: 'vault-e2e',
   dust: '330',
   fees: {
-    intentFee: { offchainInput: '0', offchainOutput: '0', onchainInput: '0', onchainOutput: '0' },
+    intentFee: { offchainInput: '0.0', offchainOutput: '0.0', onchainInput: '0.0', onchainOutput: '0.0' },
     txFeeRate: '0',
   },
   forfeitAddress: 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx',

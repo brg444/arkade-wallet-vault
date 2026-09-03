@@ -468,7 +468,10 @@ export interface VaultBoardingSettlementRuntime {
   boardingSettle?: Promise<void>
 }
 
-const MAX_VAULT_BOARDING_FEE_EVALUATIONS = 20_000
+// Each confirmed input is enumerated over 0..cap. Size the budget so later
+// deposits are not starved by earlier uneconomical outpoints.
+const MAX_VAULT_BOARDING_FEE_INPUTS = 16
+const MAX_VAULT_BOARDING_FEE_EVALUATIONS = MAX_VAULT_BOARDING_FEE_INPUTS * (ABSOLUTE_FEE_CEILING_SATS + 1)
 
 export async function vaultBoardingSettleParams(
   boardingUtxos: ExtendedCoin[],
@@ -489,12 +492,18 @@ export async function vaultBoardingSettleParams(
   if (confirmed.length === 0) return undefined
 
   const { fees, vtxoMaxAmount } = await provider.getInfo()
-  const estimator = new Estimator(fees.intentFee)
+  let estimator: Estimator
+  try {
+    estimator = new Estimator(fees.intentFee)
+  } catch {
+    throw new Error('vault-board-v1 Operator fee policy is invalid')
+  }
   const outputScript = hex.encode(ArkAddress.decode(spendingAddress).pkScript)
   let remainingFeeEvaluations = MAX_VAULT_BOARDING_FEE_EVALUATIONS
   for (const input of confirmed) {
     if (!Number.isSafeInteger(input.value) || input.value <= 0) continue
     const maxFee = Math.min(absoluteFeeCapSats, input.value - DUST_SATS)
+    if (maxFee < 0) continue
     for (let candidateFee = 0; candidateFee <= maxFee; candidateFee++) {
       const amount = BigInt(input.value - candidateFee)
       if (vtxoMaxAmount >= 0n && amount > vtxoMaxAmount) continue
@@ -502,13 +511,13 @@ export async function vaultBoardingSettleParams(
         throw new Error('vault-board-v1 Operator fee policy exceeds the evaluation limit')
       }
       remainingFeeEvaluations--
-      const evaluated = estimator.evaluate(
-        [],
-        [{ amount: BigInt(input.value) }],
-        [{ amount, script: outputScript }],
-        [],
-      )
-      if (!Number.isFinite(evaluated.value) || evaluated.value < 0) {
+      let evaluated
+      try {
+        evaluated = estimator.evaluate([], [{ amount: BigInt(input.value) }], [{ amount, script: outputScript }], [])
+      } catch {
+        throw new Error('vault-board-v1 Operator fee result is invalid')
+      }
+      if (!Number.isFinite(evaluated.value) || evaluated.value < 0 || !Number.isSafeInteger(evaluated.satoshis)) {
         throw new Error('vault-board-v1 Operator fee result is invalid')
       }
       const exactFee = evaluated.satoshis
