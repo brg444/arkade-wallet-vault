@@ -78,17 +78,6 @@ jobs:
       - name: Install Playwright
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: corepack pnpm exec playwright install chromium webkit
-      - name: Capture exact Linux visual baselines
-        run: corepack pnpm exec playwright test -c playwright.vault.config.ts --grep @polish --update-snapshots=all
-        env:
-          CI: true
-      - name: Upload exact Linux visual baselines
-        uses: actions/upload-artifact@v4
-        with:
-          name: vault-linux-visual-baselines
-          path: src/test/e2e-vault/**/*-snapshots/*-linux.png
-          if-no-files-found: error
-          retention-days: 1
       - name: Vault Playwright
         run: corepack pnpm test:e2e
         env:
