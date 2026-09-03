@@ -89,10 +89,11 @@ export function historyFromSdkActivities(
       txid: lightningRecord?.fundingTxid || txid,
       type: sent ? 'sent' : 'received',
       amount,
-      // The funding transaction can be settled before the RFQ has paid or
-      // refunded. Keep the one logical Lightning row Pending until the
-      // package lifecycle itself reaches a terminal outcome.
-      confirmed: lightningRecord ? lightningRecord.terminal : activity.settled,
+      // Activity.settled means the batch is on-chain. Arkade VTXO payments are
+      // already spendable, so they skip the Pending group. Boarding still
+      // waits for settlement. Lightning stays Pending until the RFQ is
+      // terminal because the funding tx can settle before pay/refund.
+      confirmed: lightningRecord ? lightningRecord.terminal : boarding ? activity.settled : true,
       blockTime: unixSeconds(activity.createdAt),
       account: 'spend',
       ...(boarding
