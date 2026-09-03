@@ -24,7 +24,7 @@ body:has(.vault-screen-welcome) {
 .qg-screen {
   --qg-top-inset: var(--vault-safe-area-top, env(safe-area-inset-top, 0px));
   display: grid;
-  grid-template-rows: calc(68px + var(--qg-top-inset)) minmax(0, 1fr) auto;
+  grid-template-rows: calc(52px + var(--qg-top-inset)) minmax(0, 1fr) auto;
   flex: 1 1 auto;
   align-self: stretch;
   width: 100%;
@@ -35,7 +35,7 @@ body:has(.vault-screen-welcome) {
 }
 
 .qg-screen-welcome {
-  grid-template-rows: calc(68px + var(--qg-top-inset)) minmax(0, 1fr) auto;
+  grid-template-rows: calc(52px + var(--qg-top-inset)) minmax(0, 1fr) auto;
 }
 
 .qg-screen-success {
@@ -68,7 +68,7 @@ body:has(.vault-screen-welcome) {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: calc(20px + var(--qg-top-inset)) 26px 20px;
+  padding: max(4px, var(--qg-top-inset)) 26px 12px;
 }
 
 .qg-brand strong {
@@ -115,7 +115,7 @@ body:has(.vault-screen-welcome) {
   display: grid;
   grid-template-columns: 44px 1fr 44px;
   align-items: center;
-  padding: calc(10px + var(--qg-top-inset)) 18px 10px;
+  padding: max(2px, var(--qg-top-inset)) 18px 6px;
 }
 
 .qg-header button {
@@ -772,7 +772,7 @@ body:has(.vault-screen-welcome) {
 
 .qg-home {
   min-height: 0;
-  padding: 20px 22px 82px;
+  padding: 4px 22px 82px;
 }
 
 .qg-account-bar {
