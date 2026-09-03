@@ -67,7 +67,7 @@ export default function VaultSend() {
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
   const destNetwork = status?.network
   const lightning = !fromSavings && Boolean(lightningInvoice(spend.address, destNetwork))
-  const [scan, setScan] = useState(false)
+  const [scan, setScan] = useState(Boolean(scanOnSend))
   const availableSpend = Math.max(0, Math.min(dailyRemaining, positions.spending.availableSats))
   const used = Math.max(0, setup.dailyLimitSats - availableSpend)
   const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
@@ -88,8 +88,16 @@ export default function VaultSend() {
   useEffect(() => {
     if (!scanOnSend) return
     setScan(true)
-    clearSendScan()
-  }, [scanOnSend, clearSendScan])
+  }, [scanOnSend])
+
+  const closeScan = () => {
+    if (scanOnSend) {
+      clearSendScan()
+      navigate('home')
+      return
+    }
+    setScan(false)
+  }
 
   const setAmount = (raw: string) => {
     const digits = raw.replace(/\D/g, '')
@@ -108,7 +116,7 @@ export default function VaultSend() {
   if (scan) {
     return (
       <Scanner
-        close={() => setScan(false)}
+        close={closeScan}
         label={fromSavings ? 'Scan Bitcoin address' : 'Scan payment'}
         onData={(data) => {
           const next = payloadFromScan(data, !fromSavings)
@@ -117,9 +125,10 @@ export default function VaultSend() {
             address: next.address,
             ...(lightningAmount || next.amount ? { amount: lightningAmount || next.amount } : {}),
           })
+          clearSendScan()
           setScan(false)
         }}
-        onError={() => setScan(false)}
+        onError={closeScan}
       />
     )
   }
@@ -179,6 +188,7 @@ export default function VaultSend() {
           <input
             value={spend.address}
             aria-label='To'
+            name='vault-send-destination'
             autoComplete='off'
             autoCapitalize='none'
             autoCorrect='off'

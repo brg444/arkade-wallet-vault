@@ -106,6 +106,7 @@ export interface VaultContextProps {
   savingsAddress: string
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
+  clearSpendDraft: () => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
   setup: VaultSetupPlan
   spend: VaultSpend
@@ -191,6 +192,7 @@ export const VaultContext = createContext<VaultContextProps>({
   savingsAddress: '',
   screen: 'welcome',
   setAccount: () => {},
+  clearSpendDraft: () => {},
   setSpendDraft: () => {},
   setup: emptySetupPlan(),
   spend: { address: '', amount: 0, fee: DEFAULT_SPEND_FEE_SATS },

@@ -75,7 +75,7 @@ async function openVault(page: Page): Promise<{ broadcastHex: () => string; stat
 }
 
 async function selectSavings(page: Page) {
-  await page.getByTestId('account-switcher').click()
+  await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByTestId('account-savings').click()
   await expect(page.getByTestId('account-switcher')).toContainText('Savings')
 }

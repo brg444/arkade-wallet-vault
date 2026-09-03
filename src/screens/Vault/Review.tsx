@@ -7,7 +7,6 @@ import { prettyAmount, prettyNumber } from '../../lib/format'
 import { isVaultLightningInput } from '../../lib/vault/lightningConfig'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
-import ProtectionModel from './qg/ProtectionModel'
 import QgScreen, { QgPrimary, QgTextButton } from './qg/QgScreen'
 
 export default function VaultReview() {
@@ -140,7 +139,6 @@ export default function VaultReview() {
           </>
         )}
       </section>
-      <ProtectionModel compact />
     </QgScreen>
   )
 }

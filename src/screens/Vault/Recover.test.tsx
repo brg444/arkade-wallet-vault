@@ -92,6 +92,42 @@ function startCancel(familyKey: FamilyKey) {
   fireEvent.click(screen.getByTestId('recover-guardian-exit'))
 }
 
+describe('Quiet Guardian recovery chrome', () => {
+  beforeEach(() => {
+    boardingRecovery.find.mockReset().mockResolvedValue({ inputs: [], totalSats: 0 })
+  })
+
+  it('opens from Home as a sheet that dismisses home', () => {
+    const navigate = vi.fn()
+    renderLost('savings-hardware', {
+      initiateAlert: '',
+      initiateAlerts: [],
+      navigate,
+      recoverExit: 'home',
+    })
+    expect(document.querySelector('.qg-handle')).toBeTruthy()
+    expect(screen.getByTestId('screen-title')).toHaveTextContent('Recovery')
+    expect(screen.getByRole('heading', { name: 'Start with a key you still have.' })).toBeTruthy()
+    expect(screen.queryByText('This device')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('header-back'))
+    expect(navigate).toHaveBeenCalledWith('home')
+  })
+
+  it('keeps a nested back when opened from Security', () => {
+    const navigate = vi.fn()
+    renderLost('savings-hardware', {
+      initiateAlert: '',
+      initiateAlerts: [],
+      navigate,
+      recoverExit: 'keys',
+    })
+    expect(document.querySelector('.qg-handle')).toBeNull()
+    expect(screen.getByTestId('screen-title')).toHaveTextContent('Lost a key')
+    fireEvent.click(screen.getByTestId('header-back'))
+    expect(navigate).toHaveBeenCalledWith('keys')
+  })
+})
+
 describe('claimant-aware cancel without services', () => {
   beforeEach(() => {
     boardingRecovery.find.mockReset().mockResolvedValue({ inputs: [], totalSats: 0 })

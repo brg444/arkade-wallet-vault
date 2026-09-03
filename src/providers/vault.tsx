@@ -448,6 +448,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     status,
   })
 
+  const clearSpendDraft = useCallback(
+    (acct: VaultAccount = account) => {
+      setReviewedVtxoQuote(null)
+      setLightningQuote(null)
+      setSpend({ address: '', amount: 0, fee: vaultDraftFee(acct, liveNetwork) })
+    },
+    [account, liveNetwork],
+  )
+
   const setSpendDraft = useCallback(
     (draft: Partial<VaultSpend>) => {
       setReviewedVtxoQuote(null)
@@ -1040,6 +1049,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       liveNetwork,
       navigate: (next) => {
         setError('')
+        if (next === 'home') {
+          setScanOnSend(false)
+          clearSpendDraft()
+        }
         setScreen(next)
       },
       openRecover: (view = 'kit', exit = 'keys') => {
@@ -1059,7 +1072,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       reset,
       reviewSpend,
       openSendScan: () => {
-        selectAccount('spend')
+        setAccount('spend')
+        clearSpendDraft('spend')
         setScanOnSend(true)
         setError('')
         setScreen('send')
@@ -1070,6 +1084,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       positions,
       screen: loaded ? screen : 'welcome',
       setAccount: selectAccount,
+      clearSpendDraft,
       setSpendDraft,
       setup,
       signIn,
@@ -1140,6 +1155,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       positions,
       screen,
       selectAccount,
+      clearSpendDraft,
       setSpendDraft,
       setup,
       spend,

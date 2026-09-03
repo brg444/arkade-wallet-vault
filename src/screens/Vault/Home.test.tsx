@@ -30,6 +30,7 @@ function renderHome(overrides: Partial<VaultContextProps>) {
       savings: { availableSats: 50_000, pendingSats: 0, totalSats: 50_000 },
     },
     setAccount: vi.fn(),
+    clearSpendDraft: vi.fn(),
     setSpendDraft: vi.fn(),
     spendingArkAddress: 'tark1spendingaddress',
     ...overrides,
@@ -57,7 +58,17 @@ describe('Vault home account boundaries', () => {
     const user = userEvent.setup()
     const value = renderHome({ account: 'savings' })
     await user.click(screen.getByRole('button', { name: 'Move to Spending' }))
+    expect(value.clearSpendDraft).toHaveBeenCalled()
     expect(value.setSpendDraft).toHaveBeenCalledWith({ address: value.boardingAddress })
+    expect(value.navigate).toHaveBeenCalledWith('send')
+  })
+
+  it('starts Spending send from a blank draft', async () => {
+    const user = userEvent.setup()
+    const value = renderHome({ account: 'spend' })
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    expect(value.clearSpendDraft).toHaveBeenCalled()
+    expect(value.setSpendDraft).not.toHaveBeenCalled()
     expect(value.navigate).toHaveBeenCalledWith('send')
   })
 
@@ -77,7 +88,7 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
   })
 
-  it('keeps pending boarding separate from the sendable Spending balance', () => {
+  it('shows total Spending balance even when some sats are still arriving', () => {
     renderHome({
       account: 'spend',
       positions: {
@@ -86,9 +97,30 @@ describe('Vault home account boundaries', () => {
       },
     })
     expect(screen.queryByText('Available to spend')).toBeNull()
-    expect(screen.getByTestId('vault-balance')).toHaveTextContent('80,000')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('128,000')
     expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 sats arriving')
-    expect(screen.getByTestId('spending-total')).toHaveTextContent('128,000 sats total')
+    expect(screen.queryByTestId('spending-total')).toBeNull()
+    expect(screen.queryByText(/currently spendable/i)).toBeNull()
+  })
+
+  it('shows total Savings balance even when some sats are not yet spendable', () => {
+    renderHome({
+      account: 'savings',
+      positions: {
+        spending: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+        savings: { availableSats: 20_000, pendingSats: 30_000, totalSats: 50_000 },
+      },
+    })
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('50,000')
+    expect(screen.queryByText(/currently spendable/i)).toBeNull()
+  })
+
+  it('shows the current account without a picker on Home', () => {
+    renderHome({ account: 'spend' })
+    expect(screen.getByTestId('account-switcher')).toHaveTextContent('Spending')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByTestId('account-spend')).toBeNull()
+    expect(screen.queryByTestId('account-savings')).toBeNull()
   })
 
   it('does not present zero as the balance before the first snapshot loads', () => {
@@ -121,40 +153,5 @@ describe('Vault home account boundaries', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
     expect(screen.queryByText('Something went wrong. Try again.')).toBeNull()
-  })
-
-  it('uses menu radio semantics and restores focus after Escape', async () => {
-    const user = userEvent.setup()
-    renderHome({ account: 'spend' })
-    const trigger = screen.getByTestId('account-switcher')
-
-    trigger.focus()
-    await user.keyboard('{ArrowDown}')
-    const spending = screen.getByRole('menuitemradio', { name: /Spending/ })
-    expect(spending).toHaveAttribute('aria-checked', 'true')
-    expect(spending).toHaveFocus()
-
-    await user.keyboard('{End}')
-    expect(screen.getByRole('menuitemradio', { name: /Savings/ })).toHaveFocus()
-    await user.keyboard('{Escape}')
-    expect(trigger).toHaveFocus()
-    expect(screen.queryByRole('menu')).toBeNull()
-  })
-
-  it('dismisses the account menu outside and selects Savings by keyboard', async () => {
-    const user = userEvent.setup()
-    const value = renderHome({ account: 'spend' })
-    const trigger = screen.getByTestId('account-switcher')
-
-    trigger.focus()
-    await user.keyboard('{ArrowDown}')
-    await user.click(document.body)
-    expect(screen.queryByRole('menu')).toBeNull()
-
-    trigger.focus()
-    await user.keyboard('{ArrowDown}')
-    await user.keyboard('{End}{Enter}')
-    expect(value.setAccount).toHaveBeenCalledWith('savings')
-    expect(trigger).toHaveFocus()
   })
 })
