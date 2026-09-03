@@ -220,7 +220,14 @@ export default function VaultSettings() {
             ? 'Unavailable'
             : 'Can’t reach'
     const rows: [string, string | undefined][] = [
-      ['Network', status?.network === 'mutinynet' || liveNetwork ? 'Mutinynet' : 'Unavailable'],
+      [
+        'Network',
+        status?.network === 'mainnet'
+          ? 'Bitcoin'
+          : status?.network === 'mutinynet' || liveNetwork
+            ? 'Mutinynet'
+            : 'Unavailable',
+      ],
       ['App revision', gitCommit],
       ['Vault', status?.vaultId],
       ['Enrolled template', status?.templateVersion],
