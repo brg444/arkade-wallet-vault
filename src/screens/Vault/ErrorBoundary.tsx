@@ -2,7 +2,6 @@ import { Component, type ReactNode } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import FlexRow from '../../components/FlexRow'
-import SmallLogo from '../../components/SmallLogo'
 import { createIncidentReference, recordVaultIncident } from '../../lib/logs'
 import Content from './Content'
 import Header from './Header'
@@ -36,9 +35,6 @@ export default class VaultErrorBoundary extends Component<Props, State> {
         <Header text='Arkade Vault' />
         <Content noRefresh className='vault-error-content'>
           <div className='vault-error-layout'>
-            <div className='vault-error-mark' aria-hidden>
-              <SmallLogo />
-            </div>
             <div className='vault-error-copy'>
               <p>Arkade Vault could not display this screen.</p>
               <p className='vault-error-reference'>Incident reference: {this.state.incidentReference}</p>

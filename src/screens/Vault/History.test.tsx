@@ -26,8 +26,7 @@ function renderHistory(overrides: Partial<VaultContextProps>) {
 describe('Vault history', () => {
   it('names the selected account in an actionable empty state', () => {
     renderHistory({ account: 'savings' })
-    expect(screen.getByRole('heading', { name: 'Activity' })).toBeTruthy()
-    expect(screen.getByText('Savings')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Recent' })).toBeTruthy()
     expect(screen.getByText(/Add bitcoin to your Savings address/i)).toBeTruthy()
   })
 
@@ -44,8 +43,9 @@ describe('Vault history', () => {
 
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getAllByText('Pending')).toHaveLength(2)
-    expect(screen.getByText('+12,000 SATS')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /Received 12,000 SATS.*Pending/i }))
+    const transaction = screen.getByRole('button', { name: /Received 12,000 SATS.*Pending/i })
+    expect(transaction).toHaveTextContent('+12,000')
+    await user.click(transaction)
     expect(value.openTx).toHaveBeenCalledWith(tx)
   })
 
@@ -66,7 +66,7 @@ describe('Vault history', () => {
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getByText('Received')).toBeTruthy()
     expect(screen.getAllByText('Pending')).toHaveLength(2)
-    expect(screen.getByText('+50,000 SATS')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Received 50,000 SATS.*Pending/i })).toHaveTextContent('+50,000')
   })
 
   it('shows settled boarding activity as confirmed', () => {

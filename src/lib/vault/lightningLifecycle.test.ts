@@ -617,7 +617,7 @@ describe('Lightning persisted lifecycle', () => {
     ).resolves.toEqual({ ok: true })
     await expect(
       authenticatedCallbacks.canRefundArkade!({ rfqId: 'cd'.repeat(32), refundLocktime: 0 } as never),
-    ).resolves.toEqual({ ok: false, reason: 'Device unlock is required to return this payment to Spending.' })
+    ).resolves.toEqual({ ok: false, reason: 'Approve with passkey to return this payment to Spending.' })
     await expect(authenticatedCallbacks.refundArkade({ rfqId: 'ab'.repeat(32) } as never)).resolves.toBeNull()
     await expect(authenticatedCallbacks.refundArkade({ rfqId: 'cd'.repeat(32) } as never)).rejects.toBeInstanceOf(
       RefundNotLocallyPossibleError,
@@ -628,7 +628,7 @@ describe('Lightning persisted lifecycle', () => {
     if (!restoredCallbacks) throw new Error('callbacks were not restored')
     await expect(restoredCallbacks.canRefundArkade!({ refundLocktime: 0 } as never)).resolves.toEqual({
       ok: false,
-      reason: 'Device unlock is required to return this payment to Spending.',
+      reason: 'Approve with passkey to return this payment to Spending.',
     })
     await expect(restoredCallbacks.refundArkade({} as never)).rejects.toBeInstanceOf(RefundNotLocallyPossibleError)
   })
