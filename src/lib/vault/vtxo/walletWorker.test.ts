@@ -495,7 +495,7 @@ describe('Vault service-worker isolation', () => {
     } as VaultStatus
     const key = vaultWalletRuntimeKey(base)
     for (const changed of [
-      { network: 'bitcoin' },
+      { network: 'mainnet' },
       { phoneBip340Pub: `03${'22'.repeat(32)}` },
       { spendingArkScript: 'cc' },
       { spendingArkAddress: 'ark1other' },

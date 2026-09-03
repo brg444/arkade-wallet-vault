@@ -35,25 +35,20 @@ import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
 import { signVtxoReserveDigest, verifyVtxoReserveSignature, type VtxoReserveDigestInput } from './reserveAuth'
 import { submitExactVaultSdkOperation, type VaultSdkOperationValidation } from './sdkOperationAdapter'
-import {
-  VAULT_POLICY_V1_EXIT_DELAY,
-  VAULT_POLICY_V1_EXIT_DELAY_UNIT,
-  VaultPolicyV1Script,
-  type VaultPolicyV1Params,
-} from './script'
+import { networkPins } from '../networkPins'
+import { VAULT_POLICY_V1_EXIT_DELAY_UNIT, VaultPolicyV1Script, type VaultPolicyV1Params } from './script'
 
 export type { VtxoOperationState, VtxoOperationView, VtxoReserveResponse } from '../cosignerClient'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
-const MUTINYNET_OPERATOR_ORIGIN = 'https://mutinynet.arkade.sh'
 const VTXO_DUST_SATS = 330
 const MAX_VTXO_INPUTS = 50
 
 declare const __VAULT_E2E_OPERATOR_ORIGIN__: string
 
-export function vaultArkServer(): string {
-  return __VAULT_E2E_OPERATOR_ORIGIN__ || MUTINYNET_OPERATOR_ORIGIN
+export function vaultArkServer(network: string = 'mutinynet'): string {
+  return __VAULT_E2E_OPERATOR_ORIGIN__ || networkPins(network).operatorOrigin
 }
 
 export interface VaultVtxoSpendResult {
@@ -340,25 +335,28 @@ function sameStrings(a: readonly string[] | undefined, b: readonly string[] | un
   return a?.length === b?.length && a?.every((value, index) => value === b?.[index]) === true
 }
 
-function requireMutinynetStatus(status: VaultStatus) {
-  if (!status.enrolled || status.network !== 'mutinynet') throw new Error('regular VTXO spending is Mutinynet-only')
+function requireEnrolledSpendingStatus(status: VaultStatus) {
+  const pins = networkPins(status.network)
+  if (!status.enrolled) throw new Error('regular VTXO spending requires an enrolled vault')
   if (!status.vaultId) throw new Error('vault id required')
-  if (status.vtxoExitDelay !== Number(VAULT_POLICY_V1_EXIT_DELAY)) throw new Error('VTXO exit delay does not match')
+  if (status.vtxoExitDelay !== pins.policyExitDelay) throw new Error('VTXO exit delay does not match')
   if (status.vtxoExitDelayUnit !== VAULT_POLICY_V1_EXIT_DELAY_UNIT)
     throw new Error('VTXO exit delay unit does not match')
+  return pins
 }
 
 export function vaultPolicyV1ScriptFromStatus(status: VaultStatus): VaultPolicyV1Script {
-  requireMutinynetStatus(status)
+  const pins = requireEnrolledSpendingStatus(status)
   const address = ArkAddress.decode(String(status.spendingArkAddress || ''))
-  if (address.hrp !== 'tark') throw new Error('spending Ark address is not a test-network address')
+  if (address.hrp !== pins.arkHrp) throw new Error('spending Ark address does not match this network')
   const params: VaultPolicyV1Params = {
     userPub: xOnly(status.phoneBip340Pub, 'phone pubkey'),
     vtxoVaultCosignerPub: xOnly(status.vtxoVaultCosignerPub, 'VTXO VaultCosigner pubkey'),
     arkdServerPub: address.serverPubKey,
     delegatePub: xOnly(status.vtxoDelegatePub, 'delegate pubkey'),
-    exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
+    exitDelay: BigInt(pins.policyExitDelay),
     exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+    network: pins.network,
     exitDevicePub: xOnly(status.phoneBip340Pub, 'phone pubkey'),
     exitHardwarePub: xOnly(status.externalOwnerWalletPub, 'hardware pubkey'),
     ...(status.recoveryKeyPub || status.recoveryPub
@@ -375,7 +373,8 @@ export function vaultPolicyV1ScriptFromStatus(status: VaultStatus): VaultPolicyV
 
 async function requirePinnedOperator(provider: ArkProvider, status: VaultStatus, checkpointTapscript?: string) {
   const info = await provider.getInfo()
-  if (info.network !== 'mutinynet') throw new Error('Operator network is not Mutinynet')
+  const pins = networkPins(status.network)
+  if (info.network !== pins.operatorGetInfoNetwork) throw new Error('Operator network does not match this release')
   const address = ArkAddress.decode(String(status.spendingArkAddress || ''))
   if (!sameBytes(xOnly(info.signerPubkey, 'Operator signer pubkey'), address.serverPubKey)) {
     throw new Error('Operator signer does not match the spending address')
@@ -1249,7 +1248,7 @@ async function reservePersistedVtxoSpend(
   }
   const reserve: VtxoReserveResponse = await vaultCosignerClient.spending.reserve(vtxoReserveRequest(pending, status))
   if (reserve.operationId !== pending.operationId) throw new Error('VTXO reservation returned a different operation id')
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new RestArkProvider(vaultArkServer(status.network))
   const info = await requirePinnedOperator(operator, status, reserve.checkpointTapscript)
   const expectedFeePolicyDigest = arkadeIntentFeePolicyDigest(info.fees.intentFee)
   const offchain = buildReservedVtxoSpend(
@@ -1377,7 +1376,7 @@ export async function reserveVaultVtxo(
   destAddress: string,
   amountSats: number,
 ): Promise<VaultVtxoSpendQuote> {
-  requireMutinynetStatus(status)
+  requireEnrolledSpendingStatus(status)
   if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
   return withVtxoSendLock(status.vaultId, async () =>
     quoteFromPersistedVtxoSpend(await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats)),
@@ -1391,7 +1390,7 @@ export type VtxoSpendReconcile =
 
 /** Finish vault-service receipt only. Never invents a newly approved payment. */
 export async function reconcilePersistedVtxoSpend(status: VaultStatus): Promise<VtxoSpendReconcile> {
-  requireMutinynetStatus(status)
+  requireEnrolledSpendingStatus(status)
   return withVtxoSendLock(status.vaultId, () => reconcilePersistedVtxoSpendLocked(status))
 }
 
@@ -1424,7 +1423,7 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
   }
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
     try {
-      const operator = new RestArkProvider(vaultArkServer())
+      const operator = new RestArkProvider(vaultArkServer(status.network))
       const info = await requireCurrentReservationPolicy(operator, status, pending)
       const checkpointPsbts = requireFullyAuthorizedCheckpoints(
         pending,
@@ -1442,7 +1441,7 @@ async function reconcilePersistedVtxoSpendLocked(status: VaultStatus): Promise<V
   }
   if (pending.stage === 'authorized' && pending.authorizedPsbt && pending.unsignedCheckpointPsbts?.length) {
     try {
-      const operator = new RestArkProvider(vaultArkServer())
+      const operator = new RestArkProvider(vaultArkServer(status.network))
       const operatorInfo = await requireCurrentReservationPolicy(operator, status, pending)
       pending = await advanceAuthorizedVtxoSpend(
         operator,
@@ -1473,7 +1472,7 @@ async function authorizeReservedVtxoSpend(
   if (!pending.unsignedArkPsbt || !pending.unsignedCheckpointPsbts?.length) {
     throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
   }
-  await requireCurrentReservationPolicy(new RestArkProvider(vaultArkServer()), status, pending)
+  await requireCurrentReservationPolicy(new RestArkProvider(vaultArkServer(status.network)), status, pending)
   const auth = await authorizeWithPasskey(enrollment, status, pending.bundleDigest)
   try {
     const identity = SingleKey.fromPrivateKey(auth.phoneSecret)
@@ -1675,7 +1674,7 @@ async function completeFreshSdkVtxoSpend(
   initial: PersistedVtxoSpend,
 ): Promise<VaultVtxoSpendResult> {
   const bundle = buildPersistedVtxoSdkBundle(status, initial)
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new RestArkProvider(vaultArkServer(status.network))
   const operatorInfo = await requireCurrentReservationPolicy(operator, status, initial)
   const operatorPub = xOnly(operatorInfo.signerPubkey, 'Operator signer pubkey')
   let pending = initial
@@ -1751,7 +1750,7 @@ async function continueSameVtxoSpend(
     return completeFreshSdkVtxoSpend(enrollment, status, pending)
   }
   requireRecoveryProofForAuthorizedSpend(pending)
-  const operator = new RestArkProvider(vaultArkServer())
+  const operator = new RestArkProvider(vaultArkServer(status.network))
   if (pending.stage === 'operator-finalized') return finishOperatorFinalized(pending)
   if (pending.stage === 'checkpoints-authorized' && pending.checkpointPsbts?.length) {
     const info = await requireCurrentReservationPolicy(operator, status, pending)
@@ -1808,7 +1807,7 @@ export async function sendVaultVtxo(
   status: VaultStatus,
   reviewed: VaultVtxoSpendQuote,
 ): Promise<VaultVtxoSpendResult> {
-  requireMutinynetStatus(status)
+  requireEnrolledSpendingStatus(status)
   if (!Number.isSafeInteger(reviewed.amountSats) || reviewed.amountSats < VTXO_DUST_SATS) {
     throw new VtxoReviewedReservationError()
   }

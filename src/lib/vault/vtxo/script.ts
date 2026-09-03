@@ -1,5 +1,6 @@
 import { CSVMultisigTapscript, MultisigTapscript, VtxoScript, type TapLeafScript } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { networkPins } from '../networkPins'
 
 export const VAULT_POLICY_V1_TYPE = 'vault-policy-v1'
 
@@ -24,6 +25,7 @@ export interface VaultPolicyV1Params {
   exitDevicePub: Uint8Array
   exitHardwarePub: Uint8Array
   exitRecoveryPub?: Uint8Array
+  network?: 'mutinynet' | 'mainnet'
 }
 
 function requireXOnly(value: Uint8Array | undefined, name: string): Uint8Array {
@@ -52,13 +54,14 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
   if (params.exitDelay % VAULT_POLICY_V1_BIP68_SECONDS_MOD !== 0n) {
     throw new Error('vault-policy-v1 exit delay must be a BIP68 seconds multiple of 512')
   }
-  if (params.exitDelay < VAULT_POLICY_V1_ARKD_MIN_EXIT_DELAY) {
+  const pins = networkPins(params.network ?? 'mutinynet')
+  if (params.exitDelay < BigInt(pins.arkdMinExitDelay)) {
     throw new Error('vault-policy-v1 exit delay is below the arkd minimum')
   }
-  if (params.exitDelay !== VAULT_POLICY_V1_EXIT_DELAY) {
-    throw new Error('vault-policy-v1 exit delay is frozen at 4608 seconds')
+  if (params.exitDelay !== BigInt(pins.policyExitDelay)) {
+    throw new Error(`vault-policy-v1 exit delay is frozen at ${pins.policyExitDelay} seconds`)
   }
-  const pinned = pinnedDelegateXOnly()
+  const pinned = hex.decode(pins.delegatePub.slice(2))
   if (delegatePub.length !== pinned.length || !delegatePub.every((b, i) => b === pinned[i])) {
     throw new Error('delegatePub must be the pinned public delegate')
   }
@@ -68,7 +71,7 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
     vtxoVaultCosignerPub,
     arkdServerPub,
     delegatePub,
-    exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
+    exitDelay: BigInt(pins.policyExitDelay),
     exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
     exitDevicePub,
     exitHardwarePub,
