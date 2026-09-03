@@ -1953,6 +1953,49 @@ describe('regular VTXO spend coordinator', () => {
     }
   })
 
+  it('clears a server-finalized operation without retrying the finalize mutation', async () => {
+    const restoreLocks = installImmediateNavigatorLock()
+    clearPersistedVtxoSpend('vault-a')
+    const signed = {
+      ...sdkReservedPending(),
+      stage: 'authorized' as const,
+      operatorSubmitAttempted: true,
+      authorizedPsbt: 'cHNidP9a',
+      authorizedPendingProof: undefined,
+    }
+    persistVtxoSpend(signed)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const method = init?.method || 'GET'
+      if (method !== 'GET') throw new Error('finalize mutation must not be retried')
+      return new Response(
+        JSON.stringify({
+          ...reviewedOperation(signed),
+          state: 'finalized',
+          arkTxid: signed.arkTxid,
+          feeSats: signed.feeSats,
+          feePolicyDigest: signed.feePolicyDigest,
+          changeSats: signed.changeSats,
+          changeVout: signed.changeVout,
+          changeScript: fragmentedReserve().changeScript,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+    try {
+      await expect(reconcilePersistedVtxoSpend(status(), [])).resolves.toEqual({
+        kind: 'receipt-finalized',
+        txid: signed.arkTxid,
+        operationId: signed.operationId,
+      })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(loadPersistedVtxoSpendById('vault-a', signed.operationId)).toBeUndefined()
+    } finally {
+      fetchMock.mockRestore()
+      clearPersistedVtxoSpend('vault-a')
+      restoreLocks()
+    }
+  })
+
   it('refuses a different-amount send without aborting a reserved operation or erasing a signed one', async () => {
     clearPersistedVtxoSpend('vault-a')
     persistVtxoSpend({

@@ -259,11 +259,13 @@ export function useVaultBalances({
     if (locked || !initialStatusChecked || !refreshVaultId) return
     if (status?.enrolled) void recoverVtxoSpend()
     const onFocus = () => {
-      if (status?.enrolled) void recoverVtxoSpend()
       if (status?.enrolled) {
         void reloadVaultWalletWorker(status)
           .catch((error) => consoleError(error, 'wallet VTXO worker reload'))
-          .finally(() => void refreshBalance(refreshVaultId))
+          .finally(() => {
+            void recoverVtxoSpend()
+            void refreshBalance(refreshVaultId)
+          })
       } else {
         void refreshBalance(refreshVaultId)
       }
