@@ -1291,10 +1291,18 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-balance strong {
+  max-width: 100%;
   font-size: 62px;
+  font-variant-numeric: tabular-nums;
   font-weight: 400;
   letter-spacing: -0.055em;
   line-height: 1;
+  white-space: nowrap;
+}
+
+.qg-balance[data-balance-unit='usd'] strong {
+  font-size: clamp(42px, 13vw, 56px);
+  letter-spacing: -0.045em;
 }
 
 .qg-balance span {

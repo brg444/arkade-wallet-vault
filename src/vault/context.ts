@@ -78,7 +78,7 @@ export interface VaultContextProps {
   error: string
   fiatDisplayRate: VaultFiatDisplayRate | null
   fiatDisplayEnabled: boolean
-  setFiatDisplay: (enabled: boolean) => Promise<void>
+  setFiatDisplay: (enabled: boolean) => Promise<VaultFiatDisplayRate | null>
   signIn: () => Promise<void>
   finishPlan: () => void
   hasLocalEnrollment: boolean
@@ -166,7 +166,7 @@ export const VaultContext = createContext<VaultContextProps>({
   error: '',
   fiatDisplayRate: null,
   fiatDisplayEnabled: false,
-  setFiatDisplay: async () => {},
+  setFiatDisplay: async () => null,
   signIn: async () => {},
   finishPlan: () => {},
   hasLocalEnrollment: false,

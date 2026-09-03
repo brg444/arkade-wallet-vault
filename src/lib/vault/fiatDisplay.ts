@@ -1,7 +1,5 @@
 import { fromSatoshis, prettyFiatAmount, prettyNumber } from '../format'
-import { Fiats } from '../types'
-
-export const DISPLAY_USD_PER_BTC = 100_000
+import type { Fiats } from '../types'
 
 export type VaultBalanceUnit = 'sats' | 'usd'
 
@@ -10,7 +8,7 @@ export interface VaultFiatDisplayRate {
   pricePerBtc: number
 }
 
-export function usdFromSatsAtDisplayRate(sats: number, usdPerBtc = DISPLAY_USD_PER_BTC): number {
+export function usdFromSats(sats: number, usdPerBtc: number): number {
   if (!Number.isFinite(sats) || !Number.isFinite(usdPerBtc) || usdPerBtc <= 0) return 0
   return fromSatoshis(sats) * usdPerBtc
 }
@@ -18,9 +16,10 @@ export function usdFromSatsAtDisplayRate(sats: number, usdPerBtc = DISPLAY_USD_P
 export function homeBalanceDisplay(
   sats: number,
   unit: VaultBalanceUnit,
+  rate?: VaultFiatDisplayRate | null,
 ): { amount: string; unit: string; label: string } {
-  if (unit === 'usd') {
-    const amount = prettyFiatAmount(usdFromSatsAtDisplayRate(sats), Fiats.USD)
+  if (unit === 'usd' && rate && Number.isFinite(rate.pricePerBtc) && rate.pricePerBtc > 0) {
+    const amount = prettyFiatAmount(usdFromSats(sats, rate.pricePerBtc), rate.currency)
     return { amount, unit: '', label: amount }
   }
   const amount = `₿${prettyNumber(sats)}`

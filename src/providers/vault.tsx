@@ -164,13 +164,18 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     if (!enabled) {
       setFiatDisplayEnabled(false)
       setFiatDisplayRate(null)
-      return
+      return null
     }
     const prices = await getPriceFeed({ silent: true })
     if (Number.isFinite(prices?.usd) && Number(prices?.usd) > 0) {
-      setFiatDisplayRate({ currency: Fiats.USD, pricePerBtc: Number(prices!.usd) })
+      const rate = { currency: Fiats.USD, pricePerBtc: Number(prices!.usd) }
+      setFiatDisplayRate(rate)
       setFiatDisplayEnabled(true)
+      return rate
     }
+    setFiatDisplayEnabled(false)
+    setFiatDisplayRate(null)
+    return null
   }, [])
 
   useEffect(() => {

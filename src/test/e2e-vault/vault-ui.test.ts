@@ -295,6 +295,27 @@ test('ignores another vault worker update and refreshes on the matching update',
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 })
 
+test('switches the Home balance between sats and USD using the live price feed', async ({ page }) => {
+  await page.route('https://blockchain.info/ticker', (route) =>
+    json(route, {
+      USD: { last: 125_000 },
+    }),
+  )
+  const { status } = await openVault(page)
+  await setOperatorVtxos([await wireVtxo(page, status, { amount: 128_000, txid: VTXO_TXID })])
+  await dispatchUtxoUpdate(page, status.vaultId)
+
+  const balance = page.getByTestId('vault-balance')
+  await expect(balance).toContainText('₿128,000')
+  await balance.click()
+  await expect(balance).toContainText('$160.00')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('arkade-vault-balance-unit'))).toBe('usd')
+
+  await balance.click()
+  await expect(balance).toContainText('₿128,000')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('arkade-vault-balance-unit'))).toBeNull()
+})
+
 test('loads Spending while another tab holds the foreground Lightning lock', async ({ context, page }) => {
   const blocker = await context.newPage()
   await blocker.goto('/')
