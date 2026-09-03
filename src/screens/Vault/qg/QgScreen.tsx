@@ -124,7 +124,7 @@ export default function QgScreen({
   children,
   footer,
 }: {
-  variant?: 'welcome' | 'flow' | 'progress' | 'success' | 'scan'
+  variant?: 'welcome' | 'flow' | 'progress' | 'success' | 'scan' | 'unlock'
   brand?: boolean
   title?: string
   stepLabel?: string
@@ -267,7 +267,7 @@ export default function QgScreen({
           <strong>Arkade Vault</strong>
           <small>MUTINYNET</small>
         </header>
-      ) : variant === 'progress' || variant === 'success' ? null : (
+      ) : variant === 'progress' || variant === 'success' || variant === 'unlock' ? null : (
         <header ref={headerRef} className={sheet ? 'qg-header qg-header-sheet' : 'qg-header'}>
           {sheet ? (
             <button

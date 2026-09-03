@@ -21,7 +21,8 @@
 }
 
 body:has(.vault-screen-home),
-body:has(.vault-screen-welcome) {
+body:has(.vault-screen-welcome),
+body:has(.vault-screen-unlock) {
   --background-color: #f5f0e8;
 }
 
@@ -42,8 +43,46 @@ body:has(.vault-screen-welcome) {
   grid-template-rows: calc(52px + var(--qg-top-inset)) minmax(0, 1fr) auto;
 }
 
-.qg-screen-success {
+.qg-screen-success,
+.qg-screen-unlock {
   grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.qg-screen-unlock .qg-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 28px 36px;
+  overflow: hidden;
+}
+
+.qg-unlock {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+
+.qg-unlock-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
+  place-items: center;
+  border: 1px solid var(--qg-line);
+  border-radius: 16px;
+  background: var(--qg-paper);
+  color: var(--qg-ink);
+}
+
+.qg-unlock-mark svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.8;
+}
+
+.qg-screen-unlock h1 {
+  margin: 0;
+  font-size: 34px;
 }
 
 .qg-screen-progress {

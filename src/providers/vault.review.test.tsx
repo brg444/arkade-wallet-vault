@@ -338,7 +338,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
       </VaultProvider>,
     )
 
-    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('welcome'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('unlock'))
   })
 
   it('quotes and funds Lightning through the ordinary reviewed VTXO send', async () => {
