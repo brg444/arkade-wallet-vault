@@ -33,7 +33,7 @@ export default function VaultHardware() {
       <p className='qg-copy'>
         {required
           ? 'This vault already has hardware. Confirm this is that key.'
-          : 'Savings transfers require this device and your hardware key. The key can also cancel a recovery you did not start.'}
+          : 'An independent hardware approval prevents a compromised phone from moving Savings by itself. This key can also cancel a recovery you did not start.'}
       </p>
       <label className='qg-field'>
         <span>Hardware public key</span>

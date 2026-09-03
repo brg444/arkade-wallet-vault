@@ -48,8 +48,16 @@ export default function VaultPlan() {
           <strong>₿{prettyNumber(setup.dailyLimitSats, 0)}</strong>
         </div>
         <div>
-          <span>Vault design</span>
-          <strong>Will enroll vault-board-v1</strong>
+          <span>Savings</span>
+          <strong>Two-key approval</strong>
+        </div>
+        <div>
+          <span>Recovery</span>
+          <strong>Delayed and cancellable</strong>
+        </div>
+        <div>
+          <span>Spending</span>
+          <strong>Limits enforced</strong>
         </div>
       </section>
       <label className='qg-consent'>

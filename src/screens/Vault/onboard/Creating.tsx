@@ -9,7 +9,7 @@ export default function VaultCreating() {
         <div className='qg-progress'>
           <span />
         </div>
-        <small>Enrolling protection · 2 of 3</small>
+        <small>Activating vault protection</small>
       </main>
     </div>
   )

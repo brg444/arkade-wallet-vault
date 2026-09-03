@@ -30,7 +30,8 @@ export default function VaultRecovery() {
       <p className='qg-eyebrow'>Choose your setup</p>
       <h1>How should recovery work?</h1>
       <p className='qg-copy'>
-        Both options use this device, a hardware key, and the Vault service. Advanced adds a separate recovery key.
+        Standard protects the loss of either everyday key. Advanced adds a separately stored key in case both become
+        unavailable.
       </p>
       <div className='qg-choice-list' role='radiogroup' aria-label='Protection tier'>
         <button
@@ -45,8 +46,8 @@ export default function VaultRecovery() {
           </span>
           <span>
             <strong>Standard</strong>
-            <small>No separate recovery key</small>
-            <em>Recommended for most people</em>
+            <small>Recover if one everyday key is lost</small>
+            <em>Cannot recover if both are lost</em>
           </span>
           {!advanced ? <Check /> : <Circle />}
         </button>
@@ -62,8 +63,8 @@ export default function VaultRecovery() {
           </span>
           <span>
             <strong>Advanced</strong>
-            <small>Add a separate recovery key</small>
-            <em>More control, more responsibility</em>
+            <small>Add a separately stored recovery key</small>
+            <em>Protects the loss of both everyday keys</em>
           </span>
           {advanced ? <Check /> : <Circle />}
         </button>
@@ -91,6 +92,13 @@ export default function VaultRecovery() {
           </button>
         </div>
       ) : null}
+      <section className='qg-note'>
+        <ShieldCheck />
+        <div>
+          <strong>Recovery is delayed and visible</strong>
+          <p>The remaining keys can cancel a recovery you did not start before the waiting period ends.</p>
+        </div>
+      </section>
     </QgScreen>
   )
 }

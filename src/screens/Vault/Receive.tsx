@@ -87,7 +87,7 @@ export default function VaultReceive() {
       <div className='qg-receive'>
         <span className='qg-protected'>
           {spending ? <ShieldCheck /> : <KeyRound />}
-          {spending ? 'Protected' : 'Two keys'}
+          {spending ? 'Spending limits' : 'Two-key Savings'}
         </span>
         {request ? (
           <div className='qg-qr' aria-label='Payment request QR code'>
@@ -103,11 +103,11 @@ export default function VaultReceive() {
         {spending ? (
           <section className='qg-addresses' aria-label='Payment addresses'>
             <AddressRow
-              label='Arkade'
+              label='Fast'
               value={spendingArkAddress}
               testId='receive-arkade-address'
               copied={copied === spendingArkAddress}
-              onCopy={() => void copy(spendingArkAddress, 'Arkade address')}
+              onCopy={() => void copy(spendingArkAddress, 'Fast payment address')}
             />
             <AddressRow
               label='Bitcoin'

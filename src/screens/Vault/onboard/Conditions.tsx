@@ -60,7 +60,10 @@ export default function VaultConditions() {
     >
       <p className='qg-eyebrow'>Your guardrails</p>
       <h1>Set comfortable limits</h1>
-      <p className='qg-copy'>The Vault service approves payments within these enrolled limits.</p>
+      <p className='qg-copy'>
+        Choose how much a compromised device could authorize before you can respond. Limits reduce exposure but do not
+        eliminate risk.
+      </p>
       <label className='qg-money-field'>
         <span>Per payment</span>
         <div>

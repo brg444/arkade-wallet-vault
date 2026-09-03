@@ -95,7 +95,7 @@ describe('Vault receive', () => {
     expect(screen.getByRole('heading', { name: 'Receive' })).toBeTruthy()
     expect(screen.queryByText('Add to Savings')).toBeNull()
     expect(screen.queryByText(/hardware key/i)).toBeNull()
-    expect(screen.getByText('Two keys')).toBeTruthy()
+    expect(screen.getByText('Two-key Savings')).toBeTruthy()
     expect(screen.getByTestId('receive-qr').textContent).toBe('tb1qsavings')
     expect(screen.getByTestId('receive-qr')).toHaveAttribute('data-large', 'true')
     expect(screen.getByTestId('receive-address')).toHaveTextContent('Bitcoin')

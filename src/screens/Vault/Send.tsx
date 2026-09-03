@@ -261,7 +261,7 @@ export default function VaultSend() {
             autoCorrect='off'
             spellCheck={false}
             enterKeyHint='done'
-            placeholder={fromSavings ? 'Bitcoin address' : 'Arkade address or Lightning invoice'}
+            placeholder={fromSavings ? 'Bitcoin address' : 'Payment address or Lightning invoice'}
             onChange={(event) => setAddress(event.target.value)}
           />
           <button type='button' aria-label='Scan destination' onClick={() => setScan(true)}>

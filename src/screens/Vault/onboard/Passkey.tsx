@@ -42,7 +42,10 @@ export default function VaultPasskey() {
     >
       <p className='qg-eyebrow'>Final step</p>
       <h1>Create your passkey</h1>
-      <p className='qg-copy'>Your passkey protects everyday approvals. Biometric data stays on this device.</p>
+      <p className='qg-copy'>
+        Your passkey protects everyday approvals and works with your enrolled limits. Biometric data stays on this
+        device.
+      </p>
       <section className='qg-device-key'>
         <Fingerprint />
         <span>

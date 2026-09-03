@@ -107,7 +107,7 @@ describe('Vaulted recovery chrome', () => {
     })
     expect(document.querySelector('.qg-handle')).toBeTruthy()
     expect(screen.getByTestId('screen-title')).toHaveTextContent('Recovery')
-    expect(screen.getByRole('heading', { name: 'Start with a key you still have.' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Recover with a key you still control.' })).toBeTruthy()
     expect(screen.queryByText('This device')).toBeTruthy()
     fireEvent.click(screen.getByTestId('header-back'))
     expect(navigate).toHaveBeenCalledWith('home')
