@@ -155,11 +155,18 @@ function Probe() {
       <span data-testid='screen'>{vault.screen}</span>
       <span data-testid='ready'>{String(Boolean(vault.status?.enrolled))}</span>
       <span data-testid='fee'>{vault.spend.fee}</span>
+      <span data-testid='destination'>{vault.spend.address}</span>
       <span data-testid='error'>{vault.error}</span>
       <span data-testid='kind'>{vault.lastTxKind}</span>
       <span data-testid='activity'>{vault.history[0]?.activity || ''}</span>
       <button type='button' onClick={() => vault.setSpendDraft({ address: destination, amount: 12_000 })}>
         Set draft
+      </button>
+      <button type='button' onClick={() => vault.navigate('home')}>
+        Go home
+      </button>
+      <button type='button' onClick={() => vault.openSendScan()}>
+        Open scan
       </button>
       <button type='button' onClick={vault.reviewSpend}>
         Review
@@ -231,6 +238,28 @@ describe('VaultProvider reviewed VTXO reservation', () => {
       validUntil: 4_000_000_000,
       refundLocktime: 4_000_000_100,
     })
+  })
+
+  it('forgets a previous send destination when returning home or opening the Home camera', async () => {
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    expect(screen.getByTestId('destination')).toHaveTextContent(destination)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go home' }))
+    expect(screen.getByTestId('screen')).toHaveTextContent('home')
+    expect(screen.getByTestId('destination')).toHaveTextContent('')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    expect(screen.getByTestId('destination')).toHaveTextContent(destination)
+    fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
+    expect(screen.getByTestId('screen')).toHaveTextContent('send')
+    expect(screen.getByTestId('destination')).toHaveTextContent('')
   })
 
   it('clears a stale review and returns to Send without reporting success', async () => {

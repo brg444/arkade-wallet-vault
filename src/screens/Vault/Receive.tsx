@@ -42,22 +42,18 @@ export default function VaultReceive() {
       }
     >
       <div className='qg-receive'>
-        <section className='qg-receive-copy'>
-          {spending ? (
-            <span className='qg-protected'>
-              <ShieldCheck />
-              Protected
-            </span>
-          ) : (
+        {spending ? (
+          <span className='qg-protected'>
+            <ShieldCheck />
+            Protected
+          </span>
+        ) : (
+          <section className='qg-receive-copy'>
             <p className='qg-eyebrow'>Bitcoin address</p>
-          )}
-          <h3>{spending ? 'Receive to Spending' : 'Add to Savings'}</h3>
-          <p>
-            {spending
-              ? 'Works with Arkade and Bitcoin wallets.'
-              : 'Use this Bitcoin address. Moving it later needs this device and your hardware key.'}
-          </p>
-        </section>
+            <h3>Add to Savings</h3>
+            <p>Use this Bitcoin address. Moving it later needs this device and your hardware key.</p>
+          </section>
+        )}
         {request ? (
           <div className='qg-qr' aria-label='Payment request QR code'>
             <QrCode large value={request} />

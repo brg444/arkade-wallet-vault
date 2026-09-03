@@ -1,8 +1,9 @@
-import { Settings, Shield, X } from 'lucide-react'
+import { Landmark, Settings, Shield, Wallet, X } from 'lucide-react'
 import HollowPixelMark from '../../icons/HollowPixelMark'
+import { prettyNumber } from '../../lib/format'
 import { hapticLight } from '../../lib/haptics'
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { VaultContext, type VaultScreen } from '../../vault/context'
+import { VaultContext, type VaultAccount, type VaultScreen } from '../../vault/context'
 
 export type VaultDestination = 'wallet' | 'security' | 'settings'
 
@@ -16,8 +17,13 @@ const ACTIONS: { id: string; label: string; testId: string; icon: ReactNode; scr
   { id: 'settings', label: 'Settings', testId: 'tab-settings', icon: <Settings />, screen: 'settings' },
 ]
 
+const ACCOUNTS: { id: VaultAccount; label: string; testId: string; icon: ReactNode }[] = [
+  { id: 'spend', label: 'Spending', testId: 'account-spend', icon: <Wallet /> },
+  { id: 'savings', label: 'Savings', testId: 'account-savings', icon: <Landmark /> },
+]
+
 export default function VaultNavigation() {
-  const { navigate } = useContext(VaultContext)
+  const { account, balancesLoaded, navigate, positions, setAccount } = useContext(VaultContext)
   const [open, setOpen] = useState(false)
   const [intro, setIntro] = useState(true)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -52,6 +58,13 @@ export default function VaultNavigation() {
     navigate(screen)
   }
 
+  const chooseAccount = (next: VaultAccount) => {
+    hapticLight()
+    setAccount(next)
+    restoreTriggerFocus.current = true
+    setOpen(false)
+  }
+
   return (
     <div className={open ? 'qg-launcher is-open' : 'qg-launcher'}>
       {open ? (
@@ -62,6 +75,33 @@ export default function VaultNavigation() {
             id='vault-main-navigation'
             onClick={(event) => event.stopPropagation()}
           >
+            {ACCOUNTS.map((item) => {
+              const position = item.id === 'spend' ? positions.spending : positions.savings
+              const on = account === item.id
+              return (
+                <button
+                  key={item.id}
+                  type='button'
+                  className={on ? 'qg-launcher-item is-on' : 'qg-launcher-item'}
+                  onClick={() => chooseAccount(item.id)}
+                  aria-label={item.label}
+                  aria-pressed={on}
+                  data-testid={item.testId}
+                >
+                  <span className='qg-launcher-copy'>
+                    <span className='qg-launcher-label'>{item.label}</span>
+                    <span className='qg-launcher-amt'>
+                      {balancesLoaded
+                        ? `${prettyNumber(position.totalSats)} ${position.totalSats === 1 ? 'SAT' : 'SATS'}`
+                        : 'Loading…'}
+                    </span>
+                  </span>
+                  <span className='qg-launcher-icon' aria-hidden='true'>
+                    {item.icon}
+                  </span>
+                </button>
+              )
+            })}
             {ACTIONS.map((action) => (
               <button
                 key={action.id}

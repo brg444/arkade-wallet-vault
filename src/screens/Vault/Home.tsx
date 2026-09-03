@@ -1,23 +1,12 @@
-import { Menu } from '@base-ui/react/menu'
-import { useContext, useEffect, useRef } from 'react'
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  ChevronDown,
-  ChevronRight,
-  Clock3,
-  QrCode,
-  ScanLine,
-  Shield,
-  ShieldAlert,
-} from 'lucide-react'
+import { useContext, useEffect } from 'react'
+import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock3, QrCode, ScanLine, Shield, ShieldAlert } from 'lucide-react'
 import { prettyNumber } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
-import { VaultContext, type VaultAccount } from '../../vault/context'
+import { VaultContext } from '../../vault/context'
 import Content from './Content'
 import VaultHistory from './History'
-import { QgCheck, QgMark } from './qg/QgScreen'
+import { QgMark } from './qg/QgScreen'
 
 export default function VaultHome() {
   const {
@@ -34,11 +23,9 @@ export default function VaultHome() {
     refreshBalance,
     refreshingBalance,
     positions,
-    setAccount,
+    clearSpendDraft,
     setSpendDraft,
   } = useContext(VaultContext)
-  const spendingItem = useRef<HTMLElement>(null)
-  const savingsItem = useRef<HTMLElement>(null)
 
   useEffect(() => {
     void reloadIfNewerWallet()
@@ -51,87 +38,17 @@ export default function VaultHome() {
 
   const spending = account === 'spend'
   const position = spending ? positions.spending : positions.savings
-  const sats = spending ? position.availableSats : position.totalSats
+  const sats = position.totalSats
   const satsUnit = sats === 1 ? 'SAT' : 'SATS'
-
-  const choose = (next: VaultAccount) => {
-    hapticSubtle()
-    setAccount(next)
-  }
 
   return (
     <Content className='qg-home-content'>
       <main className='qg-home'>
         <header className='qg-account-bar vault-account-bar'>
-          <Menu.Root
-            onOpenChangeComplete={(open) => {
-              if (open) (spending ? spendingItem : savingsItem).current?.focus()
-            }}
-          >
-            <Menu.Trigger type='button' className='qg-account' data-testid='account-switcher' onClick={hapticSubtle}>
-              <QgMark />
-              <small>{spending ? '1/2' : '2/2'}</small>
-              <strong>{spending ? 'Spending' : 'Savings'}</strong>
-              <ChevronDown className='qg-account-chevron' />
-            </Menu.Trigger>
-            <Menu.Portal>
-              <Menu.Backdrop className='qg-account-backdrop' />
-              <Menu.Positioner className='qg-account-positioner' sideOffset={12} align='start'>
-                <Menu.Popup className='qg-account-menu' aria-label='Accounts'>
-                  <Menu.RadioGroup value={account} onValueChange={(value) => choose(value as VaultAccount)}>
-                    <Menu.RadioItem
-                      ref={spendingItem}
-                      value='spend'
-                      closeOnClick
-                      className={spending ? 'qg-account-option is-on' : 'qg-account-option'}
-                      data-testid='account-spend'
-                    >
-                      <span className='qg-account-option-copy'>
-                        <span className='qg-account-option-name'>Spending</span>
-                        <span className='qg-account-option-meta'>This device, within your limits</span>
-                        <span className='qg-account-option-amt'>
-                          {balancesLoaded
-                            ? `${prettyNumber(positions.spending.availableSats)} ${positions.spending.availableSats === 1 ? 'SAT' : 'SATS'} available`
-                            : 'Loading…'}
-                        </span>
-                      </span>
-                      {spending ? (
-                        <span className='qg-account-option-check' aria-hidden='true'>
-                          <QgCheck />
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                    </Menu.RadioItem>
-                    <Menu.RadioItem
-                      ref={savingsItem}
-                      value='savings'
-                      closeOnClick
-                      className={!spending ? 'qg-account-option is-on' : 'qg-account-option'}
-                      data-testid='account-savings'
-                    >
-                      <span className='qg-account-option-copy'>
-                        <span className='qg-account-option-name'>Savings</span>
-                        <span className='qg-account-option-meta'>This device and hardware</span>
-                        <span className='qg-account-option-amt'>
-                          {balancesLoaded
-                            ? `${prettyNumber(positions.savings.totalSats)} ${positions.savings.totalSats === 1 ? 'SAT' : 'SATS'} total`
-                            : 'Loading…'}
-                        </span>
-                      </span>
-                      {!spending ? (
-                        <span className='qg-account-option-check' aria-hidden='true'>
-                          <QgCheck />
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                    </Menu.RadioItem>
-                  </Menu.RadioGroup>
-                </Menu.Popup>
-              </Menu.Positioner>
-            </Menu.Portal>
-          </Menu.Root>
+          <div className='qg-account' data-testid='account-switcher'>
+            <QgMark />
+            <strong>{spending ? 'Spending' : 'Savings'}</strong>
+          </div>
           <div className='qg-utilities'>
             <button
               type='button'
@@ -180,15 +97,12 @@ export default function VaultHome() {
           <strong>{balancesLoaded ? prettyNumber(sats) : '—'}</strong>
           {balancesLoaded ? <span>{satsUnit}</span> : null}
         </section>
-        {!spending && balancesLoaded && positions.savings.availableSats !== positions.savings.totalSats ? (
-          <p className='qg-helper'>{prettyNumber(positions.savings.availableSats)} sats currently spendable</p>
-        ) : null}
-
         <div className='qg-actions'>
           <button
             type='button'
             disabled={spending ? !canSend : positions.savings.availableSats <= 330}
             onClick={() => {
+              clearSpendDraft()
               if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
               navigate('send')
             }}
@@ -214,7 +128,6 @@ export default function VaultHome() {
             <div>
               <strong>{prettyNumber(positions.spending.pendingSats)} sats arriving</strong>
               <p>Available after Bitcoin confirmation.</p>
-              <small data-testid='spending-total'>{prettyNumber(positions.spending.totalSats)} sats total</small>
             </div>
           </section>
         ) : null}
