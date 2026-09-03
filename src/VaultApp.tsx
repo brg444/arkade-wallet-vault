@@ -38,7 +38,7 @@ export default function VaultApp() {
     bootVaultPrefs()
     return bootVaultFrame()
   }, [])
-  const destination = destinationForScreen(screen)
+  const launcher = destinationForScreen(screen)
   const pages = {
     welcome: <VaultWelcome />,
     handoff: <VaultHandoff />,
@@ -65,13 +65,11 @@ export default function VaultApp() {
     tx: <VaultTx />,
   }
   const page = pages[screen] || <VaultWelcome />
-  const className = ['page', `vault-screen-${screen}`, destination ? 'has-vault-navigation' : '']
-    .filter(Boolean)
-    .join(' ')
+  const className = ['page', `vault-screen-${screen}`, launcher ? 'has-vault-navigation' : ''].filter(Boolean).join(' ')
   return (
     <div className={className} data-testid='vault-app'>
       {page}
-      {destination ? <VaultNavigation active={destination} /> : null}
+      {launcher ? <VaultNavigation /> : null}
     </div>
   )
 }

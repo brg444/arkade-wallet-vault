@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type PointerEvent, type ReactNode } from 'react'
 import BackIcon from '../../../icons/Back'
 import { hapticLight } from '../../../lib/haptics'
 
@@ -105,6 +105,8 @@ export function QgTextButton({ label, onClick, testId }: { label: string; onClic
   )
 }
 
+const DISMISS_DISTANCE = 88
+
 export default function QgScreen({
   variant = 'flow',
   brand,
@@ -113,6 +115,7 @@ export default function QgScreen({
   back,
   backAriaLabel = 'Go back',
   close,
+  dismiss,
   aux,
   auxAriaLabel,
   auxOnClick,
@@ -126,6 +129,7 @@ export default function QgScreen({
   back?: () => void
   backAriaLabel?: string
   close?: () => void
+  dismiss?: () => void
   aux?: ReactNode
   auxAriaLabel?: string
   auxOnClick?: () => void
@@ -133,6 +137,8 @@ export default function QgScreen({
   footer?: ReactNode
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const drag = useRef({ startY: 0, dy: 0, active: false })
+  const sheet = Boolean(dismiss && !back && !close)
   const activate = (fn?: () => void) => () => {
     hapticLight()
     fn?.()
@@ -145,8 +151,58 @@ export default function QgScreen({
     heading.focus({ preventScroll: true })
   }, [title, variant])
 
+  useEffect(() => {
+    if (!sheet) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      hapticLight()
+      dismiss?.()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sheet, dismiss])
+
+  const resetSheet = () => {
+    const node = rootRef.current
+    if (!node) return
+    node.style.transform = ''
+    node.style.transition = ''
+  }
+
+  const onPointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (!sheet || event.button !== 0) return
+    drag.current = { startY: event.clientY, dy: 0, active: true }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const onPointerMove = (event: PointerEvent<HTMLElement>) => {
+    if (!drag.current.active) return
+    const dy = Math.max(0, event.clientY - drag.current.startY)
+    drag.current.dy = dy
+    const node = rootRef.current
+    if (!node) return
+    node.style.transition = 'none'
+    node.style.transform = `translateY(${dy}px)`
+  }
+
+  const onPointerUp = () => {
+    if (!drag.current.active) return
+    const dy = drag.current.dy
+    drag.current.active = false
+    if (dy >= DISMISS_DISTANCE) {
+      hapticLight()
+      resetSheet()
+      dismiss?.()
+      return
+    }
+    const node = rootRef.current
+    if (!node) return
+    node.style.transition = 'transform 180ms ease'
+    node.style.transform = 'translateY(0)'
+  }
+
   return (
-    <div ref={rootRef} className={`qg-screen qg-screen-${variant}`}>
+    <div ref={rootRef} className={`qg-screen qg-screen-${variant}${sheet ? ' is-sheet' : ''}`}>
       {brand ? (
         <header className='qg-brand'>
           <QgMark />
@@ -154,8 +210,25 @@ export default function QgScreen({
           <small>MUTINYNET</small>
         </header>
       ) : variant === 'progress' || variant === 'success' ? null : (
-        <header className='qg-header'>
-          {back || close ? (
+        <header className={sheet ? 'qg-header qg-header-sheet' : 'qg-header'}>
+          {sheet ? (
+            <button
+              type='button'
+              className='qg-handle-btn'
+              aria-label={backAriaLabel}
+              data-testid='header-back'
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              onClick={() => {
+                if (drag.current.dy >= DISMISS_DISTANCE) return
+                activate(dismiss)()
+              }}
+            >
+              <span className='qg-handle' aria-hidden='true' />
+            </button>
+          ) : back || close ? (
             <button
               type='button'
               aria-label={close ? 'Return home' : backAriaLabel}
@@ -168,7 +241,7 @@ export default function QgScreen({
             <span />
           )}
           {title ? <h2 data-testid='screen-title'>{title}</h2> : <span />}
-          {aux ? (
+          {sheet ? null : aux ? (
             <button
               type='button'
               className='qg-header-aux'

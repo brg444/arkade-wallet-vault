@@ -127,7 +127,7 @@ export default function VaultSend() {
   return (
     <QgScreen
       title={movingToSpending ? 'Move to Spending' : fromSavings ? 'Send from Savings' : 'Send'}
-      back={() => navigate('home')}
+      dismiss={() => navigate('home')}
       footer={
         <>
           <ErrorMessage error={Boolean(error)} text={error} />

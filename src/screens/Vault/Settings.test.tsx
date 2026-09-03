@@ -34,5 +34,6 @@ describe('Vault settings account boundaries', () => {
     expect(screen.getByTestId('settings-refresh')).toHaveRole('button')
     expect(screen.getByTestId('settings-logs')).toHaveRole('button')
     expect(screen.getByTestId('settings-signout')).toHaveRole('button')
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeTruthy()
   })
 })
