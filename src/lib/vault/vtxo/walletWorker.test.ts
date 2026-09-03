@@ -18,6 +18,23 @@ function activatedWorker(name: string) {
   return { name, state: 'activated' } as unknown as ServiceWorker
 }
 
+function spendingAddress() {
+  return new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
+}
+
+function operatorProvider(intentFee: Record<string, string>, vtxoMaxAmount = -1n) {
+  return {
+    getInfo: vi.fn().mockResolvedValue({
+      fees: { intentFee },
+      vtxoMaxAmount,
+    }),
+  } as never
+}
+
+function confirmedUtxo(value = 100_000, txid = 'aa'.repeat(32)) {
+  return { txid, vout: 1, value, status: { confirmed: true as const } }
+}
+
 describe('Vault service-worker isolation', () => {
   it('deduplicates page-owned boarding requests while the worker settlement is pending', async () => {
     let finish!: (txid: string) => void
@@ -149,23 +166,170 @@ describe('Vault service-worker isolation', () => {
   })
 
   it('bounds fee evaluation across all confirmed boarding inputs', async () => {
-    const address = new ArkAddress(hex.decode('11'.repeat(32)), hex.decode('22'.repeat(32)), 'tark').encode()
-    const provider = {
-      getInfo: vi.fn().mockResolvedValue({
-        fees: { intentFee: { onchainInput: '5001.0', offchainOutput: '0.0' } },
-        vtxoMaxAmount: -1n,
-      }),
-    }
-    const confirmed = Array.from({ length: 4 }, (_, index) => ({
+    const address = spendingAddress()
+    const provider = operatorProvider({ onchainInput: '5001.0', offchainOutput: '0.0' })
+    const confirmed = Array.from({ length: 17 }, (_, index) => ({
       txid: index.toString(16).padStart(64, '0'),
       vout: 0,
       value: 100_000,
       status: { confirmed: true },
     }))
 
-    await expect(vaultBoardingSettleParams(confirmed as never, address, 5_000, provider as never)).rejects.toThrow(
+    await expect(vaultBoardingSettleParams(confirmed as never, address, 5_000, provider)).rejects.toThrow(
       'vault-board-v1 Operator fee policy exceeds the evaluation limit',
     )
+  })
+
+  it('keeps the current zero Operator fee as a full boarding receiver', async () => {
+    const address = spendingAddress()
+    const params = await vaultBoardingSettleParams(
+      [confirmedUtxo()] as never,
+      address,
+      5_000,
+      operatorProvider({
+        offchainInput: '0.0',
+        offchainOutput: '0.0',
+        onchainInput: '0.0',
+        onchainOutput: '0.0',
+      }),
+    )
+
+    expect(params).toEqual({
+      inputs: [confirmedUtxo()],
+      outputs: [{ address, amount: 100_000n }],
+    })
+  })
+
+  it('treats empty Operator fee programs as zero', async () => {
+    const address = spendingAddress()
+    const params = await vaultBoardingSettleParams(
+      [confirmedUtxo()] as never,
+      address,
+      5_000,
+      operatorProvider({
+        offchainInput: '',
+        offchainOutput: '',
+        onchainInput: '',
+        onchainOutput: '',
+      }),
+    )
+
+    expect(params?.outputs).toEqual([{ address, amount: 100_000n }])
+  })
+
+  it('fails closed when the Operator fee policy is not a double program', async () => {
+    await expect(
+      vaultBoardingSettleParams(
+        [confirmedUtxo()] as never,
+        spendingAddress(),
+        5_000,
+        operatorProvider({ onchainInput: '0', offchainOutput: '0' }),
+      ),
+    ).rejects.toThrow('vault-board-v1 Operator fee policy is invalid')
+  })
+
+  it('treats omitted Operator fee programs as zero', async () => {
+    const address = spendingAddress()
+    const params = await vaultBoardingSettleParams([confirmedUtxo()] as never, address, 5_000, operatorProvider({}))
+
+    expect(params?.outputs).toEqual([{ address, amount: 100_000n }])
+  })
+
+  it('refuses a boarding output below dust', async () => {
+    const address = spendingAddress()
+    await expect(
+      vaultBoardingSettleParams(
+        [confirmedUtxo(329)] as never,
+        address,
+        5_000,
+        operatorProvider({ onchainInput: '0.0', offchainOutput: '0.0' }),
+      ),
+    ).rejects.toThrow('vault-board-v1 has no economical confirmed input within the Operator limit')
+  })
+
+  it('boards an exact-dust input only when the Operator fee is zero', async () => {
+    const address = spendingAddress()
+    const dust = confirmedUtxo(330)
+    const params = await vaultBoardingSettleParams(
+      [dust] as never,
+      address,
+      5_000,
+      operatorProvider({ onchainInput: '0.0', offchainOutput: '0.0' }),
+    )
+
+    expect(params).toEqual({
+      inputs: [dust],
+      outputs: [{ address, amount: 330n }],
+    })
+  })
+
+  it('selects a later confirmed input when earlier ones cannot satisfy vtxoMaxAmount', async () => {
+    const address = spendingAddress()
+    const oversized = confirmedUtxo(100_000, '00'.repeat(32))
+    const allowed = confirmedUtxo(50_000, 'ff'.repeat(32))
+    const params = await vaultBoardingSettleParams(
+      [oversized, allowed] as never,
+      address,
+      5_000,
+      operatorProvider({ onchainInput: '0.0', offchainOutput: '0.0' }, 50_000n),
+    )
+
+    expect(params).toEqual({
+      inputs: [allowed],
+      outputs: [{ address, amount: 50_000n }],
+    })
+  })
+
+  it('fails closed when no integer receiver satisfies the Operator fee', async () => {
+    const address = spendingAddress()
+    await expect(
+      vaultBoardingSettleParams(
+        [confirmedUtxo()] as never,
+        address,
+        5_000,
+        operatorProvider({ onchainInput: '0.0', offchainOutput: 'amount * 2.0' }),
+      ),
+    ).rejects.toThrow('vault-board-v1 has no economical confirmed input within the Operator limit')
+  })
+
+  it('fails closed on a negative Operator fee result', async () => {
+    const address = spendingAddress()
+    await expect(
+      vaultBoardingSettleParams(
+        [confirmedUtxo()] as never,
+        address,
+        5_000,
+        operatorProvider({ onchainInput: '0.0', offchainOutput: '-1.0' }),
+      ),
+    ).rejects.toThrow('vault-board-v1 Operator fee result is invalid')
+  })
+
+  it('rejects a non-integer boarding fee cap', async () => {
+    await expect(vaultBoardingSettleParams([], spendingAddress(), 1.5)).rejects.toThrow(
+      'vault-board-v1 fee cap is invalid',
+    )
+  })
+
+  it('still finds an exact fee after earlier uneconomical confirmed inputs', async () => {
+    const address = spendingAddress()
+    const uneconomical = Array.from({ length: 3 }, (_, index) => ({
+      txid: index.toString(16).padStart(64, '0'),
+      vout: 0,
+      value: 100_001,
+      status: { confirmed: true },
+    }))
+    const economical = confirmedUtxo(100_000, 'ff'.repeat(32))
+    const params = await vaultBoardingSettleParams(
+      [...uneconomical, economical] as never,
+      address,
+      5_000,
+      operatorProvider({ onchainInput: 'amount * 0.05', offchainOutput: '0.0' }),
+    )
+
+    expect(params).toEqual({
+      inputs: [economical],
+      outputs: [{ address, amount: 95_000n }],
+    })
   })
 
   it('keeps A → B → A registrations on their distinct scope and worker', async () => {
