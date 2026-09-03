@@ -30,7 +30,11 @@ export default function VaultWelcome() {
           ) : (
             <QgPrimary onClick={() => navigate('design')} label='Get started' />
           )}
-          {locked ? <QgTextButton onClick={() => navigate('design')} label='Set up another vault' /> : null}
+          {locked ? (
+            <QgTextButton onClick={() => navigate('design')} label='Set up another vault' />
+          ) : (
+            <QgTextButton onClick={() => void signIn()} label='Sign in to an existing vault' />
+          )}
           <p>
             {locked
               ? onPhone

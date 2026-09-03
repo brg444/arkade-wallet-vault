@@ -51,16 +51,12 @@ test('enrolls, locks, and unlocks with a CTAP2.1 resident PRF passkey', async ({
   await secretAudit.assertNoSecretsPersisted(page)
 })
 
-test('enrolls the reviewed lower-exposure policy as this vault immutable policy', async ({
-  page,
-  authorizer,
-  passkey,
-}) => {
+test('enrolls the reviewed default policy as this vault immutable policy', async ({ page, authorizer, passkey }) => {
   void passkey
   await enrollVaultWithPasskey(page, authorizer)
   expect(authorizer.selectedSpendingPolicy()).toMatchObject({
-    txRecipientCapSats: 25_000,
-    periodAllowanceSats: 50_000,
+    txRecipientCapSats: 50_000,
+    periodAllowanceSats: 100_000,
     absoluteFeeCapSats: 5_000,
     feerateCapSatPerV: 10,
   })
@@ -70,7 +66,7 @@ test('enrolls the reviewed lower-exposure policy as this vault immutable policy'
     const pin = JSON.parse(localStorage.getItem(key) || '{}') as { spendingPolicyCanonical?: string }
     return pin.spendingPolicyCanonical ? JSON.parse(pin.spendingPolicyCanonical) : null
   })
-  expect(storedPolicy).toMatchObject({ txRecipientCapSats: 25_000, periodAllowanceSats: 50_000 })
+  expect(storedPolicy).toMatchObject({ txRecipientCapSats: 50_000, periodAllowanceSats: 100_000 })
 })
 
 test('a cancelled Face ID prompt retries through the same button', async ({ page, authorizer, passkey }) => {

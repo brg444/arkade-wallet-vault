@@ -14,7 +14,7 @@ vi.mock('../../lib/vault/savingsSpend', async (importOriginal) => ({
   readPsbtFile,
 }))
 
-function renderHandoff() {
+function renderHandoff(network: 'mutinynet' | 'mainnet' = 'mutinynet') {
   const completeSavingsHandoff = vi.fn(async () => {})
   const cancelSavingsHandoff = vi.fn()
   render(
@@ -29,6 +29,7 @@ function renderHandoff() {
             handoffPsbt: '00',
             navigate: vi.fn(),
             spend: { address: 'tb1pdestination', amount: 50_000, fee: 1_500 },
+            status: { network },
           } as unknown as VaultContextProps
         }
       >
@@ -76,6 +77,17 @@ describe('Savings hardware handoff', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Broadcast transaction' }))
 
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt-base64'))
+  })
+
+  it('labels a mainnet handoff as Bitcoin', () => {
+    renderHandoff('mainnet')
+    fireEvent.click(screen.getByRole('button', { name: 'I’ve signed it' }))
+    fireEvent.change(screen.getByTestId('savings-signed-psbt-paste'), {
+      target: { value: 'hardware-signed-psbt-base64' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Use this PSBT' }))
+    expect(screen.getByText('Bitcoin')).toBeTruthy()
+    expect(screen.queryByText('Mutinynet')).toBeNull()
   })
 
   it('can delete the locally pending transfer', () => {

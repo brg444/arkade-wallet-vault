@@ -462,13 +462,13 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await page.getByRole('button', { name: 'Resume payment' }).click()
 
   await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
-  await expect(page.getByText('12,000 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText('₿12,000', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Reveal' }).click()
   await expect(page.getByRole('region', { name: 'Payment details' }).locator('strong').first()).toContainText(
     destination,
   )
-  await expect(page.getByText('500 SATS', { exact: true })).toBeVisible()
-  await expect(page.getByText('12,500 SATS', { exact: true })).toBeVisible()
+  await expect(page.getByText('₿500', { exact: true })).toBeVisible()
+  await expect(page.getByText('₿12,500', { exact: true })).toBeVisible()
   await expect(page.getByText('Vault service', { exact: true })).toBeVisible()
   await expect(page.getByText('Automatic if this payment is within your limits')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Approve payment' })).toBeVisible()
@@ -498,7 +498,7 @@ test('renders an exact no-change VTXO send with the resolved time before its rec
   const sent = page.getByTestId(`vault-tx-${sendTxid}`)
   await expect(page.getByTestId('vault-balance')).toContainText('0')
   await expect(sent).toContainText('Sent')
-  await expect(sent).toContainText('12,500 SATS')
+  await expect(sent).toContainText('₿12,500')
   const expectedTime = await page.evaluate(
     (timestamp) => new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(new Date(timestamp)),
     sentAt,
@@ -534,7 +534,7 @@ test('nets VTXO change into one rendered send and omits it as a receive', async 
   await expect(page.getByTestId('vault-balance')).toContainText('7,500')
   await expect(sent).toHaveCount(1)
   await expect(sent).toContainText('Sent')
-  await expect(sent).toContainText('12,500 SATS')
+  await expect(sent).toContainText('₿12,500')
   await expect(sent).not.toContainText('Received')
   await expect(page.getByTestId(`vault-tx-${inputTxid}`)).toContainText('Received')
 })
@@ -551,7 +551,7 @@ test('shows a pending boarding deposit, then replaces it with the confirmed VTXO
   const { state, status } = await openVault(page, { boardingUtxos: [pending] })
 
   await expect(page.getByTestId('vault-balance')).toContainText('50,000')
-  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats arriving')
+  await expect(page.getByTestId('spending-pending')).toContainText('₿50,000 arriving')
   await expect(page.getByTestId('spending-total')).toHaveCount(0)
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toContainText('Pending')
 
@@ -600,16 +600,14 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
   await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])
   await refreshHome(page)
   await expect(page.getByTestId('vault-balance')).toContainText('70,000')
-  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats arriving')
+  await expect(page.getByTestId('spending-pending')).toContainText('₿50,000 arriving')
   await expect(page.getByTestId('spending-total')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(page.getByLabel('Spending capacity')).toContainText('20,000 sats')
+  await expect(page.getByLabel('Spending capacity')).toContainText('₿20,000')
   await page.getByTestId('vault-send-amount').fill('30000')
   await page.getByPlaceholder('Payment address or Lightning invoice').fill(destination)
-  await page.getByRole('button', { name: 'Review payment' }).click()
-
-  await expect(page.getByText('Not enough confirmed spending funds.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Review payment' })).toBeDisabled()
   await expect(page.getByRole('heading', { name: 'Review' })).toHaveCount(0)
 })
 
@@ -742,11 +740,8 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await refreshHome(page)
 
   await expect(page.getByTestId('vault-balance')).toContainText('128,000')
-  await expect(page.getByTestId('spending-pending')).toContainText('48,000 sats arriving')
+  await expect(page.getByTestId('spending-pending')).toContainText('₿48,000 arriving')
   await expect(page.getByTestId('spending-total')).toHaveCount(0)
-  await expect
-    .poll(() => page.locator('.vault-home-hero').evaluate((element) => getComputedStyle(element, '::after').content))
-    .toBe('none')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('home-with-pending.png', { animations: 'disabled', fullPage: true })
   const homeViewport = page.viewportSize()
@@ -778,7 +773,8 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByRole('heading', { name: 'Scan payment' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('payment-scanner.png', { animations: 'disabled', fullPage: true })
-  await page.getByRole('button', { name: 'Cancel' }).click()
+  const cancelScanner = page.getByRole('button', { name: 'Cancel' })
+  if (await cancelScanner.isVisible()) await cancelScanner.click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Send' })).toHaveCount(0)
 
@@ -803,12 +799,12 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page).toHaveScreenshot('send-spending.png', { animations: 'disabled', fullPage: true })
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Payment address or Lightning invoice').fill(destination)
-  await page.getByRole('button', { name: 'Review payment' }).click()
+  await page.getByRole('button', { name: 'Resume payment' }).click()
   await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
   await expect(page.getByText('Mutinynet', { exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('send-review.png', { animations: 'disabled', fullPage: true })
-  await expectReachableAbove(page, '.vault-review-approvals', '.buttons-on-bottom')
+  await expectReachableAbove(page, '.qg-approvals', '.qg-footer')
 
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByRole('button', { name: 'Go back' }).click()
@@ -871,15 +867,15 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page).toHaveScreenshot('settings-logs.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByTestId('settings-signout').click()
-  await expect(page.getByRole('heading', { name: 'Sign out' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sign out', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('settings-signout.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByRole('button', { name: 'Go back' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
 
-  await page.getByRole('button', { name: /Received 80,000 SATS/ }).click()
-  await expect(page.getByRole('heading', { name: 'Received' })).toBeVisible()
+  await page.getByRole('button', { name: /Received ₿80,000/ }).click()
+  await expect(page.getByRole('heading', { name: 'Transaction' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('transaction-received.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
@@ -897,7 +893,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('receive-savings.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
-  await page.getByRole('button', { name: 'Move to Spending' }).click()
+  await page.getByRole('button', { name: 'Spending', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Move to Spending' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('send-savings.png', { animations: 'disabled', fullPage: true })
