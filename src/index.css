@@ -71,6 +71,19 @@ body,
   background-color: var(--background-color, #fff);
 }
 
+/* Installed-PWA only: size the shell to the currently visible viewport so
+   bottom actions stay above standalone browser chrome and OS gesture areas. */
+@media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+  #root {
+    position: relative;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
