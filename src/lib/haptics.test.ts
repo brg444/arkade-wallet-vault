@@ -1,39 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { trigger, WebHaptics } = vi.hoisted(() => {
+  const trigger = vi.fn().mockResolvedValue(undefined)
+  const WebHaptics = vi.fn(function MockWebHaptics() {
+    return { trigger }
+  })
+  return { trigger, WebHaptics }
+})
+
+vi.mock('web-haptics', () => ({ WebHaptics }))
+
 import { bootHaptics, hapticLight, hapticSubtle, hapticTap, setHapticsEnabled } from './haptics'
 
 describe('vault haptics', () => {
   beforeEach(() => {
+    trigger.mockClear()
+    WebHaptics.mockClear()
     setHapticsEnabled(true)
-    document.body.replaceChildren()
-    vi.spyOn(HTMLLabelElement.prototype, 'click')
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
-    document.body.replaceChildren()
   })
 
-  it('clicks an on-screen iOS switch so Taptic Engine can fire', () => {
-    hapticLight()
-    const input = document.querySelector('input[switch]') as HTMLInputElement | null
-    const label = document.querySelector('label[for="qg-haptic-switch"]') as HTMLLabelElement | null
-    expect(input).toBeTruthy()
-    expect(label).toBeTruthy()
-    expect(input?.style.display).not.toBe('none')
-    expect(label?.style.display).not.toBe('none')
-    expect(HTMLLabelElement.prototype.click).toHaveBeenCalled()
-  })
-
-  it('reuses the same switch after boot', () => {
+  it('uses the same selection and light presets as Arkade Wallet', () => {
     bootHaptics()
     hapticSubtle()
     hapticTap()
-    expect(document.querySelectorAll('input[switch]')).toHaveLength(1)
+    hapticLight()
+
+    expect(trigger).toHaveBeenNthCalledWith(1, 'selection')
+    expect(trigger).toHaveBeenNthCalledWith(2, 'selection')
+    expect(trigger).toHaveBeenNthCalledWith(3, 'light')
   })
 
   it('stays quiet when haptics are off', () => {
     setHapticsEnabled(false)
     hapticLight()
-    expect(HTMLLabelElement.prototype.click).not.toHaveBeenCalled()
+
+    expect(trigger).not.toHaveBeenCalled()
+  })
+
+  it('respects the device reduced-motion preference', () => {
+    vi.mocked(window.matchMedia).mockReturnValue({ matches: true } as MediaQueryList)
+    hapticLight()
+
+    expect(trigger).not.toHaveBeenCalled()
   })
 })
