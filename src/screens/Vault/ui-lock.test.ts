@@ -56,6 +56,7 @@ describe('vault UI lock', () => {
     const app = read('src/VaultApp.tsx')
     expect(app).toContain('VaultRecovery')
     expect(app).toContain('VaultRecover')
+    expect(app).toContain('VaultUnlock')
     const enroll = read('src/lib/vault/tenantEnrollment.ts')
     expect(enroll).toMatch(/recoveryXOnly/)
     expect(enroll).toMatch(/wantRecovery/)

@@ -12,6 +12,7 @@ export type VaultAccount = 'spend' | 'savings'
 
 export type VaultScreen =
   | 'welcome'
+  | 'unlock'
   | 'design'
   | 'hardware'
   | 'conditions'

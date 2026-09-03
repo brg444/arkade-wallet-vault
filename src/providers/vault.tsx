@@ -110,8 +110,19 @@ export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null,
   )
 }
 
+function initialScreen(): VaultScreen {
+  try {
+    const selected = loadSelectedVaultId()
+    const existing = selected ? loadEnrollment(localStorage, selected) : findStoredEnrollment()
+    if (existing && loadVaultPrivacyLock()) return 'unlock'
+  } catch {
+    // Fall through to welcome when storage is unavailable.
+  }
+  return 'welcome'
+}
+
 export function VaultProvider({ children }: { children: ReactNode }) {
-  const [screen, setScreen] = useState<VaultScreen>('welcome')
+  const [screen, setScreen] = useState<VaultScreen>(initialScreen)
   const [recoverEntry, setRecoverEntry] = useState<'kit' | 'lost'>('kit')
   const [recoverExit, setRecoverExit] = useState<VaultScreen>('keys')
   const [setup, setSetup] = useState<VaultSetupPlan>(emptySetupPlan)
@@ -175,7 +186,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const sessionLocked = loadSessionLocked() || Boolean(existing && loadVaultPrivacyLock())
       setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
-      if (existing && sessionLocked) {
+      if (existing && loadVaultPrivacyLock()) {
+        setScreen('unlock')
+      } else if (existing && sessionLocked) {
         setScreen('welcome')
       } else if (existing && existingPin) {
         setScreen('home')
@@ -1128,7 +1141,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       clearSendScan: () => setScanOnSend(false),
       savingsAddress,
       positions,
-      screen: loaded ? screen : 'welcome',
+      screen: loaded || screen === 'unlock' ? screen : 'welcome',
       setAccount: selectAccount,
       clearSpendDraft,
       setSpendDraft,

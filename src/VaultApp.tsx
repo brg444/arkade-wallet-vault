@@ -11,6 +11,7 @@ import VaultSend from './screens/Vault/Send'
 import VaultSuccess from './screens/Vault/Success'
 import VaultHandoff from './screens/Vault/Handoff'
 import VaultWelcome from './screens/Vault/Welcome'
+import VaultUnlock from './screens/Vault/Unlock'
 import VaultKeys from './screens/Vault/Keys'
 import VaultSettings from './screens/Vault/Settings'
 import VaultConditions from './screens/Vault/onboard/Conditions'
@@ -41,6 +42,7 @@ export default function VaultApp() {
   const launcher = destinationForScreen(screen)
   const pages = {
     welcome: <VaultWelcome />,
+    unlock: <VaultUnlock />,
     handoff: <VaultHandoff />,
     design: <VaultDesign />,
     hardware: <VaultHardware />,
