@@ -468,8 +468,8 @@ test('shows a pending boarding deposit, then replaces it with the confirmed VTXO
   const { state, status } = await openVault(page, { boardingUtxos: [pending] })
 
   await expect(page.getByTestId('vault-balance')).toContainText('0')
-  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats · Arriving via Bitcoin')
-  await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 50,000 sats')
+  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats arriving')
+  await expect(page.getByTestId('spending-total')).toContainText('50,000 sats total')
   await expect(page.getByTestId(`vault-tx-${BOARDING_TXID}`)).toContainText('Pending')
 
   state.boardingUtxos = []
@@ -517,8 +517,8 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
   await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])
   await refreshHome(page)
   await expect(page.getByTestId('vault-balance')).toContainText('20,000')
-  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats · Arriving via Bitcoin')
-  await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 70,000 sats')
+  await expect(page.getByTestId('spending-pending')).toContainText('50,000 sats arriving')
+  await expect(page.getByTestId('spending-total')).toContainText('70,000 sats total')
 
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   await page.getByTestId('vault-send-amount').fill('30000')
@@ -593,8 +593,8 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await refreshHome(page)
 
   await expect(page.getByTestId('vault-balance')).toContainText('80,000')
-  await expect(page.getByTestId('spending-pending')).toContainText('48,000 sats · Arriving via Bitcoin')
-  await expect(page.getByTestId('spending-total')).toContainText('Total in Spending: 128,000 sats')
+  await expect(page.getByTestId('spending-pending')).toContainText('48,000 sats arriving')
+  await expect(page.getByTestId('spending-total')).toContainText('128,000 sats total')
   await expect
     .poll(() => page.locator('.vault-home-hero').evaluate((element) => getComputedStyle(element, '::after').content))
     .toBe('none')
@@ -659,7 +659,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByTestId('security-readiness')).toContainText('Ready')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('security.png', { animations: 'disabled', fullPage: true })
-  await expectReachableAbove(page, '[data-testid="security-lost"]', '.pill-navbar')
+  await expectReachableAbove(page, '[data-testid="security-lost"]', '.vault-navigation')
 
   await page.getByTestId('security-kit').click()
   await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()

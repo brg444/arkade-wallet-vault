@@ -20,7 +20,7 @@ import VaultRecovery from './screens/Vault/onboard/Recovery'
 import VaultRecover from './screens/Vault/Recover'
 import VaultSignIn from './screens/Vault/onboard/SignIn'
 import VaultTx from './screens/Vault/Tx'
-import VaultPillNav, { tabForScreen } from './screens/Vault/PillNav'
+import VaultNavigation, { destinationForScreen } from './screens/Vault/Navigation'
 import { bootVaultPrefs } from './lib/vault/prefs'
 
 export default function VaultApp() {
@@ -29,8 +29,7 @@ export default function VaultApp() {
     document.title = 'Arkade Vault'
     bootVaultPrefs()
   }, [])
-  const tab = tabForScreen(screen)
-  const showNavbar = Boolean(tab)
+  const destination = destinationForScreen(screen)
   const pages = {
     welcome: <VaultWelcome />,
     handoff: <VaultHandoff />,
@@ -52,11 +51,13 @@ export default function VaultApp() {
     tx: <VaultTx />,
   }
   const page = pages[screen] || <VaultWelcome />
-  const className = ['page', `vault-screen-${screen}`, showNavbar ? 'has-pill-navbar' : ''].filter(Boolean).join(' ')
+  const className = ['page', `vault-screen-${screen}`, destination ? 'has-vault-navigation' : '']
+    .filter(Boolean)
+    .join(' ')
   return (
     <div className={className} data-testid='vault-app'>
       {page}
-      {tab ? <VaultPillNav visible={showNavbar} active={tab} /> : null}
+      {destination ? <VaultNavigation active={destination} /> : null}
     </div>
   )
 }

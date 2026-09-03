@@ -3,27 +3,17 @@ import { useContext, useEffect, useRef } from 'react'
 import Button from '../../components/Button'
 import Content from './Content'
 import ErrorMessage from '../../components/Error'
-import Text from '../../components/Text'
-import { useToast } from '../../components/Toast'
 import SmallLogo from '../../components/SmallLogo'
 import ChevronDownIcon from '../../icons/ChevronDown'
 import QrIcon from '../../icons/Qr'
 import ReceiveIcon from '../../icons/Receive'
 import ScanIcon from '../../icons/Scan'
-import SendIcon from '../../icons/Send'
-import { copyToClipboard } from '../../lib/clipboard'
+import TransferArrowIcon from '../../icons/TransferArrow'
 import { prettyNumber } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
-import { truncateAddress } from '../../lib/vault/policy'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext, type VaultAccount } from '../../vault/context'
 import VaultHistory from './History'
-import { Meter } from './ui'
-
-function fundableAddress(value: string): string {
-  if (!value || value.startsWith('bcrt1')) return ''
-  return value
-}
 
 export default function VaultHome() {
   const {
@@ -32,22 +22,17 @@ export default function VaultHome() {
     balancesLoaded,
     boardingAddress,
     canSend,
-    dailyLimit,
-    dailyRemaining,
     error,
     navigate,
     openSendScan,
     openRecover,
     initiateAlert,
     refreshBalance,
-    spendingArkAddress,
     refreshingBalance,
-    savingsAddress,
     positions,
     setAccount,
     setSpendDraft,
   } = useContext(VaultContext)
-  const { toast } = useToast()
   const spendingItem = useRef<HTMLElement>(null)
   const savingsItem = useRef<HTMLElement>(null)
 
@@ -63,9 +48,6 @@ export default function VaultHome() {
   const spending = account === 'spend'
   const position = spending ? positions.spending : positions.savings
   const sats = spending ? position.availableSats : position.totalSats
-  const address = spending ? spendingArkAddress : fundableAddress(savingsAddress)
-  const used = Math.max(0, dailyLimit - dailyRemaining)
-  const ratio = dailyLimit > 0 ? Math.min(1, used / dailyLimit) : 0
   const satsUnit = sats === 1 ? 'SAT' : 'SATS'
 
   const choose = (next: VaultAccount) => {
@@ -143,19 +125,6 @@ export default function VaultHome() {
                     </Menu.Positioner>
                   </Menu.Portal>
                 </Menu.Root>
-                {address ? (
-                  <button
-                    type='button'
-                    className='vault-account-addr'
-                    data-testid='account-address'
-                    onClick={() => {
-                      void copyToClipboard(address)
-                      toast('Address copied')
-                    }}
-                  >
-                    {truncateAddress(address, 6)}
-                  </button>
-                ) : null}
               </div>
               <div className='vault-account-actions'>
                 <button
@@ -182,41 +151,26 @@ export default function VaultHome() {
               </div>
             </div>
             <div className='vault-home-balance'>
-              <p className='vault-balance-label'>{spending ? 'Available to spend' : 'Savings balance'}</p>
               <p
                 className='vault-balance-figure'
                 data-testid='vault-balance'
                 aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
                 aria-live='polite'
+                aria-label={
+                  balancesLoaded
+                    ? `${spending ? 'Spending' : 'Savings'} balance: ${prettyNumber(sats)} ${satsUnit}`
+                    : `${spending ? 'Spending' : 'Savings'} balance loading`
+                }
               >
                 {balancesLoaded ? prettyNumber(sats) : '—'}
                 {balancesLoaded ? <span className='vault-balance-unit'>{satsUnit}</span> : null}
               </p>
-              {!balancesLoaded ? (
-                balanceError ? null : (
-                  <Text color='neutral-600' tiny wrap>
-                    Loading {spending ? 'Spending' : 'Savings'} balance…
-                  </Text>
-                )
-              ) : spending ? (
-                <div className='vault-home-limit'>
-                  <Text color='neutral-600' tiny>
-                    {prettyNumber(dailyRemaining, 0)} remaining of {prettyNumber(dailyLimit, 0)} in your rolling 24-hour
-                    limit
-                  </Text>
-                  <Meter ratio={ratio} label='Rolling 24-hour limit used' />
-                </div>
-              ) : (
-                <Text color='neutral-600' tiny wrap>
-                  Moving funds requires this device and your hardware key.
-                </Text>
-              )}
             </div>
             <div className='vault-home-actions'>
               <Button
                 main
                 className='vault-home-action-send'
-                icon={<SendIcon />}
+                icon={<TransferArrowIcon />}
                 label={spending ? 'Send' : 'Move to Spending'}
                 disabled={spending ? !canSend : positions.savings.availableSats <= 330}
                 onClick={() => {
@@ -227,7 +181,7 @@ export default function VaultHome() {
               <Button
                 main
                 className='vault-home-action-receive'
-                icon={<ReceiveIcon />}
+                icon={<TransferArrowIcon incoming />}
                 label={spending ? 'Receive' : 'Add to Savings'}
                 onClick={() => navigate('receive')}
               />
@@ -244,11 +198,11 @@ export default function VaultHome() {
                 </span>
                 <span className='vault-status-content'>
                   <span className='vault-status-label'>
-                    {prettyNumber(positions.spending.pendingSats)} sats · Arriving via Bitcoin
+                    {prettyNumber(positions.spending.pendingSats)} sats arriving
                   </span>
-                  <span className='vault-status-copy'>Available after confirmation and automatic boarding.</span>
+                  <span className='vault-status-copy'>Available after Bitcoin confirmation.</span>
                   <span className='vault-status-total' data-testid='spending-total'>
-                    Total in Spending: {prettyNumber(positions.spending.totalSats)} sats
+                    {prettyNumber(positions.spending.totalSats)} sats total
                   </span>
                 </span>
               </div>
@@ -260,12 +214,8 @@ export default function VaultHome() {
                   <ReceiveIcon />
                 </span>
                 <span className='vault-status-content'>
-                  <span className='vault-status-label'>
-                    {prettyNumber(positions.savings.availableSats)} sats available to move
-                  </span>
-                  <span className='vault-status-copy'>
-                    {prettyNumber(positions.savings.pendingSats)} sats are waiting for Bitcoin confirmation.
-                  </span>
+                  <span className='vault-status-label'>{prettyNumber(positions.savings.pendingSats)} sats pending</span>
+                  <span className='vault-status-copy'>Waiting for Bitcoin confirmation.</span>
                 </span>
               </div>
             ) : null}
