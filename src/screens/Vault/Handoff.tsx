@@ -31,7 +31,7 @@ export default function VaultHandoff() {
   const [fileError, setFileError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const psbtFile = useMemo(
-    () => (payload ? new File([payload], 'savings-transfer.psbt', { type: 'application/octet-stream' }) : null),
+    () => (payload ? new File([payload], 'Savings transfer.psbt', { type: 'application/octet-stream' }) : null),
     [payload],
   )
   const canShareFile = Boolean(

@@ -691,7 +691,7 @@ export async function reachPasskeySetup(
   policyPreset: 'lower-exposure' | 'everyday' | 'custom' = 'everyday',
 ) {
   await page.goto('/')
-  await expect(page.getByText('Spending and Savings, together')).toBeVisible()
+  await expect(page.getByText('Spend freely. Recover safely.')).toBeVisible()
   await page.getByRole('button', { name: 'Set up a new vault' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
@@ -699,7 +699,7 @@ export async function reachPasskeySetup(
   await page.getByRole('button', { name: 'Use Standard' }).click()
   await page.getByTestId(`policy-preset-${policyPreset}`).click()
   await page.getByRole('button', { name: 'Review setup' }).click()
-  await page.getByRole('button', { name: 'Secure this device' }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByTestId('enrollment-token')).toBeVisible()
 }
 
@@ -710,7 +710,7 @@ export async function enrollVaultWithPasskey(
 ) {
   await reachPasskeySetup(page, policyPreset)
   await page.getByTestId('enrollment-token').fill(authorizer.invite)
-  await page.getByRole('button', { name: 'Secure this device' }).click()
+  await page.getByRole('button', { name: 'Create Vault' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
 }
 

@@ -27,7 +27,7 @@ export default function VaultPasskey() {
   const inviteReady = token.trim().length >= 32
   return (
     <OnboardLayout
-      title='This device'
+      title='Secure this device'
       step={6}
       error={error}
       onBack={() => navigate('plan')}
@@ -36,7 +36,7 @@ export default function VaultPasskey() {
           <Button
             onClick={() => enroll(token.trim())}
             disabled={busy || !inviteReady || passkeyAvailable !== true}
-            label={busy ? 'Check your device…' : 'Secure this device'}
+            label={busy ? 'Check your device…' : 'Create Vault'}
           />
         </>
       }

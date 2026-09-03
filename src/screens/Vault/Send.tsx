@@ -125,15 +125,34 @@ export default function VaultSend() {
           <FlexCol className='vault-send-form'>
             <Input
               className='vault-send-amount-input'
-              label='Amount (sats)'
+              label='Amount'
               type='number'
               min='330'
               value={spend.amount || ''}
               readOnly={lightning}
               onChange={(value: string) => setSpendDraft({ amount: Number(value) || 0 })}
-              placeholder='20000'
+              placeholder='20,000'
               testId='vault-send-amount'
             />
+            {fromSavings ? (
+              <p className='vault-send-available'>
+                {prettyNumber(positions.savings.availableSats, 0)} sats available to move
+              </p>
+            ) : (
+              <section className='vault-send-capacity' aria-label='Spending capacity'>
+                <div>
+                  <span>Available</span>
+                  <strong>{prettyNumber(positions.spending.availableSats, 0)} sats</strong>
+                </div>
+                <div>
+                  <span>Rolling 24-hour limit</span>
+                  <strong>
+                    {prettyNumber(availableSpend, 0)} of {prettyNumber(setup.dailyLimitSats, 0)} remaining
+                  </strong>
+                </div>
+                <Meter ratio={ratio} label='Rolling 24-hour limit used' />
+              </section>
+            )}
             <AddressInput
               label='To'
               placeholder={fromSavings ? 'Bitcoin address' : 'Arkade address or Lightning invoice'}
@@ -153,27 +172,20 @@ export default function VaultSend() {
               openScan={() => setScan(true)}
               validator={(value) => isVaultSendInput(value, destNetwork, !fromSavings)}
             />
-            <Text color='neutral-600' tiny wrap>
-              {fromSavings
-                ? movingToSpending
-                  ? `Moving to Spending costs ${prettyAmount(spend.fee)} and requires this device to sign before your hardware key.`
-                  : `Sending from Savings costs ${prettyAmount(spend.fee)} and requires this device to sign before your hardware key.`
-                : lightning
-                  ? 'The solver and VTXO fees appear on the next screen.'
-                  : `Spending allows up to ${prettyAmount(setup.txCapSats)} per payment, and the fee appears on the next screen.`}
-            </Text>
             {fromSavings ? (
-              <Text color='neutral-600' tiny>
-                {prettyNumber(positions.savings.availableSats, 0)} sats available to move
-              </Text>
+              <div className='vault-send-note'>
+                <span aria-hidden='true'>2</span>
+                <div>
+                  <strong>Two approvals are required</strong>
+                  <p>Your passkey signs first. Your hardware key signs next.</p>
+                </div>
+              </div>
             ) : (
-              <>
-                <Text color='neutral-600' tiny>
-                  {prettyNumber(availableSpend, 0)} remaining of {prettyNumber(setup.dailyLimitSats, 0)} in your rolling
-                  24-hour limit
-                </Text>
-                <Meter ratio={ratio} label='Rolling 24-hour limit used' />
-              </>
+              <Text color='neutral-600' tiny wrap>
+                {lightning
+                  ? 'The solver and VTXO fees appear before approval.'
+                  : `Up to ${prettyAmount(setup.txCapSats)} per payment. The fee appears before approval.`}
+              </Text>
             )}
             <ErrorMessage error={Boolean(error)} text={error} />
           </FlexCol>

@@ -42,14 +42,11 @@ export default function VaultReview() {
             </section>
             <section className='vault-review-approvals' aria-label='Required approvals'>
               <p className='vault-section-label'>Approvals</p>
-              <SignerRow title='You' detail='Passkey' state='you' mark='1' />
+              <SignerRow title='You' detail='Approve with passkey' state='you' mark='1' />
               {fromSavings ? (
-                <SignerRow title='Hardware' detail='Signs next, on the other device' state='you' mark='2' />
+                <SignerRow title='Hardware key' detail='Signs next on the other device' state='you' mark='2' />
               ) : (
-                <>
-                  <SignerRow title='Vault service' detail='Approves within your enrolled limits' state='auto' />
-                  <SignerRow title='Hardware' detail='Not needed for this send' state='unused' />
-                </>
+                <SignerRow title='Vault service' detail='Within your enrolled limits' state='auto' />
               )}
             </section>
             <ErrorMessage error={Boolean(error)} text={error} />

@@ -138,7 +138,7 @@ export default function VaultRecover() {
   const saveKit = () => {
     setLocalError('')
     try {
-      downloadJson('arkade-recovery-kit.json', downloadRecoveryKit())
+      downloadJson('Recovery Kit.json', downloadRecoveryKit())
       toast('Recovery Kit saved')
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')

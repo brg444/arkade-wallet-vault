@@ -18,7 +18,7 @@ async function expectNoBlockingAxeViolations(page: Page) {
 
 test('@polish welcome is accessible and visually stable', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Spending and Savings, together')).toBeVisible()
+  await expect(page.getByText('Spend freely. Recover safely.')).toBeVisible()
   await expect(page.getByText('Mutinynet only. Don’t send real Bitcoin.')).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('welcome.png', { animations: 'disabled', fullPage: true })
@@ -69,7 +69,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   await page.goto('/')
   await page.getByRole('button', { name: 'Set up a new vault' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('heading', { name: 'Add hardware' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hardware key' })).toBeVisible()
   const hardwarePub = page.getByTestId('hardware-pub')
   await hardwarePub.fill(PROGRAM_FIXTURE.hardwarePub)
   await hardwarePub.blur()
@@ -109,12 +109,12 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   await page.getByTestId('policy-preset-everyday').click()
   await page.getByRole('button', { name: 'Review setup' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Your setup' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-review.png', { animations: 'disabled', fullPage: true })
-  await page.getByRole('button', { name: 'Secure this device' }).click()
+  await page.getByRole('button', { name: 'Continue' }).click()
 
-  await expect(page.getByRole('heading', { name: 'This device' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Secure this device' })).toBeVisible()
   await expect(page.getByTestId('enrollment-token')).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-device.png', { animations: 'disabled', fullPage: true })

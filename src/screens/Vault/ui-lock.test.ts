@@ -112,7 +112,7 @@ describe('vault UI lock', () => {
     const home = read('src/screens/Vault/Home.tsx')
     expect(home).toContain('account-switcher')
     expect(home).not.toContain('in your rolling 24-hour')
-    expect(read('src/screens/Vault/Send.tsx')).toMatch(/in your rolling\s+24-hour/)
+    expect(read('src/screens/Vault/Send.tsx')).toMatch(/Rolling 24-hour limit/)
     expect(home).not.toMatch(/Phone may spend/)
     expect(home).not.toMatch(/Mutinynet · live coins/)
     expect(home).not.toMatch(/Daily path ready/)

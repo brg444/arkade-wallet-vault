@@ -12,6 +12,7 @@ import { copyToClipboard } from '../../lib/clipboard'
 import { encodeVaultBip21 } from '../../lib/vault/bip21'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
+import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import { HubGroup, HubRow } from './ui'
 
 export default function VaultReceive() {
@@ -51,61 +52,74 @@ export default function VaultReceive() {
 
   return (
     <>
-      <Header text={spending ? 'Receive to Spending' : 'Add to Savings'} back={() => navigate('home')} />
+      <Header text='Receive' back={() => navigate('home')} />
       <Content noRefresh className='vault-receive-content'>
         <Padded>
           <FlexCol>
-            {request ? (
-              <QrCode large value={request} />
-            ) : (
-              <Text>
-                {spending
-                  ? 'Spending receive is unavailable. Return to the wallet and try again.'
-                  : 'Savings is not restored on this device. Sign in again to restore it.'}
-              </Text>
-            )}
+            <div className='vault-receive-stage'>
+              {spending ? (
+                <span className='vault-receive-protected'>
+                  <ShieldCheckOutlineIcon />
+                  Protected
+                </span>
+              ) : null}
+              <h2>{spending ? 'Receive to Spending' : 'Add to Savings'}</h2>
+              <p>
+                {spending ? 'Works with Arkade and Bitcoin wallets.' : 'Use this Bitcoin address to add to Savings.'}
+              </p>
+              {request ? (
+                <QrCode large value={request} />
+              ) : (
+                <Text>
+                  {spending
+                    ? 'Spending receive is unavailable. Return to the wallet and try again.'
+                    : 'Savings is not restored on this device. Sign in again to restore it.'}
+                </Text>
+              )}
+            </div>
             {!spending ? (
               <p className='vault-receive-addr' data-testid='receive-address'>
                 {request || '—'}
               </p>
             ) : null}
             {spending ? (
-              <HubGroup label='Payment addresses'>
-                <HubRow
-                  title='Arkade address'
-                  detail={truncateAddress(spendingArkAddress, 10)}
-                  status={copied === spendingArkAddress ? 'Copied' : 'Copy'}
-                  onClick={() => void copy(spendingArkAddress, 'Arkade address')}
-                  testId='receive-arkade-address'
-                />
-                <HubRow
-                  title='Bitcoin address'
-                  detail={truncateAddress(boardingAddress, 10)}
-                  status={copied === boardingAddress ? 'Copied' : 'Copy'}
-                  onClick={() => void copy(boardingAddress, 'Bitcoin address')}
-                  testId='receive-bitcoin-address'
-                />
-              </HubGroup>
+              <div className='vault-receive-addresses'>
+                <HubGroup label='Payment addresses'>
+                  <HubRow
+                    title='Arkade'
+                    detail={truncateAddress(spendingArkAddress, 10)}
+                    status={copied === spendingArkAddress ? 'Copied' : 'Copy'}
+                    onClick={() => void copy(spendingArkAddress, 'Arkade address')}
+                    testId='receive-arkade-address'
+                  />
+                  <HubRow
+                    title='Bitcoin'
+                    detail={truncateAddress(boardingAddress, 10)}
+                    status={copied === boardingAddress ? 'Copied' : 'Copy'}
+                    onClick={() => void copy(boardingAddress, 'Bitcoin address')}
+                    testId='receive-bitcoin-address'
+                  />
+                </HubGroup>
+              </div>
             ) : null}
           </FlexCol>
         </Padded>
       </Content>
       <ButtonsOnBottom>
+        <Button
+          className='vault-commit-action'
+          onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
+          disabled={!request}
+          label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}
+        />
         {canShare ? (
           <Button
-            className='vault-commit-action'
+            secondary
             onClick={() => void share()}
             disabled={!request}
             label={spending ? 'Share payment request' : 'Share Savings address'}
           />
         ) : null}
-        <Button
-          secondary={canShare}
-          className={canShare ? undefined : 'vault-commit-action'}
-          onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
-          disabled={!request}
-          label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}
-        />
       </ButtonsOnBottom>
     </>
   )
