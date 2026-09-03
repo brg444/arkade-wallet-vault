@@ -1115,6 +1115,32 @@ describe('regular VTXO spend coordinator', () => {
     ])
   })
 
+  it('accepts the Operator SDK normalization of redundant taptree depth metadata', async () => {
+    const built = buildReservedVtxoSpend(status(), reserve(), 12_000, destination(), FEE_POLICY_DIGEST)
+    const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+    const operatorSigned = await operator.sign(built.checkpoints[0])
+    const input = (
+      operatorSigned as unknown as {
+        inputs: { unknown?: [{ type: number; key: Uint8Array }, Uint8Array][] }[]
+      }
+    ).inputs[0]
+    const entry = input.unknown?.find(([key]) => key.type === 222 && hex.encode(key.key) === '74617074726565')
+    expect(entry).toBeTruthy()
+    const normalized = Uint8Array.from(entry![1])
+    let changed = 0
+    for (let index = 0; index + 1 < normalized.length; index++) {
+      if (normalized[index] === 1 && normalized[index + 1] === 0xc0) {
+        normalized[index] = 2
+        changed++
+      }
+    }
+    expect(changed).toBeGreaterThan(0)
+    entry![1] = normalized
+    expect(() =>
+      requireOperatorSignedCheckpoint(built.checkpoints[0], operatorSigned, hex.decode(golden.fixtures.arkdServerPub)),
+    ).not.toThrow()
+  })
+
   it('binds pending lookup to the exact checkpoints and requires phone plus VaultCosigner', async () => {
     const fixture = await authorizedPendingFixture()
     expect(
