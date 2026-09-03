@@ -31,12 +31,14 @@ export function OnboardLayout({
       <Content noRefresh className='vault-onboard-content'>
         <Padded>
           <FlexCol gap='1.15rem' className='vault-onboard-flow'>
-            <StepRail step={step} total={total} />
-            <p className='vault-step-label' aria-live='polite'>
-              <span>
-                Step {step} of {total}
-              </span>
-            </p>
+            <div className='vault-step-progress'>
+              <StepRail step={step} total={total} />
+              <p className='vault-step-label' aria-live='polite'>
+                <span>
+                  Step {step} of {total}
+                </span>
+              </p>
+            </div>
             {children}
             <ErrorMessage error={Boolean(error)} text={error || ''} />
           </FlexCol>

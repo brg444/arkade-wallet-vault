@@ -56,39 +56,50 @@ export default function VaultHandoff() {
       <Content noRefresh className='vault-handoff-content'>
         <Padded>
           <FlexCol gap='1.15rem' className='vault-flow vault-handoff-flow'>
-            <Text wrap>
-              This device signed and saved the pending transfer. Sign the PSBT with your hardware key, then upload the
-              signed .psbt file here.
-            </Text>
-            <Text color='neutral-600' tiny wrap>
-              {prettyAmount(spend.amount)}
-            </Text>
-            <Button
-              label='Copy PSBT'
-              onClick={() => {
-                void (async () => {
-                  await copyToClipboard(payload)
-                  toast('PSBT copied')
-                })()
-              }}
-            />
-            <button type='button' className='vault-inline-paste' onClick={() => setShowQr((open) => !open)}>
-              {showQr ? 'Hide QR' : 'Show QR instead'}
-            </button>
-            {showQr ? (
-              <>
-                <PsbtQr value={current} />
-                {frames.length > 1 ? (
-                  <button
-                    type='button'
-                    className='vault-inline-paste'
-                    onClick={() => setFrame((n) => (n + 1) % frames.length)}
-                  >
-                    Next QR
-                  </button>
-                ) : null}
-              </>
-            ) : null}
+            <div className='vault-handoff-intro'>
+              <p className='vault-kicker'>Pending Savings transfer</p>
+              <p className='vault-handoff-amount'>{prettyAmount(spend.amount)}</p>
+              <Text color='neutral-600' tiny wrap>
+                This device has signed. Complete the transfer with your hardware key.
+              </Text>
+            </div>
+            <section className='vault-handoff-step' aria-labelledby='vault-handoff-export-title'>
+              <div className='vault-handoff-step-head'>
+                <span aria-hidden='true'>1</span>
+                <div>
+                  <p id='vault-handoff-export-title'>Open on your hardware wallet</p>
+                  <Text color='neutral-600' tiny wrap>
+                    Copy the unsigned PSBT or show it as a QR code, then sign it with your hardware key.
+                  </Text>
+                </div>
+              </div>
+              <Button
+                label='Copy PSBT'
+                onClick={() => {
+                  void (async () => {
+                    await copyToClipboard(payload)
+                    toast('PSBT copied')
+                  })()
+                }}
+              />
+              <button type='button' className='vault-inline-paste' onClick={() => setShowQr((open) => !open)}>
+                {showQr ? 'Hide QR' : 'Show QR instead'}
+              </button>
+              {showQr ? (
+                <>
+                  <PsbtQr value={current} />
+                  {frames.length > 1 ? (
+                    <button
+                      type='button'
+                      className='vault-inline-paste'
+                      onClick={() => setFrame((n) => (n + 1) % frames.length)}
+                    >
+                      Next QR
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+            </section>
             <input
               ref={fileInput}
               hidden
@@ -113,29 +124,40 @@ export default function VaultHandoff() {
                   })
               }}
             />
-            <Button
-              secondary
-              label={selectedFile ? 'Choose a different PSBT' : 'Upload signed PSBT'}
-              onClick={() => fileInput.current?.click()}
-            />
-            <Input
-              label='Signed PSBT'
-              placeholder='Paste signed PSBT (base64 or hex)'
-              value={pasted}
-              testId='savings-signed-psbt-paste'
-              onChange={(value) => {
-                setPasted(value)
-                setSelectedFile('')
-                setFileError('')
-              }}
-            />
-            {selectedFile ? (
-              <Text color='neutral-600' tiny wrap>
-                {selectedFile} is ready to broadcast.
-              </Text>
-            ) : null}
+            <section className='vault-handoff-step' aria-labelledby='vault-handoff-return-title'>
+              <div className='vault-handoff-step-head'>
+                <span aria-hidden='true'>2</span>
+                <div>
+                  <p id='vault-handoff-return-title'>Return the signed transaction</p>
+                  <Text color='neutral-600' tiny wrap>
+                    Upload the signed .psbt file, or paste the signed PSBT below.
+                  </Text>
+                </div>
+              </div>
+              <Button
+                secondary
+                label={selectedFile ? 'Choose a different PSBT' : 'Upload signed PSBT'}
+                onClick={() => fileInput.current?.click()}
+              />
+              <Input
+                label='Signed PSBT'
+                placeholder='Paste signed PSBT (base64 or hex)'
+                value={pasted}
+                testId='savings-signed-psbt-paste'
+                onChange={(value) => {
+                  setPasted(value)
+                  setSelectedFile('')
+                  setFileError('')
+                }}
+              />
+              {selectedFile ? (
+                <Text color='neutral-600' tiny wrap>
+                  {selectedFile} is ready to broadcast.
+                </Text>
+              ) : null}
+            </section>
             <ErrorMessage error={Boolean(fileError || error)} text={fileError || error} />
-            <button type='button' className='vault-inline-paste' onClick={cancelSavingsHandoff}>
+            <button type='button' className='vault-inline-paste vault-handoff-delete' onClick={cancelSavingsHandoff}>
               Delete pending transfer
             </button>
           </FlexCol>
