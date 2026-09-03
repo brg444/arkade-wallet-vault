@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultHome from './Home'
@@ -46,6 +46,10 @@ function renderHome(overrides: Partial<VaultContextProps>) {
 }
 
 describe('Vault home account boundaries', () => {
+  afterEach(() => {
+    localStorage.removeItem('arkade-vault-balance-unit')
+  })
+
   it('keeps receive details behind the explicit Home utilities', () => {
     renderHome({ account: 'spend' })
     expect(screen.queryByTestId('account-address')).toBeNull()
@@ -88,6 +92,25 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
   })
 
+  it('toggles the hero between ₿sats and USD at $100,000 per bitcoin', async () => {
+    const user = userEvent.setup()
+    renderHome({
+      account: 'spend',
+      positions: {
+        spending: { availableSats: 80_000, pendingSats: 48_000, totalSats: 128_000 },
+        savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+      },
+    })
+    const hero = screen.getByTestId('vault-balance')
+    expect(hero).toHaveTextContent('₿128,000')
+    expect(hero).not.toHaveTextContent('SATS')
+    await user.click(hero)
+    expect(hero).toHaveTextContent('$128.00')
+    expect(localStorage.getItem('arkade-vault-balance-unit')).toBe('usd')
+    await user.click(hero)
+    expect(hero).toHaveTextContent('₿128,000')
+  })
+
   it('shows total Spending balance even when some sats are still arriving', () => {
     renderHome({
       account: 'spend',
@@ -97,7 +120,7 @@ describe('Vault home account boundaries', () => {
       },
     })
     expect(screen.queryByText('Available to spend')).toBeNull()
-    expect(screen.getByTestId('vault-balance')).toHaveTextContent('128,000')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('₿128,000')
     expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 sats arriving')
     expect(screen.queryByTestId('spending-total')).toBeNull()
     expect(screen.queryByText(/currently spendable/i)).toBeNull()
@@ -111,7 +134,7 @@ describe('Vault home account boundaries', () => {
         savings: { availableSats: 20_000, pendingSats: 30_000, totalSats: 50_000 },
       },
     })
-    expect(screen.getByTestId('vault-balance')).toHaveTextContent('50,000')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('₿50,000')
     expect(screen.queryByText(/currently spendable/i)).toBeNull()
   })
 

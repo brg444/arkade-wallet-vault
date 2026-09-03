@@ -1,7 +1,9 @@
-import { useContext, useEffect } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock3, QrCode, ScanLine, Shield, ShieldAlert } from 'lucide-react'
 import { prettyNumber } from '../../lib/format'
 import { hapticLight, hapticSubtle } from '../../lib/haptics'
+import { homeBalanceDisplay } from '../../lib/vault/fiatDisplay'
+import { loadVaultBalanceUnit, saveVaultBalanceUnit } from '../../lib/vault/prefs'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import Content from './Content'
@@ -36,10 +38,17 @@ export default function VaultHome() {
     return () => window.removeEventListener('focus', onFocus)
   }, [])
 
+  const [balanceUnit, setBalanceUnit] = useState(() => {
+    try {
+      return loadVaultBalanceUnit()
+    } catch {
+      return 'sats' as const
+    }
+  })
   const spending = account === 'spend'
   const position = spending ? positions.spending : positions.savings
   const sats = position.totalSats
-  const satsUnit = sats === 1 ? 'SAT' : 'SATS'
+  const balance = homeBalanceDisplay(sats, balanceUnit)
 
   return (
     <Content className='qg-home-content'>
@@ -86,20 +95,31 @@ export default function VaultHome() {
           </div>
         </header>
 
-        <section
+        <button
+          type='button'
           className='qg-balance'
           data-testid='vault-balance'
+          disabled={!balancesLoaded}
           aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance}
           aria-live='polite'
           aria-label={
             balancesLoaded
-              ? `${spending ? 'Spending' : 'Savings'} balance: ${prettyNumber(sats)} ${satsUnit}`
+              ? `${spending ? 'Spending' : 'Savings'} balance: ${balance.label}. Show ${
+                  balanceUnit === 'usd' ? 'bitcoin' : 'USD'
+                }`
               : `${spending ? 'Spending' : 'Savings'} balance loading`
           }
+          onClick={() => {
+            if (!balancesLoaded) return
+            hapticSubtle()
+            const next = balanceUnit === 'usd' ? 'sats' : 'usd'
+            setBalanceUnit(next)
+            saveVaultBalanceUnit(next)
+          }}
         >
-          <strong>{balancesLoaded ? prettyNumber(sats) : '—'}</strong>
-          {balancesLoaded ? <span>{satsUnit}</span> : null}
-        </section>
+          <strong>{balancesLoaded ? balance.amount : '—'}</strong>
+          {balancesLoaded && balance.unit ? <span>{balance.unit}</span> : null}
+        </button>
         <div className='qg-actions'>
           <button
             type='button'

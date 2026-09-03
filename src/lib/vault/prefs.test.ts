@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { Themes } from '../types'
-import { applyVaultTheme, loadVaultPrivacyLock, loadVaultTheme, saveVaultPrivacyLock, saveVaultTheme } from './prefs'
+import {
+  applyVaultTheme,
+  loadVaultBalanceUnit,
+  loadVaultPrivacyLock,
+  loadVaultTheme,
+  saveVaultBalanceUnit,
+  saveVaultPrivacyLock,
+  saveVaultTheme,
+} from './prefs'
 
 if (typeof window === 'undefined') {
   const store = new Map<string, string>()
@@ -46,5 +54,14 @@ describe('vault prefs', () => {
     expect(loadVaultPrivacyLock()).toBe(true)
     saveVaultPrivacyLock(false)
     expect(loadVaultPrivacyLock()).toBe(false)
+  })
+
+  it('keeps Home on sats until USD is chosen', () => {
+    window.localStorage.clear()
+    expect(loadVaultBalanceUnit()).toBe('sats')
+    saveVaultBalanceUnit('usd')
+    expect(loadVaultBalanceUnit()).toBe('usd')
+    saveVaultBalanceUnit('sats')
+    expect(loadVaultBalanceUnit()).toBe('sats')
   })
 })
