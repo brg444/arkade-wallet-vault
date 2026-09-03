@@ -321,6 +321,7 @@ export default function QgScreen({
           if (!(target instanceof HTMLElement)) return
           if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return
           window.setTimeout(() => {
+            if (!target.isConnected || typeof target.scrollIntoView !== 'function') return
             target.scrollIntoView({ block: 'center', inline: 'nearest' })
           }, 50)
         }}
