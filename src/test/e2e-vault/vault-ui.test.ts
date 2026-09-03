@@ -378,7 +378,7 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
   await expect(page.getByText('20,000 remaining of 100,000 in your rolling 24-hour limit')).toBeVisible()
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
-  await page.getByRole('button', { name: 'Review send' }).click()
+  await page.getByRole('button', { name: 'Review payment' }).click()
 
   await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
   await expect(page.getByText('12,000 SATS', { exact: true })).toBeVisible()
@@ -523,7 +523,7 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
   await page.getByRole('button', { name: 'Send', exact: true }).click()
   await page.getByTestId('vault-send-amount').fill('30000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
-  await page.getByRole('button', { name: 'Review send' }).click()
+  await page.getByRole('button', { name: 'Review payment' }).click()
 
   await expect(page.getByText('Not enough confirmed spending funds.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Review' })).toHaveCount(0)
@@ -645,7 +645,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page).toHaveScreenshot('send-spending.png', { animations: 'disabled', fullPage: true })
   await page.getByTestId('vault-send-amount').fill('12000')
   await page.getByPlaceholder('Arkade address or Lightning invoice').fill(destination)
-  await page.getByRole('button', { name: 'Review send' }).click()
+  await page.getByRole('button', { name: 'Review payment' }).click()
   await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
   await expect(page.getByText('Mutinynet', { exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
@@ -654,12 +654,13 @@ test('@polish covers accessible account, send, Security, and Settings states', a
 
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByRole('button', { name: 'Go back' }).click()
+  await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByTestId('tab-vault').click()
   await expect(page.getByRole('heading', { name: 'Security' })).toBeVisible()
   await expect(page.getByTestId('security-readiness')).toContainText('Ready')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('security.png', { animations: 'disabled', fullPage: true })
-  await expectReachableAbove(page, '[data-testid="security-lost"]', '.vault-navigation')
+  await expectReachableAbove(page, '[data-testid="security-lost"]', '.vault-navigation-trigger')
 
   await page.getByTestId('security-kit').click()
   await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
@@ -672,6 +673,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await page.getByRole('button', { name: 'Go back' }).click()
   await page.getByRole('button', { name: 'Go back' }).click()
 
+  await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByTestId('tab-settings').click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
@@ -713,6 +715,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page).toHaveScreenshot('settings-signout.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
 
+  await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByTestId('tab-wallet').click()
   await page.getByRole('button', { name: /Received 80,000 SATS/ }).click()
   await expect(page.getByRole('heading', { name: 'Received' })).toBeVisible()

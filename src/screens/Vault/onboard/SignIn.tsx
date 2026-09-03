@@ -23,8 +23,8 @@ export default function VaultSignIn() {
           <FlexCol gap='1.15rem' className='vault-flow vault-signin-flow'>
             <Text wrap>
               {onPhone
-                ? 'Use device unlock, such as Face ID or your device PIN, if you set this vault up here. Do not create a new passkey.'
-                : 'This device will show a QR. Scan it with the device that created the vault, then approve device unlock there. Do not create a new passkey.'}
+                ? 'Use your passkey if you set this vault up here. Face ID, Touch ID, or your device PIN may approve it.'
+                : 'This device will show a QR. Scan it with the device that created the vault, then approve with its passkey.'}
             </Text>
             <KeyCard
               icon={<FingerprintIcon />}
@@ -43,7 +43,7 @@ export default function VaultSignIn() {
           label={
             busy
               ? onPhone
-                ? 'Waiting for device unlock…'
+                ? 'Waiting for passkey…'
                 : 'Waiting for QR…'
               : error
                 ? 'Try again'

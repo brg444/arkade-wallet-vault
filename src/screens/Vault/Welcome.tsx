@@ -1,18 +1,15 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect } from 'react'
 import Button from '../../components/Button'
 import ButtonsOnBottom from '../../components/ButtonsOnBottom'
 import Content from './Content'
 import ErrorMessage from '../../components/Error'
 import FlexCol from '../../components/FlexCol'
-import OnboardingLogo from '../../components/OnboardingLogo'
 import Padded from '../../components/Padded'
-import PixelSunrise from '../../components/PixelSunrise'
-import SmallLogo from '../../components/SmallLogo'
 import Text from '../../components/Text'
-import { useReducedMotion } from '../../hooks/useReducedMotion'
 import BoltOutlineIcon from '../../icons/BoltOutline'
 import SafeIcon from '../../icons/Safe'
 import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import HollowPixelMark from '../../icons/HollowPixelMark'
 import { isCoarsePhone } from '../../lib/vault/webauthn'
 import { VaultContext } from '../../vault/context'
 
@@ -35,28 +32,13 @@ export default function VaultWelcome() {
   useEffect(() => {
     if (hasLocalEnrollment && !locked) navigate('home')
   }, [hasLocalEnrollment, locked, navigate])
-  const prefersReduced = useReducedMotion()
-  const [ready, setReady] = useState(prefersReduced)
-  const [sunrise, setSunrise] = useState(prefersReduced)
-  const logoTargetRef = useRef<HTMLDivElement>(null)
-
-  const handleComplete = useCallback(() => setReady(true), [])
-
   return (
     <>
-      <OnboardingLogo
-        targetRef={logoTargetRef}
-        onComplete={handleComplete}
-        onFlyStart={() => setSunrise(true)}
-        reducedMotion={prefersReduced}
-      />
-      <PixelSunrise show={sunrise} reducedMotion={prefersReduced} />
-
       <Content noRefresh className='vault-welcome-content'>
         <Padded>
           <FlexCol between>
             <div
-              className={ready ? 'vault-welcome-stage is-ready' : 'vault-welcome-stage'}
+              className='vault-welcome-stage is-ready'
               style={{
                 width: '100%',
                 flex: 1,
@@ -67,11 +49,8 @@ export default function VaultWelcome() {
               }}
             >
               <div className='vault-welcome-brandline'>
-                <div
-                  ref={logoTargetRef}
-                  style={{ width: 40, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  {ready ? <SmallLogo /> : null}
+                <div className='vault-welcome-mark' aria-hidden='true'>
+                  <HollowPixelMark />
                 </div>
                 <span className='vault-testnet-badge'>Mutinynet</span>
               </div>
@@ -110,7 +89,7 @@ export default function VaultWelcome() {
         </Padded>
       </Content>
 
-      <ButtonsOnBottom className={ready ? 'vault-welcome-actions is-ready' : 'vault-welcome-actions'}>
+      <ButtonsOnBottom className='vault-welcome-actions is-ready'>
         <ErrorMessage error={Boolean(error)} text={error} />
 
         {locked ? (

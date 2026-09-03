@@ -185,7 +185,15 @@ export default function VaultSend() {
           onClick={reviewSpend}
           disabled={busy}
           loading={busy}
-          label={busy ? 'Confirming fee…' : movingToSpending ? 'Review move' : 'Review send'}
+          label={
+            busy
+              ? 'Confirming fee…'
+              : movingToSpending
+                ? 'Review move'
+                : fromSavings
+                  ? 'Review transfer'
+                  : 'Review payment'
+          }
         />
       </ButtonsOnBottom>
     </>

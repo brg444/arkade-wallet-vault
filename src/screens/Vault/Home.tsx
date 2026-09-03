@@ -7,6 +7,7 @@ import ChevronDownIcon from '../../icons/ChevronDown'
 import HollowPixelMark from '../../icons/HollowPixelMark'
 import QrIcon from '../../icons/Qr'
 import ReceiveIcon from '../../icons/Receive'
+import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
 import ScanIcon from '../../icons/Scan'
 import TransferArrowIcon from '../../icons/TransferArrow'
 import { prettyNumber } from '../../lib/format'
@@ -127,6 +128,21 @@ export default function VaultHome() {
                 </Menu.Root>
               </div>
               <div className='vault-account-actions'>
+                <button
+                  type='button'
+                  className={
+                    initiateAlert
+                      ? 'vault-account-qr vault-recovery-shortcut needs-attention'
+                      : 'vault-account-qr vault-recovery-shortcut'
+                  }
+                  aria-label='Open Recovery'
+                  data-testid='account-recovery'
+                  onClick={() => openRecover('lost', 'home')}
+                >
+                  <ShieldCheckOutlineIcon />
+                  {initiateAlert ? <span className='vault-recovery-indicator' aria-hidden='true' /> : null}
+                </button>
+                <span className='vault-account-action-divider' aria-hidden='true' />
                 <button
                   type='button'
                   className='vault-account-qr'

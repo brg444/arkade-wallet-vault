@@ -22,7 +22,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'Vault isn’t responding. Try again.'
   }
   if (isRecoverableVaultBoardingError(err)) {
-    return 'Moving received Bitcoin into Spending automatically. Keep this wallet open; approve device unlock if asked.'
+    return 'Moving received Bitcoin into Spending automatically. Keep this wallet open; approve with passkey if asked.'
   }
   if (msg.includes('vtxo spend is unresolved') || msg.includes('vtxo reservation expired')) {
     return 'This send did not finish. Refresh your balance before trying again.'
@@ -93,7 +93,7 @@ export function humanizeVaultError(err: unknown): string {
     return 'This vault came back with recovery, but setup skipped it. Start over and add a recovery key.'
   }
   if (msg.includes('no recovery map') || msg.includes('no recovery kit yet')) {
-    return 'This vault has no recovery map. Add recovery on a new vault, or get the map with device unlock.'
+    return 'This vault has no recovery map. Add recovery on a new vault, or get the map with your passkey.'
   }
   if (msg.includes('could not rebuild the map')) {
     return 'Could not rebuild the map. Save it while this app is open.'
