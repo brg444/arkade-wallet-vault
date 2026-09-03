@@ -565,6 +565,31 @@ async function expectReachableAbove(page: Page, targetSelector: string, chromeSe
   expect(targetBox!.y + targetBox!.height).toBeLessThanOrEqual(chromeBox!.y)
 }
 
+test('@polish keeps installed-PWA safe areas inside the wallet canvas', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'Mobile Chrome', 'Mobile shell regression')
+  await openVault(page)
+
+  const app = page.getByTestId('vault-app')
+  await app.evaluate((element) => element.style.setProperty('--vault-safe-area-top', '47px'))
+
+  const viewport = page.viewportSize()
+  const frame = await app.boundingBox()
+  const accountBar = await page.locator('.vault-account-bar').boundingBox()
+  const navigationTrigger = await page.getByRole('button', { name: 'Open navigation' }).boundingBox()
+  const statusBarOverlay = await page.evaluate(() => getComputedStyle(document.body, '::before').display)
+
+  expect(viewport).not.toBeNull()
+  expect(frame).not.toBeNull()
+  expect(accountBar).not.toBeNull()
+  expect(navigationTrigger).not.toBeNull()
+  expect(frame!.y).toBe(0)
+  expect(frame!.height).toBe(viewport!.height)
+  expect(accountBar!.y).toBeGreaterThanOrEqual(47)
+  expect(navigationTrigger!.y + navigationTrigger!.height).toBe(viewport!.height)
+  expect(statusBarOverlay).toBe('none')
+  await expectNoHorizontalOverflow(page)
+})
+
 test('@polish covers accessible account, send, Security, and Settings states', async ({ page }) => {
   const pending: EsploraUtxo = {
     txid: BOARDING_TXID,

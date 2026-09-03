@@ -34,7 +34,8 @@
   --vault-radius-lg: 22px;
   --vault-shadow-sm: 0 1px 2px rgb(16 16 19 / 4%);
   --vault-shadow-frame: 0 30px 80px -52px rgb(24 12 55 / 46%);
-  --bottom-anchor-gap: max(8px, calc(env(safe-area-inset-bottom, 0px) - 12px));
+  --vault-safe-area-top: env(safe-area-inset-top, 0px);
+  --bottom-anchor-gap: 8px;
   --vault-navigation-height: clamp(68px, 15cqi, 94px);
   --vault-navigation-clearance: calc(var(--vault-navigation-height) + var(--bottom-anchor-gap) + 14px);
   --pill-navbar-clearance: var(--vault-navigation-clearance);
@@ -1566,7 +1567,7 @@ html.palette-dark [data-testid='vault-app'] {
 }
 
 [data-testid='vault-app'] .buttons-on-bottom {
-  padding: 10px clamp(22px, 7.7cqi, 30px) max(20px, env(safe-area-inset-bottom));
+  padding: 10px clamp(22px, 7.7cqi, 30px) 20px;
   border-top: 0;
 }
 
@@ -2134,15 +2135,21 @@ html.palette-dark [data-testid='vault-app'] {
   }
 
   [data-testid='vault-app'] {
+    top: 0;
     width: 100%;
     min-width: 0;
     max-width: none;
+    padding-top: var(--vault-safe-area-top);
     border: 0;
     border-radius: 0;
   }
 
+  body:has([data-testid='vault-app'])::before {
+    display: none;
+  }
+
   .vault-navigation-layer {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: 0;
   }
 }
 
