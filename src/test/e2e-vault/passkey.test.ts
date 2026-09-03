@@ -6,7 +6,7 @@ const SESSION_LOCK_STORE = 'arkade-vault-v2:session-lock'
 async function lock(page: Page) {
   await page.evaluate((key) => localStorage.setItem(key, '1'), SESSION_LOCK_STORE)
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Unlock vault' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unlock with passkey' })).toBeVisible()
 }
 
 async function clearBrowserWalletState(page: Page) {
@@ -46,7 +46,7 @@ test('enrolls, locks, and unlocks with a CTAP2.1 resident PRF passkey', async ({
   expect(credentials[0]).toMatchObject({ isResidentCredential: true, rpId: 'localhost' })
 
   await lock(page)
-  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
   await secretAudit.assertNoSecretsPersisted(page)
 })
@@ -78,7 +78,7 @@ test('a cancelled Face ID prompt retries through the same button', async ({ page
   await lock(page)
   await passkey.abortNextRequest()
 
-  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click()
   await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Try again' }).click()
@@ -113,12 +113,12 @@ test('reload before PRF derivation leaves the vault locked and permits a clean r
   await enrollVaultWithPasskey(page, authorizer)
   await lock(page)
   await passkey.setPresence(false)
-  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click()
 
   await page.reload()
   await passkey.setPresence(true)
-  await expect(page.getByRole('button', { name: 'Unlock vault' })).toBeVisible()
-  await page.getByRole('button', { name: 'Unlock vault' }).click()
+  await expect(page.getByRole('button', { name: 'Unlock with passkey' })).toBeVisible()
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
 })
 

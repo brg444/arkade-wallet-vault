@@ -110,15 +110,22 @@ export function reviewedVtxoQuoteMatchesDraft(quote: VaultVtxoSpendQuote | null,
   )
 }
 
-function initialScreen(): VaultScreen {
+function storedEnrollment(): EnrollmentSecrets | null {
+  const selected = loadSelectedVaultId()
+  return selected ? loadEnrollment(localStorage, selected) : findStoredEnrollment()
+}
+
+function bootLocked(existing: EnrollmentSecrets | null = null): boolean {
   try {
-    const selected = loadSelectedVaultId()
-    const existing = selected ? loadEnrollment(localStorage, selected) : findStoredEnrollment()
-    if (existing && loadVaultPrivacyLock()) return 'unlock'
+    const enrollment = existing ?? storedEnrollment()
+    return Boolean(enrollment && (loadSessionLocked() || loadVaultPrivacyLock()))
   } catch {
-    // Fall through to welcome when storage is unavailable.
+    return false
   }
-  return 'welcome'
+}
+
+function initialScreen(): VaultScreen {
+  return bootLocked() ? 'unlock' : 'welcome'
 }
 
 export function VaultProvider({ children }: { children: ReactNode }) {
@@ -148,7 +155,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [scanOnSend, setScanOnSend] = useState(false)
   const [handoffPsbt, setHandoffPsbt] = useState('')
   const [pendingSavingsHandoff, setPendingSavingsHandoff] = useState<PendingSavingsHandoff | null>(null)
-  const [locked, setLocked] = useState(false)
+  const [locked, setLocked] = useState(bootLocked)
   const [addressPin, setAddressPin] = useState<AddressPin | null>(null)
   const [fiatDisplayRate, setFiatDisplayRate] = useState<VaultFiatDisplayRate | null>(null)
   const [fiatDisplayEnabled, setFiatDisplayEnabled] = useState(false)
@@ -183,13 +190,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const pinId = existing?.vaultId || selected
       existingPin = pinId ? loadAddressPin(localStorage, pinId) : null
       setAddressPin(existingPin)
-      const sessionLocked = loadSessionLocked() || Boolean(existing && loadVaultPrivacyLock())
+      const sessionLocked = bootLocked(existing)
       setLocked(sessionLocked)
       if (existing) setEnrollment(existing)
-      if (existing && loadVaultPrivacyLock()) {
+      if (existing && sessionLocked) {
         setScreen('unlock')
-      } else if (existing && sessionLocked) {
-        setScreen('welcome')
       } else if (existing && existingPin) {
         setScreen('home')
       } else if (existing) {
@@ -231,6 +236,23 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     void boot()
   }, [])
+
+  useEffect(() => {
+    const persistLock = () => {
+      if (!loadVaultPrivacyLock()) return
+      if (!(enrollment || storedEnrollment())) return
+      setSessionLocked(true)
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') persistLock()
+    }
+    window.addEventListener('pagehide', persistLock)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', persistLock)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [enrollment])
 
   useEffect(() => {
     const vaultId = status?.vaultId || enrollment?.vaultId || ''

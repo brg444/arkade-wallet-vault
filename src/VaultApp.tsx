@@ -31,12 +31,14 @@ import VaultTx from './screens/Vault/Tx'
 import VaultNavigation, { destinationForScreen } from './screens/Vault/Navigation'
 import { bootVaultPrefs } from './lib/vault/prefs'
 import { bootVaultFrame } from './lib/vault/pwaFrame'
+import { reloadIfNewerWallet } from './lib/vault/update'
 
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
   useEffect(() => {
     document.title = 'Arkade Vault'
     bootVaultPrefs()
+    void reloadIfNewerWallet()
     return bootVaultFrame()
   }, [])
   const launcher = destinationForScreen(screen)
