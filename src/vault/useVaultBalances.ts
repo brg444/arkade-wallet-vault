@@ -112,6 +112,7 @@ export function useVaultBalances({
   const [balanceError, setBalanceError] = useState('')
   const [balancesLoaded, setBalancesLoaded] = useState(() => Boolean(loadBalanceSnapshot(refreshVaultId)))
   const [refreshingBalance, setRefreshingBalance] = useState(false)
+  const hasSnapshotRef = useRef(balancesLoaded)
 
   if (hydratedVaultId !== refreshVaultId) {
     const cachedSnapshot = loadBalanceSnapshot(refreshVaultId)
@@ -119,6 +120,7 @@ export function useVaultBalances({
     refreshVersion.current += 1
     setSnapshot(cachedSnapshot || EMPTY_BALANCES)
     setBalancesLoaded(Boolean(cachedSnapshot))
+    hasSnapshotRef.current = Boolean(cachedSnapshot)
     setBalanceError('')
     setRefreshingBalance(false)
   }
@@ -151,6 +153,7 @@ export function useVaultBalances({
           if (version !== refreshVersion.current) return
           setSnapshot(EMPTY_BALANCES)
           setBalancesLoaded(true)
+          hasSnapshotRef.current = false
           setBalanceError('')
           return
         }
@@ -167,6 +170,7 @@ export function useVaultBalances({
           setSnapshot(EMPTY_BALANCES)
           saveBalanceSnapshot(id, EMPTY_BALANCES)
           setBalancesLoaded(true)
+          hasSnapshotRef.current = true
           setBalanceError('')
           return
         }
@@ -203,11 +207,12 @@ export function useVaultBalances({
         setSnapshot(nextSnapshot)
         saveBalanceSnapshot(id, nextSnapshot)
         setBalancesLoaded(true)
+        hasSnapshotRef.current = true
         setBalanceError('')
       } catch (error) {
         if (version === refreshVersion.current) {
           consoleError(error, 'Vault balance refresh')
-          setBalanceError(humanizeVaultError(error))
+          if (!hasSnapshotRef.current) setBalanceError(humanizeVaultError(error))
         }
       } finally {
         if (version === refreshVersion.current) setRefreshingBalance(false)

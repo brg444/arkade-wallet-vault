@@ -272,7 +272,7 @@ describe('useVaultBalances', () => {
     expect(result.current.positions.savings.totalSats).toBe(20_000)
     expect(result.current.positions.spending.availableSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
-    expect(result.current.balanceError).toBe('Something went wrong. Try again.')
+    expect(result.current.balanceError).toBe('')
   })
 
   it('recovers a cold reload from the persisted enrollment', async () => {

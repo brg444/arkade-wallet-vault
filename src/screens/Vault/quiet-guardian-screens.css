@@ -938,9 +938,13 @@ body:has(.vault-screen-welcome) {
   background: var(--qg-oat);
 }
 
+.content.qg-home-content > .content-shell {
+  padding: 0;
+}
+
 .qg-home {
   min-height: 0;
-  padding: 4px 22px 82px;
+  padding: 0 22px 82px;
 }
 
 .qg-account-bar {
@@ -973,6 +977,119 @@ body:has(.vault-screen-welcome) {
 .qg-account strong {
   font-size: 16px;
   font-weight: 500;
+}
+
+.qg-account-chevron {
+  width: 18px;
+  height: 18px;
+  color: var(--qg-muted);
+  transition: transform 180ms ease;
+}
+
+.qg-account[data-popup-open] .qg-account-chevron,
+.qg-account[data-open] .qg-account-chevron {
+  transform: rotate(180deg);
+}
+
+.qg-account-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: color-mix(in srgb, var(--qg-oat) 62%, rgb(17 16 21 / 16%));
+}
+
+.qg-account-positioner {
+  z-index: 140;
+  width: min(calc(100vw - 44px), 596px);
+}
+
+.qg-account-menu {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--qg-ink);
+}
+
+.qg-account-option {
+  display: grid;
+  width: 100%;
+  min-height: 96px;
+  grid-template-columns: 1fr 28px;
+  align-items: start;
+  gap: 4px 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--qg-line);
+  border-radius: 18px;
+  background: var(--qg-paper);
+  color: var(--qg-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qg-account-option.is-on {
+  border-color: var(--qg-ink);
+}
+
+.qg-account-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.qg-account-option-name {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--qg-ink);
+}
+
+.qg-account-option-meta {
+  color: var(--qg-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.qg-account-option-amt {
+  margin-top: 8px;
+  color: var(--qg-ink);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.qg-account-option-check {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: var(--qg-ink);
+}
+
+.qg-account-option-check svg {
+  width: 18px;
+  height: 18px;
+}
+
+.qg-account-option:focus,
+.qg-account-option:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .qg-account-option:hover {
+    background: color-mix(in srgb, var(--qg-ink) 3%, var(--qg-paper));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qg-account-chevron {
+    transition: none;
+  }
 }
 
 .qg-utilities {
@@ -1854,7 +1971,7 @@ body:has(.vault-screen-welcome) {
   position: fixed;
   z-index: 120;
   right: 0;
-  bottom: max(24px, var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
   pointer-events: none;
 }
 
@@ -1881,11 +1998,51 @@ body:has(.vault-screen-welcome) {
   cursor: pointer;
 }
 
+.qg-launcher-trigger.is-intro {
+  animation: qg-launcher-pulse 2.1s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
+}
+
+.qg-launcher-trigger.is-intro .qg-launcher-mark {
+  display: grid;
+  animation: qg-launcher-turn 0.85s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
+}
+
+.qg-launcher-mark {
+  display: grid;
+}
+
 .qg-launcher-trigger svg,
 .qg-launcher-close svg,
 .qg-launcher-icon svg {
   width: 22px;
   height: 22px;
+}
+
+@keyframes qg-launcher-pulse {
+  0% {
+    transform: translateX(7px);
+    box-shadow: none;
+  }
+  32% {
+    transform: translateX(0);
+    box-shadow: -10px 0 20px -12px rgb(20 18 15 / 38%);
+  }
+  58% {
+    transform: translateX(3px);
+  }
+  100% {
+    transform: translateX(0);
+    box-shadow: -10px 0 22px -18px rgb(20 18 15 / 55%);
+  }
+}
+
+@keyframes qg-launcher-turn {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
 }
 
 .qg-launcher-backdrop {
@@ -1900,7 +2057,7 @@ body:has(.vault-screen-welcome) {
 .qg-launcher-stack {
   position: absolute;
   right: 0;
-  bottom: max(24px, var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  bottom: max(52px, calc(28px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
   display: grid;
   justify-items: end;
   gap: 14px;
@@ -1946,5 +2103,10 @@ body:has(.vault-screen-welcome) {
 @media (prefers-reduced-motion: reduce) {
   .qg-screen.is-sheet {
     will-change: auto;
+  }
+
+  .qg-launcher-trigger.is-intro,
+  .qg-launcher-trigger.is-intro .qg-launcher-mark {
+    animation: none;
   }
 }
