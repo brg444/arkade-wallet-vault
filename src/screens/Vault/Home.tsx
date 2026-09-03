@@ -3,8 +3,8 @@ import { useContext, useEffect, useRef } from 'react'
 import Button from '../../components/Button'
 import Content from './Content'
 import ErrorMessage from '../../components/Error'
-import SmallLogo from '../../components/SmallLogo'
 import ChevronDownIcon from '../../icons/ChevronDown'
+import HollowPixelMark from '../../icons/HollowPixelMark'
 import QrIcon from '../../icons/Qr'
 import ReceiveIcon from '../../icons/Receive'
 import ScanIcon from '../../icons/Scan'
@@ -74,7 +74,7 @@ export default function VaultHome() {
                     onClick={hapticSubtle}
                   >
                     <span className='vault-account-logo' aria-hidden>
-                      <SmallLogo />
+                      <HollowPixelMark />
                     </span>
                     <span className='vault-account-index'>{spending ? '1/2' : '2/2'}</span>
                     <span className='vault-account-name'>{spending ? 'Spending' : 'Savings'}</span>
