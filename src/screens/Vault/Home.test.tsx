@@ -112,6 +112,17 @@ describe('Vault home account boundaries', () => {
     expect(value.refreshBalance).toHaveBeenCalledTimes(1)
   })
 
+  it('does not show a background refresh failure over a known balance', () => {
+    renderHome({
+      balanceError: 'Something went wrong. Try again.',
+      balancesLoaded: true,
+      error: 'Something went wrong. Try again.',
+    })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByText('Something went wrong. Try again.')).toBeNull()
+  })
+
   it('uses menu radio semantics and restores focus after Escape', async () => {
     const user = userEvent.setup()
     renderHome({ account: 'spend' })

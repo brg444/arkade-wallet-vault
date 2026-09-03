@@ -11,14 +11,13 @@ import {
   Shield,
   ShieldAlert,
 } from 'lucide-react'
-import ErrorMessage from '../../components/Error'
 import { prettyNumber } from '../../lib/format'
 import { hapticSubtle } from '../../lib/haptics'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext, type VaultAccount } from '../../vault/context'
 import Content from './Content'
 import VaultHistory from './History'
-import { QgMark } from './qg/QgScreen'
+import { QgCheck, QgMark } from './qg/QgScreen'
 
 export default function VaultHome() {
   const {
@@ -73,45 +72,60 @@ export default function VaultHome() {
               <QgMark />
               <small>{spending ? '1/2' : '2/2'}</small>
               <strong>{spending ? 'Spending' : 'Savings'}</strong>
-              <ChevronDown />
+              <ChevronDown className='qg-account-chevron' />
             </Menu.Trigger>
             <Menu.Portal>
-              <Menu.Positioner className='vault-account-positioner' sideOffset={8} align='start'>
-                <Menu.Popup className='vault-account-menu' aria-label='Accounts'>
+              <Menu.Backdrop className='qg-account-backdrop' />
+              <Menu.Positioner className='qg-account-positioner' sideOffset={12} align='start'>
+                <Menu.Popup className='qg-account-menu' aria-label='Accounts'>
                   <Menu.RadioGroup value={account} onValueChange={(value) => choose(value as VaultAccount)}>
                     <Menu.RadioItem
                       ref={spendingItem}
                       value='spend'
                       closeOnClick
-                      className={spending ? 'vault-account-option is-on' : 'vault-account-option'}
+                      className={spending ? 'qg-account-option is-on' : 'qg-account-option'}
                       data-testid='account-spend'
                     >
-                      <span>
-                        <span className='vault-account-option-name'>Spending</span>
-                        <span className='vault-account-option-meta'>This device, within your limits</span>
+                      <span className='qg-account-option-copy'>
+                        <span className='qg-account-option-name'>Spending</span>
+                        <span className='qg-account-option-meta'>This device, within your limits</span>
+                        <span className='qg-account-option-amt'>
+                          {balancesLoaded
+                            ? `${prettyNumber(positions.spending.availableSats)} ${positions.spending.availableSats === 1 ? 'SAT' : 'SATS'} available`
+                            : 'Loading…'}
+                        </span>
                       </span>
-                      <span className='vault-account-option-amt'>
-                        {balancesLoaded
-                          ? `${prettyNumber(positions.spending.availableSats)} ${positions.spending.availableSats === 1 ? 'SAT' : 'SATS'} available`
-                          : 'Loading…'}
-                      </span>
+                      {spending ? (
+                        <span className='qg-account-option-check' aria-hidden='true'>
+                          <QgCheck />
+                        </span>
+                      ) : (
+                        <span />
+                      )}
                     </Menu.RadioItem>
                     <Menu.RadioItem
                       ref={savingsItem}
                       value='savings'
                       closeOnClick
-                      className={!spending ? 'vault-account-option is-on' : 'vault-account-option'}
+                      className={!spending ? 'qg-account-option is-on' : 'qg-account-option'}
                       data-testid='account-savings'
                     >
-                      <span>
-                        <span className='vault-account-option-name'>Savings</span>
-                        <span className='vault-account-option-meta'>This device and hardware</span>
+                      <span className='qg-account-option-copy'>
+                        <span className='qg-account-option-name'>Savings</span>
+                        <span className='qg-account-option-meta'>This device and hardware</span>
+                        <span className='qg-account-option-amt'>
+                          {balancesLoaded
+                            ? `${prettyNumber(positions.savings.totalSats)} ${positions.savings.totalSats === 1 ? 'SAT' : 'SATS'} total`
+                            : 'Loading…'}
+                        </span>
                       </span>
-                      <span className='vault-account-option-amt'>
-                        {balancesLoaded
-                          ? `${prettyNumber(positions.savings.totalSats)} ${positions.savings.totalSats === 1 ? 'SAT' : 'SATS'} total`
-                          : 'Loading…'}
-                      </span>
+                      {!spending ? (
+                        <span className='qg-account-option-check' aria-hidden='true'>
+                          <QgCheck />
+                        </span>
+                      ) : (
+                        <span />
+                      )}
                     </Menu.RadioItem>
                   </Menu.RadioGroup>
                 </Menu.Popup>
@@ -235,11 +249,17 @@ export default function VaultHome() {
           </button>
         ) : null}
 
-        <ErrorMessage error={Boolean(error || balanceError)} text={error || balanceError} />
-        {balanceError ? (
-          <button type='button' className='qg-secondary' onClick={() => void refreshBalance()}>
-            Retry
-          </button>
+        {!balancesLoaded && (error || balanceError) ? (
+          <>
+            <p className='qg-copy' role='alert'>
+              {error || balanceError}
+            </p>
+            {balanceError ? (
+              <button type='button' className='qg-secondary' onClick={() => void refreshBalance()}>
+                Retry
+              </button>
+            ) : null}
+          </>
         ) : null}
         <VaultHistory />
       </main>

@@ -19,6 +19,7 @@ const ACTIONS: { id: string; label: string; testId: string; icon: ReactNode; scr
 export default function VaultNavigation() {
   const { navigate } = useContext(VaultContext)
   const [open, setOpen] = useState(false)
+  const [intro, setIntro] = useState(true)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const restoreTriggerFocus = useRef(false)
 
@@ -90,16 +91,25 @@ export default function VaultNavigation() {
         <button
           ref={triggerRef}
           type='button'
-          className='qg-launcher-trigger vault-navigation-trigger'
+          className={
+            intro
+              ? 'qg-launcher-trigger vault-navigation-trigger is-intro'
+              : 'qg-launcher-trigger vault-navigation-trigger'
+          }
           aria-label='Open navigation'
           aria-expanded='false'
           aria-controls='vault-main-navigation'
+          onAnimationEnd={(event) => {
+            if (event.animationName === 'qg-launcher-pulse') setIntro(false)
+          }}
           onClick={() => {
             hapticLight()
             setOpen(true)
           }}
         >
-          <HollowPixelMark />
+          <span className='qg-launcher-mark' aria-hidden='true'>
+            <HollowPixelMark />
+          </span>
         </button>
       )}
     </div>
