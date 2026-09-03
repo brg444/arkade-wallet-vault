@@ -1,4 +1,5 @@
 import { isVaultConcurrencyUnavailableError } from './vtxo/lock'
+import { isVtxoSameSendInProgressError } from './vtxo/spend'
 
 export function humanizeVaultError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
@@ -29,6 +30,9 @@ export function humanizeVaultError(err: unknown): string {
   }
   if (msg.includes('fee quote expired or changed')) {
     return 'This fee quote expired or changed. Review the send again.'
+  }
+  if (isVtxoSameSendInProgressError(err) || msg.includes('exact amount to this address is still in progress')) {
+    return 'A send of this exact amount to this address is still in progress. You can wait, or start a new send anyway.'
   }
   if (
     msg.includes('reserved outpoint not spent by ark txid') ||

@@ -52,6 +52,12 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('VTXO reservation expired'))).toMatch(/did not finish/i)
   })
 
+  it('explains an exact-amount send that is still in progress', () => {
+    expect(humanizeVaultError(new Error('A send of this exact amount to this address is still in progress.'))).toMatch(
+      /exact amount.*new send anyway/i,
+    )
+  })
+
   it('keeps an expired reviewed quote actionable', () => {
     expect(humanizeVaultError(new Error('This fee quote expired or changed. Review the send again.'))).toBe(
       'This fee quote expired or changed. Review the send again.',

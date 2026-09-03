@@ -119,6 +119,20 @@ export class VtxoSpendUnresolvedError extends Error {
   }
 }
 
+export class VtxoSameSendInProgressError extends Error {
+  readonly destAddress: string
+  readonly amountSats: number
+  readonly operationId: string
+
+  constructor(pending: PersistedVtxoSpend) {
+    super('A send of this exact amount to this address is still in progress.')
+    this.name = 'VtxoSameSendInProgressError'
+    this.destAddress = pending.destAddress
+    this.amountSats = pending.amountSats
+    this.operationId = pending.operationId
+  }
+}
+
 export function isVtxoReceiptPendingError(err: unknown): err is VtxoReceiptPendingError {
   return err instanceof VtxoReceiptPendingError
 }
@@ -133,6 +147,10 @@ export function isVtxoSpendUnresolvedError(err: unknown): err is VtxoSpendUnreso
 
 export function isVtxoReviewedReservationError(err: unknown): err is VtxoReviewedReservationError {
   return err instanceof VtxoReviewedReservationError
+}
+
+export function isVtxoSameSendInProgressError(err: unknown): err is VtxoSameSendInProgressError {
+  return err instanceof VtxoSameSendInProgressError
 }
 
 export type PersistedVtxoSpendStage =
@@ -1137,6 +1155,26 @@ export function isSameVtxoPayment(pending: PersistedVtxoSpend, destAddress: stri
   return pending.destAddress === destAddress.trim() && pending.amountSats === amountSats
 }
 
+export type VtxoNewSendAction = 'start' | 'resume' | 'replace' | 'warn'
+
+export function vtxoNewSendAction(
+  pending: PersistedVtxoSpend | undefined,
+  destAddress: string,
+  amountSats: number,
+): VtxoNewSendAction {
+  if (!pending) return 'start'
+  if (!isSameVtxoPayment(pending, destAddress, amountSats)) return 'replace'
+  if (
+    pending.operatorSubmitAttempted ||
+    pending.stage === 'operator-submitted' ||
+    pending.stage === 'checkpoints-authorized' ||
+    pending.stage === 'operator-finalized'
+  ) {
+    return 'warn'
+  }
+  return 'resume'
+}
+
 export async function withVtxoSendLock<T>(
   vaultId: string,
   run: () => Promise<T>,
@@ -1415,11 +1453,17 @@ async function prepareVtxoSpendLocked(
   status: VaultStatus,
   destAddress: string,
   amountSats: number,
+  replaceExisting = false,
 ): Promise<PersistedVtxoSpend> {
   let pending = loadPersistedVtxoSpend(status.vaultId)
   if (pending) pending = await syncPersistedSpendWithOperation(pending)
-  if (pending && !isSameVtxoPayment(pending, destAddress, amountSats)) {
-    throw new VtxoSpendInFlightError(pending.arkTxid, pending.operationId)
+  const action = vtxoNewSendAction(pending, destAddress, amountSats)
+  if (pending && action === 'warn' && !replaceExisting) {
+    throw new VtxoSameSendInProgressError(pending)
+  }
+  if (pending && (action === 'replace' || replaceExisting)) {
+    clearPersistedVtxoSpend(status.vaultId)
+    pending = undefined
   }
   if (!pending) pending = preReserveVtxoSpend(status.vaultId, destAddress, amountSats)
   if (pending.stage === 'pre-reserve') pending = await reservePersistedVtxoSpend(enrollment, status, pending)
@@ -1432,11 +1476,14 @@ export async function reserveVaultVtxo(
   status: VaultStatus,
   destAddress: string,
   amountSats: number,
+  options?: { replaceExisting?: boolean },
 ): Promise<VaultVtxoSpendQuote> {
   requireMutinynetStatus(status)
   if (!Number.isSafeInteger(amountSats) || amountSats < VTXO_DUST_SATS) throw new Error('VTXO amount is below dust')
   return withVtxoSendLock(status.vaultId, async () =>
-    quoteFromPersistedVtxoSpend(await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats)),
+    quoteFromPersistedVtxoSpend(
+      await prepareVtxoSpendLocked(enrollment, status, destAddress, amountSats, Boolean(options?.replaceExisting)),
+    ),
   )
 }
 

@@ -31,6 +31,7 @@ import {
   orderAuthorizedCheckpoints,
   isSameVtxoPayment,
   pendingVtxoSpendBlocksNewSend,
+  vtxoNewSendAction,
   persistVtxoSpend,
   persistVtxoReserveSignature,
   preReserveVtxoSpend,
@@ -1469,6 +1470,15 @@ describe('regular VTXO spend coordinator', () => {
     expect(pendingVtxoSpendBlocksNewSend(pending)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqold', 12_000)).toBe(true)
     expect(isSameVtxoPayment(pending!, 'tark1qqnew', 12_000)).toBe(false)
+    expect(vtxoNewSendAction(pending, 'tark1qqold', 12_000)).toBe('warn')
+    expect(vtxoNewSendAction(pending, 'tark1qqold', 20_000)).toBe('replace')
+    expect(vtxoNewSendAction(pending, 'tark1qqnew', 12_000)).toBe('replace')
+    expect(vtxoNewSendAction({ ...pending!, stage: 'reserved' }, 'tark1qqold', 12_000)).toBe('resume')
+    expect(vtxoNewSendAction({ ...pending!, stage: 'authorized' }, 'tark1qqold', 12_000)).toBe('resume')
+    expect(
+      vtxoNewSendAction({ ...pending!, stage: 'authorized', operatorSubmitAttempted: true }, 'tark1qqold', 12_000),
+    ).toBe('warn')
+    expect(vtxoNewSendAction(undefined, 'tark1qqold', 12_000)).toBe('start')
     expect(isVtxoReceiptPendingError(new VtxoReceiptPendingError('aa'.repeat(32), OP_1, 0))).toBe(true)
     expect(new VtxoSpendInFlightError('aa'.repeat(32), OP_1).message).toMatch(/still with the operator/)
     clearPersistedVtxoSpend('vault-a')
