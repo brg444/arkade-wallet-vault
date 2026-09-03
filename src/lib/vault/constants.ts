@@ -9,7 +9,7 @@ export const DUST_SATS = 330
 // presentation stay within a useful recent window instead of growing forever.
 export const RECENT_HISTORY_LIMIT = 100
 
-export const SUPPORTED_NETWORKS = ['mutinynet'] as const
+export const SUPPORTED_NETWORKS = ['mutinynet', 'mainnet'] as const
 export type VaultNetwork = (typeof SUPPORTED_NETWORKS)[number]
 
 export function isSupportedVaultNetwork(value: unknown): value is VaultNetwork {
@@ -17,8 +17,8 @@ export function isSupportedVaultNetwork(value: unknown): value is VaultNetwork {
 }
 
 /**
- * Named Vault Programs are network-specific. Mainnet is deliberately absent
- * until its policy values and Contract Pack are reviewed and released.
+ * Named Vault Programs are network-specific. Each network has frozen delays,
+ * Operator identity, and Contract Pack bytes. Wrong-network values fail closed.
  */
 export function requireSupportedVaultNetwork(value: unknown): VaultNetwork {
   if (!isSupportedVaultNetwork(value)) throw new Error(`unsupported Vault network ${String(value || '')}`)

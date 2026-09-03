@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { POLICY_VERSION } from './constants'
 import { PROGRAM_SCHEMA, SAVINGS_TEMPLATE } from './program/constants'
 import pack from './contract-pack.json'
+import mainnetPack from './contract-pack.mainnet.json'
 
 describe('frozen wallet protocol domains', () => {
   it('matches the published contract pack', () => {
@@ -54,5 +55,15 @@ describe('frozen wallet protocol domains', () => {
   it('does not publish enrollment ownership-proof contracts', () => {
     expect('enrollmentPop' in pack.domains).toBe(false)
     expect('recoveryPopTag' in pack.programs['savings-recovery-v1']).toBe(false)
+  })
+
+  it('pins a distinct mainnet Contract Pack with Operator delays', () => {
+    expect(mainnetPack.programs['vault-policy-v1'].exit.delay).toBe('605184')
+    expect(mainnetPack.programs['vault-board-v1'].exit.delay).toBe('7776256')
+    expect(mainnetPack.programs['vault-policy-v1'].delegate.origin).toBe('https://delegate.arkade.money')
+    expect(mainnetPack.programs['vault-policy-v1'].delegate.pinnedPublicDelegate).toBe(
+      '026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6',
+    )
+    expect(pack.programs['vault-policy-v1'].exit.delay).toBe('4608')
   })
 })

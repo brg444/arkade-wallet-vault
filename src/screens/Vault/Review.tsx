@@ -98,7 +98,7 @@ export default function VaultReview() {
         </div>
         <div>
           <span>Network</span>
-          <strong>{status?.network === 'mutinynet' ? 'Mutinynet' : 'Test network'}</strong>
+          <strong>{status?.network === 'mainnet' ? 'Bitcoin' : 'Mutinynet'}</strong>
         </div>
       </section>
       <section className='qg-approvals' aria-labelledby='qg-approvals-heading'>
