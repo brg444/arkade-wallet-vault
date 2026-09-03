@@ -1,7 +1,7 @@
 import { useContext, useEffect } from 'react'
 import { ArrowDownLeft, ArrowUpRight, ChevronRight, Clock3, QrCode, ScanLine, Shield, ShieldAlert } from 'lucide-react'
 import { prettyNumber } from '../../lib/format'
-import { hapticSubtle } from '../../lib/haptics'
+import { hapticLight, hapticSubtle } from '../../lib/haptics'
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import Content from './Content'
@@ -55,7 +55,10 @@ export default function VaultHome() {
               className={initiateAlert ? 'qg-recovery-shortcut needs-attention' : 'qg-recovery-shortcut'}
               aria-label='Open Recovery'
               data-testid='account-recovery'
-              onClick={() => openRecover('lost', 'home')}
+              onClick={() => {
+                hapticSubtle()
+                openRecover('lost', 'home')
+              }}
             >
               <Shield />
               {initiateAlert ? <span aria-hidden='true' /> : null}
@@ -102,6 +105,7 @@ export default function VaultHome() {
             type='button'
             disabled={spending ? !canSend : positions.savings.availableSats <= 330}
             onClick={() => {
+              hapticLight()
               clearSpendDraft()
               if (!spending && boardingAddress) setSpendDraft({ address: boardingAddress })
               navigate('send')
@@ -112,7 +116,13 @@ export default function VaultHome() {
               <b>{spending ? 'Send' : 'Move to Spending'}</b>
             </span>
           </button>
-          <button type='button' onClick={() => navigate('receive')}>
+          <button
+            type='button'
+            onClick={() => {
+              hapticLight()
+              navigate('receive')
+            }}
+          >
             <span>
               <ArrowDownLeft />
               <b>{spending ? 'Receive' : 'Add to Savings'}</b>

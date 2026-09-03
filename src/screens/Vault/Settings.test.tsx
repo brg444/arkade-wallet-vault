@@ -46,7 +46,7 @@ describe('Vault settings account boundaries', () => {
     expect(screen.getByTestId('settings-logs')).toHaveRole('button')
     expect(screen.getByTestId('settings-signout')).toHaveRole('button')
     expect(screen.getByRole('button', { name: 'Go back' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Adjust this browser.' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Adjust this browser.' })).toBeNull()
     expect(screen.queryByText('General')).toBeTruthy()
     expect(document.querySelector('.qg-eyebrow')).toBeNull()
     expect(document.querySelector('.qg-methods')).toBeNull()

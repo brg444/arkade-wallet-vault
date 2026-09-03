@@ -1,5 +1,5 @@
 import { useContext, useMemo, useState } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { Share2, ShieldCheck } from 'lucide-react'
 import { useToast } from '../../components/Toast'
 import QrCode from '../../components/QrCode'
 import { copyToClipboard } from '../../lib/clipboard'
@@ -29,16 +29,40 @@ export default function VaultReceive() {
     toast(`${label} copied`)
   }
 
+  const shareRequest = async () => {
+    if (!request) return
+    const data = { title: 'Arkade Vault payment request', text: request }
+    try {
+      if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(data))) {
+        await navigator.share(data)
+        return
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+    }
+    await copy(request, 'Payment request')
+  }
+
   return (
     <QgScreen
       title='Receive'
       dismiss={() => navigate('home')}
       footer={
-        <QgPrimary
-          onClick={() => void copy(request, spending ? 'Payment request' : 'Savings address')}
-          disabled={!request}
-          label={copied === request ? 'Copied' : spending ? 'Copy payment request' : 'Copy Savings address'}
-        />
+        spending ? (
+          <QgPrimary
+            onClick={() => void shareRequest()}
+            disabled={!request}
+            icon={<Share2 />}
+            testId='receive-share'
+            label='Share'
+          />
+        ) : (
+          <QgPrimary
+            onClick={() => void copy(request, 'Savings address')}
+            disabled={!request}
+            label={copied === request ? 'Copied' : 'Copy Savings address'}
+          />
+        )
       }
     >
       <div className='qg-receive'>

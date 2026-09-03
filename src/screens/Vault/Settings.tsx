@@ -3,7 +3,7 @@ import { useToast } from '../../components/Toast'
 import { gitCommit } from '../../_gitCommit'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAgo, prettyAmount, prettyLongText } from '../../lib/format'
-import { hapticSubtle } from '../../lib/haptics'
+import { hapticLight, hapticSubtle } from '../../lib/haptics'
 import { clearLogs, getLogs, type LogLine } from '../../lib/logs'
 import { Themes } from '../../lib/types'
 import {
@@ -190,6 +190,7 @@ export default function VaultSettings() {
               const next = !haptics
               setHaptics(next)
               saveVaultHaptics(next)
+              if (next) hapticLight()
             }}
           >
             <div className='vault-hub-copy'>
@@ -257,14 +258,6 @@ export default function VaultSettings() {
   return (
     <QgScreen title='Settings' dismiss={() => navigate('home')}>
       <div className='vault-security'>
-        <section className='vault-security-hero' aria-label='Settings'>
-          <div className='vault-security-hero-head'>
-            <strong>This device</strong>
-          </div>
-          <h2>Adjust this browser.</h2>
-          <p>Theme and haptics stay here. Sign out leaves this browser and does not close the vault.</p>
-        </section>
-
         <HubGroup label='General'>
           <SettingsRow
             label='Theme'
