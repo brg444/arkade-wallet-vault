@@ -5,6 +5,7 @@ import {
   createVaultLightningObserverScheduler,
   isVaultWalletStateUpdate,
   registerVaultWalletServiceWorker,
+  scheduleVaultBoardingSettlement,
   shutdownVaultWalletWorker,
   subscribeVaultLightningObserver,
   vaultWalletRuntimeKey,
@@ -16,6 +17,36 @@ function activatedWorker(name: string) {
 }
 
 describe('Vault service-worker isolation', () => {
+  it('deduplicates page-owned boarding requests while the worker settlement is pending', async () => {
+    let finish!: (txid: string) => void
+    const settle = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const listener = vi.fn()
+    const current = {
+      wallet: { settle },
+      listeners: new Set([listener]),
+      boardingSettle: undefined,
+    }
+
+    const first = scheduleVaultBoardingSettlement(current)
+    const duplicate = scheduleVaultBoardingSettlement(current)
+
+    expect(duplicate).toBe(first)
+    expect(settle).toHaveBeenCalledTimes(1)
+    finish('aa'.repeat(32))
+    await first
+    expect(listener).toHaveBeenCalledTimes(1)
+
+    const next = scheduleVaultBoardingSettlement(current)
+    expect(settle).toHaveBeenCalledTimes(2)
+    finish('bb'.repeat(32))
+    await next
+  })
+
   it('keeps A → B → A registrations on their distinct scope and worker', async () => {
     const stop = vi.spyOn(ServiceWorkerWallet, 'stop')
     const workers = new Map([
