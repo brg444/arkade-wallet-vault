@@ -25,7 +25,7 @@ const ACCOUNTS: { id: VaultAccount; label: string; testId: string; icon: ReactNo
 const LOCK = 8
 const OPEN_DISTANCE = 52
 const PEEK = 96
-const LAUNCHER_POSITION_KEY = 'vault-launcher-position-v2'
+const LAUNCHER_POSITION_KEY = 'vault-launcher-position-v3'
 const TRIGGER_HEIGHT = 72
 
 function readLauncherPosition(): number | null {
@@ -148,9 +148,9 @@ export default function VaultNavigation() {
 
     if (drag.current.axis === 'vertical') {
       event.preventDefault()
-      const available = Math.max(1, window.innerHeight - TRIGGER_HEIGHT)
-      const nextPosition = Math.min(1, Math.max(0, event.clientY - TRIGGER_HEIGHT / 2) / available)
+      const nextPosition = Math.min(1, Math.max(0, event.clientY - TRIGGER_HEIGHT / 2) / window.innerHeight)
       launcherPositionRef.current = nextPosition
+      launcherRef.current?.classList.toggle('is-upper', nextPosition < 0.5)
       if (positionFrame.current === null) {
         positionFrame.current = window.requestAnimationFrame(() => {
           launcherRef.current?.style.setProperty(
@@ -198,6 +198,13 @@ export default function VaultNavigation() {
   const positionStyle = (
     launcherPosition === null ? undefined : { '--qg-launcher-position': `${launcherPosition * 100}dvh` }
   ) as CSSProperties | undefined
+  const launcherClassName = [
+    'qg-launcher',
+    open ? 'is-open' : peeking ? 'is-peeking' : '',
+    launcherPosition !== null && launcherPosition < 0.5 ? 'is-upper' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   const stack = (
     <nav
@@ -264,11 +271,7 @@ export default function VaultNavigation() {
   )
 
   return (
-    <div
-      ref={launcherRef}
-      className={open ? 'qg-launcher is-open' : peeking ? 'qg-launcher is-peeking' : 'qg-launcher'}
-      style={positionStyle}
-    >
+    <div ref={launcherRef} className={launcherClassName} style={positionStyle}>
       {open || peeking ? (
         <div
           className='qg-launcher-backdrop'

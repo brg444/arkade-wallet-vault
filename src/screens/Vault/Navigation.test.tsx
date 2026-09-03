@@ -114,7 +114,7 @@ describe('Vault navigation', () => {
     dragTabVertically(tab, 220, 420)
 
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
-    const saved = Number(window.localStorage.getItem('vault-launcher-position-v2'))
+    const saved = Number(window.localStorage.getItem('vault-launcher-position-v3'))
     expect(saved).toBeGreaterThan(0)
     expect(tab.parentElement).toHaveStyle({ '--qg-launcher-position': `${saved * 100}dvh` })
 
