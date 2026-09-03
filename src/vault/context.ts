@@ -100,6 +100,8 @@ export interface VaultContextProps {
   refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
+  canReplaceInFlightSend: boolean
+  replaceInFlightSend: () => Promise<void>
   openSendScan: () => void
   scanOnSend: boolean
   clearSendScan: () => void
@@ -186,6 +188,8 @@ export const VaultContext = createContext<VaultContextProps>({
   refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},
+  canReplaceInFlightSend: false,
+  replaceInFlightSend: async () => {},
   openSendScan: () => {},
   scanOnSend: false,
   clearSendScan: () => {},

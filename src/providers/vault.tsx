@@ -41,6 +41,7 @@ import type { VaultLightningQuote } from '../lib/vault/lightningLifecycle'
 import {
   isVtxoReceiptPendingError,
   isVtxoReviewedReservationError,
+  isVtxoSameSendInProgressError,
   isVtxoSpendInFlightError,
   loadPersistedVtxoSpend,
   reserveVaultVtxo,
@@ -120,6 +121,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   spendRef.current = spend
   const [reviewedVtxoQuote, setReviewedVtxoQuote] = useState<VaultVtxoSpendQuote | null>(null)
   const [lightningQuote, setLightningQuote] = useState<VaultLightningQuote | null>(null)
+  const [canReplaceInFlightSend, setCanReplaceInFlightSend] = useState(false)
+  const replaceExistingVtxoRef = useRef(false)
   const [lastSend, setLastSend] = useState<VaultSpend | null>(null)
   const [lastTxid, setLastTxid] = useState('')
   const [lastTxKind, setLastTxKind] = useState<'onchain' | 'vtxo' | 'lightning' | ''>('')
@@ -461,6 +464,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     (draft: Partial<VaultSpend>) => {
       setReviewedVtxoQuote(null)
       setLightningQuote(null)
+      setCanReplaceInFlightSend(false)
       setSpend((prev) => {
         const next = { ...prev, ...draft }
         next.fee = vaultDraftFee(account, liveNetwork)
@@ -620,7 +624,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
       setBusy(true)
       try {
-        const quote = await reserveVaultVtxo(enrollment, status, spend.address, spend.amount)
+        const replaceExisting = replaceExistingVtxoRef.current
+        replaceExistingVtxoRef.current = false
+        const quote = await reserveVaultVtxo(enrollment, status, spend.address, spend.amount, { replaceExisting })
         if (
           spendRef.current.address.trim() !== quote.destAddress.trim() ||
           spendRef.current.amount !== quote.amountSats
@@ -628,6 +634,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           setError('Send details changed. Review the send again.')
           return
         }
+        setCanReplaceInFlightSend(false)
         setReviewedVtxoQuote(quote)
         setSpend((current) =>
           current.address === spend.address && current.amount === spend.amount
@@ -635,6 +642,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             : current,
         )
       } catch (err) {
+        if (isVtxoSameSendInProgressError(err) || isVtxoSpendInFlightError(err)) {
+          setCanReplaceInFlightSend(true)
+        }
         setError(humanizeVaultError(err))
         return
       } finally {
@@ -652,6 +662,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     status,
     spendingAvailableSats,
   ])
+
+  const replaceInFlightSend = useCallback(async () => {
+    replaceExistingVtxoRef.current = true
+    setCanReplaceInFlightSend(false)
+    setError('')
+    await reviewSpend()
+  }, [reviewSpend])
 
   const finishBroadcast = useCallback(
     async (txid: string, kind: 'onchain' | 'vtxo' | 'lightning' = 'onchain', authoritativeFee?: number) => {
@@ -853,9 +870,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             return
           }
           if (status.vaultId) await refreshBalance(status.vaultId)
-          if (isVtxoSpendInFlightError(err)) {
+          if (isVtxoSpendInFlightError(err) || isVtxoSameSendInProgressError(err)) {
+            setCanReplaceInFlightSend(true)
             setError(humanizeVaultError(err))
-            setScreen('home')
+            setScreen('send')
             return
           }
           throw err
@@ -891,9 +909,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             return
           }
           if (status.vaultId) await refreshBalance(status.vaultId)
-          if (isVtxoSpendInFlightError(err)) {
+          if (isVtxoSpendInFlightError(err) || isVtxoSameSendInProgressError(err)) {
+            setCanReplaceInFlightSend(true)
             setError(humanizeVaultError(err))
-            setScreen('home')
+            setScreen('send')
             return
           }
           throw err
@@ -1071,6 +1090,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       refreshingBalance,
       reset,
       reviewSpend,
+      canReplaceInFlightSend,
+      replaceInFlightSend,
       openSendScan: () => {
         setAccount('spend')
         clearSpendDraft('spend')
@@ -1150,6 +1171,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       refreshingBalance,
       reset,
       reviewSpend,
+      canReplaceInFlightSend,
+      replaceInFlightSend,
       scanOnSend,
       savingsAddress,
       positions,

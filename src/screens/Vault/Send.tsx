@@ -11,7 +11,7 @@ import {
 import { decodeVaultLightningInvoice } from '../../lib/vault/lightningInvoice'
 import { VaultContext } from '../../vault/context'
 import Scanner from './Scanner'
-import QgScreen, { QgPrimary } from './qg/QgScreen'
+import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
 
 function lightningInvoice(value: string, network?: string) {
   if (!network || !vaultLightningSendEnabled(network as NetworkName) || !isVaultLightningInput(value)) return undefined
@@ -55,6 +55,8 @@ export default function VaultSend() {
     error,
     navigate,
     reviewSpend,
+    canReplaceInFlightSend,
+    replaceInFlightSend,
     scanOnSend,
     setSpendDraft,
     spend,
@@ -142,6 +144,9 @@ export default function VaultSend() {
             <p className='qg-footer-error' role='alert'>
               {error}
             </p>
+          ) : null}
+          {canReplaceInFlightSend ? (
+            <QgSecondary label='Send anyway' onClick={() => void replaceInFlightSend()} disabled={busy} />
           ) : null}
           <QgPrimary
             onClick={() => void reviewSpend()}

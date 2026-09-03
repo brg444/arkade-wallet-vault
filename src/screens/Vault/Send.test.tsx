@@ -4,6 +4,11 @@ import { ToastProvider } from '../../components/Toast'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultSend from './Send'
 
+vi.mock('../../lib/haptics', () => ({
+  hapticLight: vi.fn(),
+  hapticSubtle: vi.fn(),
+}))
+
 vi.mock('./Scanner', () => ({
   default: ({ close, label }: { close: () => void; label: string }) => (
     <div>
@@ -73,5 +78,16 @@ describe('Vault send scanner origin', () => {
   it('does not keep a previous destination in the To field', () => {
     renderSend({ spend: { address: '', amount: 0, fee: 0 } })
     expect(screen.getByLabelText('To')).toHaveValue('')
+  })
+
+  it('offers Send anyway when an exact in-progress send can be replaced', () => {
+    const value = renderSend({
+      canReplaceInFlightSend: true,
+      error: 'A send of this exact amount to this address is still in progress.',
+      replaceInFlightSend: vi.fn(),
+      spend: { address: 'tark1same', amount: 20_000, fee: 0 },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send anyway' }))
+    expect(value.replaceInFlightSend).toHaveBeenCalled()
   })
 })
