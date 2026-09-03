@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { loadBalanceSnapshot, saveBalanceSnapshot } from '../lib/vault/balanceStore'
 import { consoleError } from '../lib/logs'
 import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } from '../lib/vault/esplora'
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
@@ -95,10 +96,6 @@ export function useVaultBalances({
   setStatus,
   status,
 }: VaultBalancesOptions) {
-  const [snapshot, setSnapshot] = useState<VaultBalanceSnapshot>(EMPTY_BALANCES)
-  const [balanceError, setBalanceError] = useState('')
-  const [balancesLoaded, setBalancesLoaded] = useState(false)
-  const [refreshingBalance, setRefreshingBalance] = useState(false)
   const refreshVersion = useRef(0)
   const statusRef = useRef(status)
   const addressPinRef = useRef(addressPin)
@@ -108,6 +105,23 @@ export function useVaultBalances({
   enrollmentRef.current = enrollment
 
   const refreshVaultId = status?.vaultId || enrollment?.vaultId || addressPin?.vaultId || ''
+  const [hydratedVaultId, setHydratedVaultId] = useState(refreshVaultId)
+  const [snapshot, setSnapshot] = useState<VaultBalanceSnapshot>(
+    () => loadBalanceSnapshot(refreshVaultId) || EMPTY_BALANCES,
+  )
+  const [balanceError, setBalanceError] = useState('')
+  const [balancesLoaded, setBalancesLoaded] = useState(() => Boolean(loadBalanceSnapshot(refreshVaultId)))
+  const [refreshingBalance, setRefreshingBalance] = useState(false)
+
+  if (hydratedVaultId !== refreshVaultId) {
+    const cachedSnapshot = loadBalanceSnapshot(refreshVaultId)
+    setHydratedVaultId(refreshVaultId)
+    refreshVersion.current += 1
+    setSnapshot(cachedSnapshot || EMPTY_BALANCES)
+    setBalancesLoaded(Boolean(cachedSnapshot))
+    setBalanceError('')
+    setRefreshingBalance(false)
+  }
 
   const { boardingBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats } = snapshot
   const positions = useMemo(
@@ -151,6 +165,7 @@ export function useVaultBalances({
           if (version !== refreshVersion.current) return
           setStatus(liveStatus)
           setSnapshot(EMPTY_BALANCES)
+          saveBalanceSnapshot(id, EMPTY_BALANCES)
           setBalancesLoaded(true)
           setBalanceError('')
           return
@@ -178,13 +193,15 @@ export function useVaultBalances({
         ])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
-        setSnapshot({
+        const nextSnapshot = {
           boardingBalance: spending.boardingBalance || 0,
           history: [...savings.history, ...spending.history],
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
-        })
+        }
+        setSnapshot(nextSnapshot)
+        saveBalanceSnapshot(id, nextSnapshot)
         setBalancesLoaded(true)
         setBalanceError('')
       } catch (error) {
@@ -209,14 +226,6 @@ export function useVaultBalances({
       consoleError(error, 'VTXO spend recovery')
     }
   }, [refreshBalance])
-
-  useEffect(() => {
-    refreshVersion.current += 1
-    setSnapshot(EMPTY_BALANCES)
-    setBalancesLoaded(false)
-    setBalanceError('')
-    setRefreshingBalance(false)
-  }, [refreshVaultId])
 
   useEffect(() => {
     if (locked || !initialStatusChecked || !refreshVaultId) return
