@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { VaultContext, type VaultAccount, type VaultContextProps } from '../../vault/context'
 import VaultReceive from './Receive'
@@ -49,6 +50,10 @@ function renderReceiveWithoutAddresses(account: VaultAccount) {
 }
 
 describe('Vault receive', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('shows one Spending BIP21 request with Arkade and boarding addresses', () => {
     renderReceive('spend')
     expect(screen.getByRole('heading', { name: 'Receive' })).toBeTruthy()
@@ -62,6 +67,22 @@ describe('Vault receive', () => {
     expect(screen.queryByText('One payment request')).toBeNull()
     expect(screen.queryByText(/Confirmed Bitcoin deposits/)).toBeNull()
     expect(screen.queryByText('Savings')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Share' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Copy payment request' })).toBeNull()
+  })
+
+  it('opens the native share sheet with the BIP21 payment request', async () => {
+    const user = userEvent.setup()
+    const share = vi.fn().mockResolvedValue(undefined)
+    const canShare = vi.fn().mockReturnValue(true)
+    Object.assign(navigator, { share, canShare })
+
+    renderReceive('spend')
+    await user.click(screen.getByTestId('receive-share'))
+    expect(share).toHaveBeenCalledWith({
+      title: 'Arkade Vault payment request',
+      text: 'bitcoin:tb1qboarding?ark=tark1spending',
+    })
   })
 
   it('keeps Savings receive separate when entered from Savings', () => {

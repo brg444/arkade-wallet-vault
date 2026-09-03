@@ -273,7 +273,7 @@ test('renders the Spending BIP21 request and copies each underlying address', as
   await page.getByTestId('receive-bitcoin-address').click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(status.vtxoBoardingAddress)
 
-  await page.getByRole('button', { name: 'Copy payment request' }).click()
+  await page.getByRole('button', { name: 'Share' }).click()
   const request = await page.evaluate(() => navigator.clipboard.readText())
   expect(decodeVaultBip21(request)).toEqual({
     bitcoinAddress: status.vtxoBoardingAddress,
