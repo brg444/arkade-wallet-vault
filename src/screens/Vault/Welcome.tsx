@@ -41,13 +41,13 @@ export default function VaultWelcome() {
         </>
       }
     >
-      <p className='qg-eyebrow'>Money with a guardian</p>
+      <p className='qg-eyebrow'>Bitcoin, vaulted</p>
       <h1>
         Spend freely.
         <br />
         Recover safely.
       </h1>
-      <p className='qg-lead'>A wallet with enrolled limits and recovery paths you control.</p>
+      <p className='qg-lead'>Vault security designed to protect your bitcoin from lost keys and compromised devices.</p>
       <div className='qg-assurances'>
         <span>
           <Fingerprint />
@@ -55,7 +55,7 @@ export default function VaultWelcome() {
         </span>
         <span>
           <ShieldCheck />
-          Protected recovery
+          Vault security
         </span>
       </div>
     </QgScreen>
