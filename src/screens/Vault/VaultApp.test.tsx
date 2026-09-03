@@ -36,7 +36,7 @@ describe('VaultApp onboarding', () => {
     expect(screen.queryByRole('button', { name: 'Look around first' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Get started' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /Sign in to an existing vault/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sign in to an existing vault' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Get started' }))
 
     expect(await screen.findByRole('heading', { name: 'Different money needs different protection' })).toBeTruthy()

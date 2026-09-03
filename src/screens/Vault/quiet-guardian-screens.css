@@ -20,6 +20,19 @@
   color: var(--qg-ink);
 }
 
+html.palette-dark [data-testid='vault-app'] {
+  --qg-oat: #111012;
+  --qg-paper: #1b191c;
+  --qg-ink: #fffdf9;
+  --qg-muted: #b8afa6;
+  --qg-line: #514a52;
+  --qg-purple: #b5a0ff;
+  --qg-green: #95c89d;
+  --qg-green-soft: #1d2c21;
+  --qg-orange: #e19a75;
+  --qg-orange-soft: #34231b;
+}
+
 body:has(.vault-screen-home),
 body:has(.vault-screen-welcome),
 body:has(.vault-screen-unlock) {
@@ -2317,7 +2330,7 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-launcher-amt {
-  color: var(--qg-muted);
+  color: var(--qg-ink);
   font-size: 12px;
   font-weight: 500;
 }

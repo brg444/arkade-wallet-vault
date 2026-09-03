@@ -14,7 +14,7 @@ import QgScreen, { QgPrimary, QgSecondary, QgTextButton } from './qg/QgScreen'
 type HandoffView = 'export' | 'import' | 'ready' | 'problem'
 
 export default function VaultHandoff() {
-  const { busy, cancelSavingsHandoff, completeSavingsHandoff, error, handoffPsbt, navigate, spend } =
+  const { busy, cancelSavingsHandoff, completeSavingsHandoff, error, handoffPsbt, navigate, spend, status } =
     useContext(VaultContext)
   const { toast } = useToast()
   const payload = useMemo(() => (handoffPsbt ? psbtHexToBase64(handoffPsbt) : ''), [handoffPsbt])
@@ -202,7 +202,7 @@ export default function VaultHandoff() {
           </div>
           <div>
             <span>Network</span>
-            <strong>Mutinynet</strong>
+            <strong>{status?.network === 'mainnet' ? 'Bitcoin' : 'Mutinynet'}</strong>
           </div>
         </section>
         <p className='qg-copy'>

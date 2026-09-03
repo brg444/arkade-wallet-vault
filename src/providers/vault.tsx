@@ -729,7 +729,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setReviewedVtxoQuote(null)
       setLightningQuote(null)
       setSpend({ address: '', amount: 0, fee: vaultDraftFee(account, liveNetwork) })
-      if (status?.vaultId) await refreshBalance(status.vaultId)
+      if (status?.vaultId) {
+        try {
+          await refreshBalance(status.vaultId)
+        } catch {
+          // A submitted transaction stays successful when the follow-up balance
+          // refresh is temporarily unavailable. The normal refresher will retry.
+        }
+      }
       setScreen('success')
     },
     [account, liveNetwork, refreshBalance, spend, status],

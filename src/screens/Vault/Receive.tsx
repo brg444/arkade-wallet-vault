@@ -90,7 +90,7 @@ export default function VaultReceive() {
           {spending ? 'Spending limits' : 'Two-key Savings'}
         </span>
         {request ? (
-          <div className='qg-qr' aria-label='Payment request QR code'>
+          <div className='qg-qr' role='img' aria-label='Payment request QR code'>
             <QrCode large value={request} />
           </div>
         ) : (

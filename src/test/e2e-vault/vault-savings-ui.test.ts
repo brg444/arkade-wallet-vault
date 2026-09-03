@@ -1,4 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test'
+import { hex } from '@scure/base'
+import { Transaction } from '@scure/btc-signer'
 import type { VaultStatus } from '../../lib/vault/types'
 
 const AMOUNT = 50_000
@@ -42,7 +44,8 @@ async function openVault(page: Page): Promise<{ broadcastHex: () => string; stat
     if (url.pathname === '/esplora/blocks/tip/height') return route.fulfill({ status: 200, body: '1' })
     if (url.pathname === '/esplora/tx' && route.request().method() === 'POST') {
       broadcastHex = route.request().postData() || ''
-      return route.fulfill({ status: 200, body: 'dd'.repeat(32) })
+      const txid = Transaction.fromRaw(hex.decode(broadcastHex)).id
+      return route.fulfill({ status: 200, body: txid })
     }
     return json(route, [])
   })
@@ -147,12 +150,12 @@ test('@polish persists a phone-signed Savings PSBT and completes a real hardware
 
   await page.reload()
   await selectSavings(page)
-  const pending = page.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i })
+  const pending = page.getByRole('button', { name: /Waiting for hardware ₿51,500/i })
   await expect(pending).toBeVisible()
 
   await page.reload()
   await selectSavings(page)
-  await page.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i }).click()
+  await page.getByRole('button', { name: /Waiting for hardware ₿51,500/i }).click()
   await expect(page.getByRole('heading', { name: 'Hardware next' })).toBeVisible()
   await expect(page).toHaveScreenshot('savings-hardware-handoff.png', { animations: 'disabled', fullPage: true })
 
@@ -160,9 +163,7 @@ test('@polish persists a phone-signed Savings PSBT and completes a real hardware
   const copied = await page.evaluate(() => navigator.clipboard.readText())
   expect(copied).toBe(Buffer.from(phoneSigned, 'hex').toString('base64'))
 
-  await page.getByTestId('savings-signed-psbt-paste').fill(Buffer.from(hardwareSigned, 'hex').toString('base64'))
-  await expect(page.getByRole('button', { name: 'Broadcast' })).toBeEnabled()
-
+  await page.getByRole('button', { name: 'I’ve signed it' }).click()
   await page.getByTestId('savings-signed-psbt-file').setInputFiles({
     name: 'hardware-signed.psbt',
     mimeType: 'application/octet-stream',
@@ -170,7 +171,7 @@ test('@polish persists a phone-signed Savings PSBT and completes a real hardware
   })
   await expect(page.getByText('hardware-signed.psbt is ready to broadcast.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Broadcast' }).click()
+  await page.getByRole('button', { name: 'Broadcast transaction' }).click()
   await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
   await expect(page.getByText('Bitcoin confirmation is next')).toBeVisible()
   await expect(page.getByText('PSBT copied')).toBeHidden()

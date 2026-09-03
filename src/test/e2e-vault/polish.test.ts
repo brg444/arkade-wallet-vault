@@ -69,7 +69,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   await page.goto('/')
   await page.getByRole('button', { name: 'Get started' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByRole('heading', { name: 'Hardware key' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hardware key', exact: true })).toBeVisible()
   const hardwarePub = page.getByTestId('hardware-pub')
   await hardwarePub.fill(PROGRAM_FIXTURE.hardwarePub)
   await hardwarePub.blur()
@@ -77,7 +77,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   await expect(page).toHaveScreenshot('onboarding-hardware.png', { animations: 'disabled', fullPage: true })
 
   await page.getByRole('button', { name: 'Use this hardware key' }).click()
-  await expect(page.getByRole('heading', { name: 'Protection' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Protection', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-protection-standard.png', {
     animations: 'disabled',
@@ -93,7 +93,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   await page.getByTestId('protection-standard').click()
   await page.getByRole('button', { name: 'Continue with Standard' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Spending limits' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Spending limits', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-spending-limits.png', {
     animations: 'disabled',
@@ -107,7 +107,7 @@ test('@polish every onboarding decision is accessible and visually stable', asyn
   })
   await page.getByRole('button', { name: 'Review setup' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Review' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Review', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('onboarding-review.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('checkbox').check()
