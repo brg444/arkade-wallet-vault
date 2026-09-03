@@ -50,9 +50,9 @@ const KEY_LABEL: Record<Claimant, string> = {
 }
 
 const KEY_DETAIL: Record<Claimant, string> = {
-  phone: 'Passkey on this device',
-  hardware: 'The hardware key',
-  recovery: 'The recovery key',
+  phone: 'Use the passkey on this device',
+  hardware: 'Use your hardware key',
+  recovery: 'Use your separately stored recovery key',
 }
 
 const KEY_ICON: Record<Claimant, ReactNode> = {
@@ -300,20 +300,20 @@ export default function VaultRecover() {
         <div className='vault-security'>
           <section className='vault-security-hero' aria-label='Recovery status'>
             <div className='vault-security-hero-head'>
-              <strong>Lost a key</strong>
+              <strong>Recovery protection</strong>
               <span className={inProcess ? 'is-attention' : 'is-ready'}>{inProcess ? 'In process' : 'Idle'}</span>
             </div>
-            <h2>{inProcess ? 'Recovery is waiting.' : 'Start with a key you still have.'}</h2>
+            <h2>{inProcess ? 'Recovery is waiting.' : 'Recover with a key you still control.'}</h2>
             <p>
               {inProcess
                 ? initiateAlert || 'Savings is in a waiting period. Cancel if you didn’t start this.'
-                : 'This begins a waiting period. Cancel if you didn’t start it. After the wait, the starter can move the coins even if the vault services are gone.'}
+                : 'Starting recovery creates a visible waiting period. Your other keys can cancel it if the request was not yours.'}
             </p>
           </section>
 
           <div className='vault-section'>
-            <p className='vault-section-label'>Which key is gone</p>
-            <div className='vault-hub' role='radiogroup' aria-label='Which key is gone'>
+            <p className='vault-section-label'>Recover with</p>
+            <div className='vault-hub' role='radiogroup' aria-label='Key to use for recovery'>
               {CLAIMANTS.map((item) => (
                 <button
                   key={item}
@@ -533,29 +533,29 @@ export default function VaultRecover() {
               {hasRecoveryKit ? 'On this device' : 'Needed'}
             </span>
           </div>
-          <h2>Save your Recovery Kit</h2>
+          <h2>Keep your vault map available</h2>
           <p>
-            The Recovery Kit is a map of this vault. It is not a seed. It does not hold your keys. Back up the map with
-            this vault, then your passkey can rebuild it on this device or another device.
+            The Recovery Kit is a public map of this vault—not a seed or private key. It lets recovery software rebuild
+            the correct addresses and recovery paths, but cannot move bitcoin by itself.
           </p>
         </section>
 
-        <HubGroup label='Keep this somewhere safe'>
+        <HubGroup label='Keep a durable copy'>
           <HubRow
             title='On this device'
             detail={
               hasRecoveryKit
-                ? 'The map is here. Save a file if you want a spare, or back it up with the vault.'
-                : 'No map on this device yet. Get it with your passkey, or paste a file you saved.'
+                ? 'The vault map is here. Save another copy outside this device.'
+                : 'No vault map is available here. Restore it with your passkey or a saved file.'
             }
           />
           <HubRow
             title='When you need the file'
-            detail='You can’t open this app, and you need the offline tool. Everyday send and sign-in on a new device do not use the file.'
+            detail='Use it with recovery software when this app cannot reconstruct your vault. Everyday payments do not need it.'
           />
           <HubRow
             title='When the file cannot help'
-            detail='If the vault services are offline, this map cannot start recovery or move coins still on the original address. This device plus hardware still can.'
+            detail='The map cannot sign, start recovery by itself, or replace a lost key. This device plus hardware can still move Savings without the service.'
           />
         </HubGroup>
 

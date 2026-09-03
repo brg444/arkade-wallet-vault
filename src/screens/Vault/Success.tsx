@@ -20,7 +20,7 @@ export default function VaultSuccess() {
     : lightning
       ? 'Quote accepted. The Lightning payment is completing.'
       : lastTxKind === 'vtxo'
-        ? 'Arkade transfer'
+        ? 'Fast transfer complete'
         : onchain
           ? 'Bitcoin confirmation is next'
           : 'Done'

@@ -1,11 +1,9 @@
 import { useContext } from 'react'
-import { fingerprint } from '../../../lib/vault/hex'
 import { VaultContext } from '../../../vault/context'
 import QgScreen, { QgCheck, QgPrimary } from '../qg/QgScreen'
 
 export default function VaultCreated() {
   const { navigate, setup, status } = useContext(VaultContext)
-  const vaultId = status?.vaultId || ''
   const advanced = (status?.protectionTier || setup.protectionTier) === 'advanced'
 
   return (
@@ -22,20 +20,20 @@ export default function VaultCreated() {
           <br />
           was created
         </h1>
-        <p className='qg-copy'>The service returned the committed Vault facts and this device verified them.</p>
+        <p className='qg-copy'>Your protection choices are enrolled and verified on this device.</p>
         <section className='qg-next'>
-          <strong>Confirmed after enrollment</strong>
+          <strong>Your safeguards</strong>
           <span>
             <QgCheck />
-            Vault {vaultId ? `QV-${fingerprint(vaultId, 2)}` : 'enrolled'}
+            Savings requires this device and hardware
           </span>
           <span>
             <QgCheck />
-            {advanced ? 'Advanced protection enrolled' : 'Standard protection enrolled'}
+            {advanced ? 'Separate recovery key enrolled' : 'One-lost-key recovery active'}
           </span>
           <span>
             <QgCheck />
-            vault-board-v1 verified
+            Spending limits locked in
           </span>
         </section>
       </div>

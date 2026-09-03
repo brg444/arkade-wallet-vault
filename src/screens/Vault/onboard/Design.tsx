@@ -12,10 +12,11 @@ export default function VaultDesign() {
       back={() => navigate('welcome')}
       footer={<QgPrimary onClick={acceptDesign} label='Continue' />}
     >
-      <p className='qg-eyebrow'>One Vault, two accounts</p>
+      <p className='qg-eyebrow'>Protection by purpose</p>
       <h1>Different money needs different protection</h1>
       <p className='qg-copy'>
-        Spending stays ready for everyday payments. Savings requires an additional hardware approval.
+        Limits reduce the impact of a compromised device. Savings requires two independent keys, with delayed recovery
+        if one is lost.
       </p>
       <ProtectionModel />
     </QgScreen>

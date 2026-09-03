@@ -42,13 +42,14 @@ export default function VaultKit() {
       <p className='qg-eyebrow'>Keep this somewhere safe</p>
       <h1>Save your Recovery Kit</h1>
       <p className='qg-copy'>
-        This encrypted file helps restore access if this device is lost. It does not give anyone access by itself.
+        This public vault map lets recovery software rebuild the correct addresses and recovery paths. It contains no
+        private keys and cannot move bitcoin by itself.
       </p>
       <section className='qg-document'>
         <QgMark />
         <div>
           <strong>Recovery Kit</strong>
-          <small>Encrypted recovery file</small>
+          <small>Public vault map · no private keys</small>
         </div>
         <LockKeyhole />
       </section>
@@ -59,7 +60,7 @@ export default function VaultKit() {
         </span>
         <span>
           <QgCheck />
-          Keep the file private
+          Keep a second durable copy
         </span>
       </div>
     </QgScreen>

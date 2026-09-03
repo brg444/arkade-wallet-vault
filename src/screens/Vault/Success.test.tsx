@@ -30,7 +30,7 @@ describe('Vault send success explorer', () => {
     renderSuccess('vtxo')
 
     expect(screen.getByText('Payment sent')).toBeInTheDocument()
-    expect(screen.getByText('Arkade transfer')).toBeInTheDocument()
+    expect(screen.getByText('Fast transfer complete')).toBeInTheDocument()
     expect(screen.getByText('VTXO identifier')).toBeInTheDocument()
     expect(screen.getByText('Mutinynet')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'View on Arkade Space' }))

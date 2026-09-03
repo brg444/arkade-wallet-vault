@@ -95,8 +95,8 @@ export default function VaultKeys() {
           <h2>{vaultReady ? 'Your vault is ready.' : 'Review your vault.'}</h2>
           <p>
             {vaultReady
-              ? 'Your passkey and the Vault service protect everyday payments. Your recovery path remains available.'
-              : 'Check device access, addresses, and service readiness before relying on this vault.'}
+              ? 'Limits contain Spending exposure, two independent keys protect Savings, and delayed recovery protects against loss.'
+              : 'One or more safeguards needs attention. Check device access, wallet addresses, and service readiness.'}
           </p>
         </section>
 
@@ -105,13 +105,15 @@ export default function VaultKeys() {
             icon={<FingerprintIcon />}
             label='Protection tier'
             value={protectionTier === 'advanced' ? 'Advanced' : 'Standard'}
-            detail={protectionTier === 'advanced' ? 'Separate recovery key' : 'No separate recovery key'}
+            detail={
+              protectionTier === 'advanced' ? 'Survives loss of both everyday keys' : 'Recovers after one lost key'
+            }
           />
           <SecurityTile
             icon={<SafeIcon />}
             label='Recovery Kit'
             value={hasRecoveryKit ? 'Available' : 'Review'}
-            detail={hasRecoveryKit ? 'On this device' : 'Restore or save a copy'}
+            detail={hasRecoveryKit ? 'Public vault map on this device' : 'Restore or save your vault map'}
             onClick={() => openRecover('kit', 'keys')}
             testId='security-kit'
           />
@@ -125,7 +127,7 @@ export default function VaultKeys() {
             icon={<ServerIcon />}
             label='Vault service'
             value={readinessLabel}
-            detail='Signing readiness'
+            detail='Enforces limits and assists recovery'
             testId='security-readiness'
           />
         </div>
@@ -144,12 +146,17 @@ export default function VaultKeys() {
                   : undefined
               }
             />
-            <HubRow icon={<ShieldCheckOutlineIcon />} title='Hardware' status={shortKey(hardwarePub)} />
+            <HubRow
+              icon={<ShieldCheckOutlineIcon />}
+              title='Hardware'
+              detail='Independent approval for Savings'
+              status={shortKey(hardwarePub)}
+            />
             {hasRecovery ? (
               <HubRow
                 icon={<SafeIcon />}
                 title='Recovery'
-                detail='Starts a wait you can cancel'
+                detail='Restores access after a visible delay'
                 status={shortKey(recoveryPub)}
               />
             ) : null}

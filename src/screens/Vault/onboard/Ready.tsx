@@ -14,23 +14,24 @@ export default function VaultReady() {
           <p>Ready</p>
         </div>
         <h1>
-          Your money has
-          <br />a guardian
+          Your bitcoin is
+          <br />
+          ready—and protected
         </h1>
-        <p className='qg-copy'>Spending and Savings are ready on Mutinynet.</p>
+        <p className='qg-copy'>Your safeguards are active. You can now use Spending and Savings on Mutinynet.</p>
         <section className='qg-next'>
           <strong>Ready on this device</strong>
           <span>
             <QgCheck />
-            Recovery Kit available
+            Loss recovery is ready
           </span>
           <span>
             <QgCheck />
-            Spending limits enrolled
+            Savings requires two keys
           </span>
           <span>
             <QgCheck />
-            Passkey active
+            Spending limits are active
           </span>
         </section>
       </div>
