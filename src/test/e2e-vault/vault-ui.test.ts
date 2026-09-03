@@ -383,12 +383,13 @@ test('renders an exact reviewed VTXO send before approval', async ({ page }) => 
 
   await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
   await expect(page.getByText('12,000 SATS', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Reveal' }).click()
   await expect(page.getByText(destination, { exact: true })).toBeVisible()
   await expect(page.getByText('500 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText('12,500 SATS', { exact: true })).toBeVisible()
   await expect(page.getByText('Vault service', { exact: true })).toBeVisible()
-  await expect(page.getByText('Within your enrolled limits', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Approve with passkey' })).toBeVisible()
+  await expect(page.getByText('Automatic if this payment is within your limits')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Approve payment' })).toBeVisible()
 })
 
 test('renders an exact no-change VTXO send with the resolved time before its receive', async ({ page }) => {

@@ -1,12 +1,9 @@
 import { useContext, useState } from 'react'
-import Button from '../../../components/Button'
-import Input from '../../../components/Input'
-import Text from '../../../components/Text'
+import { Check, Circle, Clipboard, KeyRound, ShieldCheck } from 'lucide-react'
+import ErrorMessage from '../../../components/Error'
 import { pasteFromClipboard } from '../../../lib/clipboard'
-import SafeIcon from '../../../icons/Safe'
 import { VaultContext } from '../../../vault/context'
-import { KeyCard } from '../ui'
-import { ChoiceCard, OnboardLayout } from './Layout'
+import QgScreen, { QgPrimary } from '../qg/QgScreen'
 
 export default function VaultRecovery() {
   const { applyRecovery, error, navigate, setProtectionTier, setup, skipRecovery } = useContext(VaultContext)
@@ -15,73 +12,85 @@ export default function VaultRecovery() {
   const advanced = setup.protectionTier === 'advanced'
 
   return (
-    <OnboardLayout
+    <QgScreen
       title='Protection'
-      step={3}
-      total={6}
-      error={error}
-      onBack={() => navigate('hardware')}
-      actions={
-        advanced ? (
-          <Button onClick={() => applyRecovery(value)} disabled={!hasKey} label='Use Advanced' />
-        ) : (
-          <Button onClick={skipRecovery} label='Use Standard' />
-        )
+      stepLabel='3 of 6'
+      back={() => navigate('hardware')}
+      footer={
+        <>
+          <ErrorMessage error={Boolean(error)} text={error || ''} />
+          {advanced ? (
+            <QgPrimary onClick={() => applyRecovery(value)} disabled={!hasKey} label='Continue with Advanced' />
+          ) : (
+            <QgPrimary onClick={skipRecovery} label='Continue with Standard' />
+          )}
+        </>
       }
     >
-      <p className='vault-onboard-eyebrow'>Choose your setup</p>
-      <h2 className='vault-onboard-title'>How should recovery work?</h2>
-      <Text wrap>
+      <p className='qg-eyebrow'>Choose your setup</p>
+      <h1>How should recovery work?</h1>
+      <p className='qg-copy'>
         Both options use this device, a hardware key, and the Vault service. Advanced adds a separate recovery key.
-      </Text>
-      <div className='vault-policy-presets' aria-label='Protection tier'>
-        <ChoiceCard
-          title='Standard'
-          detail='This device and hardware key. No separate recovery key.'
-          selected={!advanced}
+      </p>
+      <div className='qg-choice-list' role='radiogroup' aria-label='Protection tier'>
+        <button
+          type='button'
+          role='radio'
+          aria-checked={!advanced}
+          data-testid='protection-standard'
           onClick={() => setProtectionTier('standard')}
-          testId='protection-standard'
-        />
-        <ChoiceCard
-          title='Advanced'
-          detail='Add a separate recovery key for the existing delayed recovery paths.'
-          selected={advanced}
+        >
+          <span className='qg-choice-icon'>
+            <ShieldCheck />
+          </span>
+          <span>
+            <strong>Standard</strong>
+            <small>No separate recovery key</small>
+            <em>Recommended for most people</em>
+          </span>
+          {!advanced ? <Check /> : <Circle />}
+        </button>
+        <button
+          type='button'
+          role='radio'
+          aria-checked={advanced}
+          data-testid='protection-advanced'
           onClick={() => setProtectionTier('advanced')}
-          testId='protection-advanced'
-        />
+        >
+          <span className='qg-choice-icon'>
+            <KeyRound />
+          </span>
+          <span>
+            <strong>Advanced</strong>
+            <small>Add a separate recovery key</small>
+            <em>More control, more responsibility</em>
+          </span>
+          {advanced ? <Check /> : <Circle />}
+        </button>
       </div>
       {advanced ? (
-        <>
-          <KeyCard icon={<SafeIcon />} title='Recovery key' role='Starts a wait you can cancel. Not for daily spend.' />
-          <Text color='neutral-600' tiny wrap>
-            The Recovery Kit is a separate file you’ll save after setup. It is not a seed and does not contain this key.
-          </Text>
-          <Input
-            label='Recovery public key'
-            placeholder='02… or 03…'
-            value={value}
-            onChange={setValue}
-            testId='recovery-pub'
-          />
+        <div className='qg-recovery-key'>
+          <label className='qg-field'>
+            <span>Recovery public key</span>
+            <input
+              value={value}
+              data-testid='recovery-pub'
+              aria-label='Recovery public key'
+              placeholder='02… or 03…'
+              onChange={(event) => setValue(event.target.value)}
+            />
+            <small>Must be different from the hardware key</small>
+          </label>
           <button
             type='button'
-            className='vault-inline-paste'
+            className='qg-paste'
             onClick={() => void pasteFromClipboard().then((next) => setValue(next || value))}
           >
-            Paste
+            <Clipboard />
+            Paste public key
           </button>
-        </>
-      ) : (
-        <div className='vault-callout' role='status'>
-          <Text small bold>
-            No recovery key
-          </Text>
-          <Text color='neutral-600' tiny wrap>
-            Standard cannot use the recovery-key paths. Losing both this device and the hardware key can leave funds
-            without a cooperative recovery path.
-          </Text>
         </div>
-      )}
-    </OnboardLayout>
+      ) : null}
+    </QgScreen>
   )
 }

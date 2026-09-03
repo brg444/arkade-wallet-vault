@@ -27,7 +27,7 @@ export default function VaultHistory() {
           <h2 id='vault-activity-title'>Recent</h2>
         </div>
         <div className='vault-history-empty' role={!balancesLoaded && !balanceError ? 'status' : undefined}>
-          <Text color='neutral-600' tiny wrap>
+          <p className='qg-copy'>
             {!balancesLoaded
               ? balanceError
                 ? 'Activity is unavailable. Refresh to try again.'
@@ -35,7 +35,7 @@ export default function VaultHistory() {
               : account === 'savings'
                 ? 'No Savings activity yet. Add bitcoin to your Savings address to see it here.'
                 : 'No Spending activity yet. Receive a payment to see it here.'}
-          </Text>
+          </p>
         </div>
       </section>
     )

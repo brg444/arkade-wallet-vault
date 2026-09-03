@@ -1,70 +1,61 @@
-import { useContext } from 'react'
-import Button from '../../../components/Button'
-import Text from '../../../components/Text'
-import FingerprintIcon from '../../../icons/Fingerprint'
-import SafeIcon from '../../../icons/Safe'
-import ShieldCheckOutlineIcon from '../../../icons/ShieldCheckOutline'
-import { prettyAmount } from '../../../lib/format'
-import { approximateFiatLabel } from '../../../lib/vault/fiatDisplay'
-import { PROGRAM_CSV } from '../../../lib/vault/program/constants'
+import { useContext, useState } from 'react'
+import { prettyNumber } from '../../../lib/format'
+import { fingerprint } from '../../../lib/vault/hex'
 import { VaultContext } from '../../../vault/context'
-import { KeyCard, PolicyTimeline, Section } from '../ui'
-import { OnboardLayout } from './Layout'
+import QgScreen, { QgPrimary } from '../qg/QgScreen'
+
+function shortPub(pub: string) {
+  return pub ? fingerprint(pub, 2) : 'Not enrolled'
+}
 
 export default function VaultPlan() {
-  const { fiatDisplayRate, finishPlan, liveNetwork, navigate, setup } = useContext(VaultContext)
+  const { finishPlan, navigate, setup } = useContext(VaultContext)
+  const [consented, setConsented] = useState(false)
   const advanced = setup.protectionTier === 'advanced'
-  const txFiat = approximateFiatLabel(setup.txCapSats, fiatDisplayRate)
-  const allowanceFiat = approximateFiatLabel(setup.dailyLimitSats, fiatDisplayRate)
+
   return (
-    <OnboardLayout
+    <QgScreen
       title='Review'
-      step={5}
-      onBack={() => navigate('conditions')}
-      actions={<Button onClick={finishPlan} label='Continue' />}
+      stepLabel='5 of 6'
+      back={() => navigate('conditions')}
+      footer={<QgPrimary onClick={finishPlan} disabled={!consented} label='Continue' />}
     >
-      <Text wrap>
-        <strong>{advanced ? 'Advanced protection' : 'Standard protection'}.</strong>{' '}
-        {advanced
-          ? 'A separate recovery key is required and can use the existing delayed recovery paths. After setup, save the Recovery Kit from Security.'
-          : 'No recovery key is enrolled. Losing both this device and the hardware key can leave funds without a cooperative recovery path.'}
-      </Text>
-      <Section>
-        <KeyCard
-          icon={<ShieldCheckOutlineIcon />}
-          title='Hardware'
-          role='With this device, moves everything'
-          fingerprint={setup.hardwarePub}
-        />
-        {advanced ? (
-          <KeyCard
-            icon={<SafeIcon />}
-            title='Recovery key'
-            role='Required for Advanced; starts a waiting period you can cancel'
-            fingerprint={setup.recoveryPub}
-          />
-        ) : (
-          <KeyCard icon={<SafeIcon />} title='Recovery key' role='Not enrolled with Standard.' />
-        )}
-        <KeyCard
-          icon={<FingerprintIcon />}
-          title='This device'
-          role={`${prettyAmount(setup.txCapSats)} per payment${txFiat ? ` · ${txFiat}` : ''}`}
-        />
-      </Section>
-      <PolicyTimeline
-        txCap={setup.txCapSats}
-        dailyLimit={setup.dailyLimitSats}
-        phoneRecoveryBlocks={PROGRAM_CSV.phone}
-        hardwareRecoveryBlocks={PROGRAM_CSV.hardware}
-        network={liveNetwork ? 'mutinynet' : undefined}
-      />
-      <Text color='neutral-600' tiny wrap>
-        Network: Mutinynet. Don’t send real Bitcoin. Exact limits: {prettyAmount(setup.txCapSats)} per payment
-        {txFiat ? ` (${txFiat})` : ''} and {prettyAmount(setup.dailyLimitSats)} per rolling 24 hours
-        {allowanceFiat ? ` (${allowanceFiat})` : ''}. Above-limit payments are refused. These spending conditions are
-        bound to this vault and cannot be changed after setup.
-      </Text>
-    </OnboardLayout>
+      <p className='qg-eyebrow'>Ready to enroll</p>
+      <h1>Review your Vault</h1>
+      <section className='qg-summary'>
+        <div>
+          <span>Network</span>
+          <strong>Mutinynet</strong>
+        </div>
+        <div>
+          <span>Protection</span>
+          <strong>{advanced ? 'Advanced' : 'Standard'}</strong>
+        </div>
+        <div>
+          <span>Hardware key</span>
+          <strong>{shortPub(setup.hardwarePub)}</strong>
+        </div>
+        <div>
+          <span>Recovery key</span>
+          <strong>{advanced ? shortPub(setup.recoveryPub) : 'Not enrolled'}</strong>
+        </div>
+        <div>
+          <span>Per payment</span>
+          <strong>{prettyNumber(setup.txCapSats, 0)} sats</strong>
+        </div>
+        <div>
+          <span>Rolling 24 hours</span>
+          <strong>{prettyNumber(setup.dailyLimitSats, 0)} sats</strong>
+        </div>
+        <div>
+          <span>Vault design</span>
+          <strong>Will enroll vault-board-v1</strong>
+        </div>
+      </section>
+      <label className='qg-consent'>
+        <input type='checkbox' checked={consented} onChange={(event) => setConsented(event.target.checked)} />
+        <span>I understand these limits are enrolled with this Vault and cannot be changed after setup.</span>
+      </label>
+    </QgScreen>
   )
 }

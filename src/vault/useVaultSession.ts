@@ -93,6 +93,7 @@ export function useVaultSession({
       }
       setBusy(true)
       reportError('')
+      setScreen('creating')
       try {
         const result = await enrollWithPasskey(token, {
           protectionTier: setup.protectionTier,
@@ -125,9 +126,10 @@ export function useVaultSession({
         } catch {
           reportError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
         }
-        setScreen('home')
+        setScreen('created')
       } catch (error) {
         reportError(humanizeVaultError(error))
+        setScreen('problem')
       } finally {
         setBusy(false)
       }

@@ -27,42 +27,34 @@ export default function VaultHeader({ auxAriaLabel, auxFunc, auxText, auxIcon, b
     : undefined
 
   return (
-    <div className='header'>
-      <div className='vault-header-layout'>
-        <div className='vault-header-side'>
-          {handleBack ? (
-            <button
-              type='button'
-              className='vault-header-button'
-              aria-label='Go back'
-              data-testid='header-back'
-              onClick={handleBack}
-            >
-              <BackIcon />
-            </button>
-          ) : null}
-        </div>
-        <h1 className='title' data-testid='screen-title'>
-          {text}
-        </h1>
-        <div className='vault-header-side is-end'>
-          {auxText || auxIcon ? (
-            <button
-              type='button'
-              className={auxText ? 'vault-header-button has-text' : 'vault-header-button'}
-              aria-label={auxAriaLabel || auxText}
-              data-testid='header-aux-btn'
-              disabled={!auxFunc}
-              onClick={() => {
-                hapticLight()
-                auxFunc?.()
-              }}
-            >
-              {auxText || auxIcon}
-            </button>
-          ) : null}
-        </div>
-      </div>
-    </div>
+    <header className='qg-header header'>
+      {handleBack ? (
+        <button type='button' aria-label='Go back' data-testid='header-back' onClick={handleBack}>
+          <BackIcon />
+        </button>
+      ) : (
+        <span />
+      )}
+      <span className='title' data-testid='screen-title'>
+        {text}
+      </span>
+      {auxText || auxIcon ? (
+        <button
+          type='button'
+          className={auxText ? 'qg-header-aux has-text' : 'qg-header-aux'}
+          aria-label={auxAriaLabel || auxText}
+          data-testid='header-aux-btn'
+          disabled={!auxFunc}
+          onClick={() => {
+            hapticLight()
+            auxFunc?.()
+          }}
+        >
+          {auxText || auxIcon}
+        </button>
+      ) : (
+        <span />
+      )}
+    </header>
   )
 }

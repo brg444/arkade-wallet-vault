@@ -1,21 +1,17 @@
 import { useContext, useMemo, useRef, useState } from 'react'
-import Button from '../../components/Button'
-import ButtonsOnBottom from '../../components/ButtonsOnBottom'
-import Content from './Content'
+import { Check, Clipboard, Clock3, Copy, QrCode, ScanLine, Share2, TriangleAlert, Upload } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
-import FlexCol from '../../components/FlexCol'
-import Header from './Header'
-import Input from '../../components/Input'
-import Padded from '../../components/Padded'
-import Scanner from './Scanner'
-import Text from '../../components/Text'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
-import { prettyAmount } from '../../lib/format'
+import { prettyAmount, prettyNumber } from '../../lib/format'
 import { encodePsbtFrames, parsePsbtFrame } from '../../lib/vault/savingsQr'
 import { psbtHexToBase64, readPsbtFile } from '../../lib/vault/savingsSpend'
 import { VaultContext } from '../../vault/context'
 import PsbtQr from './PsbtQr'
+import Scanner from './Scanner'
+import QgScreen, { QgPrimary, QgSecondary, QgTextButton } from './qg/QgScreen'
+
+type HandoffView = 'export' | 'import' | 'ready' | 'problem'
 
 export default function VaultHandoff() {
   const { busy, cancelSavingsHandoff, completeSavingsHandoff, error, handoffPsbt, navigate, spend } =
@@ -23,6 +19,7 @@ export default function VaultHandoff() {
   const { toast } = useToast()
   const payload = useMemo(() => (handoffPsbt ? psbtHexToBase64(handoffPsbt) : ''), [handoffPsbt])
   const frames = useMemo(() => (payload ? encodePsbtFrames(payload) : []), [payload])
+  const [view, setView] = useState<HandoffView>('export')
   const [frame, setFrame] = useState(0)
   const [scan, setScan] = useState(false)
   const [showQr, setShowQr] = useState(false)
@@ -52,6 +49,14 @@ export default function VaultHandoff() {
   }
 
   const current = frames[Math.min(frame, Math.max(frames.length - 1, 0))] || ''
+  const signedReady = Boolean(pasted.trim())
+
+  const acceptSigned = (value: string, fileName = '') => {
+    setPasted(value)
+    setSelectedFile(fileName)
+    setFileError('')
+    setView('ready')
+  }
 
   if (scan) {
     return (
@@ -60,9 +65,7 @@ export default function VaultHandoff() {
         label='Signed PSBT'
         onData={(data) => {
           const parsed = parsePsbtFrame(data)
-          setPasted(parsed ? parsed.payload : data)
-          setSelectedFile('')
-          setFileError('')
+          acceptSigned(parsed ? parsed.payload : data)
           setScan(false)
         }}
         onError={() => setScan(false)}
@@ -70,108 +73,237 @@ export default function VaultHandoff() {
     )
   }
 
-  return (
-    <>
-      <Header text='Hardware next' back={() => navigate('home')} />
-      <Content noRefresh className='vault-handoff-content'>
-        <Padded>
-          <FlexCol gap='1.15rem' className='vault-flow vault-handoff-flow'>
-            <Text wrap>
-              This device signed and saved the pending transfer. Sign the PSBT with your hardware key, then upload the
-              signed .psbt file here.
-            </Text>
-            <Text color='neutral-600' tiny wrap>
-              {prettyAmount(spend.amount)}
-            </Text>
-            {canShareFile ? <Button label='Share PSBT file' onClick={() => void sharePsbt()} /> : null}
-            <Button
-              secondary={canShareFile}
-              label='Copy PSBT'
-              onClick={() => {
-                void (async () => {
-                  await copyToClipboard(payload)
-                  toast('PSBT copied')
-                })()
-              }}
-            />
-            <button type='button' className='vault-inline-paste' onClick={() => setShowQr((open) => !open)}>
-              {showQr ? 'Hide QR' : 'Show QR instead'}
-            </button>
-            {showQr ? (
-              <>
-                <PsbtQr value={current} />
-                {frames.length > 1 ? (
-                  <button
-                    type='button'
-                    className='vault-inline-paste'
-                    onClick={() => setFrame((n) => (n + 1) % frames.length)}
-                  >
-                    Next QR
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-            <input
-              ref={fileInput}
-              hidden
-              type='file'
-              accept='.psbt,application/octet-stream'
-              data-testid='savings-signed-psbt-file'
-              onChange={(event) => {
-                const input = event.currentTarget
-                const file = input.files?.[0]
-                input.value = ''
-                if (!file) return
-                setFileError('')
-                void readPsbtFile(file)
-                  .then((psbt) => {
-                    setPasted(psbt)
-                    setSelectedFile(file.name)
-                  })
-                  .catch(() => {
-                    setPasted('')
-                    setSelectedFile('')
-                    setFileError('The selected file is not a valid PSBT.')
-                  })
-              }}
-            />
-            <Button
-              secondary
-              label={selectedFile ? 'Choose a different PSBT' : 'Upload signed PSBT'}
-              onClick={() => fileInput.current?.click()}
-            />
-            <Input
-              label='Signed PSBT'
-              placeholder='Paste signed PSBT (base64 or hex)'
-              value={pasted}
-              testId='savings-signed-psbt-paste'
-              onChange={(value) => {
-                setPasted(value)
+  if (busy) {
+    return (
+      <div className='qg-screen qg-screen-progress'>
+        <main className='qg-main qg-centered qg-progress-screen'>
+          <span className='qg-spinner' aria-hidden='true' />
+          <p className='qg-eyebrow'>Submitting to Bitcoin</p>
+          <h1>Broadcasting transaction</h1>
+          <p className='qg-copy'>Keep this screen open until submission completes.</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (view === 'import') {
+    return (
+      <QgScreen title='Return signed transaction' back={() => setView('export')} footer={null}>
+        <p className='qg-eyebrow'>Approval 2 of 2</p>
+        <h1>Bring the signed PSBT back</h1>
+        <p className='qg-copy'>Choose the method that matches your hardware signer.</p>
+        <input
+          ref={fileInput}
+          hidden
+          type='file'
+          accept='.psbt,application/octet-stream'
+          data-testid='savings-signed-psbt-file'
+          onChange={(event) => {
+            const input = event.currentTarget
+            const file = input.files?.[0]
+            input.value = ''
+            if (!file) return
+            void readPsbtFile(file)
+              .then((psbt) => acceptSigned(psbt, file.name))
+              .catch(() => {
+                setPasted('')
                 setSelectedFile('')
-                setFileError('')
-              }}
-            />
-            {selectedFile ? (
-              <Text color='neutral-600' tiny wrap>
-                {selectedFile} is ready to broadcast.
-              </Text>
-            ) : null}
-            <ErrorMessage error={Boolean(fileError || error)} text={fileError || error} />
-            <button type='button' className='vault-inline-paste' onClick={cancelSavingsHandoff}>
-              Delete pending transfer
-            </button>
-          </FlexCol>
-        </Padded>
-      </Content>
-      <ButtonsOnBottom>
-        <Button
-          onClick={() => void completeSavingsHandoff(pasted)}
-          disabled={busy || !pasted.trim()}
-          loading={busy}
-          label={busy ? 'Broadcasting…' : 'Broadcast'}
+                setFileError('The selected file is not a valid PSBT.')
+                setView('problem')
+              })
+          }}
         />
-        <Button onClick={() => setScan(true)} label='Scan signed transaction' secondary />
-      </ButtonsOnBottom>
-    </>
+        <div className='qg-methods'>
+          <button type='button' onClick={() => fileInput.current?.click()}>
+            <Upload />
+            <span>
+              <strong>Upload file</strong>
+              <small>Choose a signed .psbt file</small>
+            </span>
+          </button>
+          <button type='button' onClick={() => setScan(true)}>
+            <ScanLine />
+            <span>
+              <strong>Scan QR</strong>
+              <small>Scan the signed transaction</small>
+            </span>
+          </button>
+          <button
+            type='button'
+            onClick={() => {
+              const next = window.prompt('Paste signed PSBT (base64 or hex)')
+              if (next) acceptSigned(next)
+            }}
+          >
+            <Clipboard />
+            <span>
+              <strong>Paste</strong>
+              <small>Base64 or hexadecimal PSBT</small>
+            </span>
+          </button>
+        </div>
+        <label className='qg-field'>
+          <span>Signed PSBT</span>
+          <input
+            value={pasted}
+            data-testid='savings-signed-psbt-paste'
+            placeholder='Paste signed PSBT (base64 or hex)'
+            onChange={(event) => setPasted(event.target.value)}
+          />
+        </label>
+        {pasted.trim() ? <QgPrimary onClick={() => setView('ready')} label='Use this PSBT' /> : null}
+      </QgScreen>
+    )
+  }
+
+  if (view === 'ready') {
+    return (
+      <QgScreen
+        title='Ready to broadcast'
+        back={() => setView('import')}
+        footer={
+          <>
+            <ErrorMessage error={Boolean(fileError || error)} text={fileError || error} />
+            <QgPrimary
+              onClick={() => void completeSavingsHandoff(pasted)}
+              disabled={!signedReady}
+              label='Broadcast transaction'
+            />
+          </>
+        }
+      >
+        <div className='qg-success-line'>
+          <Check />
+          <span>
+            <strong>Hardware signature verified</strong>
+            <small>
+              {selectedFile
+                ? `${selectedFile} is ready to broadcast.`
+                : 'The signed transaction matches your pending transfer.'}
+            </small>
+          </span>
+        </div>
+        <section className='qg-details'>
+          <div>
+            <span>Amount</span>
+            <strong>{prettyAmount(spend.amount)}</strong>
+          </div>
+          <div>
+            <span>Network fee</span>
+            <strong>{prettyAmount(spend.fee)}</strong>
+          </div>
+          <div>
+            <span>Total</span>
+            <strong>{prettyAmount(spend.amount + spend.fee)}</strong>
+          </div>
+          <div>
+            <span>To</span>
+            <strong>{spend.address}</strong>
+          </div>
+          <div>
+            <span>Network</span>
+            <strong>Mutinynet</strong>
+          </div>
+        </section>
+        <p className='qg-copy'>
+          Broadcasting submits this Bitcoin transaction. It cannot be recalled after submission.
+        </p>
+      </QgScreen>
+    )
+  }
+
+  if (view === 'problem') {
+    return (
+      <QgScreen
+        title='Check signed transaction'
+        back={() => setView('import')}
+        footer={
+          <>
+            <QgPrimary onClick={() => setView('import')} label='Choose another PSBT' />
+            <QgSecondary onClick={() => setView('export')} label='Show PSBT again' />
+          </>
+        }
+      >
+        <p className='qg-eyebrow'>Nothing was broadcast</p>
+        <h1>This signature can’t be used</h1>
+        <p className='qg-copy'>The signed PSBT does not match the pending Savings transfer.</p>
+        <section className='qg-alert'>
+          <TriangleAlert />
+          <div>
+            <strong>Choose the transaction you just signed</strong>
+            <p>Your pending transfer is still saved on this device.</p>
+          </div>
+        </section>
+      </QgScreen>
+    )
+  }
+
+  return (
+    <QgScreen
+      title='Hardware next'
+      close={() => navigate('home')}
+      stepLabel='Saved'
+      footer={
+        <>
+          <QgPrimary onClick={() => setView('import')} label='I’ve signed it' />
+          <QgTextButton onClick={cancelSavingsHandoff} label='Delete pending transfer' />
+        </>
+      }
+    >
+      <div className='qg-status-line'>
+        <b>1</b>
+        <span>
+          <strong>Passkey approved</strong>
+          <small>The pending transfer is saved on this device.</small>
+        </span>
+        <Check />
+      </div>
+      <p className='qg-eyebrow'>Approval 2 of 2</p>
+      <h1>Move the transaction to your hardware signer</h1>
+      <p className='qg-copy'>
+        Copy or show the PSBT, sign it with your hardware key, then return the signed transaction here.
+      </p>
+      <section className='qg-transfer'>
+        <span>{prettyNumber(spend.amount, 0)} sats</span>
+        <strong>PSBT · unsigned by hardware</strong>
+      </section>
+      {canShareFile ? (
+        <button type='button' className='qg-primary' onClick={() => void sharePsbt()}>
+          <Share2 />
+          Share PSBT
+        </button>
+      ) : null}
+      <button
+        type='button'
+        className={canShareFile ? 'qg-secondary' : 'qg-primary'}
+        onClick={() => {
+          void (async () => {
+            await copyToClipboard(payload)
+            toast('PSBT copied')
+          })()
+        }}
+      >
+        <Copy />
+        Copy PSBT
+      </button>
+      <button type='button' className='qg-paste' onClick={() => setShowQr((open) => !open)}>
+        <QrCode />
+        {showQr ? 'Hide QR' : 'Show QR instead'}
+      </button>
+      {showQr ? (
+        <>
+          <PsbtQr value={current} />
+          {frames.length > 1 ? (
+            <button type='button' className='qg-paste' onClick={() => setFrame((n) => (n + 1) % frames.length)}>
+              Next QR
+            </button>
+          ) : null}
+        </>
+      ) : null}
+      <p className='qg-resume'>
+        <Clock3 />
+        You can close this screen and resume from Wallet.
+      </p>
+    </QgScreen>
   )
 }

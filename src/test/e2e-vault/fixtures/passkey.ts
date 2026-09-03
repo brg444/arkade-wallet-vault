@@ -686,31 +686,28 @@ export const test = base.extend<Fixtures>({
   },
 })
 
-export async function reachPasskeySetup(
-  page: Page,
-  policyPreset: 'lower-exposure' | 'everyday' | 'custom' = 'everyday',
-) {
+export async function reachPasskeySetup(page: Page) {
   await page.goto('/')
-  await expect(page.getByText('Spend freely. Recover safely.')).toBeVisible()
-  await page.getByRole('button', { name: 'Set up a new vault' }).click()
+  await expect(page.getByRole('heading', { name: /Spend freely/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Get started' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
   await page.getByRole('button', { name: 'Use this hardware key' }).click()
-  await page.getByRole('button', { name: 'Use Standard' }).click()
-  await page.getByTestId(`policy-preset-${policyPreset}`).click()
+  await page.getByRole('button', { name: 'Continue with Standard' }).click()
   await page.getByRole('button', { name: 'Review setup' }).click()
+  await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page.getByTestId('enrollment-token')).toBeVisible()
 }
 
-export async function enrollVaultWithPasskey(
-  page: Page,
-  authorizer: FakePasskeyAuthorizer,
-  policyPreset: 'lower-exposure' | 'everyday' | 'custom' = 'everyday',
-) {
-  await reachPasskeySetup(page, policyPreset)
+export async function enrollVaultWithPasskey(page: Page, authorizer: FakePasskeyAuthorizer) {
+  await reachPasskeySetup(page)
   await page.getByTestId('enrollment-token').fill(authorizer.invite)
   await page.getByRole('button', { name: 'Create Vault' }).click()
+  await expect(page.getByText('Your Vault')).toBeVisible()
+  await page.getByRole('button', { name: 'Save Recovery Kit' }).click()
+  await page.getByRole('button', { name: 'I already saved it' }).click()
+  await page.getByRole('button', { name: 'Open your Vault' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
 }
 

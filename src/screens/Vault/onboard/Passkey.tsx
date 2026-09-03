@@ -1,13 +1,10 @@
 import { useContext, useEffect, useState } from 'react'
-import Button from '../../../components/Button'
-import Input from '../../../components/Input'
-import Text from '../../../components/Text'
-import FingerprintIcon from '../../../icons/Fingerprint'
+import { Clipboard, Fingerprint } from 'lucide-react'
+import ErrorMessage from '../../../components/Error'
 import { pasteFromClipboard } from '../../../lib/clipboard'
 import { isPlatformPasskeyAvailable } from '../../../lib/vault/webauthn'
 import { VaultContext } from '../../../vault/context'
-import { KeyCard } from '../ui'
-import { OnboardLayout } from './Layout'
+import QgScreen, { QgPrimary, QgTextButton } from '../qg/QgScreen'
 
 export default function VaultPasskey() {
   const { busy, enroll, error, navigate } = useContext(VaultContext)
@@ -26,59 +23,57 @@ export default function VaultPasskey() {
 
   const inviteReady = token.trim().length >= 32
   return (
-    <OnboardLayout
+    <QgScreen
       title='Secure this device'
-      step={6}
-      error={error}
-      onBack={() => navigate('plan')}
-      actions={
+      stepLabel='6 of 6'
+      back={() => navigate('plan')}
+      footer={
         <>
-          <Button
-            onClick={() => enroll(token.trim())}
+          <ErrorMessage error={Boolean(error)} text={error || ''} />
+          <QgPrimary
+            onClick={() => void enroll(token.trim())}
             disabled={busy || !inviteReady || passkeyAvailable !== true}
+            icon={<Fingerprint />}
             label={busy ? 'Check your device…' : 'Create Vault'}
           />
+          <QgTextButton onClick={() => navigate('problem')} label='Having trouble?' />
         </>
       }
     >
-      <Text wrap>
-        Set this up on the phone or computer you’ll use for daily spending. Its passkey is unlocked by Face ID, Touch
-        ID, or the device PIN.
-      </Text>
-      <KeyCard
-        icon={<FingerprintIcon />}
-        title='Device key'
-        role='Stays on this device. It is separate from hardware and the Recovery Kit.'
-      />
-      {passkeyAvailable === false ? (
-        <div className='vault-callout is-warning' role='status' data-testid='passkey-unavailable'>
-          <Text small bold>
-            This browser can’t create the device key
-          </Text>
-          <Text color='neutral-600' tiny wrap>
-            Open this invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.
-          </Text>
-        </div>
-      ) : null}
-      <Input
-        label='One-time invite'
-        value={token}
-        onChange={setToken}
-        placeholder='Paste your invite'
-        testId='enrollment-token'
-      />
+      <p className='qg-eyebrow'>Final step</p>
+      <h1>Create your passkey</h1>
+      <p className='qg-copy'>Your passkey protects everyday approvals. Biometric data stays on this device.</p>
+      <section className='qg-device-key'>
+        <Fingerprint />
+        <span>
+          <strong>{passkeyAvailable === false ? 'Passkey unavailable' : 'Passkey available'}</strong>
+          <small>
+            {passkeyAvailable === false
+              ? 'Open this invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
+              : 'Use Face ID, Touch ID, fingerprint, or device PIN'}
+          </small>
+        </span>
+      </section>
+      {passkeyAvailable === false ? <div data-testid='passkey-unavailable' className='qg-visually-hidden' /> : null}
+      <label className='qg-field'>
+        <span>One-time invite</span>
+        <input
+          value={token}
+          data-testid='enrollment-token'
+          aria-label='One-time invite'
+          placeholder='Paste your invite'
+          onChange={(event) => setToken(event.target.value)}
+        />
+        <small>The invite is checked and consumed during enrollment</small>
+      </label>
       <button
         type='button'
-        className='vault-inline-paste'
+        className='qg-paste'
         onClick={() => void pasteFromClipboard().then((next) => setToken(next || token))}
       >
+        <Clipboard />
         Paste invite
       </button>
-      {!inviteReady ? (
-        <Text color='neutral-600' tiny wrap>
-          Paste the full invite from the vault service. It can only be used once.
-        </Text>
-      ) : null}
-    </OnboardLayout>
+    </QgScreen>
   )
 }
