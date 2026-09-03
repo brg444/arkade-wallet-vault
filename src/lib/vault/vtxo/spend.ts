@@ -904,9 +904,16 @@ function pendingProofFromCheckpoints(unsignedCheckpointPsbts: string[]): Transac
 
 function transactionWithoutTapscriptSignatures(tx: Transaction): Uint8Array {
   const unsigned = tx.clone()
-  const inputs = (unsigned as unknown as { inputs: PsbtInput[] }).inputs
-  for (let index = 0; index < unsigned.inputsLength; index++) {
-    Reflect.deleteProperty(inputs[index], 'tapScriptSig')
+  const inputs = (
+    unsigned as unknown as {
+      inputs: (PsbtInput & { unknown?: [{ type: number; key: Uint8Array }, Uint8Array][] })[]
+    }
+  ).inputs
+  for (const input of inputs) {
+    Reflect.deleteProperty(input, 'tapScriptSig')
+    if (input.unknown) {
+      input.unknown = input.unknown.filter(([key]) => !(key.type === 222 && hex.encode(key.key) === '74617074726565'))
+    }
   }
   return unsigned.toPSBT()
 }
