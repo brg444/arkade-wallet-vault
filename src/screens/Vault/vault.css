@@ -21,7 +21,7 @@
   --vault-testnet: var(--purple-800, #24154f);
   --vault-testnet-surface: var(--purple-100, #ede7fb);
   --vault-ease: 260ms cubic-bezier(0.16, 1, 0.3, 1);
-  --bottom-anchor-gap: max(8px, env(safe-area-inset-bottom, 0px));
+  --bottom-anchor-gap: 8px;
   background: var(--vault-paper);
   color: var(--vault-ink);
 }
@@ -133,9 +133,9 @@ html.palette-dark [data-testid='vault-app'] {
   transform: translateY(2px);
 }
 
-[data-testid='vault-app'] :where(button, input, a, [tabindex]):focus-visible {
-  outline: 2px solid var(--vault-accent);
-  outline-offset: 3px;
+[data-testid='vault-app'] :focus,
+[data-testid='vault-app'] :focus-visible {
+  outline: none;
 }
 
 [data-testid='vault-app'] .pill-nav-icon,
@@ -872,10 +872,9 @@ button.vault-panel:disabled {
   color: var(--vault-accent, var(--purple-700));
 }
 
+.vault-account-option:focus,
 .vault-account-option:focus-visible {
-  outline: 2px solid var(--vault-accent, var(--purple-700));
-  outline-offset: -2px;
-  border-radius: 12px;
+  outline: none;
 }
 
 .vault-account-option:first-of-type {
@@ -1281,15 +1280,15 @@ button.vault-status-card {
 .vault-home {
   min-height: 100%;
   gap: 0;
-  background: var(--vault-hero);
+  background: var(--vault-surface);
 }
 
 .vault-home-hero {
   position: relative;
   flex: 0 0 auto;
   overflow: hidden;
-  background: var(--vault-hero);
-  color: #fffdf8;
+  background: var(--vault-surface);
+  color: var(--vault-ink);
 }
 
 .vault-home-hero-inner,
@@ -1315,7 +1314,7 @@ button.vault-status-card {
 .vault-home-hero .vault-account-index,
 .vault-home-hero .vault-account-chevron,
 .vault-home-hero .vault-account-name {
-  color: #fffdf8;
+  color: var(--vault-ink);
 }
 
 .vault-home-hero .vault-account-addr {
@@ -1386,17 +1385,17 @@ button.vault-status-card {
 }
 
 .vault-home .button.vault-home-action-send {
-  background: #fffdf8;
+  background: var(--vault-ink);
   box-shadow: none;
-  color: var(--vault-accent);
+  color: var(--vault-paper);
 }
 
 .vault-home-sheet {
   position: relative;
   flex: 1;
-  min-height: 360px;
+  min-height: 0;
   padding: 1.2rem 1rem var(--pill-navbar-footer-clearance);
-  border-radius: 30px 30px 0 0;
+  border-radius: 0;
   background: var(--vault-paper);
 }
 

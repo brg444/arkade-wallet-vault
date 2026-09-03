@@ -10,6 +10,17 @@ export interface VaultErrorResponse {
   code: string
 }
 
+export class VaultRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code = '',
+  ) {
+    super(message)
+    this.name = 'VaultRequestError'
+  }
+}
+
 export async function vaultGet<T>(path: string, extraHeaders: Record<string, string> = {}): Promise<T> {
   return vaultRequest<T>(path, undefined, extraHeaders)
 }
@@ -31,16 +42,18 @@ async function vaultRequest<T>(path: string, bodyJSON?: string, extraHeaders: Re
   const text = await readBounded(res)
   if (!res.ok) {
     let message = text.trim()
+    let code = ''
     try {
       const data = JSON.parse(text) as Partial<VaultErrorResponse>
       if (data?.error) message = data.error
+      if (data?.code) code = data.code
     } catch {
       // proxy/HTML bodies are not useful to show
     }
     if (!message || res.status >= 500) {
-      throw new Error('vault service is not running')
+      throw new VaultRequestError('vault service is not running', res.status, code)
     }
-    throw new Error(message)
+    throw new VaultRequestError(message, res.status, code)
   }
   try {
     return JSON.parse(text) as T

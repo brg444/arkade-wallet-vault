@@ -35,7 +35,7 @@ export interface VaultSdkOperationCallbacks {
     signal: AbortSignal
   }): Promise<SubmitResponse>
 
-  /** One passkey ceremony plus VaultCosigner authorization for the exact checkpoint set. */
+  /** Sign the exact checkpoint set with the already-unlocked spending key, then VaultCosigner. */
   authorizeCheckpoints(args: {
     operatorCheckpointPsbts: string[]
     signal: AbortSignal

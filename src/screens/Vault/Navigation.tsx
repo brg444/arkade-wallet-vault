@@ -1,37 +1,46 @@
-import SettingsIcon from '../../icons/Settings'
-import VaultIcon from '../../icons/Vault'
-import WalletIcon from '../../icons/Wallet'
+import { Landmark, Settings, Shield, Wallet, X } from 'lucide-react'
 import HollowPixelMark from '../../icons/HollowPixelMark'
-import { hapticLight } from '../../lib/haptics'
-import { useContext, useEffect, useRef, useState } from 'react'
-import { VaultContext, type VaultScreen } from '../../vault/context'
+import { prettyNumber } from '../../lib/format'
+import { hapticLight, hapticSubtle } from '../../lib/haptics'
+import { useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { VaultContext, type VaultAccount, type VaultScreen } from '../../vault/context'
 
 export type VaultDestination = 'wallet' | 'security' | 'settings'
 
-const DESTINATIONS: {
-  id: VaultDestination
-  label: string
-  screen: VaultScreen
-  testId: string
-  icon: JSX.Element
-}[] = [
-  { id: 'wallet', label: 'Wallet', screen: 'home', testId: 'tab-wallet', icon: <WalletIcon /> },
-  { id: 'security', label: 'Security', screen: 'keys', testId: 'tab-vault', icon: <VaultIcon /> },
-  { id: 'settings', label: 'Settings', screen: 'settings', testId: 'tab-settings', icon: <SettingsIcon /> },
-]
-
 export function destinationForScreen(screen: VaultScreen): VaultDestination | null {
   if (screen === 'home') return 'wallet'
-  if (screen === 'keys') return 'security'
-  if (screen === 'settings') return 'settings'
   return null
 }
 
-export default function VaultNavigation({ active }: { active: VaultDestination }) {
-  const { navigate } = useContext(VaultContext)
+const ACTIONS: { id: string; label: string; testId: string; icon: ReactNode; screen: VaultScreen }[] = [
+  { id: 'security', label: 'Security', testId: 'tab-vault', icon: <Shield />, screen: 'keys' },
+  { id: 'settings', label: 'Settings', testId: 'tab-settings', icon: <Settings />, screen: 'settings' },
+]
+
+const ACCOUNTS: { id: VaultAccount; label: string; testId: string; icon: ReactNode }[] = [
+  { id: 'spend', label: 'Spending', testId: 'account-spend', icon: <Wallet /> },
+  { id: 'savings', label: 'Savings', testId: 'account-savings', icon: <Landmark /> },
+]
+
+const LOCK = 8
+const OPEN_DISTANCE = 52
+const PEEK = 96
+
+export default function VaultNavigation() {
+  const { account, balancesLoaded, navigate, positions, setAccount } = useContext(VaultContext)
   const [open, setOpen] = useState(false)
+  const [intro, setIntro] = useState(true)
+  const [pull, setPull] = useState(0)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const restoreTriggerFocus = useRef(false)
+  const drag = useRef({
+    startX: 0,
+    startY: 0,
+    dx: 0,
+    active: false,
+    locked: false,
+    suppressClick: false,
+  })
 
   useEffect(() => {
     if (open || !restoreTriggerFocus.current) return
@@ -50,59 +59,191 @@ export default function VaultNavigation({ active }: { active: VaultDestination }
     return () => window.removeEventListener('keydown', collapse)
   }, [open])
 
+  const close = () => {
+    hapticSubtle()
+    restoreTriggerFocus.current = false
+    setPull(0)
+    setOpen(false)
+  }
+
+  const openLauncher = () => {
+    setIntro(false)
+    setPull(0)
+    setOpen(true)
+  }
+
   const select = (screen: VaultScreen) => {
     hapticLight()
     setOpen(false)
     navigate(screen)
   }
 
-  return (
-    <div className={open ? 'vault-navigation-layer is-open' : 'vault-navigation-layer'}>
-      {open ? (
-        <nav className='vault-navigation' aria-label='Main navigation' id='vault-main-navigation'>
-          {DESTINATIONS.map((destination) => (
-            <button
-              key={destination.id}
-              type='button'
-              className={active === destination.id ? 'vault-navigation-item is-active' : 'vault-navigation-item'}
-              onClick={() => select(destination.screen)}
-              aria-current={active === destination.id ? 'page' : undefined}
-              aria-label={destination.label}
-              data-testid={destination.testId}
-            >
-              <span className='vault-navigation-icon' aria-hidden='true'>
-                {destination.icon}
-              </span>
-              <span className='vault-navigation-label'>{destination.label}</span>
-            </button>
-          ))}
+  const chooseAccount = (next: VaultAccount) => {
+    hapticSubtle()
+    setAccount(next)
+    restoreTriggerFocus.current = true
+    setOpen(false)
+  }
+
+  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.button) return
+    setIntro(false)
+    hapticLight()
+    drag.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      dx: 0,
+      active: true,
+      locked: false,
+      suppressClick: false,
+    }
+  }
+
+  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
+    if (!drag.current.active) return
+    const dx = event.clientX - drag.current.startX
+    const dy = event.clientY - drag.current.startY
+    if (!drag.current.locked) {
+      if (Math.abs(dy) > LOCK && Math.abs(dy) > Math.abs(dx)) {
+        drag.current.active = false
+        setPull(0)
+        return
+      }
+      if (dx > -LOCK) return
+      drag.current.locked = true
+      drag.current.suppressClick = true
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    }
+    const travel = Math.max(0, -dx)
+    drag.current.dx = -travel
+    setPull(Math.min(1, travel / PEEK))
+  }
+
+  const onPointerUp = () => {
+    if (!drag.current.active) return
+    const opened = drag.current.locked && -drag.current.dx >= OPEN_DISTANCE
+    drag.current.active = false
+    drag.current.locked = false
+    if (opened) {
+      openLauncher()
+      return
+    }
+    setPull(0)
+  }
+
+  const progress = open ? 1 : pull
+  const peeking = !open && pull > 0
+
+  const stack = (
+    <nav
+      className='qg-launcher-stack'
+      aria-label='Main navigation'
+      id='vault-main-navigation'
+      style={peeking ? { transform: `translateX(${Math.round((1 - progress) * 72)}px)` } : undefined}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {ACCOUNTS.map((item) => {
+        const position = item.id === 'spend' ? positions.spending : positions.savings
+        const on = account === item.id
+        return (
           <button
+            key={item.id}
             type='button'
-            className='vault-navigation-close'
-            aria-label='Collapse navigation'
-            onClick={() => {
-              hapticLight()
-              restoreTriggerFocus.current = true
-              setOpen(false)
-            }}
+            className={on ? 'qg-launcher-item is-on' : 'qg-launcher-item'}
+            onClick={() => chooseAccount(item.id)}
+            aria-label={item.label}
+            aria-pressed={on}
+            data-testid={item.testId}
+            tabIndex={open ? undefined : -1}
           >
-            <span aria-hidden='true'>⌄</span>
+            <span className='qg-launcher-copy'>
+              <span className='qg-launcher-label'>{item.label}</span>
+              <span className='qg-launcher-amt'>
+                {balancesLoaded
+                  ? `${prettyNumber(position.totalSats)} ${position.totalSats === 1 ? 'SAT' : 'SATS'}`
+                  : 'Loading…'}
+              </span>
+            </span>
+            <span className='qg-launcher-icon' aria-hidden='true'>
+              {item.icon}
+            </span>
           </button>
-        </nav>
-      ) : (
+        )
+      })}
+      {ACTIONS.map((action) => (
+        <button
+          key={action.id}
+          type='button'
+          className='qg-launcher-item'
+          onClick={() => select(action.screen)}
+          aria-label={action.label}
+          data-testid={action.testId}
+          tabIndex={open ? undefined : -1}
+        >
+          <span className='qg-launcher-label'>{action.label}</span>
+          <span className='qg-launcher-icon' aria-hidden='true'>
+            {action.icon}
+          </span>
+        </button>
+      ))}
+      <button
+        type='button'
+        className='qg-launcher-close vault-navigation-close'
+        aria-label='Close navigation'
+        onClick={close}
+        tabIndex={open ? undefined : -1}
+      >
+        <X />
+      </button>
+    </nav>
+  )
+
+  return (
+    <div className={open ? 'qg-launcher is-open' : peeking ? 'qg-launcher is-peeking' : 'qg-launcher'}>
+      {open || peeking ? (
+        <div
+          className='qg-launcher-backdrop'
+          onClick={open ? close : undefined}
+          style={peeking ? { opacity: progress, pointerEvents: 'none' } : undefined}
+        >
+          {stack}
+        </div>
+      ) : null}
+      {open ? null : (
         <button
           ref={triggerRef}
           type='button'
-          className='vault-navigation-trigger'
+          className={[
+            'qg-launcher-trigger vault-navigation-trigger',
+            intro ? 'is-intro' : '',
+            peeking ? 'is-pulling' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
           aria-label='Open navigation'
-          aria-expanded='false'
+          aria-expanded={open}
           aria-controls='vault-main-navigation'
-          onClick={() => {
-            hapticLight()
-            setOpen(true)
+          style={peeking ? { transform: `translateX(${Math.round(-progress * 28)}px)` } : undefined}
+          onAnimationEnd={(event) => {
+            if (event.target !== event.currentTarget) return
+            if (event.animationName.includes('qg-launcher-pulse')) setIntro(false)
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClick={(event) => {
+            if (drag.current.suppressClick) {
+              event.preventDefault()
+              drag.current.suppressClick = false
+              return
+            }
+            openLauncher()
           }}
         >
-          <HollowPixelMark />
+          <span className='qg-launcher-mark' aria-hidden='true'>
+            <HollowPixelMark />
+          </span>
         </button>
       )}
     </div>

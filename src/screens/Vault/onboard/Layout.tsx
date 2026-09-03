@@ -34,7 +34,7 @@ export function OnboardLayout({
             <StepRail step={step} total={total} />
             <p className='vault-step-label' aria-live='polite'>
               <span>
-                Step {step} of {total}
+                {step} of {total}
               </span>
             </p>
             {children}

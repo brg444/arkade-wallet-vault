@@ -1,7 +1,13 @@
 import { schnorr } from '@noble/curves/secp256k1.js'
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
-import { signVtxoReserveDigest, verifyVtxoReserveSignature, vtxoReserveDigest } from './reserveAuth'
+import {
+  signVtxoAbortDigest,
+  signVtxoReserveDigest,
+  verifyVtxoReserveSignature,
+  vtxoAbortDigest,
+  vtxoReserveDigest,
+} from './reserveAuth'
 
 const VECTOR = {
   operationId: '000102030405060708090a0b0c0d0e0f',
@@ -51,5 +57,22 @@ describe('VTXO reserve authentication', () => {
     expect(() => vtxoReserveDigest(input({ destScript: new Uint8Array() }))).toThrow(/destination script/)
     expect(() => vtxoReserveDigest(input({ amountSats: Number.MAX_SAFE_INTEGER + 1 }))).toThrow(/safe uint64/)
     expect(verifyVtxoReserveSignature(input(), VECTOR.signature.toUpperCase(), hex.decode(VECTOR.phonePub))).toBe(false)
+  })
+})
+
+describe('VTXO abort authentication', () => {
+  it('binds the abort digest to operation id, vault id, and spend purpose', () => {
+    const digest = vtxoAbortDigest({ operationId: VECTOR.operationId, vaultId: VECTOR.vaultId })
+    const other = vtxoAbortDigest({ operationId: '10'.repeat(16), vaultId: VECTOR.vaultId })
+    expect(hex.encode(digest)).not.toBe(hex.encode(other))
+    const signature = signVtxoAbortDigest(
+      { operationId: VECTOR.operationId, vaultId: VECTOR.vaultId },
+      hex.decode(VECTOR.phoneSecret),
+      new Uint8Array(32),
+    )
+    expect(signature.length).toBe(64)
+    expect(() => vtxoAbortDigest({ operationId: VECTOR.operationId.toUpperCase(), vaultId: VECTOR.vaultId })).toThrow(
+      /operation id/,
+    )
   })
 })

@@ -1,8 +1,11 @@
 import { Themes } from '../types'
-import { setHapticsEnabled } from '../haptics'
+import { bootHaptics, setHapticsEnabled } from '../haptics'
+import type { VaultBalanceUnit } from './fiatDisplay'
 
 const THEME_KEY = 'arkade-vault-theme'
 const HAPTICS_KEY = 'arkade-vault-haptics'
+const PRIVACY_LOCK_KEY = 'arkade-vault-privacy-lock'
+const BALANCE_UNIT_KEY = 'arkade-vault-balance-unit'
 
 export function loadVaultTheme(): Themes {
   const raw = localStorage.getItem(THEME_KEY)
@@ -12,6 +15,24 @@ export function loadVaultTheme(): Themes {
 
 export function loadVaultHaptics(): boolean {
   return localStorage.getItem(HAPTICS_KEY) !== '0'
+}
+
+export function loadVaultPrivacyLock(): boolean {
+  return localStorage.getItem(PRIVACY_LOCK_KEY) === '1'
+}
+
+export function saveVaultPrivacyLock(on: boolean) {
+  if (on) localStorage.setItem(PRIVACY_LOCK_KEY, '1')
+  else localStorage.removeItem(PRIVACY_LOCK_KEY)
+}
+
+export function loadVaultBalanceUnit(): VaultBalanceUnit {
+  return localStorage.getItem(BALANCE_UNIT_KEY) === 'usd' ? 'usd' : 'sats'
+}
+
+export function saveVaultBalanceUnit(unit: VaultBalanceUnit) {
+  if (unit === 'usd') localStorage.setItem(BALANCE_UNIT_KEY, 'usd')
+  else localStorage.removeItem(BALANCE_UNIT_KEY)
 }
 
 export function systemTheme(): Themes.Dark | Themes.Light {
@@ -45,6 +66,7 @@ let prefsBooted = false
 export function bootVaultPrefs() {
   applyVaultTheme(loadVaultTheme())
   setHapticsEnabled(loadVaultHaptics())
+  bootHaptics()
   if (prefsBooted || typeof window.matchMedia !== 'function') return
   prefsBooted = true
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {

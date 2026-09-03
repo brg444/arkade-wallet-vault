@@ -8,6 +8,7 @@ import {
   registerVaultWalletServiceWorker,
   scheduleVaultBoardingSettlement,
   shutdownVaultWalletWorker,
+  spendableVtxoSats,
   subscribeVaultLightningObserver,
   vaultBoardingSettleParams,
   vaultWalletRuntimeKey,
@@ -619,5 +620,15 @@ describe('Vault service-worker isolation', () => {
     await Promise.all([refresh, disposal])
     expect(disposed).toBe(true)
     expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('counts only genuinely spendable VTXOs toward the spending balance', () => {
+    expect(
+      spendableVtxoSats([
+        { value: 100_000, isSpent: true, spentBy: 'aa'.repeat(32) },
+        { value: 70_000, isSpent: false, spentBy: '', settledBy: 'bb'.repeat(32) },
+        { value: 40_000, isSpent: false },
+      ] as never),
+    ).toBe(40_000)
   })
 })

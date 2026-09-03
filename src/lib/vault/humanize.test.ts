@@ -45,8 +45,32 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('Reserved outpoint not spent by ark txid'))).toMatch(
       /send was submitted.*confirmed/i,
     )
+    expect(humanizeVaultError(new Error('Operator pending lookup did not return exactly one transaction'))).toMatch(
+      /send was submitted.*confirmed/i,
+    )
     expect(humanizeVaultError(new Error('VTXO spend is unresolved'))).toMatch(/did not finish/i)
     expect(humanizeVaultError(new Error('VTXO reservation expired'))).toMatch(/did not finish/i)
+  })
+
+  it('explains an exact-amount send that is still in progress', () => {
+    expect(humanizeVaultError(new Error('A send of this exact amount to this address is still in progress.'))).toMatch(
+      /reserved.*resume payment/i,
+    )
+  })
+
+  it('keeps active-operation, unsafe-abort, and lookup failures specific', () => {
+    expect(humanizeVaultError(new Error('A send is already with the operator and cannot be cancelled.'))).toMatch(
+      /cannot be cancelled.*resume payment/i,
+    )
+    expect(humanizeVaultError(new Error('vtxo operation already active'))).toMatch(
+      /with the operator.*cannot be cancelled/i,
+    )
+    expect(humanizeVaultError(new Error('The reserved send could not be aborted.'))).toMatch(/could not be aborted/i)
+    expect(
+      humanizeVaultError(
+        new Error('Pending send lookup failed: Operator pending lookup did not return exactly one transaction'),
+      ),
+    ).toMatch(/status could not be confirmed.*remain blocked/i)
   })
 
   it('keeps an expired reviewed quote actionable', () => {

@@ -12,11 +12,17 @@ export type VaultAccount = 'spend' | 'savings'
 
 export type VaultScreen =
   | 'welcome'
+  | 'unlock'
   | 'design'
   | 'hardware'
   | 'conditions'
   | 'plan'
   | 'passkey'
+  | 'creating'
+  | 'created'
+  | 'kit'
+  | 'ready'
+  | 'problem'
   | 'home'
   | 'receive'
   | 'send'
@@ -72,7 +78,7 @@ export interface VaultContextProps {
   error: string
   fiatDisplayRate: VaultFiatDisplayRate | null
   fiatDisplayEnabled: boolean
-  setFiatDisplay: (enabled: boolean) => Promise<void>
+  setFiatDisplay: (enabled: boolean) => Promise<VaultFiatDisplayRate | null>
   signIn: () => Promise<void>
   finishPlan: () => void
   hasLocalEnrollment: boolean
@@ -95,12 +101,15 @@ export interface VaultContextProps {
   refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
+  canReplaceInFlightSend: boolean
+  replaceInFlightSend: () => Promise<void>
   openSendScan: () => void
   scanOnSend: boolean
   clearSendScan: () => void
   savingsAddress: string
   screen: VaultScreen
   setAccount: (account: VaultAccount) => void
+  clearSpendDraft: () => void
   setSpendDraft: (draft: Partial<VaultSpend>) => void
   setup: VaultSetupPlan
   spend: VaultSpend
@@ -157,7 +166,7 @@ export const VaultContext = createContext<VaultContextProps>({
   error: '',
   fiatDisplayRate: null,
   fiatDisplayEnabled: false,
-  setFiatDisplay: async () => {},
+  setFiatDisplay: async () => null,
   signIn: async () => {},
   finishPlan: () => {},
   hasLocalEnrollment: false,
@@ -180,12 +189,15 @@ export const VaultContext = createContext<VaultContextProps>({
   refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},
+  canReplaceInFlightSend: false,
+  replaceInFlightSend: async () => {},
   openSendScan: () => {},
   scanOnSend: false,
   clearSendScan: () => {},
   savingsAddress: '',
   screen: 'welcome',
   setAccount: () => {},
+  clearSpendDraft: () => {},
   setSpendDraft: () => {},
   setup: emptySetupPlan(),
   spend: { address: '', amount: 0, fee: DEFAULT_SPEND_FEE_SATS },
