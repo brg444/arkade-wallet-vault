@@ -52,6 +52,69 @@ test('@polish welcome is accessible and visually stable', async ({ page }) => {
   await expect(page).toHaveScreenshot('onboarding-how-it-works.png', { animations: 'disabled', fullPage: true })
 })
 
+test('@polish keeps welcome actions aligned with installed-PWA safe areas', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'Mobile Chrome', 'Mobile shell regression')
+  await page.goto('/')
+  const app = page.getByTestId('vault-app')
+  await app.evaluate((element) => {
+    element.style.setProperty('--vault-safe-area-top', '47px')
+    element.style.setProperty('--vault-safe-area-bottom', '34px')
+  })
+  const layout = await page.evaluate(() => {
+    const box = (element: Element | null) => {
+      if (!element) return null
+      const rect = element.getBoundingClientRect()
+      return { y: rect.y, height: rect.height, bottom: rect.bottom }
+    }
+    const app = document.querySelector<HTMLElement>('[data-testid="vault-app"]')
+    const appStyle = app ? getComputedStyle(app) : null
+    return {
+      viewportHeight: window.innerHeight,
+      app: box(app),
+      appEdges: appStyle
+        ? {
+            position: appStyle.position,
+            top: appStyle.top,
+            right: appStyle.right,
+            bottom: appStyle.bottom,
+            left: appStyle.left,
+          }
+        : null,
+      content: box(document.querySelector('.vault-welcome-content')),
+      footer: box(document.querySelector('.vault-welcome-actions')),
+      buttons: Array.from(document.querySelectorAll('.vault-welcome-actions button')).map(box),
+    }
+  })
+  expect(layout.app).not.toBeNull()
+  expect(layout.footer).not.toBeNull()
+  expect(layout.buttons).toHaveLength(2)
+  expect(layout.appEdges).toEqual({
+    position: 'fixed',
+    top: '0px',
+    right: '0px',
+    bottom: '0px',
+    left: '0px',
+  })
+  expect(layout.app!.y).toBe(0)
+  expect(layout.app!.bottom).toBe(layout.viewportHeight)
+  expect(layout.footer!.bottom).toBe(layout.viewportHeight)
+  const lastButton = layout.buttons.at(-1)
+  expect(lastButton).not.toBeNull()
+  expect(layout.viewportHeight - lastButton!.bottom).toBeGreaterThanOrEqual(34)
+  expect(layout.viewportHeight - lastButton!.bottom).toBeLessThanOrEqual(54)
+  await expect(page).toHaveScreenshot('welcome-safe-areas.png', { animations: 'disabled', fullPage: true })
+
+  await page.getByRole('button', { name: 'Set up a new vault' }).click()
+  await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible()
+  const onboardingFooter = await page.locator('.buttons-on-bottom').boundingBox()
+  const onboardingAction = await page.getByRole('button', { name: 'Continue' }).boundingBox()
+  expect(onboardingFooter).not.toBeNull()
+  expect(onboardingAction).not.toBeNull()
+  expect(onboardingFooter!.y + onboardingFooter!.height).toBe(layout.viewportHeight)
+  expect(layout.viewportHeight - (onboardingAction!.y + onboardingAction!.height)).toBeGreaterThanOrEqual(34)
+  expect(layout.viewportHeight - (onboardingAction!.y + onboardingAction!.height)).toBeLessThanOrEqual(54)
+})
+
 test('@polish every onboarding decision is accessible and visually stable', async ({ context, page }) => {
   const cdp = await context.newCDPSession(page)
   await cdp.send('WebAuthn.enable')
