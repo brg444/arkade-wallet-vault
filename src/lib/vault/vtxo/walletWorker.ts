@@ -49,6 +49,7 @@ type WalletRuntime = {
   unsubscribeSwap: () => void
   onWorkerMessage: (event: MessageEvent) => void
   lightningObserver: VaultLightningObserverScheduler
+  boardingSettle?: Promise<void>
 }
 
 let runtime: WalletRuntime | undefined
@@ -456,6 +457,37 @@ export async function reloadVaultWalletWorker(status: VaultStatus) {
   await current.wallet.reload()
 }
 
+export interface VaultBoardingSettlementRuntime {
+  wallet: Pick<ServiceWorkerWallet, 'settle'>
+  listeners: Set<() => void>
+  boardingSettle?: Promise<void>
+}
+
+/**
+ * Starts one page-owned boarding request. The worker message remains pending
+ * for the full Operator batch, so MessageBus can attach the settlement to the
+ * service worker event's waitUntil lifetime.
+ */
+export function scheduleVaultBoardingSettlement(current: VaultBoardingSettlementRuntime): Promise<void> {
+  if (current.boardingSettle) return current.boardingSettle
+  let tracked: Promise<void>
+  tracked = current.wallet
+    .settle()
+    .then(() => {
+      current.listeners.forEach((listener) => listener())
+    })
+    .catch((error) => {
+      if (!(error instanceof Error) || !error.message.includes('No inputs found')) {
+        consoleError(error, 'Vault boarding settlement')
+      }
+    })
+    .finally(() => {
+      if (current.boardingSettle === tracked) current.boardingSettle = undefined
+    })
+  current.boardingSettle = tracked
+  return tracked
+}
+
 export interface VaultWalletVtxoSnapshot {
   balance: number
   boardingBalance?: number
@@ -483,6 +515,9 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
     current.wallet.getBoardingUtxos(),
     current.wallet.getBalance(),
   ])
+  if (balance.boarding.confirmed > 0) {
+    void scheduleVaultBoardingSettlement(current)
+  }
   const lightningRfqIds = new Set(
     swapRecords.filter((record) => record.kind === 'lightning_send').map((record) => record.rfqId),
   )
