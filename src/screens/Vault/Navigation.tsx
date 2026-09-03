@@ -100,7 +100,8 @@ export default function VaultNavigation() {
           aria-expanded='false'
           aria-controls='vault-main-navigation'
           onAnimationEnd={(event) => {
-            if (event.animationName === 'qg-launcher-pulse') setIntro(false)
+            if (event.target !== event.currentTarget) return
+            if (event.animationName.includes('qg-launcher-pulse')) setIntro(false)
           }}
           onClick={() => {
             hapticLight()
