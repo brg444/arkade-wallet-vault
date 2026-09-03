@@ -56,7 +56,7 @@ export default function VaultReceive() {
   const shareRequest = async () => {
     if (!request) return
     const data = {
-      title: spending ? 'Arkade Vault payment request' : 'Arkade Vault Savings address',
+      title: spending ? 'Vaulted payment request' : 'Vaulted Savings address',
       text: request,
     }
     try {

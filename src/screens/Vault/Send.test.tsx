@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Fiats } from '../../lib/types'
 import { ToastProvider } from '../../components/Toast'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultSend from './Send'
@@ -33,6 +35,7 @@ function renderSend(overrides: Partial<VaultContextProps> = {}) {
     navigate: vi.fn(),
     reviewSpend: vi.fn(),
     scanOnSend: false,
+    setFiatDisplay: vi.fn().mockResolvedValue({ currency: Fiats.USD, pricePerBtc: 100_000 }),
     setSpendDraft: vi.fn(),
     spend: { address: '', amount: 0, fee: 0 },
     setup: { dailyLimitSats: 100_000, txCapSats: 50_000 },
@@ -84,6 +87,18 @@ describe('Vault send scanner origin', () => {
     expect(screen.getByLabelText('To')).toHaveValue('')
   })
 
+  it('enters in ₿SATS by default and converts USD edits to integer satoshis', async () => {
+    const user = userEvent.setup()
+    const value = renderSend()
+    const denomination = screen.getByRole('button', { name: /Amount in bitcoin satoshis/i })
+    expect(denomination).toHaveTextContent('₿SATS')
+
+    await user.click(denomination)
+    expect(screen.getByRole('button', { name: /Amount in US dollars/i })).toHaveTextContent('$')
+    await user.type(screen.getByTestId('vault-send-amount'), '12.50')
+    expect(value.setSpendDraft).toHaveBeenLastCalledWith({ amount: 12_500 })
+  })
+
   it('offers abort for a reserved send and never a localStorage-only Send anyway', () => {
     const value = renderSend({
       canReplaceInFlightSend: true,
@@ -121,7 +136,7 @@ describe('Vault send scanner origin', () => {
     })
 
     expect(screen.getByText('Payment in progress')).toBeTruthy()
-    expect(screen.getByText('15,000 sats reserved')).toBeTruthy()
+    expect(screen.getByText('15,000 ₿SATS reserved')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Resume payment' }))
     expect(reviewSpend).toHaveBeenCalled()
   })

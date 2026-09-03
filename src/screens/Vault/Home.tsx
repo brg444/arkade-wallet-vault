@@ -206,7 +206,7 @@ export default function VaultHome() {
               <Clock3 />
             </span>
             <div>
-              <strong>{prettyNumber(positions.spending.pendingSats)} sats arriving</strong>
+              <strong>{prettyNumber(positions.spending.pendingSats)} ₿SATS arriving</strong>
               <p>Available after Bitcoin confirmation.</p>
             </div>
           </section>
@@ -218,7 +218,7 @@ export default function VaultHome() {
               <Clock3 />
             </span>
             <div>
-              <strong>{prettyNumber(positions.savings.pendingSats)} sats pending</strong>
+              <strong>{prettyNumber(positions.savings.pendingSats)} ₿SATS pending</strong>
               <p>Waiting for Bitcoin confirmation.</p>
             </div>
           </section>

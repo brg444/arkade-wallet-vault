@@ -1,6 +1,6 @@
 # Architecture
 
-Arkade Vault has three active runtime roles:
+Vaulted has three active runtime roles:
 
 ```text
 browser wallet

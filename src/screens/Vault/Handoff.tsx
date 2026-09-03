@@ -264,7 +264,7 @@ export default function VaultHandoff() {
         Copy or show the PSBT, sign it with your hardware key, then return the signed transaction here.
       </p>
       <section className='qg-transfer'>
-        <span>{prettyNumber(spend.amount, 0)} sats</span>
+        <span>{prettyNumber(spend.amount, 0)} ₿SATS</span>
         <strong>PSBT · unsigned by hardware</strong>
       </section>
       {canShareFile ? (

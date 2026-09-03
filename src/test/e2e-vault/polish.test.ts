@@ -133,7 +133,7 @@ test('@polish render failures are safe, accessible, and visually stable', async 
     })
   })
   await page.goto('/')
-  await expect(page.getByText('Arkade Vault could not display this screen.')).toBeVisible()
+  await expect(page.getByText('Vaulted could not display this screen.')).toBeVisible()
   await expect(page.getByText(/^Incident reference: VLT-/)).toBeVisible()
   await expect(page.getByText(/raw render payload/)).toHaveCount(0)
   await expectNoBlockingAxeViolations(page)

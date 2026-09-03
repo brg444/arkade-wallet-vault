@@ -1,4 +1,4 @@
-/* Arkade Vault interface system.
+/* Vaulted interface system.
  * Purple identifies the product and primary actions. Coral is reserved for
  * testnet and attention signals. Everyday surfaces stay neutral and quiet. */
 
@@ -1609,7 +1609,7 @@ html.palette-dark [data-testid='vault-app'] {
   }
 }
 
-/* Quiet Guardian — approved production identity */
+/* Vaulted — production identity */
 
 [data-testid='vault-app'] {
   --vault-accent: #381993;
@@ -1985,7 +1985,7 @@ html.palette-dark [data-testid='vault-app'] {
 }
 
 .vault-send-form > div:first-child .shadow-surface::after {
-  content: 'SATS';
+  content: '₿SATS';
   flex: 0 0 auto;
   color: var(--vault-ink);
   font-size: 0.8125rem;

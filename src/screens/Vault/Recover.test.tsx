@@ -92,7 +92,7 @@ function startCancel(familyKey: FamilyKey) {
   fireEvent.click(screen.getByTestId('recover-guardian-exit'))
 }
 
-describe('Quiet Guardian recovery chrome', () => {
+describe('Vaulted recovery chrome', () => {
   beforeEach(() => {
     boardingRecovery.find.mockReset().mockResolvedValue({ inputs: [], totalSats: 0 })
   })
@@ -169,7 +169,7 @@ describe('mature boarding recovery', () => {
       status: { enrolled: true, vaultId: 'vault-v2', vtxoBoardingProgram: 'vault-board-v1' } as never,
     })
 
-    expect(await screen.findByTestId('recover-mature-boarding')).toHaveTextContent('42,000 SATS')
+    expect(await screen.findByTestId('recover-mature-boarding')).toHaveTextContent('42,000 ₿SATS')
     expect(screen.queryByTestId('recover-mature-boarding-confirm')).toBeNull()
     fireEvent.click(screen.getByTestId('recover-mature-boarding'))
     fireEvent.click(screen.getByTestId('recover-mature-boarding-confirm'))

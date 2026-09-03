@@ -79,7 +79,7 @@ describe('Vault settings account boundaries', () => {
     expect(localStorage.getItem('arkade-vault-v2:session-lock')).toBe('1')
   })
 
-  it('signs out from a Quiet Guardian confirmation sheet', async () => {
+  it('signs out from a Vaulted confirmation sheet', async () => {
     const user = userEvent.setup()
     const value = renderSettings()
 

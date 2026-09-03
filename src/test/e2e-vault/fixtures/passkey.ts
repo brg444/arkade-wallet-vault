@@ -308,7 +308,7 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
         vaultId: VAULT_ID,
         challenge: '01'.repeat(32),
         rpId: RP_ID,
-        rpName: 'Arkade Vault',
+        rpName: 'Vaulted',
         userId: bytesToHex(new TextEncoder().encode(VAULT_ID)),
         userName: 'vault',
         timeoutMs: 300_000,

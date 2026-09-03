@@ -56,7 +56,7 @@ export default function VaultReview() {
       <section className='qg-review-amount'>
         <small>{movingToSpending ? 'You’re moving' : lightning ? 'You’re paying' : 'You’re sending'}</small>
         <strong>
-          {prettyNumber(spend.amount, 0)} <span>SATS</span>
+          {prettyNumber(spend.amount, 0)} <span>₿SATS</span>
         </strong>
         <p>{fromSavings ? 'From Savings' : 'From Spending'}</p>
         <QgTextButton onClick={() => navigate('send')} label='Edit amount' />

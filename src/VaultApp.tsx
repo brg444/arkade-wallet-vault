@@ -36,7 +36,7 @@ import { reloadIfNewerWallet } from './lib/vault/update'
 export default function VaultApp() {
   const { screen } = useContext(VaultContext)
   useEffect(() => {
-    document.title = 'Arkade Vault'
+    document.title = 'Vaulted, a Bitcoin wallet'
     bootVaultPrefs()
     void reloadIfNewerWallet()
     return bootVaultFrame()

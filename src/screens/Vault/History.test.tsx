@@ -46,7 +46,7 @@ describe('Vault history', () => {
 
     expect(screen.getByText(/^Confirmed/)).toBeTruthy()
     expect(screen.queryByText('Pending')).toBeNull()
-    expect(screen.getByRole('button', { name: /Received 21,000 SATS.*Confirmed/i })).toHaveTextContent('+21,000')
+    expect(screen.getByRole('button', { name: /Received 21,000 ₿SATS.*Confirmed/i })).toHaveTextContent('+21,000')
   })
 
   it('shows pending state, amount units, and opens a transaction', async () => {
@@ -62,7 +62,7 @@ describe('Vault history', () => {
 
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getAllByText('Pending')).toHaveLength(2)
-    const transaction = screen.getByRole('button', { name: /Received 12,000 SATS.*Pending/i })
+    const transaction = screen.getByRole('button', { name: /Received 12,000 ₿SATS.*Pending/i })
     expect(transaction).toHaveTextContent('+12,000')
     await user.click(transaction)
     expect(value.openTx).toHaveBeenCalledWith(tx)
@@ -85,7 +85,7 @@ describe('Vault history', () => {
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getByText('Received')).toBeTruthy()
     expect(screen.getAllByText('Pending')).toHaveLength(2)
-    expect(screen.getByRole('button', { name: /Received 50,000 SATS.*Pending/i })).toHaveTextContent('+50,000')
+    expect(screen.getByRole('button', { name: /Received 50,000 ₿SATS.*Pending/i })).toHaveTextContent('+50,000')
   })
 
   it('shows settled boarding activity as confirmed', () => {
@@ -152,7 +152,7 @@ describe('Vault history', () => {
     expect(screen.getByRole('heading', { name: 'Pending' })).toBeTruthy()
     expect(screen.getByText('Waiting for hardware')).toBeTruthy()
     expect(screen.getByText('Complete or cancel')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: /Waiting for hardware 51,500 SATS/i }))
+    await user.click(screen.getByRole('button', { name: /Waiting for hardware 51,500 ₿SATS/i }))
     expect(value.openTx).toHaveBeenCalledWith(pending)
   })
 

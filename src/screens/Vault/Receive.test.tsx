@@ -80,7 +80,7 @@ describe('Vault receive', () => {
     renderReceive('spend')
     await user.click(screen.getByTestId('receive-share'))
     expect(share).toHaveBeenCalledWith({
-      title: 'Arkade Vault payment request',
+      title: 'Vaulted payment request',
       text: 'bitcoin:tb1qboarding?ark=tark1spending',
     })
   })
@@ -105,7 +105,7 @@ describe('Vault receive', () => {
 
     await user.click(screen.getByTestId('receive-share'))
     expect(share).toHaveBeenCalledWith({
-      title: 'Arkade Vault Savings address',
+      title: 'Vaulted Savings address',
       text: 'tb1qsavings',
     })
   })

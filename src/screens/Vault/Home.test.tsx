@@ -107,14 +107,13 @@ describe('Vault home account boundaries', () => {
       },
     })
     const hero = screen.getByTestId('vault-balance')
-    expect(hero).toHaveTextContent('₿128,000')
-    expect(hero).not.toHaveTextContent('SATS')
+    expect(hero).toHaveTextContent('128,000₿SATS')
     await user.click(hero)
     expect(hero).toHaveTextContent('$160.00')
     expect(setFiatDisplay).toHaveBeenCalledWith(true)
     expect(localStorage.getItem('arkade-vault-balance-unit')).toBe('usd')
     await user.click(hero)
-    expect(hero).toHaveTextContent('₿128,000')
+    expect(hero).toHaveTextContent('128,000₿SATS')
     expect(setFiatDisplay).toHaveBeenCalledWith(false)
   })
 
@@ -126,7 +125,7 @@ describe('Vault home account boundaries', () => {
     const hero = screen.getByTestId('vault-balance')
     await user.click(hero)
 
-    expect(hero).toHaveTextContent('₿12,000')
+    expect(hero).toHaveTextContent('12,000₿SATS')
     expect(localStorage.getItem('arkade-vault-balance-unit')).toBeNull()
     expect(await screen.findByText('USD balance is unavailable. Try again later.')).toBeTruthy()
   })
@@ -140,8 +139,8 @@ describe('Vault home account boundaries', () => {
       },
     })
     expect(screen.queryByText('Available to spend')).toBeNull()
-    expect(screen.getByTestId('vault-balance')).toHaveTextContent('₿128,000')
-    expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 sats arriving')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('128,000₿SATS')
+    expect(screen.getByTestId('spending-pending')).toHaveTextContent('48,000 ₿SATS arriving')
     expect(screen.queryByTestId('spending-total')).toBeNull()
     expect(screen.queryByText(/currently spendable/i)).toBeNull()
   })
@@ -154,7 +153,7 @@ describe('Vault home account boundaries', () => {
         savings: { availableSats: 20_000, pendingSats: 30_000, totalSats: 50_000 },
       },
     })
-    expect(screen.getByTestId('vault-balance')).toHaveTextContent('₿50,000')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('50,000₿SATS')
     expect(screen.queryByText(/currently spendable/i)).toBeNull()
   })
 

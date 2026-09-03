@@ -1,6 +1,6 @@
 # Mainnet v2 baseline
 
-Arkade Vault Wallet is a Vault-only application. Mainnet starts from fresh
+Vaulted is a dedicated Bitcoin wallet application. Mainnet starts from fresh
 application state and does not import Mutinynet wallets, credentials, or
 in-flight operations.
 

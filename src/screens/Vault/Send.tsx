@@ -1,8 +1,10 @@
 import { useContext, useEffect, useState } from 'react'
 import type { NetworkName } from '@arkade-os/sdk'
 import { KeyRound, ScanLine } from 'lucide-react'
+import { useToast } from '../../components/Toast'
 import { prettyAmount, prettyNumber } from '../../lib/format'
 import { decodeVaultBip21, isVaultBip21 } from '../../lib/vault/bip21'
+import { satsFromUsd, usdFromSats } from '../../lib/vault/fiatDisplay'
 import {
   isVaultLightningInput,
   vaultLightningSendEnabled,
@@ -55,22 +57,28 @@ export default function VaultSend() {
     clearSendScan,
     dailyRemaining,
     error,
+    fiatDisplayRate,
     navigate,
     reviewSpend,
     canReplaceInFlightSend,
     replaceInFlightSend,
     scanOnSend,
     setSpendDraft,
+    setFiatDisplay,
     spend,
     setup,
     status,
     positions,
   } = useContext(VaultContext)
+  const { toast } = useToast()
   const fromSavings = account === 'savings'
   const movingToSpending = fromSavings && Boolean(boardingAddress) && spend.address === boardingAddress
   const destNetwork = status?.network
   const lightning = !fromSavings && Boolean(lightningInvoice(spend.address, destNetwork))
   const [scan, setScan] = useState(Boolean(scanOnSend))
+  const [amountUnit, setAmountUnit] = useState<'sats' | 'usd'>('sats')
+  const [usdInput, setUsdInput] = useState('')
+  const [amountRate, setAmountRate] = useState(fiatDisplayRate)
   const availableSpend = Math.max(0, Math.min(dailyRemaining, positions.spending.availableSats))
   const used = Math.max(0, setup.dailyLimitSats - availableSpend)
   const ratio = setup.dailyLimitSats > 0 ? Math.min(1, used / setup.dailyLimitSats) : 0
@@ -82,7 +90,7 @@ export default function VaultSend() {
     spend.amount <= 0
       ? ''
       : spend.amount < 330
-        ? 'The smallest send is 330 sats.'
+        ? 'The smallest send is 330 ₿SATS.'
         : spend.amount > available && !resumingPayment
           ? fromSavings
             ? 'That is more than Savings can move now.'
@@ -110,8 +118,30 @@ export default function VaultSend() {
   }
 
   const setAmount = (raw: string) => {
+    if (amountUnit === 'usd') {
+      const normalized = raw.replace(/[^\d.]/g, '')
+      if (!/^\d*(?:\.\d{0,2})?$/.test(normalized)) return
+      setUsdInput(normalized)
+      setSpendDraft({ amount: satsFromUsd(Number(normalized) || 0, amountRate?.pricePerBtc || 0) })
+      return
+    }
     const digits = raw.replace(/\D/g, '')
     setSpendDraft({ amount: Number(digits) || 0 })
+  }
+
+  const toggleAmountUnit = async () => {
+    if (amountUnit === 'usd') {
+      setAmountUnit('sats')
+      return
+    }
+    const rate = fiatDisplayRate || (await setFiatDisplay(true))
+    if (!rate) {
+      toast('USD amounts are unavailable. Try again later.')
+      return
+    }
+    setAmountRate(rate)
+    setUsdInput(spend.amount ? usdFromSats(spend.amount, rate.pricePerBtc).toFixed(2) : '')
+    setAmountUnit('usd')
   }
 
   const setAddress = (value: string) => {
@@ -183,16 +213,32 @@ export default function VaultSend() {
         <div>
           <input
             id='qg-send-amount'
-            value={spend.amount ? prettyNumber(spend.amount, 0) : ''}
-            inputMode='numeric'
+            value={amountUnit === 'usd' ? usdInput : spend.amount ? prettyNumber(spend.amount, 0) : ''}
+            inputMode={amountUnit === 'usd' ? 'decimal' : 'numeric'}
             readOnly={lightning}
             data-testid='vault-send-amount'
-            placeholder='20,000'
+            placeholder={amountUnit === 'usd' ? '0.00' : '20,000'}
             onChange={(event) => setAmount(event.target.value)}
           />
-          <span>SATS</span>
+          <button
+            type='button'
+            className='qg-denomination'
+            aria-label={`Amount in ${amountUnit === 'usd' ? 'US dollars' : 'bitcoin satoshis'}. Change denomination`}
+            onClick={() => void toggleAmountUnit()}
+          >
+            {amountUnit === 'usd' ? '$' : '₿SATS'}
+          </button>
           {lightning ? null : (
-            <button type='button' className='qg-max' onClick={() => setSpendDraft({ amount: available })}>
+            <button
+              type='button'
+              className='qg-max'
+              onClick={() => {
+                setSpendDraft({ amount: available })
+                if (amountUnit === 'usd' && amountRate) {
+                  setUsdInput(usdFromSats(available, amountRate.pricePerBtc).toFixed(2))
+                }
+              }}
+            >
               Max
             </button>
           )}
@@ -225,15 +271,15 @@ export default function VaultSend() {
         {fromSavings ? <small>Bitcoin address</small> : null}
       </label>
       {fromSavings ? (
-        <p className='qg-available'>{prettyNumber(positions.savings.availableSats, 0)} sats available to move</p>
+        <p className='qg-available'>{prettyNumber(positions.savings.availableSats, 0)} ₿SATS available to move</p>
       ) : (
         <section className='qg-capacity' aria-label='Spending capacity'>
           <div>
             <span>{resumingPayment ? 'Payment in progress' : 'Available'}</span>
             <strong>
               {resumingPayment
-                ? `${prettyNumber(reservedSats || pendingSend?.amountSats || spend.amount, 0)} sats reserved`
-                : `${prettyNumber(positions.spending.availableSats, 0)} sats`}
+                ? `${prettyNumber(reservedSats || pendingSend?.amountSats || spend.amount, 0)} ₿SATS reserved`
+                : `${prettyNumber(positions.spending.availableSats, 0)} ₿SATS`}
             </strong>
           </div>
           <div>
