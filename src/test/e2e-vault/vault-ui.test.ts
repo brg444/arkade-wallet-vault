@@ -600,6 +600,31 @@ test('@polish covers accessible account, send, Security, and Settings states', a
     .toBe('none')
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('home-with-pending.png', { animations: 'disabled', fullPage: true })
+  const navGeometry = await page.locator('.pill-navbar').evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const appRect = document.querySelector('[data-testid="vault-app"]')?.getBoundingClientRect()
+    return {
+      height: Math.round(rect.height),
+      width: Math.round(rect.width),
+      appWidth: Math.round(appRect?.width ?? window.innerWidth),
+      bottom: Math.round((appRect?.bottom ?? window.innerHeight) - rect.bottom),
+    }
+  })
+  expect(navGeometry.height).toBeLessThanOrEqual(62)
+  expect(navGeometry.width).toBeLessThan(navGeometry.appWidth)
+  expect(navGeometry.bottom).toBeLessThanOrEqual(32)
+  const safeAreaGeometry = await page.locator('.pill-navbar').evaluate((element) => {
+    const app = document.querySelector<HTMLElement>('[data-testid="vault-app"]')
+    app?.style.setProperty('--vault-nav-bottom', '22px')
+    const rect = element.getBoundingClientRect()
+    const result = {
+      height: Math.round(rect.height),
+      bottom: Math.round(Number.parseFloat(getComputedStyle(element).bottom)),
+    }
+    app?.style.removeProperty('--vault-nav-bottom')
+    return result
+  })
+  expect(safeAreaGeometry).toEqual({ height: navGeometry.height, bottom: 22 })
 
   const accountTrigger = page.getByTestId('account-switcher')
   await accountTrigger.click()
