@@ -77,7 +77,10 @@ describe('Vercel worker caching', () => {
       .find(([name]) => name === 'connect-src')
 
     expect(config.buildCommand).toBe('pnpm build:mainnet')
-    expect(config.env).toEqual({ VAULT_RELEASE_NETWORK: 'mainnet' })
+    expect(config.env).toEqual({
+      VAULT_RELEASE_NETWORK: 'mainnet',
+      VITE_VAULT_RELEASE_NETWORK: 'mainnet',
+    })
     expect(config.rewrites).toContainEqual({
       source: '/esplora/:path*',
       destination: 'https://mempool.space/api/:path*',

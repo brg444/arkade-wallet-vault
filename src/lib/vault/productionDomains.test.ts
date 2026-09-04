@@ -23,7 +23,7 @@ describe('Vaulted production domains', () => {
     expect(VAULTED_RC_ORIGIN).toBe('https://rc.getvaulted.xyz')
     expect(VAULTED_RC_RP_ID).toBe('rc.getvaulted.xyz')
     expect(MAINNET_WALLET_HOSTS).toEqual(['app.getvaulted.xyz', 'rc.getvaulted.xyz'])
-    expect(GATEWAY_MAINNET_WALLET_HOSTS).toEqual(MAINNET_WALLET_HOSTS)
+    expect([...GATEWAY_MAINNET_WALLET_HOSTS]).toEqual([...MAINNET_WALLET_HOSTS])
   })
 
   it('accepts only the release-pinned mainnet wallet origins and RP IDs', () => {
