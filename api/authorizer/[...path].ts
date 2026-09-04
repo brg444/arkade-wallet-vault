@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { isMainnetWalletHost } from '../../src/lib/vault/productionDomains'
+import { isMainnetWalletHost } from '../mainnetHosts.js'
 
 const HOP_BY_HOP = new Set([
   'connection',
