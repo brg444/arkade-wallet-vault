@@ -20,7 +20,11 @@ at the center of the product.
 - **Savings** holds bitcoin in the L1 `arkade-vault/savings-v1` program.
   Ordinary transfers require both this device and an external hardware signer.
 - **Recovery** gives Advanced vaults delayed, cancellable recovery paths and a
-  portable Recovery Kit without placing private keys in the browser.
+  portable Recovery Kit without placing private keys in the browser. If Vaulted
+  is unavailable, use [Emergency recovery](https://github.com/brg444/vaulted-emergency-recovery)
+  (vendored here at `tools/offline-recovery`) and keep
+  [the guide](docs/emergency-recovery.md) next to the kit. On a Mac, double-click
+  `tools/offline-recovery/Recover.command`.
 - **Unified receive** provides one Bitcoin payment request for both fast and
   onchain receipt.
 
@@ -88,7 +92,7 @@ ceilings are release-managed at 5,000 sats and 10 sat/vB.
 Standard protection has no recovery key. Advanced protection requires one and
 exposes only the delayed recovery paths implemented by the Vault Program. The
 complete descriptor, tier, and canonical policy digest are pinned locally and
-in Recovery Kit version 3.
+in the Recovery Kit.
 
 Confirmed Bitcoin payments enter the enrolled `vault-board-v1` program before
 the official SDK settles them into Spending. Savings-to-Spending uses the same
