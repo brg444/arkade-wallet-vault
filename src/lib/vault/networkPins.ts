@@ -14,6 +14,8 @@ export interface VaultNetworkPins {
   delegateOrigin: string
   sdkNetwork: 'mutinynet' | 'bitcoin'
   arkHrp: 'tark' | 'ark'
+  /** SDK `ESPLORA_URL` for boarding UTXO watch and onchain coins. */
+  esploraApiUrl: string
   absoluteFeeCeilingSats: number
   feerateCeilingSatPerV: number
 }
@@ -33,6 +35,7 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
     delegateOrigin: 'https://delegator.mutinynet.arkade.sh',
     sdkNetwork: 'mutinynet',
     arkHrp: 'tark',
+    esploraApiUrl: 'https://mempool.mutinynet.arkade.sh/api',
     absoluteFeeCeilingSats: 5_000,
     feerateCeilingSatPerV: 10,
   },
@@ -50,6 +53,7 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
     delegateOrigin: 'https://delegate.arkade.money',
     sdkNetwork: 'bitcoin',
     arkHrp: 'ark',
+    esploraApiUrl: 'https://mempool.arkade.sh/api',
     absoluteFeeCeilingSats: 20_000,
     feerateCeilingSatPerV: 25,
   },

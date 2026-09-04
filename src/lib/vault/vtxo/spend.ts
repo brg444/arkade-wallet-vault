@@ -54,12 +54,21 @@ const MAX_VTXO_INPUTS = 50
 
 declare const __VAULT_E2E_OPERATOR_ORIGIN__: string
 
-export function vaultArkServer(network?: string): string {
-  if (__VAULT_E2E_OPERATOR_ORIGIN__) return __VAULT_E2E_OPERATOR_ORIGIN__
+function releaseNetwork(network?: string): string {
   const raw =
     network || configuredReleaseNetwork(import.meta.env.VITE_VAULT_RELEASE_NETWORK, import.meta.env.PROD) || 'mutinynet'
-  const resolved = raw === 'bitcoin' ? 'mainnet' : raw
-  return networkPins(resolved).operatorOrigin
+  return raw === 'bitcoin' ? 'mainnet' : raw
+}
+
+export function vaultArkServer(network?: string): string {
+  if (__VAULT_E2E_OPERATOR_ORIGIN__) return __VAULT_E2E_OPERATOR_ORIGIN__
+  return networkPins(releaseNetwork(network)).operatorOrigin
+}
+
+/** Boarding/mempool watch. Same host the official Arkade Wallet leaves to the SDK. */
+export function vaultEsploraApi(network?: string): string {
+  if (__VAULT_E2E_OPERATOR_ORIGIN__) return '/esplora'
+  return networkPins(releaseNetwork(network)).esploraApiUrl
 }
 
 export interface VaultVtxoSpendResult {
