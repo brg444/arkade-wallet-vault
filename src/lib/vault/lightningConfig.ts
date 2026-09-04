@@ -2,6 +2,7 @@ import type { NetworkName } from '@arkade-os/sdk'
 import { discover, planOffer, sideLimits, type LocalCardInput, type Market } from '@arkade-os/solver-discovery'
 import bitcoinSolverCard from './ln-solver-bitcoin.card.json'
 import mutinynetSolverCard from './ln-solver-mutinynet.card.json'
+import { sdkNetworkName } from './networkPins'
 
 const LIGHTNING_SEND_RELEASE_FLAG = 'true'
 
@@ -20,9 +21,7 @@ const BITCOIN_LIGHTNING_MARKET = bitcoinSolverCard.markets[0] as unknown as Mark
 
 /** Guardian says mainnet; the SDK Lightning surface says bitcoin. */
 export function lightningSdkNetwork(network: string | undefined): NetworkName | undefined {
-  if (network === 'bitcoin' || network === 'mainnet') return 'bitcoin'
-  if (network === 'mutinynet') return 'mutinynet'
-  return undefined
+  return sdkNetworkName(network)
 }
 
 function fundingCeilingSats(market: Market, maxQuoteSats: number): number {

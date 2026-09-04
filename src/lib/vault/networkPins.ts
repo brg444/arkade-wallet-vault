@@ -58,3 +58,16 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
 export function networkPins(network: unknown): VaultNetworkPins {
   return PINS[requireSupportedVaultNetwork(network)]
 }
+
+/** Guardian `mainnet` is arkd `bitcoin`. Mutinynet keeps the same name. */
+export function sdkNetworkName(network: unknown): 'bitcoin' | 'mutinynet' | undefined {
+  if (network === 'bitcoin' || network === 'mainnet') return 'bitcoin'
+  if (network === 'mutinynet') return 'mutinynet'
+  return undefined
+}
+
+export function requireSdkNetworkName(network: unknown): 'bitcoin' | 'mutinynet' {
+  const name = sdkNetworkName(network)
+  if (!name) throw new Error(`unsupported Vault network ${String(network || '')}`)
+  return name
+}

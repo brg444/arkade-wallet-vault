@@ -1,7 +1,7 @@
 import { readBounded } from './bounded'
 import { POLICY_VERSION } from './constants'
 import { requireReleaseNetwork } from './releaseNetwork'
-import { requireMainnetWalletOrigin, requireMainnetWalletRpId } from './productionDomains'
+import { authorizerWalletHref, requireMainnetWalletOrigin, requireMainnetWalletRpId } from './productionDomains'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus, VaultStatusWire } from './types'
@@ -95,6 +95,11 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
     requireMainnetWalletRpId(body.rpId)
     if (typeof location !== 'undefined' && location.origin) {
       requireMainnetWalletOrigin(location.origin)
+      const signingHref = authorizerWalletHref(body.clientOrigin, location.href)
+      if (signingHref) {
+        location.replace(signingHref)
+        throw new Error('Open this vault from its signing address.')
+      }
     }
   }
   if (body.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { networkPins } from './networkPins'
+import { networkPins, requireSdkNetworkName, sdkNetworkName } from './networkPins'
 
 describe('networkPins', () => {
   it('keeps Mutinynet delays and Operator identity unchanged', () => {
@@ -26,5 +26,14 @@ describe('networkPins', () => {
 
   it('rejects unknown networks', () => {
     expect(() => networkPins('regtest')).toThrow(/unsupported Vault network/)
+  })
+
+  it('maps Guardian mainnet onto the bitcoin SDK network name', () => {
+    expect(sdkNetworkName('mainnet')).toBe('bitcoin')
+    expect(sdkNetworkName('bitcoin')).toBe('bitcoin')
+    expect(sdkNetworkName('mutinynet')).toBe('mutinynet')
+    expect(requireSdkNetworkName('mainnet')).toBe('bitcoin')
+    expect(sdkNetworkName('regtest')).toBeUndefined()
+    expect(() => requireSdkNetworkName('regtest')).toThrow(/unsupported Vault network/)
   })
 })
