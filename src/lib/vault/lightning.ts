@@ -21,6 +21,7 @@ import { nostrRfqTransport } from '@arkade-os/swap/nostr'
 import { hex } from '@scure/base'
 import { requestVaultLightningSend } from './lightningCovenant'
 import {
+  lightningSdkNetwork,
   vaultLightningFundingForInvoice,
   vaultLightningSendEnabled,
   type VaultLightningSolverProfile,
@@ -81,15 +82,27 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
+/** Guardian status is `mainnet`; arkd `getInfo().network` is `bitcoin`. */
+export function requireMatchingLightningOperatorNetwork(
+  statusNetwork: string | undefined,
+  operatorNetwork: string,
+): NetworkName {
+  const sdkNetwork = lightningSdkNetwork(statusNetwork)
+  if (!sdkNetwork || sdkNetwork !== operatorNetwork) {
+    throw new Error('Vault and Arkade Operator networks do not match.')
+  }
+  return sdkNetwork
+}
+
 export function validateVaultLightningRefund(
   status: VaultStatus,
   operatorNetwork: NetworkName,
   operatorSignerPubkey: string,
 ): ArkAddress {
   if (!status.enrolled || !status.vaultId) throw new Error('Enrolled vault required for Lightning.')
-  if (status.network !== operatorNetwork) throw new Error('Vault and Arkade Operator networks do not match.')
+  const sdkNetwork = requireMatchingLightningOperatorNetwork(status.network, operatorNetwork)
   const refund = ArkAddress.decode(String(status.spendingArkAddress || ''))
-  const expectedHrp = status.network === 'bitcoin' ? 'ark' : 'tark'
+  const expectedHrp = sdkNetwork === 'bitcoin' ? 'ark' : 'tark'
   if (refund.hrp !== expectedHrp) throw new Error('Spending refund address is encoded for another network.')
   const advertisedScript = String(status.spendingArkScript || '').toLowerCase()
   if (!/^[0-9a-f]{68}$/.test(advertisedScript) || hex.encode(refund.pkScript) !== advertisedScript) {
@@ -129,7 +142,7 @@ async function withUnlockedVaultLightningSdkWallet<T>(
   const operator = new RestArkProvider(arkServerUrl)
   const indexer = new RestIndexerProvider(arkServerUrl)
   const info = await operator.getInfo()
-  if (info.network !== status.network) throw new Error('Vault and Arkade Operator networks do not match.')
+  requireMatchingLightningOperatorNetwork(status.network, info.network)
   validateVaultLightningRefund(status, info.network as NetworkName, info.signerPubkey)
   return withVaultWalletState(status, async ({ contracts, swapRepository, swapManager }) => {
     const requestWallet = vaultLightningRequestWallet(identity, status.spendingArkAddress!, contracts)

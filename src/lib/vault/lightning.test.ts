@@ -24,6 +24,7 @@ import {
   BITCOIN_LIGHTNING_SOLVER,
   MUTINYNET_LIGHTNING_SOLVER,
   requestVaultLightningQuote,
+  requireMatchingLightningOperatorNetwork,
   validateVaultLightningRefund,
   vaultLightningRequestWallet,
   vaultLightningSendEnabled,
@@ -220,6 +221,39 @@ describe('Lightning SEND release boundary', () => {
 
     expect(validateVaultLightningRefund(status, 'mutinynet', operatorPubkey).encode()).toBe(address)
     expect(() => validateVaultLightningRefund(status, 'bitcoin', operatorPubkey)).toThrow(/networks do not match/)
+  })
+
+  it('treats Guardian mainnet status as the bitcoin Operator network and ark HRP', async () => {
+    const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+    const operatorPubkey = hex.encode(await operator.compressedPublicKey())
+    const address = await refundAddress('bitcoin')
+    const status = {
+      enrolled: true,
+      vaultId: 'vault-lightning-mainnet',
+      network: 'mainnet',
+      spendingArkAddress: address,
+      spendingArkScript: hex.encode(ArkAddress.decode(address).pkScript),
+    } as import('./types').VaultStatus
+
+    expect(requireMatchingLightningOperatorNetwork('mainnet', 'bitcoin')).toBe('bitcoin')
+    expect(requireMatchingLightningOperatorNetwork('bitcoin', 'bitcoin')).toBe('bitcoin')
+    expect(() => requireMatchingLightningOperatorNetwork('mainnet', 'mutinynet')).toThrow(/networks do not match/)
+    expect(() => requireMatchingLightningOperatorNetwork('mainnet', 'mainnet')).toThrow(/networks do not match/)
+    expect(validateVaultLightningRefund(status, 'bitcoin', operatorPubkey).encode()).toBe(address)
+    expect(ArkAddress.decode(address).hrp).toBe('ark')
+    expect(() => validateVaultLightningRefund(status, 'mutinynet', operatorPubkey)).toThrow(/networks do not match/)
+    const mutinynetAddress = await refundAddress('mutinynet')
+    expect(() =>
+      validateVaultLightningRefund(
+        {
+          ...status,
+          spendingArkAddress: mutinynetAddress,
+          spendingArkScript: hex.encode(ArkAddress.decode(mutinynetAddress).pkScript),
+        },
+        'bitcoin',
+        operatorPubkey,
+      ),
+    ).toThrow(/encoded for another network/)
   })
 
   it('passes the adapted wallet to the package client and retains its authoritative fee and refund facts', async () => {
