@@ -192,8 +192,8 @@ export default function VaultRecover() {
                         feeSats: await recoveryOnchainFeeSats(SAVINGS_TRANSITION_VBYTES),
                         vaultId: kit.descriptor.vaultId,
                       })
-                    setPsbtOut(built.psbtHex)
-                    void copyToClipboard(built.psbtHex)
+                      setPsbtOut(built.psbtHex)
+                      void copyToClipboard(built.psbtHex)
                       toast('Cancel copied. This leaves out the key that started recovery.')
                     } catch (err) {
                       setLocalError(err instanceof Error ? err.message : 'Could not cancel recovery')
@@ -226,11 +226,11 @@ export default function VaultRecover() {
                           feeSats: await recoveryOnchainFeeSats(SAVINGS_CLAIM_VBYTES),
                           network: kit.descriptor.network,
                         })
-                      setCancelPsbt(built.psbtHex)
-                      setCancelSigners(signers)
-                      setCancelHave([])
-                      setSignedCancelPsbt('')
-                      setPsbtOut(built.psbtHex)
+                        setCancelPsbt(built.psbtHex)
+                        setCancelSigners(signers)
+                        setCancelHave([])
+                        setSignedCancelPsbt('')
+                        setPsbtOut(built.psbtHex)
                         toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
                       } catch (err) {
                         setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
@@ -257,8 +257,8 @@ export default function VaultRecover() {
                         feeSats: await recoveryOnchainFeeSats(SAVINGS_CLAIM_VBYTES),
                         network: kit.descriptor.network,
                       })
-                    setPsbtOut(built.psbtHex)
-                    void copyToClipboard(built.psbtHex)
+                      setPsbtOut(built.psbtHex)
+                      void copyToClipboard(built.psbtHex)
                       toast('Move copied. Only after the wait.')
                     } catch (err) {
                       setLocalError(err instanceof Error ? err.message : 'Could not move coins')
