@@ -4,7 +4,8 @@
   "outputDirectory": "dist",
   "framework": null,
   "env": {
-    "VAULT_RELEASE_NETWORK": "mainnet"
+    "VAULT_RELEASE_NETWORK": "mainnet",
+    "VITE_VAULT_RELEASE_NETWORK": "mainnet"
   },
   "headers": [
     { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }] },
