@@ -10,6 +10,7 @@ import type { VaultStatus } from '../lib/vault/types'
 import {
   fetchVaultWalletVtxoSnapshot,
   reloadVaultWalletWorker,
+  reviveVaultWalletWorker,
   subscribeVaultWalletEvents,
 } from '../lib/vault/vtxo/walletWorker'
 import { reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
@@ -49,6 +50,16 @@ export function confirmedUtxoBalance(utxos: EsploraUtxo[]): number {
   return [...unique.values()].reduce(
     (total, utxo) =>
       total + (utxo.status.confirmed && Number.isSafeInteger(utxo.value) && utxo.value > 0 ? utxo.value : 0),
+    0,
+  )
+}
+
+/** Boarding deposits sit on-chain until the SDK worker settles them into VTXOs. */
+export function boardingUtxoBalance(utxos: EsploraUtxo[]): number {
+  const unique = new Map<string, EsploraUtxo>()
+  for (const utxo of utxos) unique.set(`${utxo.txid}:${utxo.vout}`, utxo)
+  return [...unique.values()].reduce(
+    (total, utxo) => total + (Number.isSafeInteger(utxo.value) && utxo.value > 0 ? utxo.value : 0),
     0,
   )
 }
@@ -154,9 +165,21 @@ export function useVaultBalances({
   const scheduleSnapshotRetry = useCallback((vaultId: string) => {
     if (!vaultId || spendingReadyRef.current) return
     window.clearTimeout(retryTimerRef.current)
-    const delay = Math.min(FIRST_SNAPSHOT_RETRY_MS * 2 ** retryAttemptRef.current, FIRST_SNAPSHOT_RETRY_MAX_MS)
+    const delay =
+      retryAttemptRef.current === 0
+        ? 0
+        : Math.min(FIRST_SNAPSHOT_RETRY_MS * 2 ** (retryAttemptRef.current - 1), FIRST_SNAPSHOT_RETRY_MAX_MS)
     retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 4)
     retryTimerRef.current = window.setTimeout(() => {
+      const current = statusRef.current
+      if (current?.enrolled && current.vaultId === vaultId) {
+        void reviveVaultWalletWorker(current)
+          .catch((error) => consoleError(error, 'wallet VTXO worker revive'))
+          .finally(() => {
+            void refreshBalanceRef.current(vaultId)
+          })
+        return
+      }
       void refreshBalanceRef.current(vaultId)
     }, delay)
   }, [])
@@ -206,8 +229,10 @@ export function useVaultBalances({
           boardingBalance: undefined as number | undefined,
           history: [] as VaultHistoryItem[],
         }
+        const emptyBoarding = { balance: 0, history: [] as VaultHistoryItem[] }
         let savings = emptySavings
         let spending = emptySpending
+        let boarding = emptyBoarding
         let spendingError: unknown
         const savingsTask = savingsAddress
           ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)])
@@ -223,6 +248,18 @@ export function useVaultBalances({
                 consoleError(error, 'Vault savings balance refresh')
               })
           : Promise.resolve()
+        const boardingTask = boardingAddress
+          ? Promise.all([fetchAddressUtxos(boardingAddress), fetchAddressTxs(boardingAddress)])
+              .then(([utxos, transactions]) => {
+                boarding = {
+                  balance: boardingUtxoBalance(utxos),
+                  history: historyFromTxs(transactions, boardingAddress, 'spend'),
+                }
+              })
+              .catch((error) => {
+                consoleError(error, 'Vault boarding balance refresh')
+              })
+          : Promise.resolve()
         const spendingTask =
           spendingAddress && liveStatus.enrolled
             ? fetchVaultWalletVtxoSnapshot(liveStatus)
@@ -234,15 +271,21 @@ export function useVaultBalances({
                   consoleError(error, 'Vault spending balance refresh')
                 })
             : Promise.resolve()
-        await Promise.all([savingsTask, spendingTask])
+        await Promise.all([savingsTask, boardingTask, spendingTask])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
+        const knownSpendTxids = new Set(spending.history.map((item) => item.txid))
+        const boardingHistory = boarding.history.filter((item) => !knownSpendTxids.has(item.txid))
+        const boardingSats = Math.max(spending.boardingBalance || 0, boarding.balance)
         if (spendingError) {
           setSnapshot((current) => ({
-            boardingBalance: hasSnapshotRef.current ? current.boardingBalance : 0,
+            boardingBalance: boardingSats || (hasSnapshotRef.current ? current.boardingBalance : 0),
             history: [
               ...savings.history,
-              ...(hasSnapshotRef.current ? current.history.filter((item) => item.account !== 'savings') : []),
+              ...boardingHistory,
+              ...(hasSnapshotRef.current
+                ? current.history.filter((item) => item.account !== 'savings' && !knownSpendTxids.has(item.txid))
+                : spending.history),
             ],
             savingsSats: savings.balance,
             savingsSpendableSats: savings.spendable,
@@ -255,8 +298,8 @@ export function useVaultBalances({
           return
         }
         const nextSnapshot = {
-          boardingBalance: spending.boardingBalance || 0,
-          history: [...savings.history, ...spending.history],
+          boardingBalance: boardingSats,
+          history: [...savings.history, ...boardingHistory, ...spending.history],
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,

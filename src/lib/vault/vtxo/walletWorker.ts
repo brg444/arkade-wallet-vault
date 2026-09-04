@@ -463,6 +463,14 @@ export async function reloadVaultWalletWorker(status: VaultStatus) {
   await current.wallet.reload()
 }
 
+/** Tear down a wedged worker and create a new one so boarding can resume. */
+export async function reviveVaultWalletWorker(status: VaultStatus): Promise<WalletRuntime> {
+  await shutdownVaultWalletWorker(status.vaultId).catch((error) => {
+    consoleError(error, 'Vault wallet worker shutdown before revive')
+  })
+  return ensureVaultWalletWorker(status)
+}
+
 export interface VaultBoardingSettlementRuntime {
   listeners: Set<() => void>
   boardingSettle?: Promise<void>
