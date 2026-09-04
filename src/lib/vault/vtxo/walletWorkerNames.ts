@@ -15,6 +15,7 @@ export function vaultWalletNamespace(value: string) {
 export function vaultWalletWorkerPath(value: string, network?: string) {
   const params = new URLSearchParams({ vault: vaultWalletNamespace(value) })
   if (network) params.set('network', requireSupportedVaultNetwork(network))
+  params.set('board', '2')
   return `/vault-wallet-service-worker.mjs?${params.toString()}`
 }
 
