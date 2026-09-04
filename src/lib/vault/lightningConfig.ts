@@ -80,9 +80,7 @@ const LIGHTNING_CARDS: Record<'mutinynet' | 'bitcoin', { card: LocalCardInput; e
  * No registry is followed here: a network response cannot redirect Vault
  * funding to a different solver or relay.
  */
-export async function discoverVaultLightningSolver(
-  network: string,
-): Promise<VaultLightningSolverProfile | undefined> {
+export async function discoverVaultLightningSolver(network: string): Promise<VaultLightningSolverProfile | undefined> {
   const sdkNetwork = lightningSdkNetwork(network)
   if (!sdkNetwork || (sdkNetwork !== 'mutinynet' && sdkNetwork !== 'bitcoin')) return undefined
   const pinned = LIGHTNING_CARDS[sdkNetwork]
@@ -106,8 +104,7 @@ export async function discoverVaultLightningSolver(
   if (!quoteLimits || !Array.isArray(relays) || relays.length === 0) return undefined
   const maxSats = Number(quoteLimits.max)
   const advertisedBaseMax = baseLimits ? Number(baseLimits.max) : 0
-  const maxFundingSats =
-    advertisedBaseMax > 0 ? advertisedBaseMax : fundingCeilingSats(market, maxSats)
+  const maxFundingSats = advertisedBaseMax > 0 ? advertisedBaseMax : fundingCeilingSats(market, maxSats)
   if (!Number.isSafeInteger(maxFundingSats) || maxFundingSats < maxSats) return undefined
   return {
     network: sdkNetwork,
