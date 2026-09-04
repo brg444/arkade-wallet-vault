@@ -90,6 +90,7 @@ describe('Vercel worker caching', () => {
       'connect-src',
       "'self'",
       'https://arkade.computer',
+      'https://mempool.arkade.sh',
       'https://blockchain.info',
       'wss://nostr.arkade.sh',
     ])

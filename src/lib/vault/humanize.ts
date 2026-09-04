@@ -7,10 +7,24 @@ import {
   isVtxoSpendInFlightError,
 } from './vtxo/spend'
 
+function nestedErrorMessages(err: unknown, seen = new Set<unknown>()): string[] {
+  if (err == null || seen.has(err)) return []
+  seen.add(err)
+  const messages: string[] = []
+  if (typeof err === 'string' && err.trim()) messages.push(err)
+  if (err instanceof Error && err.message) messages.push(err.message)
+  if (err instanceof Error && err.cause) messages.push(...nestedErrorMessages(err.cause, seen))
+  if (err instanceof AggregateError) {
+    for (const inner of err.errors) messages.push(...nestedErrorMessages(inner, seen))
+  }
+  return messages
+}
+
 export function humanizeVaultError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
+  const parts = nestedErrorMessages(err)
+  const raw = parts[0] || (err instanceof Error ? err.message : String(err || 'Something went wrong'))
   const name = err instanceof Error ? err.name.toLowerCase() : ''
-  const msg = raw.toLowerCase()
+  const msg = parts.join(' \n ').toLowerCase() || raw.toLowerCase()
   if (isVaultConcurrencyUnavailableError(err)) {
     return 'This browser can’t safely coordinate wallet activity. Update it or use a supported browser.'
   }
@@ -109,9 +123,16 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('worker network') ||
     msg.includes('did not register the spending contract') ||
     msg.includes('different boarding address') ||
-    msg.includes('unsupported network')
+    msg.includes('unsupported network') ||
+    msg.includes('initialization and teardown') ||
+    msg.includes('active vault-board-v1 key required') ||
+    msg.includes('message bus') ||
+    msg.includes('message timeout')
   ) {
     return 'Spending could not start on this network. Stay on this page and tap Retry. If it repeats, reopen the vault at rc.getvaulted.xyz.'
+  }
+  if (msg.includes('could not load activity') || msg.includes('could not load coins')) {
+    return 'Bitcoin activity could not be loaded. Tap Retry.'
   }
   if (msg.includes('vault-board-v1 descriptor does not match')) {
     return 'This app doesn’t match the vault. Update and try again.'

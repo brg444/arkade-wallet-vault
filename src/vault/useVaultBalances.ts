@@ -174,27 +174,41 @@ export function useVaultBalances({
           setBalanceError('')
           return
         }
-        const [savings, spending] = await Promise.all([
-          savingsAddress
-            ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)]).then(
-                ([utxos, transactions]) => {
-                  const balance = savingsUtxoBalance(utxos, transactions, savingsAddress)
-                  return {
-                    balance: balance.total,
-                    spendable: balance.spendable,
-                    history: historyFromTxs(transactions, savingsAddress, 'savings'),
-                  }
-                },
-              )
-            : Promise.resolve({ balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }),
+        const emptySavings = { balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }
+        const emptySpending = {
+          balance: 0,
+          boardingBalance: undefined as number | undefined,
+          history: [] as VaultHistoryItem[],
+        }
+        let savings = emptySavings
+        let spending = emptySpending
+        let spendingError: unknown
+        const savingsTask = savingsAddress
+          ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)])
+              .then(([utxos, transactions]) => {
+                const balance = savingsUtxoBalance(utxos, transactions, savingsAddress)
+                savings = {
+                  balance: balance.total,
+                  spendable: balance.spendable,
+                  history: historyFromTxs(transactions, savingsAddress, 'savings'),
+                }
+              })
+              .catch((error) => {
+                consoleError(error, 'Vault savings balance refresh')
+              })
+          : Promise.resolve()
+        const spendingTask =
           spendingAddress && liveStatus.enrolled
             ? fetchVaultWalletVtxoSnapshot(liveStatus)
-            : Promise.resolve({
-                balance: 0,
-                boardingBalance: undefined,
-                history: [] as VaultHistoryItem[],
-              }),
-        ])
+                .then((snapshot) => {
+                  spending = snapshot
+                })
+                .catch((error) => {
+                  spendingError = error
+                  consoleError(error, 'Vault spending balance refresh')
+                })
+            : Promise.resolve()
+        await Promise.all([savingsTask, spendingTask])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
         const nextSnapshot = {
@@ -203,6 +217,10 @@ export function useVaultBalances({
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
+        }
+        if (spendingError) {
+          if (!hasSnapshotRef.current) setBalanceError(humanizeVaultError(spendingError))
+          return
         }
         setSnapshot(nextSnapshot)
         saveBalanceSnapshot(id, nextSnapshot)
