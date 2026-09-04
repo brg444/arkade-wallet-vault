@@ -15,6 +15,7 @@ import { pinEnrolledStatus, pinFromEnrolledStatus } from './pin'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 import { provisionBoardingKey } from './vtxo/board'
+import { requireMainnetWalletOrigin, requireMainnetWalletRpId } from './productionDomains'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -26,6 +27,10 @@ function requireRPID(status: VaultStatus): string {
   }
   if (status.clientOrigin !== location.origin) {
     throw new Error('deployment origin does not match this signing client origin')
+  }
+  if (status.network === 'mainnet') {
+    requireMainnetWalletOrigin(status.clientOrigin)
+    requireMainnetWalletRpId(rpId)
   }
   return rpId
 }

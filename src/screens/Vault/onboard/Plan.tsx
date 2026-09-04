@@ -9,7 +9,7 @@ function shortPub(pub: string) {
 }
 
 export default function VaultPlan() {
-  const { finishPlan, navigate, setup } = useContext(VaultContext)
+  const { finishPlan, navigate, networkLabel, setup } = useContext(VaultContext)
   const [consented, setConsented] = useState(false)
   const advanced = setup.protectionTier === 'advanced'
 
@@ -25,7 +25,7 @@ export default function VaultPlan() {
       <section className='qg-summary'>
         <div>
           <span>Network</span>
-          <strong>Mutinynet</strong>
+          <strong>{networkLabel}</strong>
         </div>
         <div>
           <span>Protection</span>

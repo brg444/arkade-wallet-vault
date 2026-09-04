@@ -3,10 +3,16 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "outputDirectory": "dist",
   "framework": null,
+  "env": {
+    "VAULT_RELEASE_NETWORK": "mainnet"
+  },
   "headers": [
     { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }] },
     { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }] },
-    { "source": "/vault-wallet-service-worker.mjs", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }] },
+    {
+      "source": "/vault-wallet-service-worker.mjs",
+      "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }]
+    },
     {
       "source": "/(.*)",
       "headers": [
