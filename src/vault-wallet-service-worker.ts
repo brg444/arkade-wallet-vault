@@ -11,12 +11,8 @@ import {
 import { hexToBytes } from './lib/vault/hex'
 import { fetchVaultStatusUnpinned } from './lib/vault/status'
 import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './lib/vault/vtxo/contractHandler'
-import {
-  loadActiveBoardingKeyForNamespace,
-  requireBoardingStatus,
-  BOARDING_EXIT_DELAY,
-  BOARDING_PROGRAM,
-} from './lib/vault/vtxo/board'
+import { loadActiveBoardingKeyForNamespace, requireBoardingStatus, BOARDING_PROGRAM } from './lib/vault/vtxo/board'
+import { requireSupportedVaultNetwork } from './lib/vault/constants'
 import { createBoardingSigningAdapter } from './lib/vault/vtxo/boardingAdapter'
 import { installVaultSettlementEventSource } from './lib/vault/vtxo/settlementEventSource'
 import {
@@ -28,7 +24,9 @@ import { vaultArkServer, vaultPolicyV1ScriptFromStatus } from './lib/vault/vtxo/
 
 declare const self: ServiceWorkerGlobalScope
 
-const namespace = new URL(self.location.href).searchParams.get('vault') || ''
+const workerLocation = new URL(self.location.href)
+const namespace = workerLocation.searchParams.get('vault') || ''
+const pinnedNetwork = workerLocation.searchParams.get('network') || ''
 
 installVaultSettlementEventSource()
 registerVaultPolicyV1ContractHandler()
@@ -48,11 +46,14 @@ const bus = new MessageBus(walletRepository, contractRepository, {
     let identityOwnsSecret = false
     try {
       const status = await fetchVaultStatusUnpinned(undefined, active.vaultId)
+      if (pinnedNetwork && status.network !== requireSupportedVaultNetwork(pinnedNetwork)) {
+        throw new Error('worker network does not match this release')
+      }
       const descriptor = requireBoardingStatus(status, active.boardingPub)
       if (active.descriptorHash !== status.vtxoBoardingDescriptorHash) {
         throw new Error('active vault-board-v1 key is bound to a different descriptor')
       }
-      const expectedArkServer = vaultArkServer()
+      const expectedArkServer = vaultArkServer(status.network)
       if (config.arkServer.url !== expectedArkServer) {
         throw new Error('worker Arkade Operator origin does not match this release')
       }
@@ -81,7 +82,7 @@ const bus = new MessageBus(walletRepository, contractRepository, {
           recoveryPubKey: hexToBytes(descriptor.recoveryPhonePub).slice(1),
         },
         boardingSigningAdapter: signingAdapter,
-        boardingTimelock: { type: 'seconds', value: BigInt(BOARDING_EXIT_DELAY) },
+        boardingTimelock: { type: 'seconds', value: BigInt(descriptor.exitDelay) },
         settlementConfig: {
           boardingUtxoSweep: false,
           deprecatedSignerMigration: false,

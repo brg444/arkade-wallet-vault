@@ -165,9 +165,10 @@ export async function registerVaultWalletServiceWorker(
   vaultId: string,
   serviceWorkers: Pick<ServiceWorkerContainer, 'register'> = navigator.serviceWorker,
   locks: VaultLockManager | undefined = browserVaultLockManager(),
+  network?: string,
 ): Promise<{ registration: ServiceWorkerRegistration; worker: ServiceWorker }> {
   const register = async () => {
-    const registration = await serviceWorkers.register(vaultWalletWorkerPath(vaultId), {
+    const registration = await serviceWorkers.register(vaultWalletWorkerPath(vaultId, network), {
       scope: vaultWalletWorkerScope(vaultId),
       updateViaCache: 'none',
     })
@@ -253,6 +254,7 @@ async function createRuntime(status: VaultStatus): Promise<WalletRuntime> {
       status.vaultId,
       navigator.serviceWorker,
       browserVaultLockManager(),
+      status.network,
     )
     registration = registered.registration
     const serviceWorker = registered.worker
