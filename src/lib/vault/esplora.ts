@@ -120,6 +120,15 @@ export async function fetchTipHeight(): Promise<number> {
   return height
 }
 
+export async function fetchFeeEstimates(): Promise<Record<string, number>> {
+  const res = await fetch(`${esploraBase()}/fee-estimates`)
+  const estimates = await esploraJson<Record<string, number>>(res, 'Could not load fee estimates')
+  if (!estimates || typeof estimates !== 'object' || Array.isArray(estimates)) {
+    throw new Error('Could not load fee estimates')
+  }
+  return estimates
+}
+
 export async function broadcastTx(txHex: string): Promise<string> {
   const expectedTxid = Transaction.fromRaw(hex.decode(txHex)).id
   const res = await fetch(`${esploraBase()}/tx`, { method: 'POST', body: txHex })

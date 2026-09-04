@@ -8,6 +8,8 @@ describe('networkPins', () => {
     expect(pins.boardExitDelay).toBe(604_672)
     expect(pins.operatorOrigin).toBe('https://mutinynet.arkade.sh')
     expect(pins.arkHrp).toBe('tark')
+    expect(pins.absoluteFeeCeilingSats).toBe(5_000)
+    expect(pins.feerateCeilingSatPerV).toBe(10)
   })
 
   it('freezes mainnet to the public Operator contract', () => {
@@ -18,6 +20,8 @@ describe('networkPins', () => {
     expect(pins.operatorOrigin).toBe('https://arkade.computer')
     expect(pins.delegateOrigin).toBe('https://delegate.arkade.money')
     expect(pins.arkHrp).toBe('ark')
+    expect(pins.absoluteFeeCeilingSats).toBe(20_000)
+    expect(pins.feerateCeilingSatPerV).toBe(25)
   })
 
   it('rejects unknown networks', () => {

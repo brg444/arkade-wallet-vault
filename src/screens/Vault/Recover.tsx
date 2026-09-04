@@ -7,6 +7,7 @@ import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount } from '../../lib/format'
 import { broadcastTx, fetchAddressUtxos } from '../../lib/vault/esplora'
+import { recoveryOnchainFeeSats, SAVINGS_CLAIM_VBYTES, SAVINGS_TRANSITION_VBYTES } from '../../lib/vault/onchainFee'
 import { parseIncomingPsbt, psbtFile } from '../../lib/vault/savingsSpend'
 import { CLAIMANTS, SAVINGS_TEMPLATE, type Claimant } from '../../lib/vault/program/constants'
 import { familyFromDescriptor } from '../../lib/vault/program/descriptor'
@@ -180,22 +181,24 @@ export default function VaultRecover() {
                 testId='recover-clawback'
                 onClick={() => {
                   setLocalError('')
-                  try {
-                    const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
-                    const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-                    const built = planClawback({
-                      family: familyFromDescriptor(kit.descriptor),
-                      claimant: c,
-                      coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
-                      feeSats: 500,
-                      vaultId: kit.descriptor.vaultId,
-                    })
+                  void (async () => {
+                    try {
+                      const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
+                      const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                      const built = planClawback({
+                        family: familyFromDescriptor(kit.descriptor),
+                        claimant: c,
+                        coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
+                        feeSats: await recoveryOnchainFeeSats(SAVINGS_TRANSITION_VBYTES),
+                        vaultId: kit.descriptor.vaultId,
+                      })
                     setPsbtOut(built.psbtHex)
                     void copyToClipboard(built.psbtHex)
-                    toast('Cancel copied. This leaves out the key that started recovery.')
-                  } catch (err) {
-                    setLocalError(err instanceof Error ? err.message : 'Could not cancel recovery')
-                  }
+                      toast('Cancel copied. This leaves out the key that started recovery.')
+                    } catch (err) {
+                      setLocalError(err instanceof Error ? err.message : 'Could not cancel recovery')
+                    }
+                  })()
                 }}
               />
               {canCancelWithoutServices ? (
@@ -205,32 +208,34 @@ export default function VaultRecover() {
                   disabled={!claimDest.trim()}
                   onClick={() => {
                     setLocalError('')
-                    try {
-                      const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
-                      const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-                      if (kit.descriptor.templateVersion !== SAVINGS_TEMPLATE) {
-                        throw new Error('this vault cannot cancel pending recovery without the services')
-                      }
-                      const hasRecovery = Boolean(kit.descriptor.keys.recovery)
-                      const signers = requiredGuardianExitSigners(c, hasRecovery)
-                      assertGuardianExitSigners(c, signers)
-                      const built = buildGuardianExitPsbt({
-                        family: familyFromDescriptor(kit.descriptor),
-                        claimant: c,
-                        coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
-                        destAddress: claimDest.trim(),
-                        feeSats: 500,
-                        network: kit.descriptor.network,
-                      })
+                    void (async () => {
+                      try {
+                        const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
+                        const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                        if (kit.descriptor.templateVersion !== SAVINGS_TEMPLATE) {
+                          throw new Error('this vault cannot cancel pending recovery without the services')
+                        }
+                        const hasRecovery = Boolean(kit.descriptor.keys.recovery)
+                        const signers = requiredGuardianExitSigners(c, hasRecovery)
+                        assertGuardianExitSigners(c, signers)
+                        const built = buildGuardianExitPsbt({
+                          family: familyFromDescriptor(kit.descriptor),
+                          claimant: c,
+                          coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
+                          destAddress: claimDest.trim(),
+                          feeSats: await recoveryOnchainFeeSats(SAVINGS_CLAIM_VBYTES),
+                          network: kit.descriptor.network,
+                        })
                       setCancelPsbt(built.psbtHex)
                       setCancelSigners(signers)
                       setCancelHave([])
                       setSignedCancelPsbt('')
                       setPsbtOut(built.psbtHex)
-                      toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
-                    } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
-                    }
+                        toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
+                      } catch (err) {
+                        setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
+                      }
+                    })()
                   }}
                 />
               ) : null}
@@ -240,23 +245,25 @@ export default function VaultRecover() {
                 disabled={!claimDest.trim()}
                 onClick={() => {
                   setLocalError('')
-                  try {
-                    const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
-                    const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
-                    const built = planClaim({
-                      family: familyFromDescriptor(kit.descriptor),
-                      claimant: c,
-                      coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
-                      destAddress: claimDest.trim(),
-                      feeSats: 500,
-                      network: kit.descriptor.network,
-                    })
+                  void (async () => {
+                    try {
+                      const [, c] = inProcess.familyKey.split('-') as ['savings', Claimant]
+                      const kit = parseRecoveryKit(JSON.parse(downloadRecoveryKit()))
+                      const built = planClaim({
+                        family: familyFromDescriptor(kit.descriptor),
+                        claimant: c,
+                        coin: { txid: inProcess.txid, vout: inProcess.vout, value: inProcess.value },
+                        destAddress: claimDest.trim(),
+                        feeSats: await recoveryOnchainFeeSats(SAVINGS_CLAIM_VBYTES),
+                        network: kit.descriptor.network,
+                      })
                     setPsbtOut(built.psbtHex)
                     void copyToClipboard(built.psbtHex)
-                    toast('Move copied. Only after the wait.')
-                  } catch (err) {
-                    setLocalError(err instanceof Error ? err.message : 'Could not move coins')
-                  }
+                      toast('Move copied. Only after the wait.')
+                    } catch (err) {
+                      setLocalError(err instanceof Error ? err.message : 'Could not move coins')
+                    }
+                  })()
                 }}
               />
             </>
@@ -281,7 +288,7 @@ export default function VaultRecover() {
                         family,
                         claimant,
                         coin: { txid: coin.txid, vout: coin.vout, value: coin.value },
-                        feeSats: 500,
+                        feeSats: await recoveryOnchainFeeSats(SAVINGS_TRANSITION_VBYTES),
                         vaultId: kit.descriptor.vaultId,
                       })
                       setPsbtOut(built.psbtHex)

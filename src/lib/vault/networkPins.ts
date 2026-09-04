@@ -14,6 +14,8 @@ export interface VaultNetworkPins {
   delegateOrigin: string
   sdkNetwork: 'mutinynet' | 'bitcoin'
   arkHrp: 'tark' | 'ark'
+  absoluteFeeCeilingSats: number
+  feerateCeilingSatPerV: number
 }
 
 const PINS: Record<VaultNetwork, VaultNetworkPins> = {
@@ -31,6 +33,8 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
     delegateOrigin: 'https://delegator.mutinynet.arkade.sh',
     sdkNetwork: 'mutinynet',
     arkHrp: 'tark',
+    absoluteFeeCeilingSats: 5_000,
+    feerateCeilingSatPerV: 10,
   },
   mainnet: {
     network: 'mainnet',
@@ -46,6 +50,8 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
     delegateOrigin: 'https://delegate.arkade.money',
     sdkNetwork: 'bitcoin',
     arkHrp: 'ark',
+    absoluteFeeCeilingSats: 20_000,
+    feerateCeilingSatPerV: 25,
   },
 }
 
