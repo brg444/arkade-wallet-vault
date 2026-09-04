@@ -291,6 +291,10 @@ describe('gateway response cache policy', () => {
     expect(wrongHost.response.statusCode).toBe(403)
     expect(wrongHost.body()).toBe(JSON.stringify({ error: 'mainnet gateway host is not this release' }))
     expectLocalNoStore(wrongHost)
+
+    const rcHost = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ headers: { host: 'rc.getvaulted.xyz' } }), rcHost.response)
+    expect(rcHost.response.statusCode).not.toBe(403)
   })
 
   it('uses the shared durable limiter and forwards the gateway secret on a mainnet product host', async () => {
