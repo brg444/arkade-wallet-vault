@@ -362,6 +362,8 @@ async function authorizedPendingFixture() {
 describe('regular VTXO spend coordinator', () => {
   it('uses the release-pinned public Operator directly', () => {
     expect(vaultArkServer()).toBe('https://mutinynet.arkade.sh')
+    expect(vaultArkServer('mutinynet')).toBe('https://mutinynet.arkade.sh')
+    expect(vaultArkServer('mainnet')).toBe('https://arkade.computer')
   })
 
   it.each([

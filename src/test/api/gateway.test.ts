@@ -3,6 +3,7 @@ import gatewayHandler, {
   allowAuthorizerPath,
   allowGatewayRate,
   allowMainnetGatewayRate,
+  isMainnetGatewayRelease,
   MAX_GATEWAY_BYTES,
   publicAuthorizerPath,
   readBoundedUpstream,
@@ -268,5 +269,63 @@ describe('gateway response cache policy', () => {
     expect(result.response.statusCode).toBe(202)
     expect(result.body()?.toString()).toBe('ok')
     expect(result.headers.get('cache-control')).toBe('private, max-age=7')
+  })
+
+  it('fails closed on a mainnet release without gateway authentication or a product host', async () => {
+    expect(isMainnetGatewayRelease('mainnet')).toBe(true)
+    expect(isMainnetGatewayRelease('mutinynet')).toBe(false)
+    vi.stubEnv('VAULT_RELEASE_NETWORK', 'mainnet')
+    vi.stubEnv('AUTHORIZER_GATEWAY_SECRET', '')
+    const missingSecret = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ headers: { host: 'app.getvaulted.xyz' } }), missingSecret.response)
+    expect(missingSecret.response.statusCode).toBe(503)
+    expect(missingSecret.body()).toBe(JSON.stringify({ error: 'gateway authentication is not configured' }))
+    expectLocalNoStore(missingSecret)
+
+    vi.stubEnv('AUTHORIZER_GATEWAY_SECRET', 'test-gateway-secret')
+    const wrongHost = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({ headers: { host: 'arkade-vault-mutinynet-rc.vercel.app' } }),
+      wrongHost.response,
+    )
+    expect(wrongHost.response.statusCode).toBe(403)
+    expect(wrongHost.body()).toBe(JSON.stringify({ error: 'mainnet gateway host is not this release' }))
+    expectLocalNoStore(wrongHost)
+  })
+
+  it('uses the shared durable limiter and forwards the gateway secret on a mainnet product host', async () => {
+    vi.stubEnv('VAULT_RELEASE_NETWORK', 'mainnet')
+    vi.stubEnv('AUTHORIZER_GATEWAY_SECRET', 'test-gateway-secret')
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret')
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/pipeline')) {
+        return new Response(JSON.stringify([{ result: 1 }, { result: 1 }]), { status: 200 })
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({
+        url: '/api/v1/status',
+        headers: { host: 'app.getvaulted.xyz', 'x-forwarded-for': '203.0.113.8' },
+      }),
+      result.response,
+    )
+    expect(result.response.statusCode).toBe(200)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://redis.example/pipeline',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://authorizer.example/v1/status',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-vault-gateway-secret': 'test-gateway-secret' }),
+      }),
+    )
   })
 })

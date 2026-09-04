@@ -581,7 +581,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           lightning.withVaultLightningTransport(profile, (transport) =>
             lightning.requestVaultLightningQuote({
               wallet: session.wallet,
-              arkServerUrl: vaultArkServer(),
+              arkServerUrl: vaultArkServer(profile.network),
               invoice: invoice.raw,
               network: profile.network,
               transport,
