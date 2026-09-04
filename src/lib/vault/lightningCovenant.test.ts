@@ -321,6 +321,27 @@ describe('Lightning dual-candidate covenant matching', () => {
     expect(fx.createContract).not.toHaveBeenCalled()
   })
 
+  it('does not register a contract when the solver is unavailable before funding', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW * 1000)
+    const fx = await covenantFixture()
+    stubServerInfo(serverInfo(fx.operatorCompressedHex))
+    const transport = {
+      requestQuote: vi.fn(async () => {
+        throw new Error('solver unavailable')
+      }),
+      status: vi.fn(),
+      close: vi.fn(),
+    }
+    await expect(
+      requestVaultLightningSend(fx.wallet, ARK_SERVER, transport as never, {
+        invoice: facts(),
+        rfqId: '11'.repeat(32),
+      }),
+    ).rejects.toThrow(/solver unavailable/)
+    expect(fx.createContract).not.toHaveBeenCalled()
+  })
+
   it('refuses a quote built for a different Arkade operator', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(NOW * 1000)
