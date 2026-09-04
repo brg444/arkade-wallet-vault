@@ -2,10 +2,23 @@ import { configureEventSource, type EventSourceLike } from '@arkade-os/sdk'
 
 const SETTLEMENT_EVENTS_PATH = '/v1/batch/events'
 const EVENT_SOURCE_CONNECTING = 0
+const EVENT_SOURCE_OPEN = 1
+const EVENT_SOURCE_CLOSED = 2
 /** Mainnet Operator SSE often takes several seconds before `open`/first event. */
 const STREAM_READY_TIMEOUT_MS = 60_000
+const FETCH_SSE_RECONNECT_MS = 1_000
 
-type NativeEventSourceFactory = (url: string) => EventSource
+type FetchLike = typeof fetch
+
+/** Duck-typed EventSource used by the settlement wrapper. */
+export type VaultEventSourceTransport = {
+  readyState: number
+  addEventListener(type: string, listener: (event: Event) => void): void
+  removeEventListener(type: string, listener: (event: Event) => void): void
+  close(): void
+}
+
+type EventSourceTransportFactory = (url: string) => VaultEventSourceTransport
 
 type SettlementStream = {
   topics: Set<string>
@@ -37,13 +50,138 @@ function settlementTopics(url: string): Set<string> | undefined {
   return new Set(parsed.searchParams.getAll('topics'))
 }
 
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
+
+function flushSseLines(buffer: string, onData: (data: string) => void, end: boolean): string {
+  const normalized = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const parts = normalized.split('\n')
+  const rest = end ? '' : (parts.pop() ?? '')
+  for (const line of parts) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith(':')) continue
+    if (!trimmed.startsWith('data:')) continue
+    const data = trimmed.slice(5).trim()
+    if (data) onData(data)
+  }
+  if (end) {
+    const trimmed = rest.trim()
+    if (trimmed.startsWith('data:')) {
+      const data = trimmed.slice(5).trim()
+      if (data) onData(data)
+    }
+    return ''
+  }
+  return rest
+}
+
+async function readSseBody(
+  body: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  onData: (data: string) => void,
+): Promise<void> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const onAbort = () => {
+    void reader.cancel()
+  }
+  signal.addEventListener('abort', onAbort, { once: true })
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) {
+        flushSseLines(buffer + decoder.decode(), onData, true)
+        return
+      }
+      buffer = flushSseLines(buffer + decoder.decode(value, { stream: true }), onData, false)
+    }
+  } finally {
+    signal.removeEventListener('abort', onAbort)
+  }
+}
+
+/**
+ * Service-worker-safe SSE transport. Native `EventSource` in a worker does not
+ * reliably open a cross-origin Operator stream, so boarding never reached register.
+ */
+export function createFetchEventSource(url: string, fetchImpl: FetchLike = fetch): VaultEventSourceTransport {
+  const target = new EventTarget()
+  let readyState = EVENT_SOURCE_CONNECTING
+  let closed = false
+  let abort = new AbortController()
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+
+  const source: VaultEventSourceTransport = {
+    get readyState() {
+      return readyState
+    },
+    addEventListener(type, listener) {
+      target.addEventListener(type, listener as EventListener)
+    },
+    removeEventListener(type, listener) {
+      target.removeEventListener(type, listener as EventListener)
+    },
+    close() {
+      if (closed) return
+      closed = true
+      readyState = EVENT_SOURCE_CLOSED
+      if (reconnectTimer !== undefined) clearTimeout(reconnectTimer)
+      abort.abort()
+    },
+  }
+
+  const connect = async () => {
+    while (!closed) {
+      readyState = EVENT_SOURCE_CONNECTING
+      abort = new AbortController()
+      try {
+        const response = await fetchImpl(url, {
+          method: 'GET',
+          headers: { Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
+          signal: abort.signal,
+          credentials: 'omit',
+          cache: 'no-store',
+          mode: 'cors',
+        })
+        if (closed) return
+        if (!response.ok || !response.body) {
+          throw new Error(`Vault settlement event stream HTTP ${response.status}`)
+        }
+        readyState = EVENT_SOURCE_OPEN
+        target.dispatchEvent(new Event('open'))
+        await readSseBody(response.body, abort.signal, (data) => {
+          if (!closed) target.dispatchEvent(new MessageEvent('message', { data }))
+        })
+        if (closed) return
+        readyState = EVENT_SOURCE_CONNECTING
+        target.dispatchEvent(new Event('error'))
+      } catch (error) {
+        if (closed || isAbortError(error)) return
+        readyState = EVENT_SOURCE_CONNECTING
+        target.dispatchEvent(new Event('error'))
+      }
+      if (closed) return
+      await new Promise<void>((resolve) => {
+        reconnectTimer = setTimeout(resolve, FETCH_SSE_RECONNECT_MS)
+      })
+    }
+  }
+  void connect()
+  return source
+}
+
 /**
  * Keeps the stock EventSource reconnect loop intact for the settlement stream.
  * Native EventSource emits `error` while it is reconnecting; forwarding that
  * transient event makes the SDK close a connection the browser can recover.
  */
 export function createVaultEventSourceFactory(
-  nativeFactory: NativeEventSourceFactory = (url) => new EventSource(url),
+  nativeFactory: EventSourceTransportFactory = (url) => createFetchEventSource(url),
 ): (url: string) => EventSourceLike {
   return (url) => {
     const source = nativeFactory(url)
@@ -69,9 +207,9 @@ export function createVaultEventSourceFactory(
       record.resolveReady()
     }
     const onOpen = () => markOpen()
-    const onMessage = (event: MessageEvent) => {
+    const onMessage = (event: Event) => {
       markOpen()
-      for (const listener of messageListeners) listener(event)
+      for (const listener of messageListeners) listener(event as MessageEvent)
     }
     const onError = (event: Event) => {
       if (record.closed) return
@@ -120,7 +258,7 @@ export function createVaultEventSourceFactory(
 }
 
 export function installVaultSettlementEventSource(): void {
-  configureEventSource(createVaultEventSourceFactory())
+  configureEventSource(createVaultEventSourceFactory((url) => createFetchEventSource(url)))
 }
 
 function latestSettlementStream(topic: string): SettlementStream | undefined {
