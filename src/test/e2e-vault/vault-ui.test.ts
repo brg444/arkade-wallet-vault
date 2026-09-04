@@ -435,14 +435,14 @@ test('keeps cached Spending balance and history during an open-session outage, t
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 })
 
-test('fails closed without an Operator cache and recovers through Retry', async ({ page }) => {
+test('fails closed without an Operator cache and recovers in the background', async ({ page }) => {
   const { status } = await openVault(page, {}, { operatorAvailable: false, waitForBalance: false })
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
-  await expect(page.getByText('Activity is unavailable. Refresh to try again.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0)
+  await expect(page.getByText('Loading activity…')).toBeVisible()
   await expect(page.getByTestId('vault-balance')).toHaveText('—')
 
   await setOperatorVtxos([await wireVtxo(page, status, { amount: 25_000, txid: VTXO_TXID })])
-  await page.getByRole('button', { name: 'Retry' }).click()
+  await refreshHome(page)
   await expect(page.getByTestId('vault-balance')).toContainText('25,000')
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 })

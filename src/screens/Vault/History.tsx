@@ -13,25 +13,23 @@ function historyTime(blockTime?: number): string {
 }
 
 export default function VaultHistory() {
-  const { account, balanceError, balancesLoaded, history, openTx, refreshingBalance } = useContext(VaultContext)
+  const { account, balancesLoaded, history, openTx, refreshingBalance } = useContext(VaultContext)
 
   if (history.length === 0) {
     return (
       <section
         className='vault-history'
         data-testid='vault-history'
-        aria-busy={!balancesLoaded && !balanceError}
+        aria-busy={!balancesLoaded}
         aria-labelledby='vault-activity-title'
       >
         <div className='vault-history-head'>
           <h2 id='vault-activity-title'>Recent</h2>
         </div>
-        <div className='vault-history-empty' role={!balancesLoaded && !balanceError ? 'status' : undefined}>
+        <div className='vault-history-empty' role={!balancesLoaded ? 'status' : undefined}>
           <p className='qg-copy'>
             {!balancesLoaded
-              ? balanceError
-                ? 'Activity is unavailable. Refresh to try again.'
-                : 'Loading activity…'
+              ? 'Loading activity…'
               : account === 'savings'
                 ? 'No Savings activity yet. Add bitcoin to your Savings address to see it here.'
                 : 'No Spending activity yet. Receive a payment to see it here.'}

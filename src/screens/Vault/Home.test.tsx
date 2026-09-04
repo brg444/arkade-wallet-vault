@@ -177,15 +177,14 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByTestId('vault-balance')).toHaveAccessibleName('Spending balance loading')
   })
 
-  it('replaces terminal loading with a clear balance retry action', async () => {
-    const user = userEvent.setup()
-    const value = renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
+  it('keeps loading the first snapshot in the background without a retry control', () => {
+    renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
 
-    expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
-    const retry = screen.getByRole('button', { name: 'Retry' })
-    expect(retry.closest('.qg-home-retry')).toBeTruthy()
-    await user.click(retry)
-    expect(value.refreshBalance).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('vault-balance')).toHaveAttribute('aria-busy')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('Wallet activity is unavailable.')).toBeNull()
   })
 
   it('does not show a background refresh failure over a known balance', () => {

@@ -3,7 +3,6 @@ import { loadBalanceSnapshot, saveBalanceSnapshot } from '../lib/vault/balanceSt
 import { consoleError } from '../lib/logs'
 import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } from '../lib/vault/esplora'
 import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
-import { humanizeVaultError } from '../lib/vault/humanize'
 import { loadAddressPin, requireStatusMatchesPin, type AddressPin } from '../lib/vault/pin'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
@@ -40,6 +39,9 @@ const EMPTY_BALANCES: VaultBalanceSnapshot = {
   savingsSpendableSats: 0,
   vtxoSpendingSats: 0,
 }
+
+const FIRST_SNAPSHOT_RETRY_MS = 2_000
+const FIRST_SNAPSHOT_RETRY_MAX_MS = 30_000
 
 export function confirmedUtxoBalance(utxos: EsploraUtxo[]): number {
   const unique = new Map<string, EsploraUtxo>()
@@ -100,6 +102,9 @@ export function useVaultBalances({
   const statusRef = useRef(status)
   const addressPinRef = useRef(addressPin)
   const enrollmentRef = useRef(enrollment)
+  const retryTimerRef = useRef(0)
+  const retryAttemptRef = useRef(0)
+  const refreshBalanceRef = useRef<(vaultId?: string) => Promise<void>>(async () => undefined)
   statusRef.current = status
   addressPinRef.current = addressPin
   enrollmentRef.current = enrollment
@@ -123,6 +128,8 @@ export function useVaultBalances({
     hasSnapshotRef.current = Boolean(cachedSnapshot)
     setBalanceError('')
     setRefreshingBalance(false)
+    retryAttemptRef.current = 0
+    window.clearTimeout(retryTimerRef.current)
   }
 
   const { boardingBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats } = snapshot
@@ -136,6 +143,21 @@ export function useVaultBalances({
       }),
     [boardingBalance, savingsSats, savingsSpendableSats, vtxoSpendingSats],
   )
+
+  const clearSnapshotRetry = useCallback(() => {
+    retryAttemptRef.current = 0
+    window.clearTimeout(retryTimerRef.current)
+  }, [])
+
+  const scheduleSnapshotRetry = useCallback((vaultId: string) => {
+    if (hasSnapshotRef.current || !vaultId) return
+    window.clearTimeout(retryTimerRef.current)
+    const delay = Math.min(FIRST_SNAPSHOT_RETRY_MS * 2 ** retryAttemptRef.current, FIRST_SNAPSHOT_RETRY_MAX_MS)
+    retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 4)
+    retryTimerRef.current = window.setTimeout(() => {
+      void refreshBalanceRef.current(vaultId)
+    }, delay)
+  }, [])
 
   const refreshBalance = useCallback(
     async (vaultId?: string) => {
@@ -155,6 +177,7 @@ export function useVaultBalances({
           setBalancesLoaded(true)
           hasSnapshotRef.current = false
           setBalanceError('')
+          clearSnapshotRetry()
           return
         }
         const memoryPin = addressPinRef.current
@@ -172,6 +195,7 @@ export function useVaultBalances({
           setBalancesLoaded(true)
           hasSnapshotRef.current = true
           setBalanceError('')
+          clearSnapshotRetry()
           return
         }
         const emptySavings = { balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }
@@ -219,7 +243,7 @@ export function useVaultBalances({
           vtxoSpendingSats: spending.balance,
         }
         if (spendingError) {
-          if (!hasSnapshotRef.current) setBalanceError(humanizeVaultError(spendingError))
+          scheduleSnapshotRetry(id)
           return
         }
         setSnapshot(nextSnapshot)
@@ -227,17 +251,26 @@ export function useVaultBalances({
         setBalancesLoaded(true)
         hasSnapshotRef.current = true
         setBalanceError('')
+        clearSnapshotRetry()
       } catch (error) {
         if (version === refreshVersion.current) {
           consoleError(error, 'Vault balance refresh')
-          if (!hasSnapshotRef.current) setBalanceError(humanizeVaultError(error))
+          const id = String(
+            vaultId ||
+              statusRef.current?.vaultId ||
+              enrollmentRef.current?.vaultId ||
+              addressPinRef.current?.vaultId ||
+              '',
+          ).trim()
+          scheduleSnapshotRetry(id)
         }
       } finally {
         if (version === refreshVersion.current) setRefreshingBalance(false)
       }
     },
-    [setStatus],
+    [clearSnapshotRetry, scheduleSnapshotRetry, setStatus],
   )
+  refreshBalanceRef.current = refreshBalance
 
   const recoverVtxoSpend = useCallback(async () => {
     const current = statusRef.current
@@ -295,6 +328,7 @@ export function useVaultBalances({
   useEffect(
     () => () => {
       refreshVersion.current += 1
+      window.clearTimeout(retryTimerRef.current)
     },
     [],
   )

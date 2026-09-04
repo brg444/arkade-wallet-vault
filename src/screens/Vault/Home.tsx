@@ -14,17 +14,14 @@ import { QgMark } from './qg/QgScreen'
 export default function VaultHome() {
   const {
     account,
-    balanceError,
     balancesLoaded,
     boardingAddress,
     canSend,
-    error,
     fiatDisplayRate,
     navigate,
     openSendScan,
     openRecover,
     initiateAlert,
-    refreshBalance,
     refreshingBalance,
     positions,
     clearSpendDraft,
@@ -156,7 +153,7 @@ export default function VaultHome() {
           data-testid='vault-balance'
           data-balance-unit={balanceUnit}
           disabled={!balancesLoaded || loadingFiat}
-          aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance || loadingFiat ? true : undefined}
+          aria-busy={!balancesLoaded || refreshingBalance || loadingFiat ? true : undefined}
           aria-live='polite'
           aria-label={
             balancesLoaded
@@ -242,18 +239,6 @@ export default function VaultHome() {
           </button>
         ) : null}
 
-        {!balancesLoaded && (error || balanceError) ? (
-          <div className='qg-home-retry'>
-            <p className='qg-copy' role='alert'>
-              {error || balanceError}
-            </p>
-            {balanceError ? (
-              <button type='button' className='qg-secondary' onClick={() => void refreshBalance()}>
-                Retry
-              </button>
-            ) : null}
-          </div>
-        ) : null}
         <VaultHistory />
       </main>
     </Content>

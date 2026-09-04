@@ -113,10 +113,11 @@ describe('Vault history', () => {
     expect(screen.queryByText(/No Spending activity/i)).toBeNull()
   })
 
-  it('does not remain busy after a terminal activity error', () => {
+  it('keeps loading activity while the first snapshot is still recovering', () => {
     renderHistory({ balancesLoaded: false, balanceError: 'Could not load activity' })
-    expect(screen.getByTestId('vault-history').getAttribute('aria-busy')).toBe('false')
-    expect(screen.getByText('Activity is unavailable. Refresh to try again.')).toBeTruthy()
+    expect(screen.getByTestId('vault-history').getAttribute('aria-busy')).toBe('true')
+    expect(screen.getByText('Loading activity…')).toBeTruthy()
+    expect(screen.queryByText('Activity is unavailable. Refresh to try again.')).toBeNull()
   })
 
   it('uses the same pending language for Savings activity', () => {
