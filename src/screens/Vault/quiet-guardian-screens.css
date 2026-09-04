@@ -13,6 +13,11 @@
   --qg-green-soft: #e0eadf;
   --qg-orange: #a84421;
   --qg-orange-soft: #f9e4d4;
+  --qg-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --qg-ease-press: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --qg-shadow-soft: 0 12px 32px -24px rgb(31 24 18 / 34%);
+  --qg-shadow-raised: 0 16px 38px -24px rgb(31 24 18 / 42%);
+  --qg-focus: color-mix(in srgb, var(--qg-purple) 72%, white);
 }
 
 [data-testid='vault-app'] {
@@ -106,16 +111,16 @@ body:has(.vault-screen-unlock) {
   box-sizing: border-box;
 }
 
-.qg-screen :focus,
-.qg-screen :focus-visible,
-.qg-launcher-trigger:focus,
-.qg-launcher-trigger:focus-visible,
-.qg-launcher-item:focus,
-.qg-launcher-item:focus-visible,
-.qg-launcher-close:focus,
-.qg-launcher-close:focus-visible {
+.qg-screen :focus:not(:focus-visible),
+.qg-launcher :focus:not(:focus-visible) {
   outline: none;
-  box-shadow: none;
+}
+
+.qg-screen :is(button, input, textarea, select, [role='button'], [role='radio']):focus-visible,
+.qg-launcher :is(button, [role='button']):focus-visible,
+.qg-account-option:focus-visible {
+  outline: 2px solid var(--qg-focus);
+  outline-offset: 3px;
 }
 
 .qg-brand {
@@ -354,6 +359,12 @@ body:has(.vault-screen-unlock) {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
+  transition:
+    transform 160ms var(--qg-ease-press),
+    box-shadow 180ms var(--qg-ease-out),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease;
 }
 
 .qg-primary svg,
@@ -367,6 +378,7 @@ body:has(.vault-screen-unlock) {
   border: 1px solid var(--qg-ink);
   background: var(--qg-ink);
   color: var(--qg-paper);
+  box-shadow: 0 8px 22px -16px rgb(17 16 21 / 68%);
 }
 
 .qg-primary:disabled,
@@ -379,6 +391,12 @@ body:has(.vault-screen-unlock) {
   border: 1px solid var(--qg-ink);
   background: transparent;
   color: var(--qg-ink);
+}
+
+.qg-primary:active:not(:disabled),
+.qg-secondary:active:not(:disabled) {
+  transform: scale(0.985);
+  transition-duration: 70ms;
 }
 
 .qg-text {
@@ -2355,6 +2373,167 @@ body:has(.vault-screen-unlock) {
   background: var(--qg-paper);
 }
 
+/* Restrained interaction polish: depth is reserved for actionable and
+   transient surfaces so security-critical content remains visually calm. */
+@keyframes qg-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes qg-footer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.qg-screen:not(.qg-screen-progress) .qg-main > * {
+  animation: qg-content-enter 280ms var(--qg-ease-out) both;
+}
+
+.qg-screen:not(.qg-screen-progress) .qg-main > *:nth-child(2) {
+  animation-delay: 28ms;
+}
+
+.qg-screen:not(.qg-screen-progress) .qg-main > *:nth-child(n + 3) {
+  animation-delay: 52ms;
+}
+
+.qg-screen .qg-footer {
+  animation: qg-footer-enter 320ms 40ms var(--qg-ease-out) both;
+}
+
+.qg-field,
+.qg-note,
+.qg-device-key,
+.qg-summary,
+.qg-document,
+.qg-next,
+.qg-screen .vault-security-hero,
+.qg-screen .vault-security-tile,
+.qg-screen .vault-hub,
+.qg-arrival,
+.qg-recovery-alert,
+.qg-details,
+.qg-approvals > div {
+  box-shadow: var(--qg-shadow-soft);
+}
+
+.qg-choice-list button,
+.qg-screen button.vault-hub-row,
+.qg-screen button.vault-security-tile,
+.qg-actions button,
+.qg-utilities button,
+.qg-dest-field button,
+.qg-denomination,
+.qg-header button,
+.qg-text,
+.qg-account-option,
+.qg-launcher-item,
+.qg-launcher-trigger,
+.qg-launcher-close {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 160ms var(--qg-ease-press),
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms var(--qg-ease-out),
+    opacity 180ms ease;
+}
+
+:is(
+    .qg-choice-list button,
+    .qg-screen button.vault-hub-row,
+    .qg-screen button.vault-security-tile,
+    .qg-actions button,
+    .qg-utilities button,
+    .qg-dest-field button,
+    .qg-denomination,
+    .qg-header button,
+    .qg-text,
+    .qg-account-option,
+    .qg-launcher-item,
+    .qg-launcher-trigger,
+    .qg-launcher-close
+  ):active:not(:disabled) {
+  transform: scale(0.975);
+  transition-duration: 70ms;
+}
+
+.qg-field:focus-within,
+.qg-money-field:focus-within,
+.qg-dest-field:focus-within {
+  border-color: color-mix(in srgb, var(--qg-purple) 55%, var(--qg-line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--qg-purple) 11%, transparent);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.qg-account-menu,
+.qg-launcher .qg-launcher-trigger,
+.qg-launcher .qg-launcher-close {
+  background: color-mix(in srgb, var(--qg-paper) 86%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+  backdrop-filter: blur(20px) saturate(1.15);
+}
+
+.qg-account-menu {
+  box-shadow: 0 22px 54px -30px rgb(17 16 21 / 48%);
+}
+
+.qg-launcher-icon {
+  box-shadow: 0 12px 28px -19px rgb(17 16 21 / 72%);
+  transition:
+    transform 180ms var(--qg-ease-press),
+    box-shadow 180ms var(--qg-ease-out),
+    background-color 180ms ease;
+}
+
+.qg-account-option:focus-visible {
+  outline: 2px solid var(--qg-focus);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .qg-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px -17px rgb(17 16 21 / 76%);
+  }
+
+  .qg-secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--qg-ink) 4%, transparent);
+    box-shadow: var(--qg-shadow-soft);
+  }
+
+  .qg-screen button.vault-security-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--qg-shadow-raised);
+  }
+
+  .qg-screen button.vault-hub-row:hover,
+  .qg-choice-list button:hover,
+  .qg-account-option:hover {
+    transform: translateX(2px);
+  }
+
+  .qg-launcher-item:hover .qg-launcher-icon {
+    transform: scale(1.045);
+    box-shadow: 0 16px 32px -19px rgb(17 16 21 / 80%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .qg-screen.is-sheet {
     will-change: auto;
@@ -2363,5 +2542,29 @@ body:has(.vault-screen-unlock) {
   .qg-launcher-trigger.is-intro,
   .qg-launcher-trigger.is-intro .qg-launcher-mark {
     animation: none;
+  }
+
+  .qg-screen:not(.qg-screen-progress) .qg-main > *,
+  .qg-screen .qg-footer {
+    animation: none;
+  }
+
+  .qg-primary,
+  .qg-secondary,
+  .qg-choice-list button,
+  .qg-screen button.vault-hub-row,
+  .qg-screen button.vault-security-tile,
+  .qg-actions button,
+  .qg-utilities button,
+  .qg-dest-field button,
+  .qg-denomination,
+  .qg-header button,
+  .qg-text,
+  .qg-account-option,
+  .qg-launcher-item,
+  .qg-launcher-trigger,
+  .qg-launcher-close,
+  .qg-launcher-icon {
+    transition: none;
   }
 }
