@@ -129,10 +129,10 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('message bus') ||
     msg.includes('message timeout')
   ) {
-    return 'Spending could not start on this network. Stay on this page and tap Retry. If it repeats, reopen the vault at rc.getvaulted.xyz.'
+    return 'Spending could not start on this network. Keep this page open; the wallet will retry in the background. If it stays down, reopen the vault at rc.getvaulted.xyz.'
   }
   if (msg.includes('could not load activity') || msg.includes('could not load coins')) {
-    return 'Bitcoin activity could not be loaded. Tap Retry.'
+    return 'Bitcoin activity could not be loaded. Keep this page open while the wallet retries.'
   }
   if (msg.includes('vault-board-v1 descriptor does not match')) {
     return 'This app doesn’t match the vault. Update and try again.'

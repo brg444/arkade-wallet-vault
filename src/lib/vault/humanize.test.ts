@@ -150,10 +150,10 @@ describe('humanizeVaultError', () => {
     expect(humanizeVaultError(new Error('Open this vault from its signing address.'))).toMatch(/rc\.getvaulted\.xyz/)
   })
 
-  it('explains a failed Spending worker start instead of a generic retry chip', () => {
-    expect(humanizeVaultError(new Error('SDK worker did not register the Spending contract'))).toMatch(
-      /Spending could not start/,
-    )
+  it('explains a failed Spending worker start without asking the user to tap Retry', () => {
+    const message = humanizeVaultError(new Error('SDK worker did not register the Spending contract'))
+    expect(message).toMatch(/Spending could not start/)
+    expect(message).not.toMatch(/tap retry/i)
     expect(humanizeVaultError(new Error('Unsupported network: mainnet'))).toMatch(/Spending could not start/)
     expect(
       humanizeVaultError(
