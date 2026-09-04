@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createVaultEventSourceFactory, waitForVaultSettlementStream } from './settlementEventSource'
+import {
+  createFetchEventSource,
+  createVaultEventSourceFactory,
+  waitForVaultSettlementStream,
+} from './settlementEventSource'
 
 class FakeEventSource extends EventTarget {
   readyState = 0
@@ -129,5 +133,88 @@ describe('Vault settlement EventSource', () => {
 
     firstWrapped.close()
     secondWrapped.close()
+  })
+})
+
+function hangingSse(chunks: string[] = []) {
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const encoder = new TextEncoder()
+  let resolveCancel: () => void = () => undefined
+  const cancelled = new Promise<void>((resolve) => {
+    resolveCancel = resolve
+  })
+  const stream = new ReadableStream<Uint8Array>({
+    start(next) {
+      controller = next
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+    },
+    cancel() {
+      resolveCancel()
+    },
+  })
+  return {
+    response: new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+    push(chunk: string) {
+      controller.enqueue(encoder.encode(chunk))
+    },
+    end() {
+      controller.close()
+    },
+    cancelled,
+  }
+}
+
+describe('Vault fetch settlement EventSource', () => {
+  it('marks the Operator stream ready when fetch headers arrive', async () => {
+    const sse = hangingSse()
+    const fetchImpl = vi.fn(async () => sse.response)
+    const factory = createVaultEventSourceFactory((url) => createFetchEventSource(url, fetchImpl))
+    const topic = `${'ab'.repeat(32)}:0`
+    const url = `https://arkade.computer/v1/batch/events?topics=${encodeURIComponent(topic)}`
+    const source = factory(url)
+    await expect(waitForVaultSettlementStream(topic, 500)).resolves.toBeUndefined()
+    expect(fetchImpl).toHaveBeenCalledWith(
+      url,
+      expect.objectContaining({
+        method: 'GET',
+        credentials: 'omit',
+        headers: expect.objectContaining({ Accept: 'text/event-stream' }),
+      }),
+    )
+    source.close()
+    await sse.cancelled
+  })
+
+  it('forwards SSE data lines as settlement messages', async () => {
+    const sse = hangingSse()
+    const factory = createVaultEventSourceFactory((url) => createFetchEventSource(url, async () => sse.response))
+    const topic = `${'cd'.repeat(32)}:1`
+    const source = factory(`https://arkade.computer/v1/batch/events?topics=${encodeURIComponent(topic)}`)
+    const message = vi.fn()
+    source.addEventListener('message', message)
+    await waitForVaultSettlementStream(topic, 500)
+    sse.push('data: {"streamStarted":{"id":"1"}}\n\n')
+    await vi.waitFor(() => expect(message).toHaveBeenCalledTimes(1))
+    expect(message.mock.calls[0][0]).toEqual(expect.objectContaining({ data: '{"streamStarted":{"id":"1"}}' }))
+    source.close()
+  })
+
+  it('reconnects after the Operator stream ends', async () => {
+    const first = hangingSse()
+    const second = hangingSse()
+    const responses = [first.response, second.response]
+    const fetchImpl = vi.fn(async () => {
+      const next = responses.shift()
+      if (!next) throw new Error('unexpected extra SSE fetch')
+      return next
+    })
+    const factory = createVaultEventSourceFactory((url) => createFetchEventSource(url, fetchImpl))
+    const topic = `${'ef'.repeat(32)}:0`
+    const source = factory(`https://arkade.computer/v1/batch/events?topics=${encodeURIComponent(topic)}`)
+    await waitForVaultSettlementStream(topic, 500)
+    first.end()
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2), { timeout: 2_000 })
+    await expect(waitForVaultSettlementStream(topic, 500)).resolves.toBeUndefined()
+    source.close()
   })
 })
