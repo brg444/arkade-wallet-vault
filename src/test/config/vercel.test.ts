@@ -64,19 +64,36 @@ describe('Vercel worker caching', () => {
   it('keeps the mainnet deployment explicit and isolated from Mutinynet', () => {
     const config = JSON.parse(readFileSync('vercel.mainnet.json', 'utf8')) as {
       buildCommand: string
+      env?: Record<string, string>
       headers: { source: string; headers: { key: string; value: string }[] }[]
       rewrites: { source: string; destination: string }[]
     }
     const csp = config.headers
       .find((entry) => entry.source === '/(.*)')
       ?.headers.find((header) => header.key === 'Content-Security-Policy')?.value
+    const connectSrc = csp
+      ?.split(';')
+      .map((directive) => directive.trim().split(/\s+/))
+      .find(([name]) => name === 'connect-src')
 
     expect(config.buildCommand).toBe('pnpm build:mainnet')
+    expect(config.env).toEqual({ VAULT_RELEASE_NETWORK: 'mainnet' })
     expect(config.rewrites).toContainEqual({
       source: '/esplora/:path*',
       destination: 'https://mempool.space/api/:path*',
     })
-    expect(csp).toContain('https://arkade.computer')
+    expect(connectSrc).toEqual(['connect-src', "'self'", 'https://arkade.computer', 'https://blockchain.info'])
     expect(csp).not.toContain('mutinynet')
+    expect(csp).not.toContain('nostr')
+    expect(csp).not.toContain('getvaulted')
+    expect(JSON.stringify(config)).not.toContain('mutinynet')
+  })
+
+  it('does not put mainnet origins or the production wallet host in the Mutinynet deployment', () => {
+    const config = readFileSync('vercel.json', 'utf8')
+    expect(config).toContain('mutinynet')
+    expect(config).not.toContain('arkade.computer')
+    expect(config).not.toContain('app.getvaulted.xyz')
+    expect(config).not.toContain('mempool.space')
   })
 })

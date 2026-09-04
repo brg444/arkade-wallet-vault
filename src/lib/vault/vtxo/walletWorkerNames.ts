@@ -1,5 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '@scure/base'
+import { requireSupportedVaultNetwork } from '../constants'
 
 function vaultId(value: string) {
   const id = String(value || '').trim()
@@ -11,8 +12,10 @@ export function vaultWalletNamespace(value: string) {
   return hex.encode(sha256(new TextEncoder().encode(vaultId(value)))).slice(0, 32)
 }
 
-export function vaultWalletWorkerPath(value: string) {
-  return `/vault-wallet-service-worker.mjs?vault=${vaultWalletNamespace(value)}`
+export function vaultWalletWorkerPath(value: string, network?: string) {
+  const params = new URLSearchParams({ vault: vaultWalletNamespace(value) })
+  if (network) params.set('network', requireSupportedVaultNetwork(network))
+  return `/vault-wallet-service-worker.mjs?${params.toString()}`
 }
 
 export function vaultWalletDatabase(value: string) {

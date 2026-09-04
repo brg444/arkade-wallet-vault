@@ -3,7 +3,7 @@ import { VaultContext } from '../../../vault/context'
 import QgScreen, { QgCheck, QgPrimary } from '../qg/QgScreen'
 
 export default function VaultReady() {
-  const { navigate } = useContext(VaultContext)
+  const { navigate, networkLabel } = useContext(VaultContext)
   return (
     <QgScreen variant='success' footer={<QgPrimary onClick={() => navigate('home')} label='Open your Vault' />}>
       <div className='qg-centered qg-success-screen'>
@@ -18,7 +18,7 @@ export default function VaultReady() {
           <br />
           ready—and protected
         </h1>
-        <p className='qg-copy'>Your safeguards are active. You can now use Spending and Savings on Mutinynet.</p>
+        <p className='qg-copy'>Your safeguards are active. You can now use Spending and Savings on {networkLabel}.</p>
         <section className='qg-next'>
           <strong>Ready on this device</strong>
           <span>

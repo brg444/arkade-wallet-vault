@@ -1,8 +1,26 @@
 # Mainnet v2 baseline
 
-Vaulted is a dedicated Bitcoin wallet application. Mainnet starts from fresh
+Vaulted is a dedicated Bitcoin wallet application. Arkade is the core
+runtime/infrastructure, not the product name. Mainnet starts from fresh
 application state and does not import Mutinynet wallets, credentials, or
 in-flight operations.
+
+## Production names
+
+These names are the intended public surface. They are not live until DNS,
+Vercel, and Guardian infrastructure are provisioned separately from Mutinynet:
+
+| Role                     | Name                         |
+| ------------------------ | ---------------------------- |
+| Product                  | Vaulted                      |
+| Marketing                | `https://getvaulted.xyz`     |
+| Wallet                   | `https://app.getvaulted.xyz` |
+| Runtime/Guardian ingress | `guardian.getvaulted.xyz`    |
+| Release candidate        | `https://rc.getvaulted.xyz`  |
+
+Mainnet WebAuthn RP IDs must equal the wallet hostname (`app.getvaulted.xyz` or
+`rc.getvaulted.xyz`). Do not reuse the Mutinynet Vercel project, origin, RP ID,
+gateway secret, rate-limit store, or browser storage.
 
 ## Current boundary
 

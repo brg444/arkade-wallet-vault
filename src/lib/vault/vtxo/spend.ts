@@ -34,6 +34,7 @@ import type { VaultStatus } from '../types'
 import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { networkPins } from '../networkPins'
+import { configuredReleaseNetwork } from '../releaseNetwork'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
 import {
   signVtxoAbortDigest,
@@ -53,8 +54,11 @@ const MAX_VTXO_INPUTS = 50
 
 declare const __VAULT_E2E_OPERATOR_ORIGIN__: string
 
-export function vaultArkServer(network: string = 'mutinynet'): string {
-  return __VAULT_E2E_OPERATOR_ORIGIN__ || networkPins(network).operatorOrigin
+export function vaultArkServer(network?: string): string {
+  if (__VAULT_E2E_OPERATOR_ORIGIN__) return __VAULT_E2E_OPERATOR_ORIGIN__
+  const resolved =
+    network || configuredReleaseNetwork(import.meta.env.VITE_VAULT_RELEASE_NETWORK, import.meta.env.PROD) || 'mutinynet'
+  return networkPins(resolved).operatorOrigin
 }
 
 export interface VaultVtxoSpendResult {

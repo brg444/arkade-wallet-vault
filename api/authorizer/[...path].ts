@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+import { isMainnetWalletHost } from '../../src/lib/vault/productionDomains'
+
 const HOP_BY_HOP = new Set([
   'connection',
   'keep-alive',
@@ -38,6 +41,10 @@ function authorizerOrigin(): string {
 
 function gatewaySecret(): string {
   return String(process.env.AUTHORIZER_GATEWAY_SECRET || '').trim()
+}
+
+export function isMainnetGatewayRelease(value = process.env.VAULT_RELEASE_NETWORK): boolean {
+  return String(value || '').trim() === 'mainnet'
 }
 
 export function allowAuthorizerPath(path: string): boolean {
@@ -107,7 +114,10 @@ export async function allowMainnetGatewayRate(client: string, vaultId = ''): Pro
   const window = Math.floor(Date.now() / RATE_WINDOW_MS)
   const keys = [`vault-rate:client:${rateIdentity(client)}:${window}`]
   if (vaultId) keys.push(`vault-rate:vault:${rateIdentity(vaultId)}:${window}`)
-  const commands = keys.flatMap((key) => [['INCR', key], ['PEXPIRE', key, String(RATE_WINDOW_MS * 2), 'NX']])
+  const commands = keys.flatMap((key) => [
+    ['INCR', key],
+    ['PEXPIRE', key, String(RATE_WINDOW_MS * 2), 'NX'],
+  ])
   const response = await fetch(`${origin}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -254,13 +264,24 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 403, 'cross-origin authorizer access denied')
     return
   }
+  const secret = gatewaySecret()
+  const mainnet = isMainnetGatewayRelease()
+  if (mainnet) {
+    if (!secret) {
+      jsonError(res, 503, 'gateway authentication is not configured')
+      return
+    }
+    if (!isMainnetWalletHost(requestHost(req.headers.host))) {
+      jsonError(res, 403, 'mainnet gateway host is not this release')
+      return
+    }
+  }
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     const name = key.toLowerCase()
     if (!value || HOP_BY_HOP.has(name) || REBUFFERED.has(name)) continue
     headers[key] = Array.isArray(value) ? value.join(',') : value
   }
-  const secret = gatewaySecret()
   if (secret) headers['x-vault-gateway-secret'] = secret
 
   let body: Buffer | undefined
@@ -272,10 +293,9 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   }
   if (pathOnly !== '/health' && pathOnly !== '/ready') {
     try {
-      const allowed =
-        process.env.VAULT_RELEASE_NETWORK === 'mainnet'
-          ? await allowMainnetGatewayRate(clientAddress(req.headers), requestVaultId(pathAndQuery, body))
-          : allowGatewayRate(clientAddress(req.headers))
+      const allowed = mainnet
+        ? await allowMainnetGatewayRate(clientAddress(req.headers), requestVaultId(pathAndQuery, body))
+        : allowGatewayRate(clientAddress(req.headers))
       if (!allowed) {
         jsonError(res, 429, 'too many requests')
         return
@@ -312,4 +332,3 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   res.setHeader('Content-Length', String(payload.byteLength))
   res.end(payload)
 }
-import { createHash } from 'node:crypto'

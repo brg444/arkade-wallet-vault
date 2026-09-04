@@ -11,7 +11,7 @@ at the center of the product.
 
 [Open the Mutinynet release candidate](https://arkade-vault-mutinynet-rc.vercel.app)
 · [Read the documentation](docs/README.md)
-· [View the Vault service](https://github.com/brg444/arkade-vault-server)
+· [View the Arkade Runtime](https://github.com/brg444/arkade-runtime)
 
 ## What it does
 
@@ -107,11 +107,11 @@ that key or run a parallel settlement lifecycle. Exact upstream revisions and
 intentional adapters are recorded in
 [upstream alignment](docs/upstream-alignment.md).
 
-| Component                                                            | Responsibility                                                                                                          |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Vaulted                                                              | Enrollment, transaction construction, device authorization, external PSBT handoff, Operator coordination, and recovery. |
-| [Arkade Vault Server](https://github.com/brg444/arkade-vault-server) | Immutable Vault Program records, rolling allowance, VaultCosigner policy, and transaction verification.                 |
-| Arkade Operator                                                      | VTXO index, batch coordination, and release-pinned Operator signatures.                                                 |
+| Component                                                  | Responsibility                                                                                                          |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Vaulted                                                    | Enrollment, transaction construction, device authorization, external PSBT handoff, Operator coordination, and recovery. |
+| [Arkade Runtime](https://github.com/brg444/arkade-runtime) | Guardian policy, rolling allowance, VaultCosigner enforcement, and transaction verification.                            |
+| Arkade Operator                                            | VTXO index, batch coordination, and release-pinned Operator signatures.                                                 |
 
 The browser reaches the Vault service and Arkade Operator through same-origin
 routes. Security guarantees, trust boundaries, and excluded claims are detailed
@@ -155,16 +155,25 @@ End-to-end and release qualification procedures are documented in
 
 Mainnet must use a separate Vercel project and must not replace the Mutinynet
 deployment. Build with `pnpm build:mainnet` and deploy using
-`vercel --local-config vercel.mainnet.json`.
+`vercel --local-config vercel.mainnet.json`. Intended production names:
+
+- Wallet: `https://app.getvaulted.xyz` (RP ID `app.getvaulted.xyz`)
+- Runtime/Guardian ingress: `guardian.getvaulted.xyz`
+- Release candidate: `https://rc.getvaulted.xyz` (RP ID `rc.getvaulted.xyz`)
+- Marketing: `https://getvaulted.xyz`
+
+Those names are not live until DNS and a dedicated Vercel project are
+provisioned. Do not attach them to the Mutinynet project.
 
 The mainnet environment requires a fresh authorizer through `AUTHORIZER_ORIGIN`
 and `AUTHORIZER_GATEWAY_SECRET`, `VAULT_RELEASE_NETWORK=mainnet`, and
 `UPSTASH_REDIS_REST_URL` plus `UPSTASH_REDIS_REST_TOKEN` for shared durable rate
-limiting. The bundle, gateway, and service reject mismatched networks.
+limiting. The bundle, gateway, and service reject mismatched networks and
+reject any mainnet host other than `app.getvaulted.xyz` or `rc.getvaulted.xyz`.
 Lightning remains disabled because no mainnet solver profile is bundled.
 
 Do not reuse the Mutinynet hostname, WebAuthn RP ID, secrets, vault records,
-database, policy-sequence state, or Vercel project.
+database, policy-sequence state, rate-limit store, or Vercel project.
 
 ## Release status
 

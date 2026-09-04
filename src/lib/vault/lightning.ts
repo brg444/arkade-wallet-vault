@@ -118,7 +118,7 @@ async function withUnlockedVaultLightningSdkWallet<T>(
   if (hex.encode(await identity.compressedPublicKey()) !== String(status.phoneBip340Pub || '')) {
     throw new Error('Phone key does not match this vault.')
   }
-  const arkServerUrl = vaultArkServer()
+  const arkServerUrl = vaultArkServer(status.network)
   const operator = new RestArkProvider(arkServerUrl)
   const indexer = new RestIndexerProvider(arkServerUrl)
   const info = await operator.getInfo()
