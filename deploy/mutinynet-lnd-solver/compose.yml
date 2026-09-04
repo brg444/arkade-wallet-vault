@@ -1,0 +1,36 @@
+# Mutinynet LND-backed intent-solver for Vaulted Lightning SEND RC.
+# Build the image locally: docker build -f packages/solver-app/Dockerfile .
+# from a checkout of https://github.com/arkade-os/intent-solver
+#
+# Do not publish ADMIN_PORT. Do not set LN_RECEIVE_ENABLED=true.
+
+services:
+  mutinynet-lnd-solver:
+    image: ${INTENT_SOLVER_IMAGE:-intent-solver:local}
+    restart: unless-stopped
+    command: ['relay']
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      SWAP_NETWORK: mutinynet
+      LN_BACKEND: lnd
+      LN_SEND_ENABLED: 'true'
+      LN_RECEIVE_ENABLED: 'false'
+      LN_RECEIVE_ACCEPT_UNILATERAL_GAP: 'false'
+      ONCHAIN_SEND_ENABLED: 'false'
+      ONCHAIN_RECEIVE_ENABLED: 'false'
+      ADMIN_HOST: 127.0.0.1
+      DB_DIR: /data
+    volumes:
+      - solver-data:/data
+      - ${LND_CREDENTIAL_DIR:?set LND_CREDENTIAL_DIR to the host dir that holds tls.cert and the macaroon}:/run/secrets:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: '20m'
+        max-file: '5'
+    ports: []
+
+volumes:
+  solver-data:

@@ -77,6 +77,9 @@ The Mutinynet send UI is disabled unless `VITE_VAULT_LIGHTNING_SEND` is exactly
 solver card and the published SDK and swap packages. Lightning receive remains
 disabled independently.
 
+Mutinynet solver deployment, caps, and the remaining external operator
+actions are in `docs/lightning-mutinynet-operator.md`.
+
 Mainnet send enablement requires all of the following:
 
 1. ordinary mainnet VTXO Spending is qualified against `arkade.computer`;
