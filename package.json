@@ -4,9 +4,9 @@
   "private": true,
   "homepage": ".",
   "dependencies": {
-    "@arkade-os/sdk": "git+https://github.com/arkade-os/ts-sdk.git#f0fd58d5&path:packages/ts-sdk",
+    "@arkade-os/sdk": "file:vendor/arkade-os-sdk.tgz",
     "@arkade-os/solver-discovery": "0.2.3",
-    "@arkade-os/swap": "0.0.8",
+    "@arkade-os/swap": "0.0.10",
     "@base-ui/react": "^1.4.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@noble/curves": "^2.0.1",
@@ -105,15 +105,12 @@
   },
   "pnpm": {
     "overrides": {
-      "@arkade-os/sdk": "git+https://github.com/arkade-os/ts-sdk.git#f0fd58d5&path:packages/ts-sdk",
-      "@arkade-os/swap>@arkade-os/sdk": "git+https://github.com/arkade-os/ts-sdk.git#f0fd58d5&path:packages/ts-sdk",
+      "@arkade-os/sdk": "file:vendor/arkade-os-sdk.tgz",
+      "@arkade-os/swap>@arkade-os/sdk": "file:vendor/arkade-os-sdk.tgz",
       "ws": "8.21.0"
     },
     "ignoredBuiltDependencies": [
       "esbuild"
-    ],
-    "onlyBuiltDependencies": [
-      "@arkade-os/sdk"
     ]
   }
 }
