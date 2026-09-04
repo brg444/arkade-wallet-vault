@@ -1,10 +1,11 @@
 import { CSVMultisigTapscript, MultisigTapscript, VtxoScript, type TapLeafScript } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { SUPPORTED_NETWORKS, type VaultNetwork } from '../constants'
 import { networkPins } from '../networkPins'
 
 export const VAULT_POLICY_V1_TYPE = 'vault-policy-v1'
 
-/** Product-chosen guardian CSV. 4608 = 9*512 BIP68 seconds. Not arkd's 2048s minimum. */
+/** Mutinynet product-chosen guardian CSV. 4608 = 9*512 BIP68 seconds. Not arkd's 2048s minimum. */
 export const VAULT_POLICY_V1_EXIT_DELAY = 4608n
 export const VAULT_POLICY_V1_EXIT_DELAY_UNIT = 'seconds' as const
 export const VAULT_POLICY_V1_ARKD_MIN_EXIT_DELAY = 2048n
@@ -25,7 +26,7 @@ export interface VaultPolicyV1Params {
   exitDevicePub: Uint8Array
   exitHardwarePub: Uint8Array
   exitRecoveryPub?: Uint8Array
-  network?: 'mutinynet' | 'mainnet'
+  network?: VaultNetwork
 }
 
 function requireXOnly(value: Uint8Array | undefined, name: string): Uint8Array {
@@ -37,6 +38,18 @@ function requireXOnly(value: Uint8Array | undefined, name: string): Uint8Array {
 
 export function pinnedDelegateXOnly(): Uint8Array {
   return hex.decode(VAULT_POLICY_V1_PINNED_DELEGATE.slice(2))
+}
+
+/** SDK persist/reload drops optional fields. Infer only from a unique frozen delay. */
+function policyPins(params: Pick<VaultPolicyV1Params, 'network' | 'exitDelay'>) {
+  if (params.network) return networkPins(params.network)
+  const matches = SUPPORTED_NETWORKS.filter(
+    (network) => BigInt(networkPins(network).policyExitDelay) === params.exitDelay,
+  )
+  if (matches.length === 1) return networkPins(matches[0])
+  throw new Error(
+    `vault-policy-v1 exit delay is frozen at ${networkPins('mutinynet').policyExitDelay} or ${networkPins('mainnet').policyExitDelay} seconds`,
+  )
 }
 
 export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPolicyV1Params {
@@ -54,7 +67,7 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
   if (params.exitDelay % VAULT_POLICY_V1_BIP68_SECONDS_MOD !== 0n) {
     throw new Error('vault-policy-v1 exit delay must be a BIP68 seconds multiple of 512')
   }
-  const pins = networkPins(params.network ?? 'mutinynet')
+  const pins = policyPins(params)
   if (params.exitDelay < BigInt(pins.arkdMinExitDelay)) {
     throw new Error('vault-policy-v1 exit delay is below the arkd minimum')
   }
@@ -71,6 +84,7 @@ export function assertVaultPolicyV1Params(params: VaultPolicyV1Params): VaultPol
     vtxoVaultCosignerPub,
     arkdServerPub,
     delegatePub,
+    network: pins.network,
     exitDelay: BigInt(pins.policyExitDelay),
     exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
     exitDevicePub,
