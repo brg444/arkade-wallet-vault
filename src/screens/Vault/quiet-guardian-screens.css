@@ -26,22 +26,33 @@
 }
 
 html.palette-dark [data-testid='vault-app'] {
-  --qg-oat: #111012;
-  --qg-paper: #1b191c;
-  --qg-ink: #fffdf9;
-  --qg-muted: #b8afa6;
-  --qg-line: #514a52;
-  --qg-purple: #b5a0ff;
-  --qg-green: #95c89d;
-  --qg-green-soft: #1d2c21;
-  --qg-orange: #e19a75;
-  --qg-orange-soft: #34231b;
+  color-scheme: dark;
+  --qg-oat: #0e0d10;
+  --qg-paper: #19171b;
+  --qg-ink: #f8f5f0;
+  --qg-muted: #aaa3ad;
+  --qg-line: #353139;
+  --qg-purple: #b8a5ff;
+  --qg-green: #91d3a1;
+  --qg-green-soft: #17271d;
+  --qg-orange: #efa27d;
+  --qg-orange-soft: #302018;
+  --qg-shadow-soft: 0 16px 38px -22px rgb(0 0 0 / 72%);
+  --qg-shadow-raised: 0 20px 46px -22px rgb(0 0 0 / 88%);
+  --qg-focus: #c6b8ff;
 }
 
 body:has(.vault-screen-home),
 body:has(.vault-screen-welcome),
 body:has(.vault-screen-unlock) {
   --background-color: #f5f0e8;
+}
+
+html.palette-dark body:has(.vault-screen-home),
+html.palette-dark body:has(.vault-screen-welcome),
+html.palette-dark body:has(.vault-screen-unlock),
+html.palette-dark body:has([data-testid='vault-app'] > .qg-screen) {
+  --background-color: #0e0d10;
 }
 
 .qg-screen {
@@ -335,6 +346,13 @@ body:has(.vault-screen-unlock) {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
+}
+
+html.palette-dark .qg-footer-error,
+html.palette-dark .qg-footer .qg-footer-error,
+html.palette-dark .qg-field,
+html.palette-dark [data-testid='vault-app'] .vault-error-message .shadow-surface {
+  border-color: color-mix(in srgb, var(--qg-orange) 32%, var(--qg-line)) !important;
 }
 
 [data-testid='vault-app'] .vault-error-message .shadow-surface {
@@ -2486,6 +2504,62 @@ body:has(.vault-screen-unlock) {
   background: color-mix(in srgb, var(--qg-paper) 86%, transparent);
   -webkit-backdrop-filter: blur(20px) saturate(1.15);
   backdrop-filter: blur(20px) saturate(1.15);
+}
+
+html.palette-dark .qg-account-menu,
+html.palette-dark .qg-launcher .qg-launcher-trigger,
+html.palette-dark .qg-launcher .qg-launcher-close {
+  background: color-mix(in srgb, var(--qg-paper) 78%, transparent);
+  border-color: color-mix(in srgb, white 13%, transparent);
+}
+
+html.palette-dark .qg-launcher-backdrop {
+  background: rgb(7 6 9 / 66%);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  backdrop-filter: blur(20px) saturate(1.1);
+}
+
+html.palette-dark .qg-primary {
+  border-color: var(--qg-ink);
+  background: var(--qg-ink);
+  color: var(--qg-oat);
+  box-shadow: 0 12px 28px -17px rgb(0 0 0 / 92%);
+}
+
+html.palette-dark .qg-secondary {
+  border-color: color-mix(in srgb, var(--qg-ink) 82%, transparent);
+}
+
+html.palette-dark .qg-screen .vault-security-hero,
+html.palette-dark .qg-screen .vault-security-tile,
+html.palette-dark .qg-screen .vault-hub,
+html.palette-dark .qg-field,
+html.palette-dark .qg-note,
+html.palette-dark .qg-device-key,
+html.palette-dark .qg-summary,
+html.palette-dark .qg-document,
+html.palette-dark .qg-next,
+html.palette-dark .qg-arrival,
+html.palette-dark .qg-recovery-alert,
+html.palette-dark .qg-details,
+html.palette-dark .qg-approvals > div {
+  border-color: color-mix(in srgb, white 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 2.5%),
+    var(--qg-shadow-soft);
+}
+
+html.palette-dark .qg-screen .vault-hub-row.is-on,
+html.palette-dark .qg-account-option.is-on {
+  background: color-mix(in srgb, var(--qg-purple) 13%, var(--qg-paper));
+}
+
+html.palette-dark .qg-handle {
+  background: color-mix(in srgb, var(--qg-ink) 24%, transparent);
+}
+
+html.palette-dark .qg-progress {
+  background: color-mix(in srgb, white 9%, transparent);
 }
 
 .qg-account-menu {
