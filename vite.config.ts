@@ -47,7 +47,7 @@ function esploraProxy(): ProxyOptions {
   const testTarget = process.env.VAULT_E2E_ESPLORA_PROXY_TARGET?.trim()
   const releaseTarget =
     process.env.VITE_VAULT_RELEASE_NETWORK === 'mainnet'
-      ? 'https://mempool.arkade.sh'
+      ? 'https://mempool.space'
       : 'https://mempool.mutinynet.arkade.sh'
   return {
     target: testTarget || releaseTarget,
