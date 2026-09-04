@@ -13,13 +13,13 @@ import {
   RfqSwapManager,
   arkadeRefunder,
   newRfqId,
-  requestLightningSend,
   type AssetSwapRepository,
   type RfqTransport,
   type SwapContractRegistry,
 } from '@arkade-os/swap'
 import { nostrRfqTransport } from '@arkade-os/swap/nostr'
 import { hex } from '@scure/base'
+import { requestVaultLightningSend } from './lightningCovenant'
 import {
   vaultLightningFundingForInvoice,
   vaultLightningSendEnabled,
@@ -69,6 +69,11 @@ export {
   VaultLightningFundingNotStartedError,
 } from './lightningLifecycle'
 export { withVaultLightningLifecycleLock } from './lightningLock'
+export {
+  requestVaultLightningSend,
+  buildLightningSendCandidates,
+  matchLightningSendCandidate,
+} from './lightningCovenant'
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
@@ -158,7 +163,7 @@ async function withUnlockedVaultLightningSdkWallet<T>(
   })
 }
 
-type LightningRequester = typeof requestLightningSend
+type LightningRequester = typeof requestVaultLightningSend
 
 const OPTIONAL_SDK_CAPABILITY_PROBES = new Set([
   'getNextSigningDescriptor',
@@ -209,7 +214,7 @@ export async function requestVaultLightningQuote({
   profile,
   resumeVtxo,
   rfqId,
-  requester = requestLightningSend,
+  requester = requestVaultLightningSend,
   nowSeconds = Math.floor(Date.now() / 1000),
   enabled,
 }: {
