@@ -38,7 +38,7 @@ import {
   vaultWalletWorkerPath,
   vaultWalletWorkerScope,
 } from './walletWorkerNames'
-import { vaultArkServer } from './spend'
+import { vaultArkServer, vaultEsploraApi } from './spend'
 import { requireBoardingStatus } from './board'
 
 type WalletRuntime = {
@@ -263,7 +263,7 @@ async function createRuntime(status: VaultStatus): Promise<WalletRuntime> {
       serviceWorker,
       identity: vaultWalletIdentity(status),
       arkServerUrl: vaultArkServer(status.network),
-      esploraUrl: '/esplora',
+      esploraUrl: vaultEsploraApi(status.network),
       walletMode: 'static' as const,
       walletUpdaterTag: updaterTag,
       storage: { walletRepository, contractRepository },

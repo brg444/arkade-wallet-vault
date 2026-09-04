@@ -84,7 +84,7 @@ describe('Vercel worker caching', () => {
     })
     expect(config.rewrites).toContainEqual({
       source: '/esplora/:path*',
-      destination: 'https://mempool.space/api/:path*',
+      destination: 'https://mempool.arkade.sh/api/:path*',
     })
     expect(connectSrc).toEqual([
       'connect-src',
