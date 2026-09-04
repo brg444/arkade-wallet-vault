@@ -15,6 +15,8 @@ describe('spending policy contract', () => {
       '{"program":"vault-policy-v1","schema":"vault-spending-policy-v1","period":"rolling-24h","periodAllowanceSats":100000,"txRecipientCapSats":50000,"absoluteFeeCapSats":5000,"feerateCapSatPerV":10}',
     )
     expect(spendingPolicyDigest(policy)).toBe('d14d82444da7d49db0eb43d2307aaab0409da2481b5a845a8be5a44b70f9f912')
+    expect(policy.absoluteFeeCapSats).toBe(5_000)
+    expect(policy.feerateCapSatPerV).toBe(10)
   })
 
   it('rejects policy substitutions and invalid relationships', () => {
