@@ -5,7 +5,8 @@
   "framework": null,
   "env": {
     "VAULT_RELEASE_NETWORK": "mainnet",
-    "VITE_VAULT_RELEASE_NETWORK": "mainnet"
+    "VITE_VAULT_RELEASE_NETWORK": "mainnet",
+    "VITE_VAULT_LIGHTNING_SEND": "true"
   },
   "headers": [
     { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-store, max-age=0" }] },
@@ -19,7 +20,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://arkade.computer https://blockchain.info; worker-src 'self'"
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://arkade.computer https://blockchain.info wss://nostr.arkade.sh; worker-src 'self'"
         },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "X-Content-Type-Options", "value": "nosniff" }

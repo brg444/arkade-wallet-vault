@@ -47,7 +47,9 @@ import { vaultArkServer } from './vtxo/spend'
 export {
   isVaultLightningInput,
   discoverVaultLightningSolver,
+  BITCOIN_LIGHTNING_SOLVER,
   MUTINYNET_LIGHTNING_SOLVER,
+  lightningSdkNetwork,
   vaultLightningSendEnabled,
   vaultLightningSolverProfile,
   type VaultLightningSolverProfile,
