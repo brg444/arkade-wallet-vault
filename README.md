@@ -154,23 +154,27 @@ End-to-end and release qualification procedures are documented in
 ## Mainnet candidate
 
 Mainnet must use a separate Vercel project and must not replace the Mutinynet
-deployment. Build with `pnpm build:mainnet` and deploy using
-`vercel --local-config vercel.mainnet.json`. Intended production names:
+deployment. Deploy from a directory linked only to that project. Build with
+`pnpm build:mainnet` and pass `vercel --local-config vercel.mainnet.json`
+plus the mainnet project name. Set the release network at **build** time.
+Intended production names:
 
-- Wallet: `https://app.getvaulted.xyz` (RP ID `app.getvaulted.xyz`)
+- Wallet: `https://app.getvaulted.xyz`
 - Runtime/Guardian ingress: `guardian.getvaulted.xyz`
-- Release candidate: `https://rc.getvaulted.xyz` (RP ID `rc.getvaulted.xyz`)
+- Release candidate: `https://rc.getvaulted.xyz`
 - Marketing: `https://getvaulted.xyz`
 
-Those names are not live until DNS and a dedicated Vercel project are
-provisioned. Do not attach them to the Mutinynet project.
+This RC’s authorizer pins WebAuthn to `rc.getvaulted.xyz`. The app host
+redirects there before any passkey ceremony so Face ID looks up the same RP ID
+the vault was created with. Do not attach these names to the Mutinynet project.
 
 The mainnet environment requires a fresh authorizer through `AUTHORIZER_ORIGIN`
 and `AUTHORIZER_GATEWAY_SECRET`, `VAULT_RELEASE_NETWORK=mainnet`, and
 `UPSTASH_REDIS_REST_URL` plus `UPSTASH_REDIS_REST_TOKEN` for shared durable rate
 limiting. The bundle, gateway, and service reject mismatched networks and
 reject any mainnet host other than `app.getvaulted.xyz` or `rc.getvaulted.xyz`.
-Lightning remains disabled because no mainnet solver profile is bundled.
+Lightning receive stays disabled. Lightning send, when enabled, uses a
+bundled signed solver card and does not follow a public registry.
 
 Do not reuse the Mutinynet hostname, WebAuthn RP ID, secrets, vault records,
 database, policy-sequence state, rate-limit store, or Vercel project.

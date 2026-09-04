@@ -8,6 +8,7 @@ import {
   VAULTED_RC_RP_ID,
   VAULTED_WALLET_ORIGIN,
   VAULTED_WALLET_RP_ID,
+  authorizerWalletHref,
   isMainnetWalletHost,
   isMainnetWalletOrigin,
   requireMainnetWalletOrigin,
@@ -46,5 +47,13 @@ describe('Vaulted production domains', () => {
     expect(() => requireMainnetWalletRpId('getvaulted.xyz')).toThrow(/not this release/)
     expect(isMainnetWalletOrigin('https://vault.example.com')).toBe(false)
     expect(isMainnetWalletHost('arkade-vault-mutinynet-rc.vercel.app')).toBe(false)
+  })
+
+  it('moves app.getvaulted.xyz onto the authorizer signing origin before WebAuthn', () => {
+    expect(authorizerWalletHref('https://rc.getvaulted.xyz', 'https://app.getvaulted.xyz/welcome?x=1#kit')).toBe(
+      'https://rc.getvaulted.xyz/welcome?x=1#kit',
+    )
+    expect(authorizerWalletHref('https://rc.getvaulted.xyz', 'https://rc.getvaulted.xyz/welcome')).toBeUndefined()
+    expect(authorizerWalletHref('https://rc.getvaulted.xyz', 'https://example.com/welcome')).toBeUndefined()
   })
 })

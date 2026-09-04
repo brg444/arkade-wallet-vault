@@ -96,8 +96,25 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
     return 'Open this page as http://localhost:3003.'
   }
-  if (msg.includes('rp id') || msg.includes('origin does not match') || msg.includes('signing client')) {
-    return 'Wrong site. Open the Vault app from its approved address.'
+  if (
+    msg.includes('rp id') ||
+    msg.includes('origin does not match') ||
+    msg.includes('signing client') ||
+    msg.includes('signing address')
+  ) {
+    return 'Wrong site. Open this vault at rc.getvaulted.xyz — passkeys for this RC are bound to that address.'
+  }
+  if (
+    msg.includes('sdk worker') ||
+    msg.includes('worker network') ||
+    msg.includes('did not register the spending contract') ||
+    msg.includes('different boarding address') ||
+    msg.includes('unsupported network')
+  ) {
+    return 'Spending could not start on this network. Stay on this page and tap Retry. If it repeats, reopen the vault at rc.getvaulted.xyz.'
+  }
+  if (msg.includes('vault-board-v1 descriptor does not match')) {
+    return 'This app doesn’t match the vault. Update and try again.'
   }
   if (msg.includes('passkey sign-in must first be enabled') || msg.includes('has not been enabled')) {
     return 'Enable sign-in on the original device first.'

@@ -16,7 +16,7 @@ import type { VaultStatus } from '../types'
 import { unlockPhoneBip340 } from '../savingsSpend'
 import { withVaultWalletState } from './walletWorker'
 import { browserVaultLockManager, requireVaultLockManager, type VaultLockManager } from './lock'
-import { networkPins } from '../networkPins'
+import { networkPins, requireSdkNetworkName } from '../networkPins'
 import { requireBoardingStatus, BOARDING_PROGRAM } from './board'
 
 type RecoveryDependencies = {
@@ -105,7 +105,7 @@ export async function recoverMatureBoardingInputs(
           inputs,
           recoveryIdentity,
           destination,
-          network: getNetwork(descriptor.network),
+          network: getNetwork(requireSdkNetworkName(descriptor.network)),
           onchainProvider: dependencies.onchainProvider || new EsploraProvider('/esplora'),
           maxFeeRateSatVb: status.feerateCapSatVb,
           absoluteFeeCapSats: BigInt(status.absoluteFeeCap),

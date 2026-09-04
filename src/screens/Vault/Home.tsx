@@ -243,7 +243,7 @@ export default function VaultHome() {
         ) : null}
 
         {!balancesLoaded && (error || balanceError) ? (
-          <>
+          <div className='qg-home-retry'>
             <p className='qg-copy' role='alert'>
               {error || balanceError}
             </p>
@@ -252,7 +252,7 @@ export default function VaultHome() {
                 Retry
               </button>
             ) : null}
-          </>
+          </div>
         ) : null}
         <VaultHistory />
       </main>

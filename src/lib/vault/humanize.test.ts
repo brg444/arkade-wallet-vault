@@ -142,4 +142,18 @@ describe('humanizeVaultError', () => {
       'Something went wrong. Try again.',
     )
   })
+
+  it('sends a split-host passkey to the authorizer signing origin', () => {
+    expect(humanizeVaultError(new Error('deployment RP ID does not match this signing client host'))).toMatch(
+      /rc\.getvaulted\.xyz/,
+    )
+    expect(humanizeVaultError(new Error('Open this vault from its signing address.'))).toMatch(/rc\.getvaulted\.xyz/)
+  })
+
+  it('explains a failed Spending worker start instead of a generic retry chip', () => {
+    expect(humanizeVaultError(new Error('SDK worker did not register the Spending contract'))).toMatch(
+      /Spending could not start/,
+    )
+    expect(humanizeVaultError(new Error('Unsupported network: mainnet'))).toMatch(/Spending could not start/)
+  })
 })

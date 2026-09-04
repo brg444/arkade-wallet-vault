@@ -182,7 +182,9 @@ describe('Vault home account boundaries', () => {
     const value = renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
 
     expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    const retry = screen.getByRole('button', { name: 'Retry' })
+    expect(retry.closest('.qg-home-retry')).toBeTruthy()
+    await user.click(retry)
     expect(value.refreshBalance).toHaveBeenCalledTimes(1)
   })
 
