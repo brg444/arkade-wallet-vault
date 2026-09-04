@@ -1,5 +1,6 @@
 import { contractHandlers, type ContractHandler } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { isSupportedVaultNetwork } from '../constants'
 import { VAULT_POLICY_V1_TYPE, VaultPolicyV1Script, type VaultPolicyV1Params } from './script'
 
 function publicKey(value: string | undefined, name: string): Uint8Array {
@@ -31,6 +32,7 @@ export const VaultPolicyV1ContractHandler: ContractHandler<VaultPolicyV1Params, 
       exitDelayUnit: params.exitDelayUnit,
       exitDevicePub: hex.encode(params.exitDevicePub),
       exitHardwarePub: hex.encode(params.exitHardwarePub),
+      ...(params.network ? { network: params.network } : {}),
       ...(params.exitRecoveryPub ? { exitRecoveryPub: hex.encode(params.exitRecoveryPub) } : {}),
     }
   },
@@ -42,6 +44,7 @@ export const VaultPolicyV1ContractHandler: ContractHandler<VaultPolicyV1Params, 
     } catch {
       throw new Error('exitDelay must be an integer')
     }
+    const network = isSupportedVaultNetwork(params.network) ? params.network : undefined
     return {
       userPub: publicKey(params.userPub, 'userPub'),
       vtxoVaultCosignerPub: publicKey(params.vtxoVaultCosignerPub, 'vtxoVaultCosignerPub'),
@@ -51,6 +54,7 @@ export const VaultPolicyV1ContractHandler: ContractHandler<VaultPolicyV1Params, 
       exitDelayUnit: params.exitDelayUnit as VaultPolicyV1Params['exitDelayUnit'],
       exitDevicePub: publicKey(params.exitDevicePub, 'exitDevicePub'),
       exitHardwarePub: publicKey(params.exitHardwarePub, 'exitHardwarePub'),
+      ...(network ? { network } : {}),
       ...(params.exitRecoveryPub ? { exitRecoveryPub: publicKey(params.exitRecoveryPub, 'exitRecoveryPub') } : {}),
     }
   },
