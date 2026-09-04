@@ -123,18 +123,30 @@ export function installVaultSettlementEventSource(): void {
   configureEventSource(createVaultEventSourceFactory())
 }
 
+function latestSettlementStream(topic: string): SettlementStream | undefined {
+  const matching = [...settlementStreams].filter((candidate) => !candidate.closed && candidate.topics.has(topic))
+  return matching[matching.length - 1]
+}
+
 /** Fail closed unless the outpoint-filtered Operator stream is already open. */
 export async function waitForVaultSettlementStream(topic: string, timeoutMs = STREAM_READY_TIMEOUT_MS): Promise<void> {
-  await Promise.resolve()
-  const matching = [...settlementStreams].filter((candidate) => !candidate.closed && candidate.topics.has(topic))
-  const stream = matching[matching.length - 1]
-  if (!stream) throw new Error('Vault settlement event stream was not created before registration')
-
   const deadline = Date.now() + timeoutMs
-  while (stream.state !== 'open') {
-    if (stream.state === 'closed') throw new Error('Vault settlement event stream closed before registration')
+  for (;;) {
+    const stream = latestSettlementStream(topic)
+    if (stream?.state === 'open') return
+    if (stream?.state === 'closed') throw new Error('Vault settlement event stream closed before registration')
     const remaining = deadline - Date.now()
-    if (remaining <= 0) throw new Error('Vault settlement event stream did not become ready before registration')
+    if (remaining <= 0) {
+      throw new Error(
+        stream
+          ? 'Vault settlement event stream did not become ready before registration'
+          : 'Vault settlement event stream was not created before registration',
+      )
+    }
+    if (!stream) {
+      await new Promise<void>((resolve) => setTimeout(resolve, Math.min(50, remaining)))
+      continue
+    }
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([
@@ -146,6 +158,8 @@ export async function waitForVaultSettlementStream(topic: string, timeoutMs = ST
           )
         }),
       ])
+    } catch (error) {
+      if (Date.now() >= deadline) throw error
     } finally {
       if (timeout !== undefined) clearTimeout(timeout)
     }

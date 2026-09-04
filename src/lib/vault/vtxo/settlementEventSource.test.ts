@@ -84,6 +84,17 @@ describe('Vault settlement EventSource', () => {
     source.close()
   })
 
+  it('waits for a settlement stream created after registration starts', async () => {
+    const native = new FakeEventSource()
+    const factory = createVaultEventSourceFactory(() => native as unknown as EventSource)
+    const topic = `${'11'.repeat(32)}:0`
+    const ready = waitForVaultSettlementStream(topic, 200)
+    await Promise.resolve()
+    factory(`https://arkade.computer/v1/batch/events?topics=${encodeURIComponent(topic)}`)
+    native.open()
+    await expect(ready).resolves.toBeUndefined()
+  })
+
   it('fails closed when registration has no matching settlement stream', async () => {
     await expect(waitForVaultSettlementStream(`${'cd'.repeat(32)}:0`, 10)).rejects.toThrow(
       /was not created before registration/,
