@@ -246,6 +246,28 @@ export function historyFromTxs(txs: EsploraTx[], address: string, account: 'spen
   return [...byTxid.values()].sort(sortVaultHistory)
 }
 
+/** One row per account/txid/type. Unsettled boarding wins over a confirmed Esplora clone. */
+export function mergeVaultHistory(...layers: readonly (readonly VaultHistoryItem[])[]): VaultHistoryItem[] {
+  const byKey = new Map<string, VaultHistoryItem>()
+  for (const layer of layers) {
+    for (const item of layer) {
+      const key = `${item.account}:${item.txid}:${item.type}`
+      const previous = byKey.get(key)
+      if (!previous) {
+        byKey.set(key, item)
+        continue
+      }
+      if (item.activity === 'boarding' && !item.confirmed) {
+        byKey.set(key, item)
+        continue
+      }
+      if (previous.activity === 'boarding' && !previous.confirmed) continue
+      if (previous.confirmed && !item.confirmed) byKey.set(key, item)
+    }
+  }
+  return [...byKey.values()].sort(sortVaultHistory)
+}
+
 function unixSeconds(ms: number): number | undefined {
   if (!Number.isFinite(ms) || ms <= 0) return undefined
   return Math.floor(ms / 1000)

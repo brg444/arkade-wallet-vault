@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 import { loadBalanceSnapshot, saveBalanceSnapshot } from '../lib/vault/balanceStore'
 import { consoleError } from '../lib/logs'
 import { fetchAddressTxs, fetchAddressUtxos, type EsploraTx, type EsploraUtxo } from '../lib/vault/esplora'
-import { historyFromTxs, type VaultHistoryItem } from '../lib/vault/history'
+import {
+  historyFromBoardingUtxos,
+  historyFromTxs,
+  mergeVaultHistory,
+  type VaultHistoryItem,
+} from '../lib/vault/history'
 import { loadAddressPin, requireStatusMatchesPin, type AddressPin } from '../lib/vault/pin'
 import { fetchVaultStatus } from '../lib/vault/status'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
@@ -249,11 +254,11 @@ export function useVaultBalances({
               })
           : Promise.resolve()
         const boardingTask = boardingAddress
-          ? Promise.all([fetchAddressUtxos(boardingAddress), fetchAddressTxs(boardingAddress)])
-              .then(([utxos, transactions]) => {
+          ? fetchAddressUtxos(boardingAddress)
+              .then((utxos) => {
                 boarding = {
                   balance: boardingUtxoBalance(utxos),
-                  history: historyFromTxs(transactions, boardingAddress, 'spend'),
+                  history: historyFromBoardingUtxos(utxos),
                 }
               })
               .catch((error) => {
@@ -274,19 +279,18 @@ export function useVaultBalances({
         await Promise.all([savingsTask, boardingTask, spendingTask])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
-        const knownSpendTxids = new Set(spending.history.map((item) => item.txid))
-        const boardingHistory = boarding.history.filter((item) => !knownSpendTxids.has(item.txid))
         const boardingSats = Math.max(spending.boardingBalance || 0, boarding.balance)
         if (spendingError) {
           setSnapshot((current) => ({
             boardingBalance: boardingSats || (hasSnapshotRef.current ? current.boardingBalance : 0),
-            history: [
-              ...savings.history,
-              ...boardingHistory,
-              ...(hasSnapshotRef.current
-                ? current.history.filter((item) => item.account !== 'savings' && !knownSpendTxids.has(item.txid))
-                : spending.history),
-            ],
+            history: mergeVaultHistory(
+              savings.history,
+              boarding.history,
+              spending.history,
+              hasSnapshotRef.current
+                ? current.history.filter((item) => item.account === 'spend' && item.activity !== 'boarding')
+                : [],
+            ),
             savingsSats: savings.balance,
             savingsSpendableSats: savings.spendable,
             vtxoSpendingSats: hasSnapshotRef.current ? current.vtxoSpendingSats : 0,
@@ -299,7 +303,7 @@ export function useVaultBalances({
         }
         const nextSnapshot = {
           boardingBalance: boardingSats,
-          history: [...savings.history, ...boardingHistory, ...spending.history],
+          history: mergeVaultHistory(savings.history, boarding.history, spending.history),
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,

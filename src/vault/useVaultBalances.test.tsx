@@ -299,8 +299,19 @@ describe('useVaultBalances', () => {
       pendingSats: 33_458,
       totalSats: 33_458,
     })
+    expect(result.current.history.filter((item) => item.txid === 'b8ed')).toEqual([
+      {
+        txid: 'b8ed',
+        type: 'received',
+        amount: 33_458,
+        confirmed: false,
+        account: 'spend',
+        activity: 'boarding',
+      },
+    ])
 
     await waitFor(() => expect(mockedWorkerRevive).toHaveBeenCalledWith(STATUS))
+    expect(result.current.history.filter((item) => item.txid === 'b8ed')).toHaveLength(1)
     expect(result.current.positions.spending.pendingSats).toBe(33_458)
     expect(result.current.balanceError).toBe('')
   })
