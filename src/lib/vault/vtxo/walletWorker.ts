@@ -459,12 +459,14 @@ export function subscribeVaultWalletEvents(status: VaultStatus, listener: () => 
 
 export async function reloadVaultWalletWorker(status: VaultStatus) {
   const current = await ensureVaultWalletWorker(status)
+  if (current.boardingSettle) return
   await current.lightningObserver.refresh()
   await current.wallet.reload()
 }
 
 /** Tear down a wedged worker and create a new one so boarding can resume. */
 export async function reviveVaultWalletWorker(status: VaultStatus): Promise<WalletRuntime> {
+  if (runtime?.vaultId === status.vaultId && runtime.boardingSettle) return runtime
   await shutdownVaultWalletWorker(status.vaultId).catch((error) => {
     consoleError(error, 'Vault wallet worker shutdown before revive')
   })

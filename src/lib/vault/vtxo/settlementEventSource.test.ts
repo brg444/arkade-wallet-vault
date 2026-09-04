@@ -63,6 +63,27 @@ describe('Vault settlement EventSource', () => {
     expect(native.close).toHaveBeenCalledTimes(1)
   })
 
+  it('treats the first settlement message as stream ready', async () => {
+    const native = new FakeEventSource()
+    const factory = createVaultEventSourceFactory(() => native as unknown as EventSource)
+    const topic = `${'ab'.repeat(32)}:0`
+    factory(`https://arkade.computer/v1/batch/events?topics=${encodeURIComponent(topic)}`)
+    const ready = waitForVaultSettlementStream(topic, 100)
+    native.message('{"streamStarted":{"id":"1"}}')
+    await expect(ready).resolves.toBeUndefined()
+  })
+
+  it('tracks relative Operator settlement URLs', async () => {
+    const native = new FakeEventSource()
+    const factory = createVaultEventSourceFactory(() => native as unknown as EventSource)
+    const topic = `${'aa'.repeat(32)}:7`
+    const source = factory(`/v1/batch/events?topics=${encodeURIComponent(topic)}`)
+    const ready = waitForVaultSettlementStream(topic, 100)
+    native.open()
+    await expect(ready).resolves.toBeUndefined()
+    source.close()
+  })
+
   it('fails closed when registration has no matching settlement stream', async () => {
     await expect(waitForVaultSettlementStream(`${'cd'.repeat(32)}:0`, 10)).rejects.toThrow(
       /was not created before registration/,

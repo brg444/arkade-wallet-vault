@@ -2,7 +2,8 @@ import { configureEventSource, type EventSourceLike } from '@arkade-os/sdk'
 
 const SETTLEMENT_EVENTS_PATH = '/v1/batch/events'
 const EVENT_SOURCE_CONNECTING = 0
-const STREAM_READY_TIMEOUT_MS = 10_000
+/** Mainnet Operator SSE often takes several seconds before `open`/first event. */
+const STREAM_READY_TIMEOUT_MS = 60_000
 
 type NativeEventSourceFactory = (url: string) => EventSource
 
@@ -26,7 +27,12 @@ function armSettlementStream(record: SettlementStream): void {
 }
 
 function settlementTopics(url: string): Set<string> | undefined {
-  const parsed = new URL(url)
+  let parsed: URL
+  try {
+    parsed = new URL(url, 'https://local.invalid')
+  } catch {
+    return undefined
+  }
   if (parsed.pathname !== SETTLEMENT_EVENTS_PATH) return undefined
   return new Set(parsed.searchParams.getAll('topics'))
 }
@@ -57,12 +63,14 @@ export function createVaultEventSourceFactory(
 
     const messageListeners = new Set<(event: MessageEvent) => void>()
     const errorListeners = new Set<(event: MessageEvent) => void>()
-    const onOpen = () => {
+    const markOpen = () => {
       if (record.closed) return
       record.state = 'open'
       record.resolveReady()
     }
+    const onOpen = () => markOpen()
     const onMessage = (event: MessageEvent) => {
+      markOpen()
       for (const listener of messageListeners) listener(event)
     }
     const onError = (event: Event) => {
