@@ -56,8 +56,9 @@ declare const __VAULT_E2E_OPERATOR_ORIGIN__: string
 
 export function vaultArkServer(network?: string): string {
   if (__VAULT_E2E_OPERATOR_ORIGIN__) return __VAULT_E2E_OPERATOR_ORIGIN__
-  const resolved =
+  const raw =
     network || configuredReleaseNetwork(import.meta.env.VITE_VAULT_RELEASE_NETWORK, import.meta.env.PROD) || 'mutinynet'
+  const resolved = raw === 'bitcoin' ? 'mainnet' : raw
   return networkPins(resolved).operatorOrigin
 }
 

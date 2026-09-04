@@ -80,14 +80,20 @@ describe('Vercel worker caching', () => {
     expect(config.env).toEqual({
       VAULT_RELEASE_NETWORK: 'mainnet',
       VITE_VAULT_RELEASE_NETWORK: 'mainnet',
+      VITE_VAULT_LIGHTNING_SEND: 'true',
     })
     expect(config.rewrites).toContainEqual({
       source: '/esplora/:path*',
       destination: 'https://mempool.space/api/:path*',
     })
-    expect(connectSrc).toEqual(['connect-src', "'self'", 'https://arkade.computer', 'https://blockchain.info'])
+    expect(connectSrc).toEqual([
+      'connect-src',
+      "'self'",
+      'https://arkade.computer',
+      'https://blockchain.info',
+      'wss://nostr.arkade.sh',
+    ])
     expect(csp).not.toContain('mutinynet')
-    expect(csp).not.toContain('nostr')
     expect(csp).not.toContain('getvaulted')
     expect(JSON.stringify(config)).not.toContain('mutinynet')
   })
