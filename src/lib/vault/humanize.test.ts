@@ -155,5 +155,13 @@ describe('humanizeVaultError', () => {
       /Spending could not start/,
     )
     expect(humanizeVaultError(new Error('Unsupported network: mainnet'))).toMatch(/Spending could not start/)
+    expect(
+      humanizeVaultError(
+        new AggregateError(
+          [new Error('SDK worker derived a different boarding address'), new Error('teardown failed')],
+          'Vault wallet initialization and teardown failed',
+        ),
+      ),
+    ).toMatch(/Spending could not start/)
   })
 })

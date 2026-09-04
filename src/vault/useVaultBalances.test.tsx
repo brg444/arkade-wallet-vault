@@ -19,7 +19,8 @@ vi.mock('../lib/vault/esplora', () => ({
   fetchAddressUtxos: vi.fn(),
 }))
 vi.mock('../lib/vault/status', () => ({ fetchVaultStatus: vi.fn() }))
-vi.mock('../lib/vault/vtxo/spend', () => ({
+vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/vtxo/spend')>()),
   reconcilePersistedVtxoSpend: vi.fn().mockResolvedValue({ kind: 'none' }),
 }))
 vi.mock('../lib/vault/vtxo/walletWorker', () => ({
@@ -252,6 +253,18 @@ describe('useVaultBalances', () => {
     })
     expect(result.current.positions.savings.totalSats).toBe(25_000)
     expect(result.current.positions.spending.availableSats).toBe(30_000)
+  })
+
+  it('does not hide a first Spending worker failure behind a Savings Esplora read', async () => {
+    mockedUtxos.mockResolvedValue([{ txid: 'sav', vout: 0, value: 20_000, status: { confirmed: true } }])
+    mockedSnapshot.mockRejectedValueOnce(
+      new AggregateError([new Error('SDK worker did not register the Spending contract')], 'teardown failed'),
+    )
+    const { result } = setupHook()
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.balancesLoaded).toBe(false)
+    expect(result.current.balanceError).toMatch(/Spending could not start/)
+    expect(result.current.positions.spending.availableSats).toBe(0)
   })
 
   it('keeps the previous account snapshot when a worker read fails', async () => {

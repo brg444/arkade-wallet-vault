@@ -379,9 +379,7 @@ async function createRuntime(status: VaultStatus): Promise<WalletRuntime> {
       swapRepository[Symbol.asyncDispose](),
     ])
     if (!teardownError) await registration?.unregister().catch(() => undefined)
-    if (teardownError) {
-      throw new AggregateError([error, teardownError], 'Vault wallet initialization and teardown failed')
-    }
+    if (teardownError) consoleError(teardownError, 'Vault wallet teardown after failed initialization')
     throw error
   }
 }
