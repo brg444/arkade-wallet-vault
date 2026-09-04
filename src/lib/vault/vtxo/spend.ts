@@ -31,6 +31,7 @@ import {
 import { unlockPhoneBip340 } from '../savingsSpend'
 import type { EnrollmentSecrets } from '../tenantEnrollment'
 import type { VaultStatus } from '../types'
+import { PRF_SALT, unwrapPhoneSecret } from '../prfEnvelope'
 import { deviceSigningOptions, prfExtension, prfFrom } from '../webauthn'
 import { arkadeIntentFeePolicyDigest } from './feePolicy'
 import { networkPins } from '../networkPins'
@@ -47,8 +48,6 @@ import { VAULT_POLICY_V1_EXIT_DELAY_UNIT, VaultPolicyV1Script, type VaultPolicyV
 
 export type { VtxoOperationState, VtxoOperationView, VtxoReserveResponse } from '../cosignerClient'
 
-const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
-const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
 const VTXO_DUST_SATS = 330
 const MAX_VTXO_INPUTS = 50
 
@@ -63,12 +62,6 @@ function releaseNetwork(network?: string): string {
 export function vaultArkServer(network?: string): string {
   if (__VAULT_E2E_OPERATOR_ORIGIN__) return __VAULT_E2E_OPERATOR_ORIGIN__
   return networkPins(releaseNetwork(network)).operatorOrigin
-}
-
-/** Boarding/mempool watch. Same host the official Arkade Wallet leaves to the SDK. */
-export function vaultEsploraApi(network?: string): string {
-  if (__VAULT_E2E_OPERATOR_ORIGIN__) return '/esplora'
-  return networkPins(releaseNetwork(network)).esploraApiUrl
 }
 
 export interface VaultVtxoSpendResult {
@@ -588,20 +581,7 @@ async function authorizeWithPasskey(
     if (hex.encode(derived.pub) !== enrollment.phoneDirectP256 || hex.encode(derived.pub) !== status.phoneDirectP256) {
       throw new Error('passkey direct key does not match this vault')
     }
-    const kek = await crypto.subtle.deriveKey(
-      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_INFO },
-      await crypto.subtle.importKey('raw', prf, 'HKDF', false, ['deriveKey']),
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt'],
-    )
-    const phoneSecret = new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: requireHex(enrollment.nonce, 12, 'enrollment nonce') },
-        kek,
-        hex.decode(enrollment.ciphertext) as BufferSource,
-      ),
-    )
+    const phoneSecret = await unwrapPhoneSecret(prf, enrollment.nonce, enrollment.ciphertext)
     const identity = SingleKey.fromPrivateKey(phoneSecret)
     if (hex.encode(await identity.compressedPublicKey()) !== enrollment.phoneBip340Pub) {
       zeroBytes(phoneSecret)

@@ -118,6 +118,7 @@ export function useVaultBalances({
   const [balancesLoaded, setBalancesLoaded] = useState(() => Boolean(loadBalanceSnapshot(refreshVaultId)))
   const [refreshingBalance, setRefreshingBalance] = useState(false)
   const hasSnapshotRef = useRef(balancesLoaded)
+  const spendingReadyRef = useRef(balancesLoaded)
 
   if (hydratedVaultId !== refreshVaultId) {
     const cachedSnapshot = loadBalanceSnapshot(refreshVaultId)
@@ -126,6 +127,7 @@ export function useVaultBalances({
     setSnapshot(cachedSnapshot || EMPTY_BALANCES)
     setBalancesLoaded(Boolean(cachedSnapshot))
     hasSnapshotRef.current = Boolean(cachedSnapshot)
+    spendingReadyRef.current = Boolean(cachedSnapshot)
     setBalanceError('')
     setRefreshingBalance(false)
     retryAttemptRef.current = 0
@@ -150,7 +152,7 @@ export function useVaultBalances({
   }, [])
 
   const scheduleSnapshotRetry = useCallback((vaultId: string) => {
-    if (hasSnapshotRef.current || !vaultId) return
+    if (!vaultId || spendingReadyRef.current) return
     window.clearTimeout(retryTimerRef.current)
     const delay = Math.min(FIRST_SNAPSHOT_RETRY_MS * 2 ** retryAttemptRef.current, FIRST_SNAPSHOT_RETRY_MAX_MS)
     retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 4)
@@ -235,6 +237,23 @@ export function useVaultBalances({
         await Promise.all([savingsTask, spendingTask])
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
+        if (spendingError) {
+          setSnapshot((current) => ({
+            boardingBalance: hasSnapshotRef.current ? current.boardingBalance : 0,
+            history: [
+              ...savings.history,
+              ...(hasSnapshotRef.current ? current.history.filter((item) => item.account !== 'savings') : []),
+            ],
+            savingsSats: savings.balance,
+            savingsSpendableSats: savings.spendable,
+            vtxoSpendingSats: hasSnapshotRef.current ? current.vtxoSpendingSats : 0,
+          }))
+          setBalancesLoaded(true)
+          hasSnapshotRef.current = true
+          setBalanceError('')
+          scheduleSnapshotRetry(id)
+          return
+        }
         const nextSnapshot = {
           boardingBalance: spending.boardingBalance || 0,
           history: [...savings.history, ...spending.history],
@@ -242,14 +261,11 @@ export function useVaultBalances({
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
         }
-        if (spendingError) {
-          scheduleSnapshotRetry(id)
-          return
-        }
         setSnapshot(nextSnapshot)
         saveBalanceSnapshot(id, nextSnapshot)
         setBalancesLoaded(true)
         hasSnapshotRef.current = true
+        spendingReadyRef.current = true
         setBalanceError('')
         clearSnapshotRetry()
       } catch (error) {

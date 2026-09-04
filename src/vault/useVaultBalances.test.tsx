@@ -265,8 +265,9 @@ describe('useVaultBalances', () => {
       .mockResolvedValueOnce({ balance: 15_000, history: [] })
     const { result } = setupHook()
     await act(async () => result.current.refreshBalance())
-    expect(result.current.balancesLoaded).toBe(false)
+    expect(result.current.balancesLoaded).toBe(true)
     expect(result.current.balanceError).toBe('')
+    expect(result.current.positions.savings.totalSats).toBe(20_000)
     expect(result.current.positions.spending.availableSats).toBe(0)
 
     await act(async () => {
@@ -292,7 +293,7 @@ describe('useVaultBalances', () => {
     mockedSnapshot.mockRejectedValueOnce(new Error('activity unavailable'))
     await act(async () => result.current.refreshBalance())
 
-    expect(result.current.positions.savings.totalSats).toBe(20_000)
+    expect(result.current.positions.savings.totalSats).toBe(40_000)
     expect(result.current.positions.spending.availableSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
     expect(result.current.balanceError).toBe('')

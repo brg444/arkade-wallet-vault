@@ -58,7 +58,6 @@ import {
   type VtxoOperationView,
   type VtxoReserveResponse,
   vaultArkServer,
-  vaultEsploraApi,
   vaultPolicyV1ScriptFromStatus,
   vtxoReserveRequest,
   sendVaultVtxo,
@@ -368,11 +367,6 @@ describe('regular VTXO spend coordinator', () => {
     expect(vaultArkServer()).toBe('https://mutinynet.arkade.sh')
     expect(vaultArkServer('mutinynet')).toBe('https://mutinynet.arkade.sh')
     expect(vaultArkServer('mainnet')).toBe('https://arkade.computer')
-  })
-
-  it('pins boarding Esplora to the same Arkade mempool the SDK watches', () => {
-    expect(vaultEsploraApi('mutinynet')).toBe('https://mempool.mutinynet.arkade.sh/api')
-    expect(vaultEsploraApi('mainnet')).toBe('https://mempool.arkade.sh/api')
   })
 
   it.each([
