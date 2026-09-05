@@ -8,6 +8,7 @@ import { loadVaultBalanceUnit, saveVaultBalanceUnit } from '../../lib/vault/pref
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import Content from './Content'
+import QgAmount, { amountSizeStyle } from './qg/QgAmount'
 import VaultHistory from './History'
 import { QgMark } from './qg/QgScreen'
 
@@ -152,6 +153,7 @@ export default function VaultHome() {
           className='qg-balance'
           data-testid='vault-balance'
           data-balance-unit={balanceUnit}
+          style={amountSizeStyle(balance.amount)}
           disabled={!balancesLoaded || loadingFiat}
           aria-busy={!balancesLoaded || refreshingBalance || loadingFiat ? true : undefined}
           aria-live='polite'
@@ -164,7 +166,9 @@ export default function VaultHome() {
           }
           onClick={() => void toggleBalanceUnit()}
         >
-          <strong>{balancesLoaded ? balance.amount : '—'}</strong>
+          <strong>
+            <QgAmount value={balancesLoaded ? balance.amount : '—'} />
+          </strong>
           {balancesLoaded && balance.unit ? <span>{balance.unit}</span> : null}
         </button>
         <div className='qg-actions'>
