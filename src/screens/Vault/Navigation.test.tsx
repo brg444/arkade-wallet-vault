@@ -1,6 +1,6 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultNavigation from './Navigation'
 
@@ -38,6 +38,7 @@ function renderNav(overrides: Partial<VaultContextProps> = {}) {
 }
 
 describe('Vault navigation', () => {
+  beforeEach(() => localStorage.removeItem('vault-launcher-position-v3'))
   it('opens a Home launcher and navigates without a tab bar', async () => {
     const user = userEvent.setup()
     const value = renderNav()
@@ -94,6 +95,67 @@ describe('Vault navigation', () => {
     pullTab(screen.getByRole('button', { name: 'Open navigation' }), 24)
     expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Open navigation' })).toBeTruthy()
+  })
+
+  it('cancels a long pull when the browser cancels the pointer', () => {
+    renderNav()
+    const tab = screen.getByRole('button', { name: 'Open navigation' })
+    act(() => {
+      tab.dispatchEvent(pointer('pointerdown', 390, 640))
+      tab.dispatchEvent(pointer('pointermove', 310, 640))
+      tab.dispatchEvent(pointer('pointercancel', 310, 640))
+    })
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
+  })
+
+  it('captures immediately and preserves the grab offset through a vertical placement', () => {
+    renderNav()
+    const tab = screen.getByRole('button', { name: 'Open navigation' })
+    const layer = tab.parentElement!
+    const start = parseFloat(layer.style.getPropertyValue('--qg-launcher-y'))
+    tab.setPointerCapture = vi.fn()
+    act(() => {
+      tab.dispatchEvent(pointer('pointerdown', 390, 640))
+    })
+    expect(tab.setPointerCapture).toHaveBeenCalledWith(1)
+    act(() => {
+      window.dispatchEvent(pointer('pointermove', 386, 620))
+      window.dispatchEvent(pointer('pointermove', 240, 460))
+      window.dispatchEvent(pointer('pointerup', 240, 460))
+    })
+    expect(parseFloat(layer.style.getPropertyValue('--qg-launcher-y'))).toBe(start - 180)
+    expect(Number(localStorage.getItem('vault-launcher-position-v3'))).toBeGreaterThan(0)
+    expect(screen.queryByRole('navigation')).toBeNull()
+  })
+
+  it('rolls back cancellation and lost capture without saving or opening', () => {
+    renderNav()
+    const tab = screen.getByRole('button', { name: 'Open navigation' })
+    const layer = tab.parentElement!
+    const start = layer.style.getPropertyValue('--qg-launcher-y')
+    for (const end of ['pointercancel', 'lostpointercapture']) {
+      act(() => {
+        tab.dispatchEvent(pointer('pointerdown', 390, 640))
+        window.dispatchEvent(pointer('pointermove', 390, 440))
+        tab.dispatchEvent(pointer(end, 390, 440))
+        fireEvent.click(tab, { detail: 1 })
+      })
+      expect(layer.style.getPropertyValue('--qg-launcher-y')).toBe(start)
+      expect(localStorage.getItem('vault-launcher-position-v3')).toBeNull()
+      expect(screen.queryByRole('navigation')).toBeNull()
+    }
+  })
+
+  it('does not turn a vertical drag into a launcher tap', () => {
+    renderNav()
+    const tab = screen.getByRole('button', { name: 'Open navigation' })
+    act(() => {
+      tab.dispatchEvent(pointer('pointerdown', 390, 640))
+      tab.dispatchEvent(pointer('pointermove', 390, 680))
+      tab.dispatchEvent(pointer('pointerup', 390, 680))
+      fireEvent.click(tab, { detail: 1 })
+    })
+    expect(screen.queryByRole('navigation', { name: 'Main navigation' })).toBeNull()
   })
 })
 

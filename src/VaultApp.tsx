@@ -1,4 +1,4 @@
-import { useContext, useEffect } from 'react'
+import { useContext, useEffect, useRef } from 'react'
 import { VaultContext } from './vault/context'
 import './screens/Vault/vault.css'
 import './screens/Vault/vault-system.css'
@@ -32,9 +32,15 @@ import VaultNavigation, { destinationForScreen } from './screens/Vault/Navigatio
 import { bootVaultPrefs } from './lib/vault/prefs'
 import { bootVaultFrame } from './lib/vault/pwaFrame'
 import { reloadIfNewerWallet } from './lib/vault/update'
+import { useIntentPress } from './screens/Vault/qg/useIntentPress'
+import { useScreenMotion } from './screens/Vault/qg/useScreenMotion'
 
 export default function VaultApp() {
-  const { screen } = useContext(VaultContext)
+  const { screen, account } = useContext(VaultContext)
+  const root = useRef<HTMLDivElement>(null)
+  const scope = `${screen}:${account}`
+  const intentPress = useIntentPress(scope)
+  useScreenMotion(root, scope)
   useEffect(() => {
     document.title = 'Vaulted, a Bitcoin wallet'
     bootVaultPrefs()
@@ -71,7 +77,7 @@ export default function VaultApp() {
   const page = pages[screen] || <VaultWelcome />
   const className = ['page', `vault-screen-${screen}`, launcher ? 'has-vault-navigation' : ''].filter(Boolean).join(' ')
   return (
-    <div className={className} data-testid='vault-app'>
+    <div ref={root} className={className} data-testid='vault-app' {...intentPress}>
       {page}
       {launcher ? <VaultNavigation /> : null}
     </div>
