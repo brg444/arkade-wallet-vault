@@ -18,8 +18,6 @@ function Switch({
         'peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-all duration-200 ease-out outline-none',
         // Tap target: 44px minimum
         'after:absolute after:-inset-x-2 after:-inset-y-3 after:min-h-[44px] after:min-w-[44px]',
-        // Focus styles
-        'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
         // Invalid styles
         'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
         // Size variants
