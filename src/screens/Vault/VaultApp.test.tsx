@@ -32,7 +32,7 @@ describe('VaultApp onboarding', () => {
     )
     renderVault()
 
-    expect(await screen.findByRole('heading', { name: /Spend freely/ })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: /Everyday spending/ })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Look around first' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Get started' })).toBeTruthy()

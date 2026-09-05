@@ -3,10 +3,10 @@ import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
 
 async function setupToThisDevice(page: Page) {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /Spend freely/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Everyday spending/ })).toBeVisible()
   await page.getByRole('button', { name: 'Get started' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Different money needs different protection' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Everyday spending, protected savings' })).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
 
   await expect(page.getByRole('heading', { name: 'Add your hardware key' })).toBeVisible()
