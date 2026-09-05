@@ -324,6 +324,26 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 502, 'API response too large')
     return
   }
+  if (pathOnly === '/ready') {
+    try {
+      const ready = JSON.parse(payload.toString('utf8'))
+      if (!ready || typeof ready !== 'object' || Array.isArray(ready)) throw new Error('invalid readiness')
+      payload = Buffer.from(
+        JSON.stringify({
+          ok: ready.ok,
+          schema: ready.schema,
+          network: ready.network,
+          enrollTemplate: ready.enrollTemplate,
+          arkadeOrigin: 'configured',
+          arkadeVersion: ready.arkadeVersion,
+          ...(ready.error ? { error: 'service unavailable' } : {}),
+        }),
+      )
+    } catch {
+      jsonError(res, 502, 'invalid readiness response')
+      return
+    }
+  }
   if ((pathOnly.startsWith('/v1/vtxo/board') || pathOnly === '/v1/vtxo/reserve') && upstream.status >= 400) {
     console.error(
       'vault funding upstream',
