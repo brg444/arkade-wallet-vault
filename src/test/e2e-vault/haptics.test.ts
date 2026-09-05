@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('iOS direct haptic target preserves the underlying button action', async ({ browser, baseURL }) => {
+test('iOS haptics preserve native touch targets and scrolling', async ({ browser, baseURL }) => {
   const context = await browser.newContext({
     hasTouch: true,
     isMobile: true,
@@ -18,12 +18,14 @@ test('iOS direct haptic target preserves the underlying button action', async ({
   const button = page.getByRole('button', { name: 'Get started' })
   await expect(button).toBeVisible()
 
-  const buttonIndex = await button.evaluate((element) =>
-    Array.from(document.querySelectorAll('button')).indexOf(element as HTMLButtonElement),
-  )
-  const overlay = page.locator('#vault-ios-haptic-overlays input[switch]').nth(buttonIndex)
-  await expect(overlay).toBeAttached()
-  await overlay.click({ force: true })
+  await expect(page.locator('#vault-ios-haptic-overlays')).toHaveCount(0)
+  const directTarget = await button.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+    return hit === element || element.contains(hit)
+  })
+  expect(directTarget).toBe(true)
+  await button.tap()
 
   await expect(page.getByRole('heading', { name: 'How it works' })).toBeVisible()
   await context.close()

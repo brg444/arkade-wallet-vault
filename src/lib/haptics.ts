@@ -1,12 +1,10 @@
 import { WebHaptics } from 'web-haptics'
-import { bootDirectIOSHaptics, directIOSHapticsActive, setDirectIOSHapticsEnabled } from './iosDirectHaptics'
 
 let enabled = true
 let haptics: WebHaptics | null = null
 
 export function setHapticsEnabled(value: boolean): void {
   enabled = value
-  setDirectIOSHapticsEnabled(value)
 }
 
 function getHaptics(): WebHaptics | null {
@@ -17,7 +15,7 @@ function getHaptics(): WebHaptics | null {
 }
 
 export function bootHaptics(): void {
-  if (bootDirectIOSHaptics()) return
+  // Feedback must never replace a control's native pointer target.
   getHaptics()
 }
 
@@ -29,7 +27,6 @@ function shouldSkipHaptics(): boolean {
 
 function triggerHaptic(pattern: 'selection' | 'light' | 'medium'): void {
   if (shouldSkipHaptics()) return
-  if (directIOSHapticsActive()) return
   getHaptics()
     ?.trigger(pattern)
     .catch(() => {})
