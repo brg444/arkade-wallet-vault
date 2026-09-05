@@ -39,7 +39,7 @@ describe('VaultApp onboarding', () => {
     expect(screen.getByRole('button', { name: 'Sign in to an existing vault' })).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Get started' }))
 
-    expect(await screen.findByRole('heading', { name: 'Different money needs different protection' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Everyday spending, protected savings' })).toBeTruthy()
     expect(screen.getByTestId('screen-title')).toHaveTextContent('How it works')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
@@ -61,7 +61,7 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Review setup' }))
 
     expect(await screen.findByRole('heading', { name: 'Review your Vault' })).toBeTruthy()
-    expect(screen.getByText('₿50,000')).toBeTruthy()
+    expect(screen.getByText('50,000 sats')).toBeTruthy()
     expect(screen.getByText('Not enrolled')).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
     await user.click(screen.getByRole('checkbox'))
