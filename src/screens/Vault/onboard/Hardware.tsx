@@ -3,6 +3,7 @@ import { Clipboard, TriangleAlert } from 'lucide-react'
 import ErrorMessage from '../../../components/Error'
 import { pasteFromClipboard } from '../../../lib/clipboard'
 import { VaultContext } from '../../../vault/context'
+import '../qg/guidance.css'
 import QgScreen, { QgPrimary } from '../qg/QgScreen'
 
 export default function VaultHardware() {
@@ -32,8 +33,8 @@ export default function VaultHardware() {
       <h1>Add your hardware key</h1>
       <p className='qg-copy'>
         {required
-          ? 'This vault already has hardware. Confirm this is that key.'
-          : 'An independent hardware approval prevents a compromised phone from moving Savings by itself. This key can also cancel a recovery you did not start.'}
+          ? 'This vault already has a hardware key. Check that you can still use the hardware wallet that holds it.'
+          : 'Savings transfers need approval from your hardware wallet as well as your passkey. Keep the hardware key and its backup separate from your device.'}
       </p>
       <label className='qg-field'>
         <span>Hardware public key</span>
@@ -57,6 +58,23 @@ export default function VaultHardware() {
           Paste public key
         </button>
       )}
+      <details className='qg-guidance'>
+        <summary>Find and check your hardware public key</summary>
+        <div className='qg-guidance-body'>
+          <p>
+            A public key identifies the key on your hardware wallet. Use its companion software to export the compressed
+            public key, a 66-character value starting with 02 or 03.
+          </p>
+          <p>
+            This is different from a Bitcoin address or an extended public key. Your hardware wallet also needs to sign
+            Vaulted’s transaction files, called PSBTs.
+          </p>
+          <p>
+            Before depositing, confirm that your hardware signing workflow supports Vaulted’s Savings transactions.
+            Accepting a public key here checks its format, not whether your hardware can sign.
+          </p>
+        </div>
+      </details>
       <section className='qg-note'>
         <TriangleAlert />
         <div>

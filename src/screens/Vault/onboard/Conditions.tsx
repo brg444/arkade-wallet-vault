@@ -61,13 +61,13 @@ export default function VaultConditions() {
       <p className='qg-eyebrow'>Your guardrails</p>
       <h1>Set comfortable limits</h1>
       <p className='qg-copy'>
-        Choose how much a compromised device could authorize before you can respond. Limits reduce exposure but do not
-        eliminate risk.
+        Set the most you want Spending to authorize per payment and over a rolling 24 hours. These limits reduce the
+        impact of a compromised device and are fixed after setup.
       </p>
       <label className='qg-money-field'>
         <span>Per payment</span>
         <div>
-          <b>₿</b>
+          <b>sats</b>
           <input
             value={displaySats(txCap)}
             inputMode='numeric'
@@ -80,7 +80,7 @@ export default function VaultConditions() {
       <label className='qg-money-field'>
         <span>Rolling 24-hour limit</span>
         <div>
-          <b>₿</b>
+          <b>sats</b>
           <input
             value={displaySats(allowance)}
             inputMode='numeric'
@@ -90,6 +90,9 @@ export default function VaultConditions() {
           />
         </div>
       </label>
+      <p className='qg-copy'>
+        Amounts are in satoshis (sats), the smallest unit of bitcoin. 100,000 sats is 0.001 BTC.
+      </p>
       {selected ? (
         <section className='qg-note'>
           <Clock3 />
@@ -104,10 +107,10 @@ export default function VaultConditions() {
           <div>
             <strong>Check these limits</strong>
             <p>
-              Per payment ₿{prettyNumber(bounds.txRecipientCapSats.min, 0)}–₿
-              {prettyNumber(bounds.txRecipientCapSats.max, 0)}. Rolling 24-hour ₿
-              {prettyNumber(bounds.periodAllowanceSats.min, 0)}–₿{prettyNumber(bounds.periodAllowanceSats.max, 0)}, and
-              it must cover at least one payment.
+              Per payment {prettyNumber(bounds.txRecipientCapSats.min, 0)}–
+              {prettyNumber(bounds.txRecipientCapSats.max, 0)} sats. Rolling 24-hour
+              {prettyNumber(bounds.periodAllowanceSats.min, 0)}–{prettyNumber(bounds.periodAllowanceSats.max, 0)} sats,
+              and it must cover at least one payment.
             </p>
           </div>
         </section>
