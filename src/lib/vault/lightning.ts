@@ -63,6 +63,7 @@ export {
   getVaultLightningStatus,
   recordVaultLightningFundingTxid,
   resumeVaultLightningFunding,
+  loadVaultLightningFundingQuote,
   retireAbandonedVaultLightningQuotes,
   vaultLightningSwapStorageName,
   type VaultLightningFundingTarget,

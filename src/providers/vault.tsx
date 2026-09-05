@@ -29,8 +29,10 @@ import {
   savePendingSavingsHandoff,
   type PendingSavingsHandoff,
 } from '../lib/vault/savingsHandoff'
+import { consoleError } from '../lib/logs'
+import { requireSdkNetworkName } from '../lib/vault/networkPins'
 import { humanizeVaultError } from '../lib/vault/humanize'
-import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
+import { bitcoinDustSats, isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
   discoverVaultLightningSolver,
   isVaultLightningInput,
@@ -49,6 +51,8 @@ import {
   isSameVtxoPayment,
   isVtxoSpendInFlightError,
   loadPersistedVtxoSpend,
+  listPersistedVtxoSpends,
+  quoteFromPersistedVtxoSpend,
   loadPersistedVtxoSpendById,
   newVtxoSpendChallenge,
   previewVaultVtxoSend,
@@ -60,7 +64,7 @@ import {
 } from '../lib/vault/vtxo/spend'
 import { deleteBoardingKey, requireBoardingStatus } from '../lib/vault/vtxo/board'
 import { recoverMatureBoardingInputs } from '../lib/vault/vtxo/boardingRecovery'
-import { shutdownVaultWalletWorker } from '../lib/vault/vtxo/walletWorker'
+import { ensureVaultWalletWorker, shutdownVaultWalletWorker } from '../lib/vault/vtxo/walletWorker'
 import { fetchPublicStatus, fetchVaultStatus, type PublicAuthorizerStatus } from '../lib/vault/status'
 import {
   clearSetupPlan,
@@ -526,6 +530,64 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [account, liveNetwork],
   )
 
+  const reviewedPendingPayment =
+    reviewedVtxoQuote && status?.vaultId
+      ? loadPersistedVtxoSpendById(status.vaultId, reviewedVtxoQuote.operationId)
+      : undefined
+  const resumingPayment = Boolean(reviewedPendingPayment && vtxoSpendIsLivePending(reviewedPendingPayment))
+
+  const pendingPayments = status?.enrolled
+    ? listPersistedVtxoSpends(status.vaultId).map((operation) => ({
+        operationId: operation.operationId,
+        amountSats: operation.amountSats,
+        authorized: vtxoSpendIsLivePending(operation),
+      }))
+    : []
+
+  const openPendingPayment = useCallback(
+    async (operationId: string) => {
+      if (!status?.enrolled) return
+      setBusy(true)
+      setError('')
+      try {
+        const pending = loadPersistedVtxoSpendById(status.vaultId, operationId)
+        if (!pending) throw new Error('This pending payment has already finished. Refresh the wallet.')
+        await ensureVaultWalletWorker(status)
+        const lightning = await import('../lib/vault/lightning')
+        const quote = await lightning.withVaultLightningRepository(status.vaultId, (repository) =>
+          lightning.loadVaultLightningFundingQuote(repository, requireSdkNetworkName(status.network), {
+            operationId: pending.operationId,
+            bundleDigest: pending.bundleDigest,
+            address: pending.destAddress,
+            amountSats: pending.amountSats,
+            fundingFeeSats: pending.feeSats,
+          }),
+        )
+        setAccount('spend')
+        setCanReplaceInFlightSend(false)
+        setLightningQuote(quote || null)
+        setSpend({
+          address: quote?.invoice || pending.destAddress,
+          amount: quote?.invoiceAmountSats || pending.amountSats,
+          fee: (quote?.corridorFeeSats || 0) + (pending.feeSats || 0),
+        })
+        if (pending.stage === 'pre-reserve') {
+          setReviewedVtxoQuote(null)
+          setScreen('send')
+        } else {
+          setReviewedVtxoQuote(quoteFromPersistedVtxoSpend(pending))
+          setScreen('review')
+        }
+      } catch (err) {
+        consoleError(err, 'Open pending payment')
+        setError(humanizeVaultError(err))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [status],
+  )
+
   const reviewLightningSpend = useCallback(async () => {
     if (!status?.enrolled || !enrollment) {
       setError('Sign in with the passkey that created this vault.')
@@ -552,6 +614,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError(humanizeVaultError(err))
       return
     }
+    const active = listPersistedVtxoSpends(status.vaultId).find(vtxoSpendIsLivePending)
+    if (active) {
+      setError('A payment is still pending. Open Pending payment to resume it before starting another.')
+      return
+    }
     if (invoice.amountSats > setup.txCapSats) {
       setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
       return
@@ -572,6 +639,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
               bundleDigest: persistedVtxo.bundleDigest,
               address: persistedVtxo.destAddress,
               amountSats: persistedVtxo.amountSats,
+              fundingFeeSats: persistedVtxo.feeSats,
             }
           : undefined
       const phoneSecret = await unlockPhoneBip340(enrollment, status)
@@ -641,10 +709,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Enter an Arkade or Bitcoin address.')
       return
     }
-    if (!Number.isInteger(spend.amount) || spend.amount < DUST_SATS) {
-      setError('At least ₿330.')
-      return
-    }
     const arkDestination = isVaultArkAddress(spend.address, destNetwork)
     if (arkDestination && account === 'savings') {
       setError('Savings sends require a Bitcoin address.')
@@ -654,10 +718,19 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
       return
     }
+    const minimumAmount = account === 'savings' ? bitcoinDustSats(spend.address, destNetwork) : DUST_SATS
+    if (!Number.isInteger(spend.amount) || spend.amount < minimumAmount) {
+      setError(`At least ₿${minimumAmount}.`)
+      return
+    }
     const source = account === 'savings' ? savingsAvailableSats : spendingAvailableSats
     const persistedVtxo = account === 'spend' ? loadPersistedVtxoSpend(status.vaultId) : undefined
     const resumingVtxo = Boolean(persistedVtxo && isSameVtxoPayment(persistedVtxo, spend.address, spend.amount))
-    if (account !== 'savings') {
+    if (account === 'spend' && !resumingVtxo && listPersistedVtxoSpends(status.vaultId).some(vtxoSpendIsLivePending)) {
+      setError('A payment is still pending. Open Pending payment to resume it before starting another.')
+      return
+    }
+    if (account !== 'savings' && !resumingVtxo) {
       if (spend.amount > setup.txCapSats) {
         setError(`Over this device’s send limit of ${setup.txCapSats.toLocaleString()} sats. Use Savings.`)
         return
@@ -834,6 +907,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           pendingSavingsHandoff.destAddress,
           pendingSavingsHandoff.amountSats,
           pendingSavingsHandoff.network,
+          enrollment?.phoneBip340Pub || '',
+          status?.externalOwnerWalletPub || '',
         )
         const final = finalizeSavingsPsbt(incoming)
         const txid = await broadcastTx(final.txHex)
@@ -845,7 +920,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [discardPendingSavingsHandoff, finishBroadcast, handoffPsbt, pendingSavingsHandoff],
+    [
+      discardPendingSavingsHandoff,
+      enrollment?.phoneBip340Pub,
+      finishBroadcast,
+      handoffPsbt,
+      pendingSavingsHandoff,
+      status?.externalOwnerWalletPub,
+    ],
   )
 
   const approveSend = useCallback(async () => {
@@ -866,8 +948,15 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
       if (lightningQuote) {
         const lightning = await import('../lib/vault/lightning')
-        lightning.assertVaultLightningQuoteCurrent(lightningQuote)
         const reviewed = reviewedVtxoQuote
+        const pending = reviewed && loadPersistedVtxoSpendById(status.vaultId, reviewed.operationId)
+        const alreadyAuthorized = Boolean(
+          pending &&
+            vtxoSpendIsLivePending(pending) &&
+            pending.bundleDigest === reviewed?.bundleDigest &&
+            isSameVtxoPayment(pending, lightningQuote.fundAddress, lightningQuote.fundAmountSats),
+        )
+        if (!alreadyAuthorized) lightning.assertVaultLightningQuoteCurrent(lightningQuote)
         const expectedFee = lightningQuote.corridorFeeSats + (reviewed?.feeSats ?? 0)
         if (
           !reviewed ||
@@ -895,7 +984,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             }
             const target = await lightning.withVaultLightningRepository(status.vaultId, async (repository) => {
               try {
-                return await lightning.resumeVaultLightningFunding(repository, proof)
+                return await lightning.resumeVaultLightningFunding(repository, proof, undefined, alreadyAuthorized)
               } catch (err) {
                 if (!(err instanceof lightning.VaultLightningFundingNotStartedError)) throw err
                 return lightning.beginVaultLightningFunding(repository, lightningQuote.rfqId, proof)
@@ -944,11 +1033,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           throw err
         }
       }
-      if (
-        spendingArkAddress &&
-        isVaultArkAddress(spend.address, status.network) &&
-        spendingAvailableSats >= spend.amount
-      ) {
+      if (spendingArkAddress && isVaultArkAddress(spend.address, status.network)) {
         const reviewed = reviewedVtxoQuote
         if (!reviewed || !reviewedVtxoQuoteMatchesDraft(reviewed, spend)) {
           setReviewedVtxoQuote(null)
@@ -980,6 +1065,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                   replaceExisting,
                   phoneSecret: auth.phoneSecret,
                 })
+            if (!resumePending && quote.feeSats !== reviewed.feeSats) {
+              setReviewedVtxoQuote(quote)
+              setSpend((current) => ({ ...current, fee: quote.feeSats }))
+              setError('The network fee changed. Review the updated total before approving.')
+              return
+            }
             const result = await sendVaultVtxo(enrollment, status, quote, () => unlocker)
             await finishBroadcast(result.txid, 'vtxo', result.feeSats)
           } finally {
@@ -1016,7 +1107,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
       setError('Vault isn’t ready to send.')
     } catch (err) {
-      setError(humanizeVaultError(err))
+      consoleError(err, 'Payment authorization or finalization')
+      const pending = status?.vaultId && listPersistedVtxoSpends(status.vaultId).find(vtxoSpendIsLivePending)
+      setError(
+        pending
+          ? 'Payment is pending; it has not been confirmed as paid. Open Pending payment to resume it.'
+          : humanizeVaultError(err),
+      )
+      if (status?.vaultId) await refreshBalance(status.vaultId)
     } finally {
       setBusy(false)
     }
@@ -1186,6 +1284,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       refreshingBalance,
       reset,
       reviewSpend,
+      resumingPayment,
+      pendingPayments,
+      openPendingPayment,
       canReplaceInFlightSend,
       replaceInFlightSend,
       openSendScan: () => {
@@ -1266,6 +1367,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       refreshingBalance,
       reset,
       reviewSpend,
+      resumingPayment,
+      pendingPayments,
+      openPendingPayment,
       canReplaceInFlightSend,
       replaceInFlightSend,
       scanOnSend,

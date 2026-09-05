@@ -10,6 +10,7 @@ import {
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
+import { networkPins } from '../networkPins'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -147,10 +148,6 @@ function status(): VaultStatus {
 
 function reserve(): VtxoReserveResponse {
   const current = status()
-  const unroll = CSVMultisigTapscript.encode({
-    timelock: { type: 'seconds', value: 4096n },
-    pubkeys: [hex.decode(golden.fixtures.arkdServerPub)],
-  })
   return {
     operationId: OP_1,
     bundleDigest: '11'.repeat(32),
@@ -163,7 +160,7 @@ function reserve(): VtxoReserveResponse {
     destScript: `5120${golden.fixtures.exitHardwarePub}`,
     feeSats: 500,
     feePolicyDigest: FEE_POLICY_DIGEST,
-    checkpointTapscript: hex.encode(unroll.script),
+    checkpointTapscript: networkPins('mutinynet').checkpointTapscript,
   }
 }
 
@@ -536,6 +533,90 @@ describe('regular VTXO spend coordinator', () => {
       }
     }
   })
+
+  it.each([false, true])(
+    'completes the real SDK lifecycle with signatures, including interrupted checkpoint authorization=%s',
+    async (interrupted) => {
+      const actual = await vi.importActual<typeof import('./sdkOperationAdapter')>('./sdkOperationAdapter')
+      sdkOperationAdapterMocks.submit.mockImplementation(actual.submitExactVaultSdkOperation)
+      const pending = freshPolicyPending()
+      persistVtxoSpend(pending)
+      const restoreLock = installImmediateNavigatorLock()
+      const vault = SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0')))
+      const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+      const phoneSecret = hex.decode('01'.padStart(64, '0'))
+      const unlock = vi.fn(async () => ({
+        assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+        phoneSecret,
+        scalar: hex.decode('03'.padStart(64, '0')),
+      }))
+      const unlocker = createVtxoSpendUnlocker({} as never, status(), pending.bundleDigest, unlock)
+      vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(pending))
+      vi.spyOn(vaultCosignerClient.spending, 'operation').mockResolvedValue(reviewedOperation(pending) as never)
+      vi.spyOn(vaultCosignerClient.spending, 'authorize').mockImplementation(async (request) => ({
+        operationId: pending.operationId,
+        bundleDigest: pending.bundleDigest,
+        arkTxid: pending.arkTxid,
+        authorizedPsbt: base64.encode(
+          (await vault.sign(Transaction.fromPSBT(base64.decode(request.unsignedArkPsbt)))).toPSBT(),
+        ),
+        authorizedPendingProof: base64.encode(
+          (await vault.sign(Transaction.fromPSBT(base64.decode(request.pendingProof)))).toPSBT(),
+        ),
+      }))
+      const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx').mockImplementation(async (ark, checkpoints) => ({
+        arkTxid: pending.arkTxid,
+        finalArkTx: base64.encode((await operator.sign(Transaction.fromPSBT(base64.decode(ark)))).toPSBT()),
+        signedCheckpointTxs: await Promise.all(
+          checkpoints.map(async (raw) =>
+            base64.encode((await operator.sign(Transaction.fromPSBT(base64.decode(raw)))).toPSBT()),
+          ),
+        ),
+      }))
+      const authorizeCheckpoints = vi
+        .spyOn(vaultCosignerClient.spending, 'authorizeCheckpoints')
+        .mockImplementation(async (request) => ({
+          operationId: pending.operationId,
+          bundleDigest: pending.bundleDigest,
+          arkTxid: pending.arkTxid,
+          checkpointPsbts: await Promise.all(
+            request.checkpointPsbts.map(async (raw) =>
+              base64.encode((await vault.sign(Transaction.fromPSBT(base64.decode(raw)))).toPSBT()),
+            ),
+          ),
+        }))
+      const finalize = vi.spyOn(RestArkProvider.prototype, 'finalizeTx').mockResolvedValue(undefined)
+      vi.spyOn(vaultCosignerClient.spending, 'finalize').mockResolvedValue({
+        operationId: pending.operationId,
+        bundleDigest: pending.bundleDigest,
+        arkTxid: pending.arkTxid,
+        state: 'finalized',
+      })
+      try {
+        if (interrupted) {
+          authorizeCheckpoints.mockRejectedValueOnce(new Error('checkpoint response lost'))
+          await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending), () => unlocker)).rejects.toThrow(
+            'checkpoint response lost',
+          )
+          expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+          expect(phoneSecret.every((byte) => byte === 0)).toBe(true)
+          phoneSecret.set(hex.decode('01'.padStart(64, '0')))
+        }
+        await expect(
+          sendVaultVtxo({} as never, status(), reviewedQuote(pending), () => unlocker),
+        ).resolves.toMatchObject({ txid: pending.arkTxid })
+        expect(unlock).toHaveBeenCalledTimes(interrupted ? 2 : 1)
+        expect(submit).toHaveBeenCalledTimes(1)
+        expect(authorizeCheckpoints).toHaveBeenCalledTimes(interrupted ? 2 : 1)
+        expect(finalize).toHaveBeenCalledTimes(1)
+        expect(phoneSecret.every((byte) => byte === 0)).toBe(true)
+        expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
+      } finally {
+        restoreLock()
+        clearPersistedVtxoSpend('vault-a')
+      }
+    },
+  )
 
   it('runs one fresh reserved v1 operation through the SDK adapter and clears it only after finalization', async () => {
     sdkOperationAdapterMocks.submit.mockReset()
@@ -942,6 +1023,18 @@ describe('regular VTXO spend coordinator', () => {
     expect(built.arkTx.outputsLength).toBe(3)
     expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
     expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
+  })
+
+  it('rejects a server-selected checkpoint escape policy', () => {
+    const response = reserve()
+    const attacker = CSVMultisigTapscript.encode({
+      timelock: { type: 'blocks', value: 1n },
+      pubkeys: [hex.decode(golden.fixtures.exitHardwarePub)],
+    })
+    response.checkpointTapscript = hex.encode(attacker.script)
+    expect(() => buildReservedVtxoSpend(status(), response, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /checkpoint tapscript does not match this release/,
+    )
   })
 
   it('preserves canonical fragmented inputs through checkpoints and Ark inputs', () => {

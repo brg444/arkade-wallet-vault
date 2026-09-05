@@ -37,6 +37,7 @@ interface VaultBalanceSnapshot {
   savingsSats: number
   savingsSpendableSats: number
   vtxoSpendingSats: number
+  vtxoPendingSats?: number
 }
 
 const EMPTY_BALANCES: VaultBalanceSnapshot = {
@@ -151,7 +152,7 @@ export function useVaultBalances({
     window.clearTimeout(retryTimerRef.current)
   }
 
-  const { boardingBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats } = snapshot
+  const { boardingBalance, history, savingsSats, savingsSpendableSats, vtxoSpendingSats, vtxoPendingSats } = snapshot
   const positions = useMemo(
     () =>
       vaultAccountPositions({
@@ -159,8 +160,9 @@ export function useVaultBalances({
         savingsAvailableSats: savingsSpendableSats,
         savingsTotalSats: savingsSats,
         spendingAvailableSats: vtxoSpendingSats,
+        spendingPendingSats: vtxoPendingSats,
       }),
-    [boardingBalance, savingsSats, savingsSpendableSats, vtxoSpendingSats],
+    [boardingBalance, savingsSats, savingsSpendableSats, vtxoSpendingSats, vtxoPendingSats],
   )
 
   const clearSnapshotRetry = useCallback(() => {
@@ -241,18 +243,16 @@ export function useVaultBalances({
         let boarding = emptyBoarding
         let spendingError: unknown
         const savingsTask = savingsAddress
-          ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)])
-              .then(([utxos, transactions]) => {
+          ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)]).then(
+              ([utxos, transactions]) => {
                 const balance = savingsUtxoBalance(utxos, transactions, savingsAddress)
                 savings = {
                   balance: balance.total,
                   spendable: balance.spendable,
                   history: historyFromTxs(transactions, savingsAddress, 'savings'),
                 }
-              })
-              .catch((error) => {
-                consoleError(error, 'Vault savings balance refresh')
-              })
+              },
+            )
           : Promise.resolve()
         const spendingTask =
           spendingAddress && liveStatus.enrolled
@@ -292,6 +292,7 @@ export function useVaultBalances({
             savingsSats: savings.balance,
             savingsSpendableSats: savings.spendable,
             vtxoSpendingSats: preserveSpending ? current.vtxoSpendingSats : 0,
+            vtxoPendingSats: preserveSpending ? current.vtxoPendingSats : 0,
           }))
           setBalancesLoaded(true)
           hasSnapshotRef.current = true
@@ -308,6 +309,7 @@ export function useVaultBalances({
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
+          vtxoPendingSats: spending.pendingBalance || 0,
         }
         setSnapshot(nextSnapshot)
         saveBalanceSnapshot(id, nextSnapshot)

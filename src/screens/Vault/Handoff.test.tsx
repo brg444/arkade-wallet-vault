@@ -66,6 +66,19 @@ describe('Savings hardware handoff', () => {
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt'))
   })
 
+  it('shares raw PSBT bytes instead of base64 text in the .psbt file', async () => {
+    const share = vi.fn<(data: ShareData) => Promise<void>>().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'share', { configurable: true, value: share })
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true })
+    renderHandoff()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Share PSBT' }))
+    await waitFor(() => expect(share).toHaveBeenCalledOnce())
+    const file = share.mock.calls[0]![0].files![0]!
+    expect(file.name).toBe('Savings transfer.psbt')
+    expect(file.size).toBe(1)
+  })
+
   it('accepts a pasted hardware-signed PSBT alongside file upload', async () => {
     const { completeSavingsHandoff } = renderHandoff()
 

@@ -8,6 +8,7 @@ import {
   cancelVaultLightningQuote,
   recordVaultLightningFundingTxid,
   resumeVaultLightningFunding,
+  loadVaultLightningFundingQuote,
   requestVaultLightningQuote,
   retireAbandonedVaultLightningQuotes,
   vaultLightningRequestWallet,
@@ -56,6 +57,35 @@ describe('Lightning persisted lifecycle', () => {
     operationId: '11111111-1111-4111-8111-111111111111',
     bundleDigest: 'aa'.repeat(32),
     fundingFeeSats: 25,
+  })
+
+  it('recovers the exact original invoice after expiry without requesting another quote', async () => {
+    const harness = await lightningQuoteHarness()
+    const quote = await harness.request()
+    const proof = fundingProof(quote)
+    await beginVaultLightningFunding(harness.repository, quote.rfqId, proof, INVOICE_TIMESTAMP + 2)
+    await expect(loadVaultLightningFundingQuote(harness.repository, 'bitcoin', proof)).resolves.toEqual(quote)
+    await expect(
+      loadVaultLightningFundingQuote(harness.repository, 'bitcoin', { ...proof, fundingFeeSats: undefined }),
+    ).rejects.toThrow(/does not match/)
+    await expect(loadVaultLightningFundingQuote(harness.repository, 'mutinynet', proof)).rejects.toThrow(
+      /does not match/,
+    )
+    await expect(resumeVaultLightningFunding(harness.repository, proof, quote.validUntil + 1)).rejects.toThrow(
+      /expired/,
+    )
+    await expect(
+      resumeVaultLightningFunding(harness.repository, proof, quote.validUntil + 1, true),
+    ).resolves.toMatchObject({ address: quote.fundAddress, amountSats: quote.fundAmountSats })
+    await expect(
+      resumeVaultLightningFunding(
+        harness.repository,
+        { ...proof, bundleDigest: 'bb'.repeat(32) },
+        quote.validUntil + 1,
+        true,
+      ),
+    ).rejects.toThrow(/does not match/)
+    expect(harness.requester).toHaveBeenCalledOnce()
   })
 
   it('persists complete recovery state before exposing a quote and resumes a dropped response idempotently', async () => {
