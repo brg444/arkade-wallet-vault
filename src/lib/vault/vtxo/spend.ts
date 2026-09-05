@@ -1512,7 +1512,7 @@ async function reservePersistedVtxoSpend(
   return next
 }
 
-function quoteFromPersistedVtxoSpend(pending: PersistedVtxoSpend): VaultVtxoSpendQuote {
+export function quoteFromPersistedVtxoSpend(pending: PersistedVtxoSpend): VaultVtxoSpendQuote {
   if (
     !/^[0-9a-f]{64}$/.test(pending.bundleDigest) ||
     !pending.feePolicyDigest ||

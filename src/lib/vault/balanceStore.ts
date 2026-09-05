@@ -8,6 +8,7 @@ export type StoredBalanceSnapshot = {
   savingsSats: number
   savingsSpendableSats: number
   vtxoSpendingSats: number
+  vtxoPendingSats?: number
 }
 
 export function balanceStoreKey(vaultId: string): string {
@@ -29,6 +30,7 @@ function parseSnapshot(raw: string | null): StoredBalanceSnapshot | null {
       !isFiniteSats(rec.savingsSats) ||
       !isFiniteSats(rec.savingsSpendableSats) ||
       !isFiniteSats(rec.vtxoSpendingSats) ||
+      (rec.vtxoPendingSats !== undefined && !isFiniteSats(rec.vtxoPendingSats)) ||
       !Array.isArray(rec.history)
     ) {
       return null

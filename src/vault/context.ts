@@ -105,6 +105,9 @@ export interface VaultContextProps {
   refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
+  resumingPayment: boolean
+  pendingPayments: { operationId: string; amountSats: number; authorized: boolean }[]
+  openPendingPayment: (operationId: string) => Promise<void>
   canReplaceInFlightSend: boolean
   replaceInFlightSend: () => Promise<void>
   openSendScan: () => void
@@ -182,6 +185,9 @@ export const VaultContext = createContext<VaultContextProps>({
   refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},
+  resumingPayment: false,
+  pendingPayments: [],
+  openPendingPayment: async () => {},
   canReplaceInFlightSend: false,
   replaceInFlightSend: async () => {},
   openSendScan: () => {},

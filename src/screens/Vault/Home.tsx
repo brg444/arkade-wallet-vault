@@ -18,6 +18,10 @@ export default function VaultHome() {
     balancesLoaded,
     boardingAddress,
     canSend,
+    busy,
+    error,
+    pendingPayments = [],
+    openPendingPayment,
     fiatDisplayRate,
     navigate,
     openSendScan,
@@ -201,14 +205,51 @@ export default function VaultHome() {
           </button>
         </div>
 
+        {spending
+          ? pendingPayments.map((payment) => (
+              <section className='qg-arrival' aria-label='Pending payment' key={payment.operationId}>
+                <span className='qg-status-icon' aria-hidden>
+                  <Clock3 />
+                </span>
+                <div>
+                  <strong>Pending payment · ₿{prettyNumber(payment.amountSats)}</strong>
+                  <p>
+                    {payment.authorized
+                      ? 'Not confirmed as paid. Its funds remain unavailable for another payment.'
+                      : 'Reserved for review; this payment has not been authorized.'}
+                  </p>
+                  <button
+                    className='qg-text'
+                    type='button'
+                    disabled={busy}
+                    onClick={() => void openPendingPayment(payment.operationId)}
+                  >
+                    {payment.authorized ? 'Resume payment' : 'Review reserved payment'}
+                  </button>
+                </div>
+              </section>
+            ))
+          : null}
+        {error && pendingPayments.length > 0 ? (
+          <p className='qg-footer-error' role='alert'>
+            {error}
+          </p>
+        ) : null}
+
         {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
-          <section className='qg-arrival' aria-label='Funds arriving' data-testid='spending-pending'>
+          <section className='qg-arrival' aria-label='Funds pending' data-testid='spending-pending'>
             <span className='qg-status-icon' aria-hidden>
               <Clock3 />
             </span>
             <div>
-              <strong>₿{prettyNumber(positions.spending.pendingSats)} arriving</strong>
-              <p>Available after Bitcoin confirmation.</p>
+              <strong>
+                ₿{prettyNumber(positions.spending.pendingSats)} {pendingPayments.length ? 'pending' : 'arriving'}
+              </strong>
+              <p>
+                {pendingPayments.length
+                  ? 'Includes funds reserved for the pending payment and change awaiting completion.'
+                  : 'Available after Bitcoin confirmation.'}
+              </p>
             </div>
           </section>
         ) : null}

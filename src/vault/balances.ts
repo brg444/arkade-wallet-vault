@@ -19,9 +19,10 @@ export function vaultAccountPositions(input: {
   savingsAvailableSats: number
   savingsTotalSats: number
   spendingAvailableSats: number
+  spendingPendingSats?: number
 }): VaultAccountPositions {
   const spendingAvailableSats = Math.max(0, input.spendingAvailableSats)
-  const spendingPendingSats = Math.max(0, input.boardingSats)
+  const spendingPendingSats = Math.max(0, input.boardingSats) + Math.max(0, input.spendingPendingSats || 0)
   const savingsAvailableSats = Math.max(0, input.savingsAvailableSats)
   const savingsTotalSats = Math.max(savingsAvailableSats, input.savingsTotalSats)
 
