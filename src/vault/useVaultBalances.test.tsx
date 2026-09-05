@@ -113,7 +113,7 @@ beforeEach(() => {
   mockedTxs.mockResolvedValue([])
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
   mockedWorkerReload.mockResolvedValue(undefined)
-  mockedWorkerRevive.mockResolvedValue(undefined)
+  mockedWorkerRevive.mockResolvedValue({} as Awaited<ReturnType<typeof reviveVaultWalletWorker>>)
   mockedWorkerEvents.mockReturnValue(() => undefined)
 })
 
@@ -246,6 +246,40 @@ describe('useVaultBalances', () => {
     expect(mockedSnapshot).toHaveBeenCalledWith(STATUS)
   })
 
+  it('replaces pending boarding with the settled snapshot while Esplora still lists the deposit', async () => {
+    const deposit = { txid: 'deposit', vout: 0, value: 33_458, status: { confirmed: true } }
+    const pending = {
+      txid: 'deposit',
+      type: 'received' as const,
+      amount: 33_458,
+      confirmed: false,
+      account: 'spend' as const,
+      activity: 'boarding' as const,
+    }
+    const settled = { ...pending, txid: 'commitment', confirmed: true }
+    mockedUtxos.mockImplementation(async (address) => (address === STATUS.vtxoBoardingAddress ? [deposit] : []))
+    mockedSnapshot.mockResolvedValueOnce({ balance: 0, boardingBalance: 33_458, history: [pending] })
+    const { result } = setupHook()
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending.totalSats).toBe(33_458)
+    expect(result.current.history).toEqual([pending])
+
+    mockedSnapshot.mockResolvedValueOnce({ balance: 33_458, boardingBalance: 0, history: [settled] })
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending).toEqual({ availableSats: 33_458, pendingSats: 0, totalSats: 33_458 })
+    expect(result.current.history).toEqual([settled])
+    expect(loadBalanceSnapshot(STATUS.vaultId)?.boardingBalance).toBe(0)
+    expect(loadBalanceSnapshot(STATUS.vaultId)?.history).toEqual([settled])
+
+    // A failed read must not reintroduce the stale pending deposit beside
+    // the previously observed settled balance, including after a reload.
+    mockedSnapshot.mockRejectedValueOnce(new Error('worker unavailable'))
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending).toEqual({ availableSats: 33_458, pendingSats: 0, totalSats: 33_458 })
+    expect(result.current.history).toEqual([settled])
+    expect(mockedUtxos).not.toHaveBeenCalledWith(STATUS.vtxoBoardingAddress)
+  })
+
   it('ignores an older refresh that finishes after a newer snapshot', async () => {
     const older = deferred<Awaited<ReturnType<typeof fetchAddressUtxos>>>()
     let savingsCalls = 0
@@ -289,7 +323,20 @@ describe('useVaultBalances', () => {
       .mockRejectedValueOnce(
         new AggregateError([new Error('SDK worker did not register the Spending contract')], 'teardown failed'),
       )
-      .mockResolvedValueOnce({ balance: 0, boardingBalance: 33_458, history: [] })
+      .mockResolvedValueOnce({
+        balance: 0,
+        boardingBalance: 33_458,
+        history: [
+          {
+            txid: 'b8ed',
+            type: 'received',
+            amount: 33_458,
+            confirmed: false,
+            account: 'spend',
+            activity: 'boarding',
+          },
+        ],
+      })
     const { result } = setupHook()
     await act(async () => result.current.refreshBalance())
     expect(result.current.balancesLoaded).toBe(true)
