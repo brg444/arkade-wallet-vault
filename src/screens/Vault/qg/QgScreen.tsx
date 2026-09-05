@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type PointerEvent, type ReactNode } from 'react'
-import BackIcon from '../../../icons/Back'
+import { ArrowLeft } from 'lucide-react'
 import { hapticLight } from '../../../lib/haptics'
 import { SCREEN_EASE } from './useScreenMotion'
 
@@ -334,7 +334,7 @@ export default function QgScreen({
         <header className='qg-brand'>
           <QgMark />
           <strong>Vaulted</strong>
-          <small>MUTINYNET</small>
+          <small>{import.meta.env.VITE_VAULT_RELEASE_NETWORK === 'mainnet' ? 'BITCOIN' : 'MUTINYNET'}</small>
         </header>
       ) : variant === 'progress' || variant === 'success' || variant === 'unlock' ? null : (
         <header ref={headerRef} className={sheet ? 'qg-header qg-header-sheet' : 'qg-header'}>
@@ -348,7 +348,7 @@ export default function QgScreen({
                 activate(dismiss)()
               }}
             >
-              <BackIcon />
+              <ArrowLeft />
             </button>
           ) : back || close ? (
             <button
@@ -357,7 +357,7 @@ export default function QgScreen({
               data-testid={close ? 'header-close' : 'header-back'}
               onClick={activate(back || close)}
             >
-              {close ? <span aria-hidden='true'>×</span> : <BackIcon />}
+              {close ? <span aria-hidden='true'>×</span> : <ArrowLeft />}
             </button>
           ) : (
             <span />

@@ -280,7 +280,7 @@ describe('gateway response cache policy', () => {
     )
     expect(result.response.statusCode).toBe(400)
     expect(logged).toHaveBeenCalledWith(
-      'vault-board-v1 upstream',
+      'vault funding upstream',
       JSON.stringify({
         status: 400,
         path: '/v1/vtxo/board/prepare',
@@ -291,6 +291,28 @@ describe('gateway response cache policy', () => {
       }),
     )
     logged.mockRestore()
+  })
+
+  it('records a funding rejection without logging request credentials or payment details', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const payload = JSON.stringify({ code: 'REJECTED', error: 'Operator fee policy unavailable' })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(payload, { status: 400 })))
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({
+        method: 'POST',
+        url: '/api/v1/vtxo-reserve',
+        headers: { host: 'vault.example.com', origin: 'https://vault.example.com' },
+        body: JSON.stringify({ phoneSignature: 'private-signature', destAddress: 'private-destination' }),
+      }),
+      result.response,
+    )
+    expect(result.response.statusCode).toBe(400)
+    expect(result.body()?.toString()).toBe(payload)
+    expect(log).toHaveBeenCalledExactlyOnceWith(
+      'vault funding upstream',
+      JSON.stringify({ status: 400, path: '/v1/vtxo/reserve', error: payload }),
+    )
   })
 
   it('does not replace an upstream cache policy', async () => {
