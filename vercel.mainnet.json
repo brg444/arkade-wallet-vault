@@ -31,6 +31,7 @@
   "rewrites": [
     { "source": "/health", "destination": "/api/gateway?route=health" },
     { "source": "/ready", "destination": "/api/gateway?route=ready" },
+    { "source": "/v1/enroll/session", "destination": "/api/authorizer/v1/enroll/session" },
     { "source": "/v1/enroll/:action", "destination": "/api/v1/enroll/:action" },
     { "source": "/v1/passkey/:action", "destination": "/api/v1/passkey/:action" },
     { "source": "/v1/kit", "destination": "/api/kit" },
