@@ -1,9 +1,10 @@
 import { useContext } from 'react'
 import { Clock3 } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
-import { prettyAmount, prettyDate, prettyNumber } from '../../lib/format'
+import { prettyAmount, prettyDate } from '../../lib/format'
 import { vaultTransactionExplorer } from '../../lib/vault/explorer'
 import { VaultContext } from '../../vault/context'
+import QgAmount, { amountSizeStyle } from './qg/QgAmount'
 import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
 
 export default function VaultTx() {
@@ -69,20 +70,24 @@ export default function VaultTx() {
           </small>
         </span>
       </div>
-      <h1>
-        {sent ? '−' : '+'}
-        <small>₿</small>
-        {prettyNumber(amount, 0)}
-      </h1>
+      <div className='qg-transaction-amount'>
+        <h1 style={amountSizeStyle(`${sent ? '−' : '+'}${prettyAmount(amount)}`)}>
+          <QgAmount value={`${sent ? '−' : '+'}${prettyAmount(amount)}`} />
+        </h1>
+      </div>
       <section className='qg-details'>
         <div>
           <span>{sent ? 'Sent' : 'Received'}</span>
-          <strong>{prettyAmount(amount)}</strong>
+          <strong>
+            <QgAmount value={prettyAmount(amount)} />
+          </strong>
         </div>
         {lightning && selectedTx?.fee !== undefined ? (
           <div>
             <span>Fee</span>
-            <strong>{prettyAmount(selectedTx.fee)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(selectedTx.fee)} />
+            </strong>
           </div>
         ) : null}
         <div>
