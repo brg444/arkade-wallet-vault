@@ -254,18 +254,6 @@ export default function VaultHome() {
           </section>
         ) : null}
 
-        {balancesLoaded && !spending && positions.savings.pendingSats > 0 ? (
-          <section className='qg-arrival' aria-label='Funds pending' data-testid='savings-pending'>
-            <span className='qg-status-icon' aria-hidden>
-              <Clock3 />
-            </span>
-            <div>
-              <strong>₿{prettyNumber(positions.savings.pendingSats)} pending</strong>
-              <p>Waiting for Bitcoin confirmation.</p>
-            </div>
-          </section>
-        ) : null}
-
         {initiateAlert ? (
           <button
             type='button'
