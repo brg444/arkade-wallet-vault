@@ -218,7 +218,7 @@ describe('gateway response cache policy', () => {
       expect.objectContaining({ method: 'GET' }),
     )
     expect(result.response.statusCode).toBe(503)
-    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false }))
+    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false, arkadeOrigin: 'configured' }))
   })
 
   it('marks an oversized request as no-store without contacting the upstream', async () => {
@@ -326,6 +326,39 @@ describe('gateway response cache policy', () => {
       'vault funding upstream',
       JSON.stringify({ status: 400, path: '/v1/vtxo/reserve' }),
     )
+  })
+
+  it('keeps private transport details out of public readiness during server upgrades', async () => {
+    const privateOrigin = 'https://private-signer.example.com'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            schema: 1,
+            network: 'mainnet',
+            enrollTemplate: 'phone-hww-recovery-savings-v1',
+            arkadeOrigin: privateOrigin,
+            arkadeVersion: 'v1',
+            debugEndpoint: privateOrigin,
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const result = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ method: 'GET', url: '/ready' }), result.response)
+    expect(result.response.statusCode).toBe(200)
+    expect(JSON.parse(String(result.body()))).toEqual({
+      ok: true,
+      schema: 1,
+      network: 'mainnet',
+      enrollTemplate: 'phone-hww-recovery-savings-v1',
+      arkadeOrigin: 'configured',
+      arkadeVersion: 'v1',
+    })
+    expect(String(result.body())).not.toContain(privateOrigin)
   })
 
   it('does not replace an upstream cache policy', async () => {
