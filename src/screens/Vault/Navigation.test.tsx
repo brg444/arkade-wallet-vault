@@ -115,13 +115,14 @@ describe('Vault navigation', () => {
     const start = parseFloat(layer.style.getPropertyValue('--qg-launcher-y'))
     tab.setPointerCapture = vi.fn()
     act(() => {
-      tab.dispatchEvent(pointer('pointerdown', 390, 640))
+      tab.dispatchEvent(pointer('pointerdown', 390, 640, 1000))
     })
     expect(tab.setPointerCapture).toHaveBeenCalledWith(1)
     act(() => {
-      window.dispatchEvent(pointer('pointermove', 386, 620))
-      window.dispatchEvent(pointer('pointermove', 240, 460))
-      window.dispatchEvent(pointer('pointerup', 240, 460))
+      window.dispatchEvent(pointer('pointermove', 386, 620, 1020))
+      window.dispatchEvent(pointer('pointermove', 240, 460, 1100))
+      // Pause before release to place precisely without starting a glide.
+      window.dispatchEvent(pointer('pointerup', 240, 460, 1250))
     })
     expect(parseFloat(layer.style.getPropertyValue('--qg-launcher-y'))).toBe(start - 180)
     expect(Number(localStorage.getItem('vault-launcher-position-v3'))).toBeGreaterThan(0)
@@ -169,8 +170,8 @@ function pullTab(tab: HTMLElement, distance: number) {
   })
 }
 
-function pointer(type: string, clientX: number, clientY: number) {
-  return new PointerEvent(type, {
+function pointer(type: string, clientX: number, clientY: number, timeStamp?: number) {
+  const event = new PointerEvent(type, {
     bubbles: true,
     cancelable: true,
     clientX,
@@ -178,4 +179,6 @@ function pointer(type: string, clientX: number, clientY: number) {
     pointerId: 1,
     pointerType: 'touch',
   })
+  if (timeStamp !== undefined) Object.defineProperty(event, 'timeStamp', { value: timeStamp })
+  return event
 }

@@ -122,7 +122,7 @@ test('creates and resumes a Savings hardware handoff through the passkey-backed 
     mimeType: 'application/octet-stream',
     buffer: Buffer.from(hardwareSigned, 'hex'),
   })
-  await expect(page.getByText('hardware-signed.psbt is ready to broadcast.')).toBeVisible()
+  await expect(page.getByText('hardware-signed.psbt is ready to check.')).toBeVisible()
   // A success response for another transaction must not discard the durable handoff.
   let rejectedBroadcast = ''
   await page.route(
@@ -133,7 +133,7 @@ test('creates and resumes a Savings hardware handoff through the passkey-backed 
     },
     { times: 1 },
   )
-  await page.getByRole('button', { name: 'Broadcast transaction' }).click()
+  await page.getByRole('button', { name: 'Check and send transaction' }).click()
   await expect(page.getByRole('alert')).toBeVisible()
   expect(rejectedBroadcast).toBe(finalizeSavingsPsbt(hardwareSigned).txHex)
   expect(
@@ -144,7 +144,7 @@ test('creates and resumes a Savings hardware handoff through the passkey-backed 
   ).not.toBeNull()
   expect(authorizer.broadcastedTransaction()).toBe('')
 
-  await page.getByRole('button', { name: 'Broadcast transaction' }).click()
+  await page.getByRole('button', { name: 'Check and send transaction' }).click()
   await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
   await expect.poll(() => authorizer.broadcastedTransaction()).toBe(finalizeSavingsPsbt(hardwareSigned).txHex)
   await expect

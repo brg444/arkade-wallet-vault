@@ -169,9 +169,9 @@ test('@polish persists a phone-signed Savings PSBT and completes a real hardware
     mimeType: 'application/octet-stream',
     buffer: Buffer.from(hardwareSigned, 'hex'),
   })
-  await expect(page.getByText('hardware-signed.psbt is ready to broadcast.')).toBeVisible()
+  await expect(page.getByText('hardware-signed.psbt is ready to check.')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Broadcast transaction' }).click()
+  await page.getByRole('button', { name: 'Check and send transaction' }).click()
   await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
   await expect(page.getByText('Bitcoin confirmation is next')).toBeVisible()
   await expect(page.getByText('PSBT copied')).toBeHidden()

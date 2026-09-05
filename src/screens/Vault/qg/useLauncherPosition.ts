@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { hapticSubtle } from '../../../lib/haptics'
+import { launcherCoast, launcherReleaseVelocity, type LauncherSample } from './launcherMomentum'
 
 const KEY = 'vault-launcher-position-v3'
 const HEIGHT = 72
@@ -26,6 +27,7 @@ export function useLauncherPosition(
   const y = useRef(0)
   const [upper, setUpper] = useState(false)
   const cancel = useRef<() => void>(() => {})
+  const stopCoast = useRef<() => boolean>(() => false)
   const suppressClick = useRef(false)
 
   const bounds = () => {
@@ -41,9 +43,68 @@ export function useLauncherPosition(
     layer.current?.style.setProperty('--qg-launcher-y', `${next}px`)
     setUpper(next + HEIGHT / 2 < bounds().height / 2)
   }
+  const savePosition = (next: number) => {
+    place(next)
+    const { min, max } = bounds()
+    ratio.current = max === min ? 0 : clamp((next - min) / (max - min), 0, 1)
+    try {
+      localStorage.setItem(KEY, String(ratio.current))
+    } catch {
+      // Placement remains available when storage is disabled.
+    }
+  }
+
+  const coast = (button: HTMLButtonElement, from: number, velocity: number) => {
+    const { min, max } = bounds()
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sample = reducedMotion.matches ? null : launcherCoast(from, velocity, min, max)
+    if (!sample) {
+      savePosition(from)
+      return
+    }
+    const started = performance.now()
+    let next = from
+    let frame = 0
+    let active = true
+    button.classList.add('is-repositioning', 'is-coasting')
+    const stop = () => {
+      if (!active) return false
+      active = false
+      cancelAnimationFrame(frame)
+      window.removeEventListener('blur', stop)
+      window.removeEventListener('pagehide', stop)
+      document.removeEventListener('visibilitychange', visibility)
+      reducedMotion.removeEventListener('change', motionChanged)
+      savePosition(next)
+      button.style.removeProperty('--qg-launcher-drag-y')
+      button.classList.remove('is-repositioning', 'is-coasting')
+      return true
+    }
+    const visibility = () => {
+      if (document.hidden) stop()
+    }
+    const motionChanged = () => {
+      if (reducedMotion.matches) stop()
+    }
+    const tick = (now: number) => {
+      if (!active) return
+      const position = sample(now - started)
+      next = position.y
+      button.style.setProperty('--qg-launcher-drag-y', `${next - from}px`)
+      if (position.done) stop()
+      else frame = requestAnimationFrame(tick)
+    }
+    stopCoast.current = stop
+    window.addEventListener('blur', stop)
+    window.addEventListener('pagehide', stop)
+    document.addEventListener('visibilitychange', visibility)
+    reducedMotion.addEventListener('change', motionChanged)
+    frame = requestAnimationFrame(tick)
+  }
 
   useLayoutEffect(() => {
     const resize = () => {
+      stopCoast.current()
       cancel.current()
       const { min, max, height, inset } = bounds()
       place(
@@ -57,6 +118,7 @@ export function useLauncherPosition(
     if (layer.current) observer?.observe(layer.current)
     window.addEventListener('resize', resize)
     return () => {
+      stopCoast.current()
       cancel.current()
       observer?.disconnect()
       window.removeEventListener('resize', resize)
@@ -65,6 +127,7 @@ export function useLauncherPosition(
 
   const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || event.isPrimary === false) return
+    const caughtCoast = stopCoast.current()
     cancel.current()
     const button = event.currentTarget
     const id = event.pointerId
@@ -77,7 +140,8 @@ export function useLauncherPosition(
     let travel = 0
     let frame = 0
     let active = true
-    suppressClick.current = false
+    let samples: LauncherSample[] = [{ y: startTop, time: event.timeStamp }]
+    suppressClick.current = caughtCoast
     try {
       button.setPointerCapture(id)
     } catch {
@@ -88,7 +152,7 @@ export function useLauncherPosition(
       frame = 0
       button.style.setProperty('--qg-launcher-drag-y', `${next - startTop}px`)
     }
-    const finish = (commit: boolean) => {
+    const finish = (commit: boolean, releasedAt = 0) => {
       if (!active) return
       active = false
       cancelAnimationFrame(frame)
@@ -100,12 +164,6 @@ export function useLauncherPosition(
       button.classList.remove('is-repositioning')
       if (axis === 'vertical' && commit) {
         place(next)
-        ratio.current = limits.max === limits.min ? 0 : (next - limits.min) / (limits.max - limits.min)
-        try {
-          localStorage.setItem(KEY, String(ratio.current))
-        } catch {
-          // Placement remains available when storage is disabled.
-        }
         hapticSubtle()
       }
       button.style.removeProperty('--qg-launcher-drag-y')
@@ -113,6 +171,7 @@ export function useLauncherPosition(
       if (axis === 'horizontal' && commit && travel >= 52) open()
       else setPull(0)
       if (button.hasPointerCapture?.(id)) button.releasePointerCapture(id)
+      if (axis === 'vertical' && commit) coast(button, next, launcherReleaseVelocity(samples, releasedAt))
     }
     const move = (pointer: PointerEvent) => {
       if (pointer.pointerId !== id) return
@@ -133,6 +192,12 @@ export function useLauncherPosition(
       pointer.preventDefault()
       if (axis === 'vertical') {
         next = clamp(startTop + dy, limits.min, limits.max)
+        // Retain the sample before the window for interpolation, including sparse touch events.
+        while (samples.length > 1 && samples[1].time < pointer.timeStamp - 100) samples.shift()
+        const last = samples[samples.length - 1]
+        const previous = samples[samples.length - 2]
+        if (previous && last && (next - last.y) * (last.y - previous.y) < 0) samples = [last]
+        samples.push({ y: next, time: pointer.timeStamp })
         if (!frame) frame = requestAnimationFrame(paint)
       } else {
         travel = Math.max(0, -dx)
@@ -142,7 +207,7 @@ export function useLauncherPosition(
     const up = (pointer: PointerEvent) => {
       if (pointer.pointerId !== id) return
       move(pointer)
-      finish(true)
+      finish(true, pointer.timeStamp)
     }
     const interrupted = (pointer: Event) => {
       if ('pointerId' in pointer && pointer.pointerId !== id) return
@@ -165,19 +230,16 @@ export function useLauncherPosition(
         suppressClick.current = false
         return
       }
+      stopCoast.current()
       open()
     },
     onKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
       if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return
       event.preventDefault()
+      stopCoast.current()
+      cancel.current()
       const { min, max } = bounds()
-      place(clamp(y.current + (event.key === 'ArrowUp' ? -32 : 32), min, max))
-      ratio.current = max === min ? 0 : (y.current - min) / (max - min)
-      try {
-        localStorage.setItem(KEY, String(ratio.current))
-      } catch {
-        /* Optional preference. */
-      }
+      savePosition(clamp(y.current + (event.key === 'ArrowUp' ? -32 : 32), min, max))
     },
   }
 }

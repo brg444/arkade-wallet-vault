@@ -25,6 +25,9 @@ describe('Vault error boundary', () => {
     expect(screen.getByText('Vaulted could not display this screen.')).toBeTruthy()
     expect(screen.getByText(/^Incident reference: VLT-/)).toBeTruthy()
     expect(document.body).not.toHaveTextContent(raw)
+    expect(document.body).not.toHaveTextContent('Nothing was sent')
+    expect(document.body).not.toHaveTextContent('This device was not changed')
+    expect(screen.getByText(/check its status after reopening the wallet/)).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Reload' }))
     expect(reload).toHaveBeenCalledTimes(1)
