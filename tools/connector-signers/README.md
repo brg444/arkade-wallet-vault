@@ -29,9 +29,9 @@ CONNECTOR_ELECTRUM_PYTHON=/absolute/path/to/environment/bin/python \
 
 The Python process uses temporary wallet state and public test keys. The native
 seed fixture comes from Electrum's own `tests/test_wallet_vertical.py`.
-No daemon, network service, existing wallet, or user secret is used. Sparrow
-qualification is separate, and BlueWallet-specific changes are outside the
-current scope.
+No daemon, network service, existing wallet, or user secret is used.
+[Sparrow qualification](SPARROW.md) covers native SegWit and Taproot software
+keys. BlueWallet-specific changes are outside the current scope.
 
 ## Transaction screen qualification
 
