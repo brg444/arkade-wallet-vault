@@ -1,6 +1,6 @@
 # Vaulted Light implementation
 
-Status: enrollment and wallet integration candidate, September 5, 2026. **Not ready for a Light-enabled mainnet deployment.** The final enrolled-wallet Bitcoin sweep is waiting for its owner-only delay; its confirmation remains required.
+Status: lifecycle qualification complete, September 5, 2026. **Ready for the RC mainnet rollout once the release commit has green CI.** Deployment has not been performed.
 
 The `vaulted-light-v1` profile uses `vault-light-policy-v1` Spending with immutable per-payment and rolling 24-hour limits. Standard and Advanced keep their existing keys, descriptors, recovery paths, and authenticated ledger records.
 
@@ -32,7 +32,7 @@ The vendored SDK remains at the reviewed Vaulted lineage documented in `node_mod
 - Runtime tests cover open and invite-only enrollment, frozen identities, restart, lost responses, protected change, per-payment limits, authenticated payment signing, and Light-specific key derivation.
 - Wallet tests reject cross-profile substitutions, corrupted backups, wrong secrets, invalid imported keys, altered exit packages, and incomplete recovery execution.
 - The HTTPS browser test uses a real Chromium virtual PRF passkey against the Go application, with an isolated Operator fixture. It covers file verification, reload during setup, enrollment, worker balance loading, Receive, reload/unlock, Security, and narrow-screen dark mode. It does not fund a live test-network wallet.
-- The wallet passed 927 unit tests before the two expiry-reminder checks; both reminder checks also pass. Type checking, wallet lint, the mainnet build, and 69 regression browser checks passed. The opt-in Light browser checks additionally cover restoration with the original PRF passkey and recovery without it.
+- The wallet passed 929 unit tests, including the expiry-reminder checks. Type checking, wallet lint, the mainnet build, and 69 regression browser checks passed. The opt-in Light browser checks additionally cover restoration with the original PRF passkey and recovery without it.
 - Runtime full tests, race checks, lint, vulnerability analysis, and all three image builds passed. The vulnerability scan found no affected call paths. Live mainnet dependency pins were verified separately.
 
 The HTTP compatibility golden adds Light enrollment and renewal shapes, eight routes, optional Light status fields, and the public setup list. Existing Contract Pack and cryptographic vectors remain byte-identical. Runtime schema version 2 adds authenticated renewal operations and events; existing records retain their original MAC encodings.
@@ -49,13 +49,13 @@ The real mobile browser flow now passes enrollment, 50,000-sat receipt, 10,000-s
 
 One confirmed renewal commitment is `3976d350f7026b89f908b142b2d636f8f39234818b02222977b6fb4c76c88ac0`, with replacement output `28c5de13b7841c29cff756f928b2c2021bab1a1114e30bb67baa6e03f85a173e:0`. Repeating its status, registration, and final requests before and after a full runtime process restart returns the same confirmed result without changing durable renewal events. An interrupted registration releases after expiry, with repeated release returning the same terminal result. Two simultaneous live renewal preparations produce exactly one reservation; cancellation closes that reservation before dispatch.
 
-The renewed output's saved emergency package has three transactions, requires 556 sats of external Bitcoin fee funding, and recovers 39,702 sats after a 298-sat sweep fee. Its prerequisite transaction has confirmed. The executor rejects every request outside the Mutinynet Bitcoin explorer and is waiting for the 4,608-second owner-only delay. Final sweep confirmation remains the release gate.
+The renewed output's saved emergency package has three transactions, requires 556 sats of external Bitcoin fee funding, and recovers 39,702 sats after a 298-sat sweep fee. Its owner-only sweep `6d81bce760c9be5d6ededa382fc1ccedb000b0eecd3e5adadfd386d5063796df` confirmed at Mutinynet block 3402489, recovering the full quoted 39,702 sats after the 4,608-second delay. The executor completed with every request restricted to the Mutinynet Bitcoin explorer, while the local Vault service was stopped and no passkey was available.
 
-The renewal flow quotes its fee before confirmation, retains the same Light script and limits, and charges only the fee against the shared allowance. The runtime verifies the complete signed replacement tree and exact forfeit before cosigning. Durable dispatch records prevent automatic resubmission after an unknown outcome. The wallet shows the next expiry and reminds the user within three days; expired balances direct the user to recovery options.
+The renewal flow quotes its fee before confirmation, retains the same Light script and limits, and charges only the fee against the shared allowance. The runtime verifies the complete signed replacement tree and exact forfeit before cosigning. Durable dispatch records prevent automatic resubmission after an unknown outcome. The wallet shows the next expiry and reminds the user within three days; expired balances direct the user to recovery options. Setup and recovery display the configured owner-only delay. Recovery progress distinguishes confirmed steps, waiting deadlines, and failures, with Bitcoin explorer links and a tested pause/resume action.
 
 The pinned SDK remains unchanged. Wallet adapters preserve public MuSig metadata when serializing the signed tree and omit an explicit default-sighash PSBT field that the Go serializer canonically omits. The runtime continues to require canonical proofs and independently valid signatures. Tests cover both serialization cases with the pinned SDK.
 
-The repeatable tools and private-state requirements are documented in `tools/light-qualification/README.md`. Merge and enable Light on RC after the remaining funded sweep and final commit checks pass. The intended release target is `rc.getvaulted.xyz`; `app.getvaulted.xyz` is outside this rollout.
+The repeatable tools and private-state requirements are documented in `tools/light-qualification/README.md`. Merge and enable Light on RC after the final commit checks pass. The intended release target is `rc.getvaulted.xyz`; `app.getvaulted.xyz` is outside this rollout.
 
 ## Local browser check
 
