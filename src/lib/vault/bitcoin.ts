@@ -52,3 +52,11 @@ export function scriptHexFromAddress(address: string, network: string): string {
     throw new Error('not a bitcoin address')
   }
 }
+
+export function bitcoinDustSats(address: string, network: string): number {
+  const script = hex.decode(scriptHexFromAddress(address, network))
+  const type = OutScript.decode(script).type
+  const outputVbytes = 8 + 1 + script.length
+  const spendVbytes = type === 'wpkh' || type === 'wsh' || type === 'tr' ? 67 : 148
+  return 3 * (outputVbytes + spendVbytes)
+}

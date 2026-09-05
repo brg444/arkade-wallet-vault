@@ -30,7 +30,7 @@ import {
   type PendingSavingsHandoff,
 } from '../lib/vault/savingsHandoff'
 import { humanizeVaultError } from '../lib/vault/humanize'
-import { isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
+import { bitcoinDustSats, isVaultArkAddress, isVaultSpendAddress } from '../lib/vault/bitcoin'
 import {
   discoverVaultLightningSolver,
   isVaultLightningInput,
@@ -639,10 +639,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setError('Enter an Arkade or Bitcoin address.')
       return
     }
-    if (!Number.isInteger(spend.amount) || spend.amount < DUST_SATS) {
-      setError('At least ₿330.')
-      return
-    }
     const arkDestination = isVaultArkAddress(spend.address, destNetwork)
     if (arkDestination && account === 'savings') {
       setError('Savings sends require a Bitcoin address.')
@@ -650,6 +646,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     if (!arkDestination && account === 'spend' && status?.enrolled) {
       setError('Spending currently sends VTXOs to Arkade addresses. Bitcoin withdrawal is not in this rollout yet.')
+      return
+    }
+    const minimumAmount = account === 'savings' ? bitcoinDustSats(spend.address, destNetwork) : DUST_SATS
+    if (!Number.isInteger(spend.amount) || spend.amount < minimumAmount) {
+      setError(`At least ₿${minimumAmount}.`)
       return
     }
     const source = account === 'savings' ? savingsAvailableSats : spendingAvailableSats
@@ -832,6 +833,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           pendingSavingsHandoff.destAddress,
           pendingSavingsHandoff.amountSats,
           pendingSavingsHandoff.network,
+          enrollment?.phoneBip340Pub || '',
+          status?.externalOwnerWalletPub || '',
         )
         const final = finalizeSavingsPsbt(incoming)
         const txid = await broadcastTx(final.txHex)
@@ -843,7 +846,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [discardPendingSavingsHandoff, finishBroadcast, handoffPsbt, pendingSavingsHandoff],
+    [
+      discardPendingSavingsHandoff,
+      enrollment?.phoneBip340Pub,
+      finishBroadcast,
+      handoffPsbt,
+      pendingSavingsHandoff,
+      status?.externalOwnerWalletPub,
+    ],
   )
 
   const approveSend = useCallback(async () => {
@@ -978,6 +988,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
                   replaceExisting,
                   phoneSecret: auth.phoneSecret,
                 })
+            if (!resumePending && quote.feeSats !== reviewed.feeSats) {
+              setReviewedVtxoQuote(quote)
+              setSpend((current) => ({ ...current, fee: quote.feeSats }))
+              setError('The network fee changed. Review the updated total before approving.')
+              return
+            }
             const result = await sendVaultVtxo(enrollment, status, quote, () => unlocker)
             await finishBroadcast(result.txid, 'vtxo', result.feeSats)
           } finally {

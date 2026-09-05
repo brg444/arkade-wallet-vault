@@ -1,6 +1,6 @@
 import { hex } from '@scure/base'
 import { Transaction } from '@scure/btc-signer'
-import { scriptHexFromAddress } from './bitcoin'
+import { bitcoinDustSats, scriptHexFromAddress } from './bitcoin'
 import { zeroBytes } from './ceremony/directauth'
 import { DUST_SATS } from './constants'
 import type { EnrollmentSecrets } from './tenantEnrollment'
@@ -12,6 +12,7 @@ import { loadLocalKit } from './program/kitStore'
 import { assertLiveKit } from './program/liveKit'
 import { sameBip340Key } from './setupPlan'
 import { deviceSigningOptions, prfExtension, prfFrom } from './webauthn'
+import { requireExactDefaultTapscriptSignatures, tapscriptSignatureRecords } from './taprootSignatures'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -39,7 +40,10 @@ export function buildSavingsPsbt(input: {
   if (!pin) throw new Error('deposit address is not pinned locally')
   requireStatusMatchesPin(input.status, pin)
   if (pin.savingsAddress !== input.status.savingsAddress) throw new Error('savings address pin mismatch')
-  if (!Number.isInteger(input.amountSats) || input.amountSats < DUST_SATS) throw new Error('at least ₿330')
+  const recipientDustSats = bitcoinDustSats(input.destAddress, input.status.network)
+  if (!Number.isInteger(input.amountSats) || input.amountSats < recipientDustSats) {
+    throw new Error(`at least ₿${recipientDustSats}`)
+  }
   if (!Number.isInteger(input.feeSats) || input.feeSats < 0) throw new Error('fee required')
   const total = input.amountSats + input.feeSats
   if (input.coins.length === 0) throw new Error('confirmed Savings coins required')
@@ -266,6 +270,8 @@ export function requireSameSavingsIntent(
   destAddress: string,
   amountSats: number,
   network: string,
+  phonePub: string,
+  hardwarePub: string,
 ) {
   const beforeTx = Transaction.fromPSBT(hex.decode(unsignedHex), TX_OPTS)
   const afterTx = Transaction.fromPSBT(hex.decode(signedHex), TX_OPTS)
@@ -286,5 +292,12 @@ export function requireSameSavingsIntent(
   if (destination.amount !== amountSats) throw new Error('signed amount does not match')
   const want = scriptHexFromAddress(destAddress, network)
   if (destination.script !== want) throw new Error('signed destination does not match')
-  if (after.inputs.some((current) => current.sigs < 2)) throw new Error('hardware did not sign every Savings input')
+  for (let index = 0; index < afterTx.inputsLength; index++) {
+    requireExactDefaultTapscriptSignatures(beforeTx, index, [phonePub])
+    requireExactDefaultTapscriptSignatures(afterTx, index, [phonePub, hardwarePub])
+    const returned = new Set(tapscriptSignatureRecords(afterTx, index))
+    if (tapscriptSignatureRecords(beforeTx, index).some((record) => !returned.has(record))) {
+      throw new Error('hardware changed the phone Savings signature')
+    }
+  }
 }
