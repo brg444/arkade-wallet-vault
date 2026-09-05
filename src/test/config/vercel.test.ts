@@ -33,6 +33,18 @@ describe('Vercel worker caching', () => {
     ])
   })
 
+  it.each(['vercel.json', 'vercel.mainnet.json'])('routes open enrollment through a flat function in %s', (file) => {
+    const config = JSON.parse(readFileSync(file, 'utf8')) as {
+      rewrites: { source: string; destination: string }[]
+    }
+    const session = config.rewrites.findIndex((entry) => entry.source === '/v1/enroll/session')
+    const enrollment = config.rewrites.findIndex((entry) => entry.source === '/v1/enroll/:action')
+    expect(session).toBeGreaterThanOrEqual(0)
+    expect(session).toBeLessThan(enrollment)
+    expect(config.rewrites[session].destination).toBe('/api/gateway?route=enroll-session')
+    expect(readFileSync('api/gateway.ts', 'utf8')).toContain('./authorizer/[...path].js')
+  })
+
   it('routes readiness through the authorizer gateway', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
       rewrites: { source: string; destination: string }[]

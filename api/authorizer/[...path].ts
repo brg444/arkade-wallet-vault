@@ -174,6 +174,7 @@ export function publicAuthorizerPath(url = ''): string {
     const route = params.get('route') || ''
     if (route === 'health') return '/health'
     if (route === 'ready') return '/ready'
+    if (route === 'enroll-session') return '/v1/enroll/session'
     const phase = params.get('phase') || ''
     if (route === 'board' && BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
     return raw + q

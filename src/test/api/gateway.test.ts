@@ -222,6 +222,26 @@ describe('gateway response cache policy', () => {
     expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false, arkadeOrigin: 'configured' }))
   })
 
+  it('forwards open enrollment through the flat gateway without a user invite', async () => {
+    const session = JSON.stringify({ token: 'public-session', expiresAt: '2026-09-05T12:10:00Z' })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(session, { status: 200, headers: { 'Cache-Control': 'no-store' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({ method: 'POST', url: '/api/gateway?route=enroll-session', body: '{}' }),
+      result.response,
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://authorizer.example/v1/enroll/session',
+      expect.objectContaining({ method: 'POST', body: Buffer.from('{}') }),
+    )
+    expect(result.response.statusCode).toBe(200)
+    expect(result.body()?.toString()).toBe(session)
+    expect(result.headers.get('cache-control')).toBe('no-store')
+  })
+
   it('marks an oversized request as no-store without contacting the upstream', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
