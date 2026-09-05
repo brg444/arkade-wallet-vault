@@ -4,10 +4,9 @@ Vaulted is a passkey-first Bitcoin wallet that separates everyday spending
 from hardware-protected savings, with Bitcoin ownership, policy, and recovery
 at the center of the product.
 
-> [!WARNING]
-> The public release candidate runs on **Mutinynet only**. Do not use real
-> funds. Mainnet activation remains gated by the qualification work described
-> below.
+> [!NOTE]
+> Mainnet RC is deployed at `rc.getvaulted.xyz` and remains under lifecycle
+> qualification. The separate Mutinynet deployment is available for testing.
 
 [Open the Mutinynet release candidate](https://arkade-vault-mutinynet-rc.vercel.app)
 · [Read the documentation](docs/README.md)
@@ -101,9 +100,8 @@ path. See [VTXO boarding](docs/boarding.md) and the
 
 ## Security model
 
-The browser never receives the VaultCosigner key. Production screens do not
-accept hardware or recovery private keys; those workflows exchange PSBTs with
-an external signer.
+The Guardian retains the VaultCosigner key within its signing process.
+Hardware and recovery workflows exchange PSBTs with an external signer.
 
 One scoped worker owns the official SDK Wallet, Contract Manager, repositories,
 and the boarding key provisioned after PRF unlock. The page does not receive
@@ -149,7 +147,9 @@ Run the release checks with:
 pnpm test:unit
 pnpm lint
 pnpm format:check
-pnpm build
+pnpm build:mutinynet
+pnpm build:mainnet
+node scripts/verify-mainnet-build.mjs
 ```
 
 End-to-end and release qualification procedures are documented in
@@ -157,10 +157,23 @@ End-to-end and release qualification procedures are documented in
 
 ## Mainnet candidate
 
-Mainnet must use a separate Vercel project and must not replace the Mutinynet
-deployment. Deploy from a directory linked only to that project. Build with
-`pnpm build:mainnet` and pass `vercel --local-config vercel.mainnet.json`
-plus the mainnet project name. Set the release network at **build** time.
+Mainnet uses a separate Vercel project with independent deployment state.
+Create a clean source archive in a staging directory linked only
+to the mainnet project, and copy `vercel.mainnet.json` to `vercel.json` there.
+The canonical configuration must specify `pnpm build:mainnet`; an alternate
+CLI configuration file alone does not guarantee the remote build command.
+Set `VAULT_RELEASE_NETWORK=mainnet` in the project and explicitly supply
+`VITE_VAULT_RELEASE_NETWORK=mainnet` and `VITE_VAULT_LIGHTNING_SEND=true` as
+build environment variables. Missing or conflicting network settings stop the
+app and worker builds.
+
+Deploy with `--prod --skip-domain`, verify the compiled mainnet app with
+`scripts/verify-mainnet-build.mjs`, and compare the deployed worker with the
+locally tested artifact before promoting the immutable deployment. After
+promotion, run `pnpm verify:deployment https://rc.getvaulted.xyz
+<deployment-url> mainnet` to verify the alias, release manifest, worker hash,
+and Guardian readiness. Repeat for the app alias.
+
 Intended production names:
 
 - Wallet: `https://app.getvaulted.xyz`
@@ -170,7 +183,7 @@ Intended production names:
 
 This RC’s authorizer pins WebAuthn to `rc.getvaulted.xyz`. The app host
 redirects there before any passkey ceremony so Face ID looks up the same RP ID
-the vault was created with. Do not attach these names to the Mutinynet project.
+the vault was created with. These names belong to the mainnet project.
 
 The mainnet environment requires a fresh authorizer through `AUTHORIZER_ORIGIN`
 and `AUTHORIZER_GATEWAY_SECRET`, `VAULT_RELEASE_NETWORK=mainnet`, and
@@ -180,8 +193,8 @@ reject any mainnet host other than `app.getvaulted.xyz` or `rc.getvaulted.xyz`.
 Lightning receive stays disabled. Lightning send, when enabled, uses a
 bundled signed solver card and does not follow a public registry.
 
-Do not reuse the Mutinynet hostname, WebAuthn RP ID, secrets, vault records,
-database, policy-sequence state, rate-limit store, or Vercel project.
+Provision independent mainnet hostnames, WebAuthn RP IDs, secrets, vault
+records, database, policy-sequence state, rate-limit store, and Vercel project.
 
 ## Release status
 
@@ -189,15 +202,14 @@ Ordinary VTXO Spending supports fragmented inputs, exact no-change sends, the
 Operator's bounded intent-fee policy, and recovery after ambiguous Operator
 submission through the official SDK pending-transaction interface.
 
-Mainnet activation remains blocked on live lifecycle qualification, browser
-concurrency testing, production key isolation, and audited infrastructure
-provisioning. The confirmed mainnet Emulator advertises the signer pinned by
-the official SDK, but has not passed Vault release qualification. Vault Program
-and policy-schema bounds also require a separate mainnet review.
+The mainnet RC has live boarding confirmation, while direct-send and Lightning
+payment qualification remains in progress. Release checks cover the mainnet
+Contract Pack, network-specific policy limits, compiled browser behavior,
+and Recovery Kit interoperability. Mainnet uses the pinned Operator and
+Emulator identities documented in [the baseline](docs/mainnet-v2-baseline.md).
 
-Outbound BOLT11 support remains disabled. Its solver, refund, expiry, and
-live-payment gates are recorded in [docs/lightning.md](docs/lightning.md). The
-complete activation gate is in
-[docs/mainnet-v2-baseline.md](docs/mainnet-v2-baseline.md).
+Outbound BOLT11 support is enabled on the mainnet RC for qualification;
+Lightning receive remains disabled. Solver, refund, expiry, and live-payment
+requirements are recorded in [docs/lightning.md](docs/lightning.md).
 
 Report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
