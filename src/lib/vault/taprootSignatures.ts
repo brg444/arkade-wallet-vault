@@ -1,6 +1,6 @@
-import { scriptFromTapLeafScript, Transaction, verifyTapscriptSignatures } from '@arkade-os/sdk'
+import { scriptFromTapLeafScript, Transaction as ArkadeTransaction, verifyTapscriptSignatures } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { SigHash } from '@scure/btc-signer'
+import { SigHash, type Transaction } from '@scure/btc-signer'
 import { tapLeafHash } from '@scure/btc-signer/payment.js'
 
 export function xOnlyTapscriptPub(value: string, name: string): string {
@@ -38,5 +38,5 @@ export function requireExactDefaultTapscriptSignatures(
   const leaf = input.tapLeafScript[0]
   const scriptWithVersion = leaf[1]
   const leafHash = tapLeafHash(scriptFromTapLeafScript(leaf), scriptWithVersion[scriptWithVersion.length - 1])
-  verifyTapscriptSignatures(tx, inputIndex, expected, [], [SigHash.DEFAULT], leafHash)
+  verifyTapscriptSignatures(tx as ArkadeTransaction, inputIndex, expected, [], [SigHash.DEFAULT], leafHash)
 }

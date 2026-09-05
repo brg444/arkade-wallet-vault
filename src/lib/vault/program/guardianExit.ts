@@ -1,5 +1,5 @@
-import { Transaction } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { Transaction } from '@scure/btc-signer'
 import { scriptHexFromAddress } from '../bitcoin'
 import { requireExactDefaultTapscriptSignatures, xOnlyTapscriptPub } from '../taprootSignatures'
 import { type Claimant } from './constants'
