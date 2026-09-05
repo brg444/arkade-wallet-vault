@@ -168,6 +168,8 @@ function Probe() {
   return (
     <div>
       <span data-testid='screen'>{vault.screen}</span>
+      <span data-testid='account'>{vault.account}</span>
+      <span data-testid='scan'>{String(vault.scanOnSend)}</span>
       <span data-testid='ready'>{String(Boolean(vault.status?.enrolled))}</span>
       <span data-testid='fee'>{vault.spend.fee}</span>
       <span data-testid='destination'>{vault.spend.address}</span>
@@ -281,6 +283,22 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
     expect(screen.getByTestId('screen')).toHaveTextContent('send')
     expect(screen.getByTestId('destination')).toHaveTextContent('')
+  })
+
+  it.each(['spend', 'savings'] as const)('opens the Home camera without changing the %s account', async (account) => {
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    if (account === 'savings') fireEvent.click(screen.getByRole('button', { name: 'Show Savings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
+    expect(screen.getByTestId('account')).toHaveTextContent(account)
+    expect(screen.getByTestId('screen')).toHaveTextContent('send')
+    expect(screen.getByTestId('scan')).toHaveTextContent('true')
+    expect(screen.getByTestId('destination')).toBeEmptyDOMElement()
   })
 
   it('reviews a VTXO send with zero Face ID calls and unlocks once on Approve', async () => {
