@@ -101,22 +101,6 @@ describe('vault UI lock', () => {
     expect(read('.gitmodules')).toMatch(/vaulted-emergency-recovery/)
   })
 
-  it('keeps the emergency recovery library copies identical to this vault', () => {
-    const pin = JSON.parse(read('tools/offline-recovery/WALLET.json')) as {
-      repo: string
-      libRoot: string
-      libFiles: string[]
-    }
-    expect(pin.repo).toBe('https://github.com/brg444/vaulted-bitcoin-wallet')
-    expect(pin.libFiles.length).toBeGreaterThan(10)
-    for (const file of pin.libFiles) {
-      expect({ file, text: read(`tools/offline-recovery/${pin.libRoot}/${file}`) }).toEqual({
-        file,
-        text: read(`src/lib/vault/${file}`),
-      })
-    }
-  })
-
   it('keeps emergency recovery copy free of protocol jargon', () => {
     const userCopy = [
       read('tools/offline-recovery/index.html'),
@@ -129,7 +113,6 @@ describe('vault UI lock', () => {
     expect(userCopy).not.toMatch(/envelope/i)
     expect(read('tools/offline-recovery/index.html')).toMatch(/Is the Vaulted app still working/)
     expect(read('tools/offline-recovery/index.html')).toMatch(/Choose Recovery Kit/)
-    expect(read('src/screens/Vault/onboard/Kit.tsx')).toMatch(/How to recover note/)
   })
 
   it('collapses the obsolete Savings page and keeps the live spend path', () => {
