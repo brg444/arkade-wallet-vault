@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultTx from './Tx'
 
-function renderTx(selectedTx: VaultContextProps['selectedTx']) {
+function renderTx(selectedTx: VaultContextProps['selectedTx'], network = 'mutinynet') {
   const retryLightningRefund = vi.fn(async () => {})
   render(
     <VaultContext.Provider
@@ -12,7 +12,7 @@ function renderTx(selectedTx: VaultContextProps['selectedTx']) {
           navigate: vi.fn(),
           retryLightningRefund,
           selectedTx,
-          status: { network: 'mutinynet' },
+          status: { network },
         } as unknown as VaultContextProps
       }
     >
@@ -26,7 +26,6 @@ describe('Vault transaction details', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('uses pending language and links Spending activity to Arkade Space', () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderTx({
       txid: 'ark-transaction',
       type: 'received',
@@ -36,18 +35,16 @@ describe('Vault transaction details', () => {
       account: 'spend',
     })
 
+    expect(screen.getByRole('img', { name: 'Pending status' })).toHaveClass('lucide-clock3')
     expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
     expect(screen.getByText('Mutinynet')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'View on Arkade Space' }))
-    expect(open).toHaveBeenCalledWith(
+    expect(screen.getByRole('link', { name: 'View on Arkade Space' })).toHaveAttribute(
+      'href',
       'https://explorer.mutinynet.arkade.sh/tx/ark-transaction',
-      '_blank',
-      'noopener,noreferrer',
     )
   })
 
   it('uses Bitcoin confirmation language and links Savings transactions', () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderTx({
       txid: 'bitcoin-transaction',
       type: 'sent',
@@ -57,17 +54,15 @@ describe('Vault transaction details', () => {
       account: 'savings',
     })
 
+    expect(screen.getByRole('img', { name: 'Confirmed status' })).toHaveClass('lucide-circle-check')
     expect(screen.getAllByText('Confirmed').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: 'View on Bitcoin explorer' }))
-    expect(open).toHaveBeenCalledWith(
+    expect(screen.getByRole('link', { name: 'View on Bitcoin explorer' })).toHaveAttribute(
+      'href',
       'https://mempool.mutinynet.arkade.sh/tx/bitcoin-transaction',
-      '_blank',
-      'noopener,noreferrer',
     )
   })
 
   it('keeps boarding activity pending and links it to the Bitcoin transaction', () => {
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     renderTx({
       txid: 'boarding-transaction',
       type: 'received',
@@ -78,11 +73,9 @@ describe('Vault transaction details', () => {
     })
 
     expect(screen.getAllByText('Pending').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: 'View on Bitcoin explorer' }))
-    expect(open).toHaveBeenCalledWith(
+    expect(screen.getByRole('link', { name: 'View on Bitcoin explorer' })).toHaveAttribute(
+      'href',
       'https://mempool.mutinynet.arkade.sh/tx/boarding-transaction',
-      '_blank',
-      'noopener,noreferrer',
     )
   })
 
@@ -133,4 +126,41 @@ describe('Vault transaction details', () => {
     expect(screen.getAllByText('Needs recovery').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Return to Spending' })).toBeNull()
   })
+})
+
+it.each([
+  ['spend', undefined, 'https://arkade.space/tx/'],
+  ['savings', undefined, 'https://mempool.space/tx/'],
+  ['spend', 'boarding', 'https://mempool.space/tx/'],
+] as const)('shows a full mainnet transaction reference for %s %s', (account, activity, base) => {
+  const txid = 'ab'.repeat(32)
+  renderTx({ txid, type: 'received', amount: 12000, confirmed: true, account, activity }, 'mainnet')
+  expect(screen.getByText(txid)).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Copy transaction ID' })).toBeVisible()
+  expect(screen.getByRole('link')).toHaveAttribute('href', base + txid)
+})
+
+it.each([
+  ['claimed', 'Paid', 'lucide-circle-check'],
+  ['settled', 'Paid', 'lucide-circle-check'],
+  ['refunded', 'Refunded', 'lucide-circle-check'],
+  ['needs_counterparty', 'Ready to return', 'lucide-circle-alert'],
+  ['failed', 'Needs recovery', 'lucide-circle-alert'],
+  ['funded', 'Processing', 'lucide-clock3'],
+])('uses the Lightning outcome for %s even after the funding transaction settles', (lightningState, label, icon) => {
+  renderTx(
+    {
+      txid: 'ab'.repeat(32),
+      type: 'sent',
+      amount: 12000,
+      confirmed: true,
+      account: 'spend',
+      activity: 'lightning',
+      lightningState,
+    },
+    'mainnet',
+  )
+  expect(screen.getByRole('img', { name: `${label} status` })).toHaveClass(icon)
+  expect(screen.queryByText('This payment is confirmed.')).toBeNull()
+  expect(screen.getByText('Funding transaction ID')).toBeVisible()
 })

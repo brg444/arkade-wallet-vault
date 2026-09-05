@@ -1,0 +1,64 @@
+.qg-transaction-reference {
+  width: 100%;
+  min-width: 0;
+  margin: 20px 0;
+  padding: 16px 0;
+  border-block: 1px solid var(--qg-line);
+  text-align: left;
+}
+.qg-details + .qg-transaction-reference {
+  margin-top: 0;
+  border-top: 0;
+}
+.qg-transaction-reference > span,
+.qg-transaction-reference > p {
+  color: var(--qg-muted);
+  font-size: var(--qg-caption);
+}
+.qg-transaction-reference code {
+  display: block;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  user-select: all;
+  -webkit-user-select: all;
+}
+.qg-transaction-reference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+.qg-transaction-reference-actions button,
+.qg-transaction-reference-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--qg-ink);
+  font-size: var(--qg-caption);
+  line-height: 1.5;
+  text-decoration: none;
+  cursor: pointer;
+}
+.qg-transaction-reference-actions a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.qg-transaction-reference-actions svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.qg-pending-label[data-state='complete'] > svg {
+  color: var(--qg-green);
+}
+.qg-pending-label[data-state='unknown'] > svg {
+  color: var(--qg-muted);
+}

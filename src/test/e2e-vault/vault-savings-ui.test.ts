@@ -175,7 +175,16 @@ test('@polish persists a phone-signed Savings PSBT and completes a real hardware
   await expect(page.getByRole('heading', { name: 'Savings transfer submitted' })).toBeVisible()
   await expect(page.getByText('Bitcoin confirmation is next')).toBeVisible()
   await expect(page.getByText('PSBT copied')).toBeHidden()
+  const reference = page.getByRole('region', { name: 'Transaction reference' })
+  const txid = await reference.locator('code').innerText()
+  expect(txid).toMatch(/^[0-9a-f]{64}$/)
+  await expect(reference.getByRole('link', { name: 'View on Bitcoin explorer' })).toHaveAttribute(
+    'href',
+    `https://mempool.mutinynet.arkade.sh/tx/${txid}`,
+  )
   await expect(page).toHaveScreenshot('savings-transfer-success.png', { animations: 'disabled', fullPage: true })
+  await reference.getByRole('button', { name: 'Copy transaction ID' }).click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(txid)
   await expect.poll(broadcastHex).toMatch(/^[0-9a-f]+$/)
   await expect
     .poll(() => page.evaluate((id) => localStorage.getItem(`arkade-vault-savings-handoff-v1:${id}`), status.vaultId))

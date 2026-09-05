@@ -16,11 +16,9 @@ describe('vaultTransactionExplorer', () => {
     })
   })
 
-  it('uses Arkade Space and the configured Bitcoin explorer on mainnet', () => {
-    expect(vaultTransactionExplorer('ark-tx', 'arkade', 'bitcoin')?.url).toBe('https://arkade.space/tx/ark-tx')
-    expect(vaultTransactionExplorer('bitcoin-tx', 'onchain', 'bitcoin')?.url).toBe(
-      'https://mempool.space/tx/bitcoin-tx',
-    )
+  it.each(['mainnet', 'bitcoin'])('uses mainnet explorers for %s network naming', (network) => {
+    expect(vaultTransactionExplorer('ark-tx', 'arkade', network)?.url).toBe('https://arkade.space/tx/ark-tx')
+    expect(vaultTransactionExplorer('bitcoin-tx', 'onchain', network)?.url).toBe('https://mempool.space/tx/bitcoin-tx')
   })
 
   it('does not invent an explorer for unsupported networks or empty transaction ids', () => {

@@ -1,3 +1,5 @@
+import { sdkNetworkName } from './networkPins'
+
 export type VaultTransactionKind = 'arkade' | 'onchain'
 
 export interface VaultTransactionExplorer {
@@ -17,12 +19,13 @@ export function vaultTransactionExplorer(
 ): VaultTransactionExplorer | null {
   const id = txid.trim()
   if (!id) return null
+  const resolvedNetwork = sdkNetworkName(network)
   const base =
-    network === 'mutinynet'
+    resolvedNetwork === 'mutinynet'
       ? kind === 'arkade'
         ? MUTINYNET_ARKADE_SPACE
         : MUTINYNET_BITCOIN_EXPLORER
-      : network === 'bitcoin'
+      : resolvedNetwork === 'bitcoin'
         ? kind === 'arkade'
           ? MAINNET_ARKADE_SPACE
           : MAINNET_BITCOIN_EXPLORER
