@@ -1900,6 +1900,9 @@ async function authorizeReservedVtxoSpend(
     authorizedPsbt: authorized.authorizedPsbt,
     authorizedPendingProof,
   }
+  // The Guardian and SDK may order PSBT fields differently. Validate the
+  // complete signed bundle, then persist the same serialization the SDK uses.
+  next.authorizedPsbt = requireVaultAuthorizedArk(next, status)
   persistVtxoSpend(next)
   const persisted = loadPersistedVtxoSpendById(next.vaultId, next.operationId)
   if (
