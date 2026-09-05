@@ -67,29 +67,51 @@ describe('Welcome installation notice', () => {
     expect(screen.getByRole('button', { name: /Install Vaulted/ })).toBeVisible()
   })
 
-  it('uses a native offer once, keeps fallback steps after cancellation, and accepts a fresh offer', async () => {
+  it('opens the native offer directly and respects cancellation before accepting a fresh offer', async () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Android')
     render(<InstallNotice />)
     const prompt = vi.fn().mockResolvedValue({ outcome: 'dismissed' })
     expect(offerInstall(prompt).defaultPrevented).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
-    const sheet = screen.getByRole('dialog')
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Install Vaulted' }))
-    await waitFor(() => expect(within(sheet).queryByRole('button', { name: 'Install Vaulted' })).toBeNull())
     expect(prompt).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await waitFor(() => expect(screen.getByRole('button', { name: /Install Vaulted/ })).toBeEnabled())
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // Only another explicit request opens manual steps after the event is consumed.
+    fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
+    const sheet = screen.getByRole('dialog')
     expect(within(sheet).getByText('Add to Home screen')).toBeVisible()
+    expect(prompt).toHaveBeenCalledTimes(1)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Continue in browser' }))
     const retry = vi.fn().mockResolvedValue({ outcome: 'accepted' })
     offerInstall(retry)
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Install Vaulted' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Install Vaulted/ })).toBeEnabled())
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not invoke the native prompt again while it is open', async () => {
+    render(<InstallNotice />)
+    let resolve!: (choice: { outcome: 'dismissed' }) => void
+    const prompt = vi.fn(() => new Promise<{ outcome: 'dismissed' }>((done) => (resolve = done)))
+    offerInstall(prompt)
+    const trigger = screen.getByRole('button', { name: /Install Vaulted/ })
+    fireEvent.click(trigger)
+    expect(trigger).toBeDisabled()
+    fireEvent.click(trigger)
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    await act(async () => resolve({ outcome: 'dismissed' }))
+    expect(trigger).toBeEnabled()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('handles an unavailable native prompt and hides after the browser confirms installation', async () => {
     render(<InstallNotice />)
     offerInstall(vi.fn().mockRejectedValue(new Error('unavailable')))
     fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Install Vaulted' }))
     await screen.findByRole('status')
     act(() => window.dispatchEvent(new Event('appinstalled')))
     expect(screen.queryByRole('dialog')).toBeNull()

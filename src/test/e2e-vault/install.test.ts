@@ -1,6 +1,32 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 
+test('@polish @visual-refinement welcome opens the native install offer directly', async ({ page }) => {
+  await page.goto('/')
+  const trigger = page.getByRole('button', { name: /Install Vaulted/ })
+  await expect(trigger).toBeVisible()
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt', { cancelable: true })
+    Object.assign(event, {
+      prompt: async () => {
+        document.documentElement.dataset.installCalls = String(
+          Number(document.documentElement.dataset.installCalls ?? '0') + 1,
+        )
+        document.documentElement.dataset.installActivation = String(navigator.userActivation.isActive)
+        return { outcome: 'dismissed' }
+      },
+    })
+    window.dispatchEvent(event)
+  })
+  await trigger.click()
+  await expect(page.locator('html')).toHaveAttribute('data-install-calls', '1')
+  await expect(page.locator('html')).toHaveAttribute('data-install-activation', 'true')
+  await expect(trigger).toBeEnabled()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Get started', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'How it works', exact: true })).toBeVisible()
+})
+
 for (const dark of [false, true]) {
   test(`@polish @visual-refinement welcome install guide is accessible and dismissible (${dark ? 'dark' : 'light'})`, async ({
     page,
