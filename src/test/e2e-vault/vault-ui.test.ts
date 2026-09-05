@@ -1105,3 +1105,96 @@ test.describe('interaction quality', () => {
     expect(resizedTab.y + resizedTab.height).toBeLessThanOrEqual(resizedFrame.y + resizedFrame.height)
   })
 })
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`@visual-refinement ${theme} layout keeps amounts, fields and surfaces within the wallet`, async ({
+    page,
+  }, testInfo) => {
+    const { status, destination } = await openVault(page)
+    await setOperatorVtxos([await wireVtxo(page, status, { amount: 100_000_000, txid: VTXO_TXID })])
+    await refreshHome(page)
+    await expect(page.getByTestId('vault-balance')).toContainText('100,000,000')
+    await page.evaluate((dark) => document.documentElement.classList.toggle('palette-dark', dark), theme === 'dark')
+    const capture = async (name: string) => {
+      await page.evaluate(() => document.fonts.ready)
+      await page.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled' })
+    }
+    const contained = async (selector: string) => {
+      const boxes = await page.locator(selector).evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const rect = node.getBoundingClientRect()
+          const shell = node.closest('[data-testid="vault-app"]')!.getBoundingClientRect()
+          return {
+            left: rect.left - shell.left,
+            right: shell.right - rect.right,
+            scroll: node.scrollWidth - node.clientWidth,
+          }
+        }),
+      )
+      expect(boxes.length).toBeGreaterThan(0)
+      for (const box of boxes) {
+        expect(box.left).toBeGreaterThanOrEqual(-1)
+        expect(box.right).toBeGreaterThanOrEqual(-1)
+        expect(box.scroll).toBeLessThanOrEqual(1)
+      }
+    }
+    await contained('.qg-balance strong, .vault-history-amt')
+    await expect(page.locator('.vault-history-amt')).toHaveCSS('white-space', 'nowrap')
+    await capture('home-long-balance')
+    await page.getByRole('button', { name: 'Send', exact: true }).click()
+    await page.getByTestId('vault-send-amount').fill('100000000')
+    await page.getByTestId('vault-send-amount').blur()
+    await expect(page.locator('.qg-capacity')).toHaveCSS('border-top-width', '0px')
+    await contained('.qg-dest-field, .qg-amount-entry')
+    const amount = page.getByTestId('vault-send-amount')
+    expect(await amount.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    await capture('send-long-amount')
+    await page.getByTestId('vault-send-amount').fill('12000')
+    await page.getByRole('textbox', { name: 'To', exact: true }).fill(destination)
+    await seedReviewedSpend(page, status, destination, 12_000, 500, 99_987_500)
+    await page.getByTestId('vault-send-amount').blur()
+    const gutter = (page.viewportSize()?.width || 390) < 360 ? '20px' : '24px'
+    await expect(page.locator('.qg-main')).toHaveCSS('padding-left', gutter)
+    await expect(page.locator('.qg-footer')).toHaveCSS('padding-left', gutter)
+    await capture('send')
+    await page.getByRole('button', { name: /Resume payment|Review payment/ }).click()
+    await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
+    await contained('.qg-review-amount strong, .qg-details')
+    await capture('review')
+    await page.locator('.qg-approvals > div').last().scrollIntoViewIfNeeded()
+    const approval = await page.locator('.qg-approvals > div').last().boundingBox()
+    const footer = await page.locator('.qg-footer').boundingBox()
+    expect(approval!.y + approval!.height).toBeLessThanOrEqual(footer!.y + 1)
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page.getByTestId('tab-vault').click()
+    await expect(page.getByRole('heading', { name: 'Security', exact: true })).toBeVisible()
+    await expect(page.locator('.vault-security-tile')).toHaveCount(4)
+    await expect(page.locator('.vault-security-tile').first()).toHaveCSS('border-radius', '0px')
+    await contained('.vault-security-grid, .vault-security-tile')
+    await expect(page.locator('.vault-security .vault-hub').first()).toHaveCSS('border-radius', '0px')
+    await capture('security')
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.getByTestId('account-receive').click()
+    await expect(page.locator('.vault-receive-qr-large svg')).toBeVisible()
+    await capture('receive')
+  })
+
+  test(`@visual-refinement ${theme} welcome and protection remain readable`, async ({ page }, testInfo) => {
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible()
+    await page.evaluate((dark) => document.documentElement.classList.toggle('palette-dark', dark), theme === 'dark')
+    await page.screenshot({ path: testInfo.outputPath('welcome.png'), animations: 'disabled' })
+    await page.getByRole('button', { name: 'Get started' }).click()
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByTestId('hardware-pub').fill('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+    await page.getByRole('button', { name: 'Use this hardware key' }).click()
+    await expect(page.getByRole('heading', { name: 'Protection', exact: true })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('protection.png'), animations: 'disabled' })
+    await page.getByTestId('protection-advanced').click()
+    await expect(page.getByTestId('recovery-pub')).toBeVisible()
+    await expect(page.locator('.qg-note')).toHaveCSS('border-bottom-width', '0px')
+    await page.screenshot({ path: testInfo.outputPath('protection-advanced.png'), animations: 'disabled' })
+  })
+}

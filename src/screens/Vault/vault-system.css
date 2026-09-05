@@ -1734,7 +1734,6 @@ html.palette-dark [data-testid='vault-app'] {
 
 [data-testid='vault-app'] .shadow-surface,
 [data-testid='vault-app'] .vault-panel,
-[data-testid='vault-app'] .vault-hub,
 [data-testid='vault-app'] .vault-callout,
 [data-testid='vault-app'] .vault-status-card,
 [data-testid='vault-app'] .vault-review-receipt,

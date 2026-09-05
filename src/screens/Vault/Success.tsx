@@ -1,3 +1,4 @@
+import QgAmount from './qg/QgAmount'
 import { useContext } from 'react'
 import { prettyAmount } from '../../lib/format'
 import { vaultTransactionExplorer } from '../../lib/vault/explorer'
@@ -55,7 +56,9 @@ export default function VaultSuccess() {
           <section className='qg-details'>
             <div>
               <span>Amount</span>
-              <strong>{prettyAmount(lastSend.amount)}</strong>
+              <strong>
+                <QgAmount value={prettyAmount(lastSend.amount)} />
+              </strong>
             </div>
             <div>
               <span>To</span>
