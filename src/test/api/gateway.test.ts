@@ -61,6 +61,7 @@ describe('same-origin authorizer gateway', () => {
     expect(publicAuthorizerPath('/api/ready')).toBe('/ready')
     expect(publicAuthorizerPath('/api/v1/status')).toBe('/v1/status')
     expect(publicAuthorizerPath('/api/v1/status?vault=x')).toBe('/v1/status?vault=x')
+    expect(publicAuthorizerPath('/api/authorizer/v1/enroll/session')).toBe('/v1/enroll/session')
     expect(publicAuthorizerPath('/api/v1/enroll/start')).toBe('/v1/enroll/start')
     expect(publicAuthorizerPath('/api/v1/passkey/challenge')).toBe('/v1/passkey/challenge')
     expect(publicAuthorizerPath('/api/authorizer/v1/enroll/start')).toBe('/v1/enroll/start')
@@ -132,6 +133,20 @@ describe('same-origin authorizer gateway', () => {
       'https://redis.example/pipeline',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('limits open setup issuance separately from ordinary wallet requests', async () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret')
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify([{ result: 6 }, { result: 1 }, { result: 6 }, { result: 1 }])),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(allowMainnetGatewayRate('203.0.113.1', '', true)).resolves.toBe(false)
+    await expect(allowMainnetGatewayRate('203.0.113.1')).resolves.toBe(true)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)[2][1]).toMatch(/^vault-rate:enrollment:/)
   })
 
   it('rejects an oversize upstream body', async () => {

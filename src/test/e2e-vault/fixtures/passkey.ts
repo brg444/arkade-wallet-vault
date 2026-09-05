@@ -81,6 +81,7 @@ type PasskeyInstall = {
 }
 
 export type FakePasskeyAuthorizer = {
+  setInviteOnly(enabled: boolean): void
   readonly invite: string
   readonly vaultId: string
   broadcastedTransaction(): string
@@ -138,6 +139,11 @@ function xonly(compressed: string): Uint8Array {
 class FakeAuthorizer implements FakePasskeyAuthorizer {
   readonly invite = INVITE
   readonly vaultId = VAULT_ID
+
+  private inviteOnly = true
+  setInviteOnly(enabled: boolean) {
+    this.inviteOnly = enabled
+  }
 
   private enrolled = false
   private passkeyLoginAvailable = false
@@ -348,7 +354,16 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
 
     if (path === '/v1/status' && request.method() === 'GET') {
       const requestedVault = url.searchParams.get('vault')
-      return json(route, requestedVault ? this.status(requestedVault) : publicStatus())
+      return json(
+        route,
+        requestedVault
+          ? this.status(requestedVault)
+          : { ...publicStatus(), enrollmentMode: this.inviteOnly ? 'token' : 'open' },
+      )
+    }
+    if (path === '/v1/enroll/session') {
+      if (this.inviteOnly) return json(route, { error: 'invite required' }, 400)
+      return json(route, { token: 'A'.repeat(43), expiresAt: new Date(Date.now() + 600_000).toISOString() })
     }
     if (path === '/v1/enroll/start') {
       const spendingPolicy = validateSpendingPolicy(body?.spendingPolicy)
@@ -744,7 +759,7 @@ export const test = base.extend<Fixtures>({
   },
 })
 
-export async function reachPasskeySetup(page: Page) {
+export async function reachPasskeySetup(page: Page, inviteOnly = true) {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: /Everyday spending/ })).toBeVisible()
   await page.getByRole('button', { name: 'Get started' }).click()
@@ -755,12 +770,13 @@ export async function reachPasskeySetup(page: Page) {
   await page.getByRole('button', { name: 'Review setup' }).click()
   await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByTestId('enrollment-token')).toBeVisible()
+  if (inviteOnly) await expect(page.getByTestId('enrollment-token')).toBeVisible()
+  else await expect(page.getByRole('button', { name: 'Create Vault' })).toBeEnabled()
 }
 
-export async function enrollVaultWithPasskey(page: Page, authorizer: FakePasskeyAuthorizer) {
-  await reachPasskeySetup(page)
-  await page.getByTestId('enrollment-token').fill(authorizer.invite)
+export async function enrollVaultWithPasskey(page: Page, authorizer: FakePasskeyAuthorizer, inviteOnly = true) {
+  await reachPasskeySetup(page, inviteOnly)
+  if (inviteOnly) await page.getByTestId('enrollment-token').fill(authorizer.invite)
   await page.getByRole('button', { name: 'Create Vault' }).click()
   await expect(page.getByRole('heading', { name: 'Your Vault was created', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Save Recovery Kit' }).click()

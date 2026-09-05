@@ -12,9 +12,18 @@ const expectedEmulator = {
 }
 
 async function requireJson(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+  let response
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+  } catch {
+    throw new Error('Release dependency transport unavailable')
+  }
   if (!response.ok) throw new Error(`Release dependency returned HTTP ${response.status}`)
-  return response.json()
+  try {
+    return await response.json()
+  } catch {
+    throw new Error('Release dependency returned invalid JSON')
+  }
 }
 
 function verify(label, actual, expected) {

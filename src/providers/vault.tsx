@@ -237,8 +237,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           const live = await fetchVaultStatus(undefined, selectedId)
           setStatus(live)
           setAddressPin(loadAddressPin(localStorage, live.vaultId))
-        } else {
-          setDeployment(await fetchPublicStatus())
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : ''
@@ -251,6 +249,26 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     void boot()
   }, [])
+
+  useEffect(() => {
+    if (!['welcome', 'design', 'passkey', 'problem'].includes(screen)) return
+    const controller = new AbortController()
+    const refresh = () => {
+      void fetchPublicStatus(controller.signal)
+        .then(setDeployment)
+        .catch(() => {
+          if (!controller.signal.aborted) setDeployment(null)
+        })
+    }
+    refresh()
+    window.addEventListener('focus', refresh)
+    const interval = window.setInterval(refresh, 30_000)
+    return () => {
+      controller.abort()
+      window.removeEventListener('focus', refresh)
+      window.clearInterval(interval)
+    }
+  }, [screen])
 
   useEffect(() => {
     const persistLock = () => {
@@ -1230,6 +1248,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       dailyRemaining,
       dailySpent: status?.enrolled ? (status.periodSpent ?? 0) : Math.max(0, dailyLimit - dailyRemaining),
       enablePasskeyLogin: enableOtherDevices,
+      enrollmentMode: deployment?.enrollmentMode || 'loading',
       enroll,
       enrolled,
       error,
@@ -1334,6 +1353,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       confirmConditions,
       setSpendingPolicy,
       deployment?.spendingPolicyCapabilities,
+      deployment?.enrollmentMode,
       handoffPsbt,
       dailyLimit,
       dailyRemaining,

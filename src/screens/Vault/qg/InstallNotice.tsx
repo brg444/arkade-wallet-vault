@@ -33,6 +33,7 @@ export default function InstallNotice() {
     }
     const onPrompt = (event: Event) => {
       if (typeof (event as InstallEvent).prompt !== 'function') return
+      // Keep the browser's one-use prompt for an intentional install tap.
       event.preventDefault()
       setPrompt(event as InstallEvent)
       setInstallError(false)
@@ -56,16 +57,23 @@ export default function InstallNotice() {
   }, [open, installed])
 
   const install = async () => {
-    if (!prompt || installing) return
+    if (installing) return
+    if (!prompt) {
+      setOpen(true)
+      return
+    }
     // The browser event can be used once, including when installation is dismissed.
     const event = prompt
     setPrompt(null)
     setInstalling(true)
+    setOpen(false)
     try {
-      const choice = await event.prompt()
-      if (choice.outcome === 'accepted') setOpen(false)
+      // Call before any await so the browser retains the tap's user activation.
+      // A dismissal is final: do not follow it with our installation guide.
+      await event.prompt()
     } catch {
       setInstallError(true)
+      setOpen(true)
     } finally {
       setInstalling(false)
     }
@@ -79,7 +87,9 @@ export default function InstallNotice() {
         ref={trigger}
         className='qg-install-notice'
         type='button'
-        onClick={() => setOpen(true)}
+        onClick={() => void install()}
+        disabled={installing}
+        aria-busy={installing}
         aria-haspopup='dialog'
       >
         <ArrowDownToLine aria-hidden='true' />

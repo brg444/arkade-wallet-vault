@@ -87,10 +87,6 @@ export function useVaultSession({
         reportError('This vault expects a different hardware key.')
         return
       }
-      if (token.trim().length < 32) {
-        reportError('Paste your invite.')
-        return
-      }
       setBusy(true)
       reportError('')
       setScreen('creating')

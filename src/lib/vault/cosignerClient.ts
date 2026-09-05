@@ -282,6 +282,7 @@ export interface VaultMutationSuccess {
 export interface VaultCosignerEnrollmentClient {
   publicStatus(signal?: AbortSignal): Promise<PublicAuthorizerStatus>
   status(vaultId: string, signal?: AbortSignal): Promise<VaultStatus>
+  session(): Promise<{ token: string; expiresAt: string }>
   invite(token: string): Promise<VaultInviteView>
   start(token: string, request: VaultEnrollStartRequest): Promise<VaultEnrollStartResponse>
   propose(token: string, request: VaultEnrollmentRequest): Promise<VaultEnrollProposeResponse>
@@ -396,6 +397,9 @@ export const vaultCosignerClient: VaultCosignerClient = {
     },
     status(vaultId, signal) {
       return fetchVaultStatus(signal, vaultId)
+    },
+    session() {
+      return vaultPost('/v1/enroll/session', {})
     },
     invite(token) {
       return vaultGet('/v1/invite', enrollmentHeader(token))

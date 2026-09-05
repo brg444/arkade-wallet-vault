@@ -4,7 +4,7 @@ import ProtectionModel from '../qg/ProtectionModel'
 import QgScreen, { QgPrimary } from '../qg/QgScreen'
 
 export default function VaultDesign() {
-  const { acceptDesign, navigate } = useContext(VaultContext)
+  const { acceptDesign, enrollmentMode, navigate } = useContext(VaultContext)
   return (
     <QgScreen
       title='How it works'
@@ -20,8 +20,8 @@ export default function VaultDesign() {
       </p>
       <ProtectionModel />
       <p className='qg-copy'>
-        You’ll need an invite and a hardware wallet that can sign Vaulted transactions. Advanced protection also needs a
-        separate recovery key, stored independently.
+        You’ll need {enrollmentMode === 'token' ? 'an invite and ' : ''}a hardware wallet that can sign Vaulted
+        transactions. Advanced protection also needs a separate recovery key, stored independently.
       </p>
     </QgScreen>
   )

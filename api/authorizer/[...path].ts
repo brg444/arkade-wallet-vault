@@ -107,13 +107,18 @@ function requestVaultId(pathAndQuery: string, body?: Buffer): string {
   }
 }
 
-export async function allowMainnetGatewayRate(client: string, vaultId = ''): Promise<boolean> {
+export async function allowMainnetGatewayRate(
+  client: string,
+  vaultId = '',
+  enrollmentSession = false,
+): Promise<boolean> {
   const origin = String(process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '')
   const token = String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim()
   if (!origin || !token) throw new Error('shared durable rate limit is not configured')
   const window = Math.floor(Date.now() / RATE_WINDOW_MS)
   const keys = [`vault-rate:client:${rateIdentity(client)}:${window}`]
   if (vaultId) keys.push(`vault-rate:vault:${rateIdentity(vaultId)}:${window}`)
+  if (enrollmentSession) keys.push(`vault-rate:enrollment:${rateIdentity(client)}:${window}`)
   const commands = keys.flatMap((key) => [
     ['INCR', key],
     ['PEXPIRE', key, String(RATE_WINDOW_MS * 2), 'NX'],
@@ -126,7 +131,11 @@ export async function allowMainnetGatewayRate(client: string, vaultId = ''): Pro
   })
   if (!response.ok) throw new Error('shared durable rate limit is unavailable')
   const results = (await response.json()) as { result?: unknown; error?: unknown }[]
-  return keys.every((_, index) => Number(results[index * 2]?.result) <= RATE_LIMIT && !results[index * 2]?.error)
+  return keys.every(
+    (_, index) =>
+      Number(results[index * 2]?.result) <= (enrollmentSession && index === keys.length - 1 ? 5 : RATE_LIMIT) &&
+      !results[index * 2]?.error,
+  )
 }
 
 export function clientAddress(headers: Record<string, string | string[] | undefined>): string {
@@ -294,7 +303,11 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   if (pathOnly !== '/health' && pathOnly !== '/ready') {
     try {
       const allowed = mainnet
-        ? await allowMainnetGatewayRate(clientAddress(req.headers), requestVaultId(pathAndQuery, body))
+        ? await allowMainnetGatewayRate(
+            clientAddress(req.headers),
+            requestVaultId(pathAndQuery, body),
+            pathOnly === '/v1/enroll/session',
+          )
         : allowGatewayRate(clientAddress(req.headers))
       if (!allowed) {
         jsonError(res, 429, 'too many requests')

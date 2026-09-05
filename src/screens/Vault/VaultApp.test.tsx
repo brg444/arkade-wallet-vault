@@ -68,7 +68,8 @@ describe('VaultApp onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Continue' }))
 
     expect(await screen.findByRole('heading', { name: 'Create your passkey' })).toBeTruthy()
-    expect(screen.getByTestId('enrollment-token')).toBeTruthy()
+    expect(screen.queryByTestId('enrollment-token')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Create Vault' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Create Vault' })).toBeTruthy()
     expect(screen.getByTestId('passkey-unavailable')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull()

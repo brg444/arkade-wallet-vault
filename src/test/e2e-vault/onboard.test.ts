@@ -1,3 +1,4 @@
+import { mockEnrollmentAccess } from './fixtures/enrollmentAccess'
 import { expect, test, type Page } from '@playwright/test'
 import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
 
@@ -26,6 +27,7 @@ async function setupToThisDevice(page: Page) {
 }
 
 test('this-device screen requires an invite and has a virtual authenticator', async ({ page, context }) => {
+  const setMode = await mockEnrollmentAccess(page)
   const cdp = await context.newCDPSession(page)
   await cdp.send('WebAuthn.enable')
   const authenticator = await cdp.send('WebAuthn.addVirtualAuthenticator', {
@@ -41,6 +43,14 @@ test('this-device screen requires an invite and has a virtual authenticator', as
   expect(authenticator.authenticatorId).toBeTruthy()
   await setupToThisDevice(page)
   await expect(page.getByRole('button', { name: 'Create Vault' })).toBeVisible()
+  await expect(page.getByTestId('enrollment-token')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Create Vault' })).toBeDisabled()
+  setMode('open')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByTestId('enrollment-token')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Create Vault' })).toBeEnabled()
+  setMode('token')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.getByTestId('enrollment-token')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Create Vault' })).toBeDisabled()
 })
