@@ -1,6 +1,6 @@
 import { hex } from '@scure/base'
 import { Transaction } from '@scure/btc-signer'
-import { scriptHexFromAddress } from './bitcoin'
+import { bitcoinDustSats, scriptHexFromAddress } from './bitcoin'
 import { zeroBytes } from './ceremony/directauth'
 import { DUST_SATS } from './constants'
 import type { EnrollmentSecrets } from './tenantEnrollment'
@@ -39,7 +39,10 @@ export function buildSavingsPsbt(input: {
   if (!pin) throw new Error('deposit address is not pinned locally')
   requireStatusMatchesPin(input.status, pin)
   if (pin.savingsAddress !== input.status.savingsAddress) throw new Error('savings address pin mismatch')
-  if (!Number.isInteger(input.amountSats) || input.amountSats < DUST_SATS) throw new Error('at least ₿330')
+  const recipientDustSats = bitcoinDustSats(input.destAddress, input.status.network)
+  if (!Number.isInteger(input.amountSats) || input.amountSats < recipientDustSats) {
+    throw new Error(`at least ₿${recipientDustSats}`)
+  }
   if (!Number.isInteger(input.feeSats) || input.feeSats < 0) throw new Error('fee required')
   const total = input.amountSats + input.feeSats
   if (input.coins.length === 0) throw new Error('confirmed Savings coins required')
