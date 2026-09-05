@@ -576,6 +576,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           : undefined
       const phoneSecret = await unlockPhoneBip340(enrollment, status)
       let quote: VaultLightningQuote
+      let funding: VaultVtxoSpendQuote
       try {
         quote = await lightning.withVaultLightningSdkWallet(phoneSecret, status, (session) =>
           lightning.withVaultLightningTransport(profile, (transport) =>
@@ -593,13 +594,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
             }),
           ),
         )
+        if (quote.fundAmountSats > setup.txCapSats) {
+          throw new Error(`This payment exceeds the ${setup.txCapSats.toLocaleString()} sat send limit after fees.`)
+        }
+        // The SDK session has released its lock; reuse this approval for the reservation.
+        funding = await reserveVaultVtxo(enrollment, status, quote.fundAddress, quote.fundAmountSats, { phoneSecret })
       } finally {
         zeroBytes(phoneSecret)
       }
-      if (quote.fundAmountSats > setup.txCapSats) {
-        throw new Error(`This payment exceeds the ${setup.txCapSats.toLocaleString()} sat send limit after fees.`)
-      }
-      const funding = await reserveVaultVtxo(enrollment, status, quote.fundAddress, quote.fundAmountSats)
       if (quote.fundAmountSats + funding.feeSats > spendingAvailableSats) {
         throw new Error('Not enough confirmed spending funds after fees.')
       }
