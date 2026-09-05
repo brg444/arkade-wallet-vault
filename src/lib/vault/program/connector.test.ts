@@ -9,11 +9,13 @@ import vectors from './connector-vectors.json'
 
 describe('connector contract matches runtime', () => {
   for (const v of vectors) {
-    it(`${v.network} ${v.tier}`, () => {
+    it(`${v.network} ${v.tier} ${v.originType}`, () => {
       if (v.network !== 'mainnet' && v.network !== 'mutinynet') throw new Error('vector network')
       if (v.tier !== 'standard' && v.tier !== 'advanced') throw new Error('vector tier')
+      if (v.connectorType !== 'p2tr' && v.connectorType !== 'p2wpkh') throw new Error('connector type')
       const spendingPolicy = defaultSpendingPolicy(v.network)
       const input: Parameters<typeof connectorEnrollmentDigest>[0] = {
+        connectorType: v.connectorType,
         vaultId: 'connector-family-fixture',
         network: v.network,
         phonePub: v.phone,
@@ -42,9 +44,9 @@ describe('connector contract matches runtime', () => {
         )
       }
       const origin = {
-        internalKey: hex.decode(v.hardware).slice(1),
-        fingerprint: 0x12345678,
-        path: [0x80000056, v.network === 'mainnet' ? 0x80000000 : 0x80000001, 0x80000000, 0, 0],
+        publicKey: hex.decode(v.hardware),
+        fingerprint: v.originFingerprint,
+        path: v.originPath,
       }
       for (const p of v.payments) {
         const recipient = Address(vaultAddressNetwork(v.network)).encode(
@@ -66,9 +68,14 @@ describe('connector contract matches runtime', () => {
           allowUnknownOutputs: true,
         })
         expect(hex.encode(built.unsignedTx)).toBe(p.unsigned)
-        expect(built.getInput(1).tapBip32Derivation?.[0][1].der.fingerprint).toBe(0x12345678)
+        expect(
+          built.getInput(1).tapBip32Derivation?.[0][1].der.fingerprint ??
+            built.getInput(1).bip32Derivation?.[0][1].fingerprint,
+        ).toBe(v.originFingerprint)
         const hardware = prepared.forHardware(p.savingsWitness.map((item) => hex.decode(item)))
         expect(hardware.accept(p.responsePSBT)).toEqual({ txHex: p.finalTx, txid: p.txid })
+        expect(hardware.accept(p.finalTx)).toEqual({ txHex: p.finalTx, txid: p.txid })
+        expect(hardware.accept(p.finalTx.match(/.{1,80}/g)!.join('\n'))).toEqual({ txHex: p.finalTx, txid: p.txid })
         const changed = Transaction.fromPSBT(hex.decode(p.responsePSBT), {
           allowUnknownInputs: true,
           allowUnknownOutputs: true,
@@ -83,9 +90,12 @@ describe('connector contract matches runtime', () => {
         raw[at + 3] ^= 1
         expect(() => hardware.accept(hex.encode(raw))).toThrow()
         expect(changed.outputsLength).toBe(p.full ? 4 : 5)
-        expect(changed.getInput(1).tapBip32Derivation?.[0][1].der.fingerprint).toBe(0x12345678)
+        expect(
+          changed.getInput(1).tapBip32Derivation?.[0][1].der.fingerprint ??
+            changed.getInput(1).bip32Derivation?.[0][1].fingerprint,
+        ).toBe(v.originFingerprint)
         const corrupted = hex.decode(p.responsePSBT)
-        const signature = changed.getInput(1).tapKeySig!
+        const signature = changed.getInput(1).tapKeySig ?? changed.getInput(1).partialSig![0][1]
         const offset = corrupted.findIndex((_, i) => signature.every((b, j) => corrupted[i + j] === b))
         expect(offset).toBeGreaterThan(0)
         corrupted[offset] ^= 1
@@ -94,12 +104,19 @@ describe('connector contract matches runtime', () => {
         expect(() => prepared.forHardware(p.savingsWitness.slice(1).map((item) => hex.decode(item)))).toThrow()
       }
       expect(connectorEnrollmentDigest(input, origin)).toBe(v.enrollmentDigest)
-      expect(() =>
-        connectorEnrollmentDigest(input, {
-          ...origin,
-          path: [0x80000056, origin.path[1] ^ 1, ...origin.path.slice(2)],
-        }),
-      ).toThrow()
+      if (origin.path.length === 5) {
+        expect(() =>
+          connectorEnrollmentDigest(input, {
+            ...origin,
+            path: [origin.path[0], origin.path[1] ^ 1, ...origin.path.slice(2)],
+          }),
+        ).toThrow()
+      } else {
+        expect(connectorEnrollmentDigest(input, { ...origin, path: [origin.path[0], 1, 0] })).not.toBe(
+          v.enrollmentDigest,
+        )
+      }
+      expect(() => connectorEnrollmentDigest(input, { ...origin, path: [] })).toThrow()
       expect(connectorEnrollmentDigest(input, { ...origin, fingerprint: 123 })).not.toBe(v.enrollmentDigest)
       expect(() => buildConnectorFamily({ ...input, templateVersion: 'phone-hww-recovery-savings-v1' })).toThrow()
       expect(() => buildConnectorProgram({ ...f.rules, feerateCapSatPerV: NaN })).toThrow()

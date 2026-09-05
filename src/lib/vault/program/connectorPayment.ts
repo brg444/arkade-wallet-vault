@@ -1,6 +1,7 @@
-import { hex } from '@scure/base'
+import { hex, base64 } from '@scure/base'
 import { OutScript, Transaction } from '@scure/btc-signer'
-import { schnorr } from '@noble/curves/secp256k1.js'
+import { RawPSBTV0 } from '@scure/btc-signer/psbt.js'
+import { schnorr, secp256k1 } from '@noble/curves/secp256k1.js'
 import { bitcoinDustSats, scriptHexFromAddress } from '../bitcoin'
 import { buildConnectorFamily, connectorEnrollmentDigest, type ConnectorOrigin } from './connector'
 import { emulatorPacketScript } from './packet'
@@ -30,6 +31,8 @@ export function prepareConnectorPayment(input: {
   if (connectorEnrollmentDigest(input.contract, input.origin) !== input.enrollmentDigest)
     throw new Error('connector enrollment pin mismatch')
   const phonePub = input.contract.phonePub
+  const connectorPublicKey = input.origin.publicKey.slice()
+  const connectorType = input.contract.connectorType
   const f = buildConnectorFamily(input.contract)
   const scripts = [f.savings.script, f.connector.script]
   const coins = [input.savings, input.reserve]
@@ -42,10 +45,18 @@ export function prepareConnectorPayment(input: {
   if (!signingLeaf) throw new Error('normal signing leaf missing')
   const derivation: [Uint8Array, { hashes: Uint8Array[]; der: { fingerprint: number; path: number[] } }][] = [
     [
-      input.origin.internalKey.slice(),
+      input.origin.publicKey.slice(1),
       { hashes: [], der: { fingerprint: input.origin.fingerprint, path: [...input.origin.path] } },
     ],
   ]
+  const connectorMetadata =
+    input.contract.connectorType === 'p2tr'
+      ? { tapInternalKey: input.origin.publicKey.slice(1), tapBip32Derivation: derivation }
+      : {
+          bip32Derivation: [
+            [input.origin.publicKey.slice(), { fingerprint: input.origin.fingerprint, path: [...input.origin.path] }],
+          ] as [Uint8Array, { fingerprint: number; path: number[] }][],
+        }
   for (const [index, coin] of coins.entries()) {
     if (
       !/^[0-9a-f]{64}$/.test(coin.txid) ||
@@ -77,7 +88,7 @@ export function prepareConnectorPayment(input: {
       unknown: [[{ type: 222, key: new TextEncoder().encode('prevouttx') }, raw]],
       ...(index === 0
         ? { tapLeafScript: [signingLeaf], tapInternalKey: f.savings.tapInternalKey }
-        : { tapInternalKey: input.origin.internalKey, tapBip32Derivation: derivation }),
+        : { ...connectorMetadata, ...(input.contract.connectorType === 'p2wpkh' ? { sighashType: 1 } : {}) }),
     })
   }
   if (values[1] !== 1000n || values[0] + values[1] > 2_100_000_000_000_000n)
@@ -103,8 +114,7 @@ export function prepareConnectorPayment(input: {
   tx.addOutput({
     script: f.connector.script,
     amount: 1000n,
-    tapInternalKey: input.origin.internalKey,
-    tapBip32Derivation: derivation,
+    ...connectorMetadata,
   })
   tx.addOutput({ script: hex.decode('51024e73'), amount: 240n })
   tx.addOutput({ script: emulatorPacketScript(f.program, false), amount: 0n })
@@ -128,17 +138,35 @@ export function prepareConnectorPayment(input: {
       if (pubs.some((pub, i) => !schnorr.verify(witness[i], message, pub))) throw new Error('invalid Savings signature')
       const savedWitness = witness.map((item) => item.slice())
       const hardware = Transaction.fromPSBT(prepared, OPTIONS)
-      hardware.updateInput(0, { finalScriptWitness: savedWitness, tapLeafScript: undefined, tapInternalKey: undefined })
-      const hardwarePSBT = hardware.toPSBT()
+      hardware.updateInput(0, {
+        finalScriptWitness: savedWitness,
+        finalScriptSig: new Uint8Array(),
+        tapLeafScript: undefined,
+        tapInternalKey: undefined,
+      })
+      // Electrum requires both final fields for a foreign witness input.
+      // Transaction.toPSBT strips empty scriptSig, so retain it in the wire map.
+      const finalized = RawPSBTV0.decode(hardware.toPSBT())
+      finalized.inputs[0].finalScriptSig = new Uint8Array()
+      const hardwarePSBT = RawPSBTV0.encode(finalized)
       return {
         psbt: () => hex.encode(hardwarePSBT.slice()),
-        accept(responseHex: string) {
-          if (responseHex.length > 4_000_000) throw new Error('hardware PSBT too large')
-          const response = Transaction.fromPSBT(hex.decode(responseHex), OPTIONS)
+        accept(responseText: string) {
+          if (responseText.length > 4_000_000) throw new Error('signer response too large')
+          const text = responseText.replace(/\s+/g, '')
+          const raw = /^[0-9a-f]+$/i.test(text) && text.length % 2 === 0 ? hex.decode(text) : base64.decode(text)
+          const isPSBT = hex.encode(raw.slice(0, 5)) === '70736274ff'
+          const response = isPSBT ? Transaction.fromPSBT(raw, OPTIONS) : Transaction.fromRaw(raw, OPTIONS)
           if (hex.encode(response.unsignedTx) !== hex.encode(unsigned)) throw new Error('hardware changed transaction')
           for (let i = 0; i < 2; i++) {
             const returned = response.getInput(i)
-            if (returned.sighashType !== undefined && returned.sighashType !== 0) throw new Error('non-DEFAULT sighash')
+            if (
+              returned.sighashType !== undefined &&
+              returned.sighashType !== 0 &&
+              (i !== 1 || returned.sighashType !== 1)
+            )
+              throw new Error('signature must commit all outputs')
+            if (returned.finalScriptSig?.length) throw new Error('unexpected scriptSig')
             if (
               returned.witnessUtxo &&
               (returned.witnessUtxo.amount !== values[i] ||
@@ -149,20 +177,59 @@ export function prepareConnectorPayment(input: {
           const approval = response.getInput(1)
           if (approval.tapScriptSig?.length || approval.finalScriptSig?.length)
             throw new Error('unexpected connector signing path')
-          const finalWitness = approval.finalScriptWitness
-          if (finalWitness && (finalWitness.length !== 1 || finalWitness[0].length !== 64))
-            throw new Error('invalid hardware witness')
-          const sig = finalWitness?.[0] ?? approval.tapKeySig
-          if (
-            !sig ||
-            sig.length !== 64 ||
-            (finalWitness && approval.tapKeySig && hex.encode(sig) !== hex.encode(approval.tapKeySig))
-          )
-            throw new Error('invalid hardware signature encoding')
-          if (!schnorr.verify(sig, tx.preimageWitnessV1(1, scripts, 0, values), f.connector.script.slice(2)))
-            throw new Error('invalid hardware signature')
+          let finalWitness = approval.finalScriptWitness
+          if (connectorType === 'p2tr') {
+            if (approval.partialSig?.length || (finalWitness && finalWitness.length !== 1))
+              throw new Error('invalid Taproot witness')
+            const sig = finalWitness?.[0] ?? approval.tapKeySig
+            if (
+              !sig ||
+              (sig.length !== 64 && (sig.length !== 65 || sig[64] !== 1)) ||
+              (finalWitness && approval.tapKeySig && hex.encode(sig) !== hex.encode(approval.tapKeySig))
+            )
+              throw new Error('invalid Taproot signature encoding')
+            const sighash = sig.length === 64 ? 0 : 1
+            if (approval.sighashType === 1 && sighash !== 1) throw new Error('signature sighash mismatch')
+            if (
+              !schnorr.verify(
+                sig.slice(0, 64),
+                tx.preimageWitnessV1(1, scripts, sighash, values),
+                f.connector.script.slice(2),
+              )
+            )
+              throw new Error('invalid connector signature')
+            finalWitness = [sig.slice()]
+          } else {
+            if (approval.tapKeySig || (approval.partialSig?.length ?? 0) > 1)
+              throw new Error('unexpected connector signature')
+            const partial = approval.partialSig?.[0]
+            if (partial) {
+              if (
+                finalWitness &&
+                (finalWitness.length !== 2 ||
+                  hex.encode(finalWitness[0]) !== hex.encode(partial[1]) ||
+                  hex.encode(finalWitness[1]) !== hex.encode(partial[0]))
+              )
+                throw new Error('conflicting connector signatures')
+              finalWitness = [partial[1], partial[0]]
+            }
+            if (!finalWitness || finalWitness.length !== 2) throw new Error('native SegWit witness required')
+            const [sig, pub] = finalWitness
+            if (
+              sig.length < 9 ||
+              sig.length > 73 ||
+              sig[sig.length - 1] !== 1 ||
+              hex.encode(pub) !== hex.encode(connectorPublicKey)
+            )
+              throw new Error('native SegWit ALL signature required')
+            const scriptCode = new Uint8Array([0x76, 0xa9, 0x14, ...f.connector.script.slice(2), 0x88, 0xac])
+            const message = tx.preimageWitnessV0(1, scriptCode, 1, values[1])
+            if (!secp256k1.verify(sig.slice(0, -1), message, pub, { format: 'der', prehash: false, lowS: true }))
+              throw new Error('invalid connector signature')
+            finalWitness = finalWitness.map((item) => item.slice())
+          }
           const result = Transaction.fromPSBT(hardwarePSBT, OPTIONS)
-          result.updateInput(1, { finalScriptWitness: [sig.slice()] })
+          result.updateInput(1, { finalScriptWitness: finalWitness })
           return { txHex: hex.encode(result.extract()), txid: result.id }
         },
       }

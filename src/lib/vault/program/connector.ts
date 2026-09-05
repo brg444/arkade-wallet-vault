@@ -1,5 +1,5 @@
 import { hex } from '@scure/base'
-import { p2tr } from '@scure/btc-signer'
+import { p2tr, p2wpkh } from '@scure/btc-signer'
 import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { spendingPolicyDigest, validateSpendingPolicy, type SpendingPolicy } from '../spendingPolicy'
@@ -25,16 +25,19 @@ export interface ConnectorRules {
   feerateCapSatPerV: number
 }
 
+export type ConnectorKind = 'p2tr' | 'p2wpkh'
+
 const X = { inputScript: 0xca, toAlt: 0x6b, fromAlt: 0x6c, if: 0x63, endif: 0x68, boolOr: 0x9b }
 
 export function buildConnectorProgram(r: ConnectorRules): Uint8Array {
   if (
-    r.connectorScript.length !== 34 ||
-    r.connectorScript[0] !== 0x51 ||
-    r.connectorScript[1] !== 32 ||
-    !secp256k1.utils.isValidPublicKey(new Uint8Array([2, ...r.connectorScript.slice(2)]), true)
+    !(r.connectorScript.length === 22 && r.connectorScript[0] === 0 && r.connectorScript[1] === 20) &&
+    (r.connectorScript.length !== 34 ||
+      r.connectorScript[0] !== 0x51 ||
+      r.connectorScript[1] !== 32 ||
+      !secp256k1.utils.isValidPublicKey(new Uint8Array([2, ...r.connectorScript.slice(2)]), true))
   )
-    throw new Error('connector Taproot script required')
+    throw new Error('connector native SegWit or Taproot script required')
   if (
     !Number.isSafeInteger(r.witnessBytes) ||
     r.witnessBytes < 1 ||
@@ -61,7 +64,7 @@ export function buildConnectorProgram(r: ConnectorRules): Uint8Array {
     const script = (opcode: number, index: number, b: Uint8Array) => {
       num(index)
       op(opcode)
-      num(1)
+      num(b[0] === 0x51 ? 1 : 0)
       op(OP.EQUALVERIFY)
       data(b.slice(2))
       op(OP.EQUALVERIFY)
@@ -147,13 +150,22 @@ export function buildConnectorProgram(r: ConnectorRules): Uint8Array {
   throw new Error('connector packet envelope did not converge')
 }
 
-export function buildConnectorFamily(input: Parameters<typeof buildVaultProgramFamily>[0]) {
+export function buildConnectorFamily(
+  input: Parameters<typeof buildVaultProgramFamily>[0] & { connectorType: ConnectorKind },
+) {
   if (input.templateVersion && input.templateVersion !== CONNECTOR_TEMPLATE)
     throw new Error('connector template mismatch')
   if (input.network !== 'mainnet' && input.network !== 'mutinynet') throw new Error('unsupported connector network')
   const selected = { ...input, templateVersion: CONNECTOR_TEMPLATE, serverFreeClawback: true }
   const base = buildVaultProgramFamily(selected)
-  const connector = p2tr(xOnlyFromCompressed(input.hardwarePub), undefined, vaultAddressNetwork(input.network))
+  if (input.connectorType !== 'p2tr' && input.connectorType !== 'p2wpkh') throw new Error('unsupported connector type')
+  const connector =
+    input.connectorType === 'p2tr'
+      ? p2tr(xOnlyFromCompressed(input.hardwarePub), undefined, vaultAddressNetwork(input.network))
+      : p2wpkh(hex.decode(input.hardwarePub), vaultAddressNetwork(input.network))
+  // Lower bound, not an ECDSA size estimate: a longer signature cannot weaken
+  // the fee-rate ceiling. Taproot ALL adds one byte to DEFAULT's witness.
+  const connectorWitnessBytes = input.connectorType === 'p2tr' ? 66 : 45
   const internal = contextInternalKey({ vaultId: input.vaultId, claimant: '', templateVersion: CONNECTOR_TEMPLATE })
   const makeNormal = (normal: Uint8Array) => {
     const tree = p2tr(
@@ -172,7 +184,7 @@ export function buildConnectorFamily(input: Parameters<typeof buildVaultProgramF
   )
   const rules: ConnectorRules = {
     connectorScript: connector.script,
-    witnessBytes: collaborativeWitnessBytes(preliminary.normal, preliminary.control) + 66,
+    witnessBytes: collaborativeWitnessBytes(preliminary.normal, preliminary.control) + connectorWitnessBytes,
     absoluteFeeCapSats: input.absoluteFeeCapSats,
     feerateCapSatPerV: input.feerateCapSatPerV,
   }
@@ -191,13 +203,13 @@ export function buildConnectorFamily(input: Parameters<typeof buildVaultProgramF
   ].map((p) => hex.encode(xOnlyFromCompressed(p)))
   if (new Set(roles).size !== roles.length) throw new Error('connector family roles must be distinct')
   const savings = makeNormal(checksigScript([input.phonePub, pair.vault, pair.arkade].map(xOnlyFromCompressed)))
-  if (collaborativeWitnessBytes(savings.normal, savings.control) + 66 !== rules.witnessBytes)
+  if (collaborativeWitnessBytes(savings.normal, savings.control) + connectorWitnessBytes !== rules.witnessBytes)
     throw new Error('connector witness shape changed')
   return { ...base, savings, connector, rules, program, normalTweaks: pair }
 }
 
 export interface ConnectorOrigin {
-  internalKey: Uint8Array
+  publicKey: Uint8Array
   fingerprint: number
   path: number[]
 }
@@ -215,21 +227,26 @@ export function connectorEnrollmentDigest(
   if (policy.absoluteFeeCapSats !== input.absoluteFeeCapSats || policy.feerateCapSatPerV !== input.feerateCapSatPerV)
     throw new Error('connector fee policy mismatch')
   const f = buildConnectorFamily(input)
-  if (hex.encode(origin.internalKey) !== hex.encode(xOnlyFromCompressed(input.hardwarePub)))
+  if (hex.encode(origin.publicKey) !== hex.encode(hex.decode(input.hardwarePub)))
     throw new Error('hardware origin mismatch')
   const path = origin.path
   const coin = input.network === 'mainnet' ? 0x80000000 : 0x80000001
+  const standardPurpose = path[0] === 0x80000054 || path[0] === 0x80000056
+  const standardPath =
+    path.length === 5 &&
+    path[0] === (input.connectorType === 'p2wpkh' ? 0x80000054 : 0x80000056) &&
+    path[1] === coin &&
+    path[2] >= 0x80000000 &&
+    path[3] <= 1 &&
+    path[4] < 0x80000000
   if (
     !Number.isInteger(origin.fingerprint) ||
     origin.fingerprint < 0 ||
     origin.fingerprint > 0xffffffff ||
-    path.length !== 5 ||
+    path.length < 1 ||
+    path.length > 255 ||
     path.some((n) => !Number.isInteger(n) || n < 0 || n > 0xffffffff) ||
-    path[0] !== 0x80000056 ||
-    path[1] !== coin ||
-    path[2] < 0x80000000 ||
-    path[3] > 1 ||
-    path[4] >= 0x80000000
+    (standardPurpose && !standardPath)
   )
     throw new Error('hardware origin network or path mismatch')
   const canonical = (s: string) => hex.encode(hex.decode(s))
