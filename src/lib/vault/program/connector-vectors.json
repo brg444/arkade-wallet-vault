@@ -10,13 +10,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20c5441cd8336e75cb16aeffa6622830e1af0c106a0270c3f7360d1e2d61f7c7e3ad20c11056f8e3842fcb86bf7e77f0906192b4f4c98a1e217cc07447bd02cb9b8fa3ac",
     "network": "mainnet",
     "originFingerprint": 305419896,
-    "originPath": [
-      2147483734,
-      2147483648,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483734, 2147483648, 2147483648, 0, 0],
     "originType": "p2tr",
     "payments": [
       {
@@ -86,13 +80,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20c5441cd8336e75cb16aeffa6622830e1af0c106a0270c3f7360d1e2d61f7c7e3ad20c11056f8e3842fcb86bf7e77f0906192b4f4c98a1e217cc07447bd02cb9b8fa3ac",
     "network": "mainnet",
     "originFingerprint": 305419896,
-    "originPath": [
-      2147483734,
-      2147483648,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483734, 2147483648, 2147483648, 0, 0],
     "originType": "p2tr",
     "payments": [
       {
@@ -164,13 +152,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad204e841eade6508ceee7c9fe9980811d9f2297f134395e2c3c21899e9e6f230202ad20c5234f6e978f469267dce33baa243c6f3959af11cc636a72007ea945ddb360eeac",
     "network": "mutinynet",
     "originFingerprint": 305419896,
-    "originPath": [
-      2147483734,
-      2147483649,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483734, 2147483649, 2147483648, 0, 0],
     "originType": "p2tr",
     "payments": [
       {
@@ -240,13 +222,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad204e841eade6508ceee7c9fe9980811d9f2297f134395e2c3c21899e9e6f230202ad20c5234f6e978f469267dce33baa243c6f3959af11cc636a72007ea945ddb360eeac",
     "network": "mutinynet",
     "originFingerprint": 305419896,
-    "originPath": [
-      2147483734,
-      2147483649,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483734, 2147483649, 2147483648, 0, 0],
     "originType": "p2tr",
     "payments": [
       {
@@ -318,13 +294,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20eea0eff10564853df25bd37787f8c01127eb95c84ab491284cec7f7dbb812709ad2085b3c1064a5c44da432e40822f0e05aabf3a09880dfdfdcb869c1f1a1d05122cac",
     "network": "mainnet",
     "originFingerprint": 770078098,
-    "originPath": [
-      2147483732,
-      2147483648,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483732, 2147483648, 2147483648, 0, 0],
     "originType": "p2wpkh",
     "payments": [
       {
@@ -394,13 +364,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20eea0eff10564853df25bd37787f8c01127eb95c84ab491284cec7f7dbb812709ad2085b3c1064a5c44da432e40822f0e05aabf3a09880dfdfdcb869c1f1a1d05122cac",
     "network": "mainnet",
     "originFingerprint": 770078098,
-    "originPath": [
-      2147483732,
-      2147483648,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483732, 2147483648, 2147483648, 0, 0],
     "originType": "p2wpkh",
     "payments": [
       {
@@ -472,13 +436,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20d5a276dd12e37a4b3db540ee954f83ece28f106fd300b5171e68eee86103e893ad202f84ac1737659e7ceb68f674353ad30baf6cd5ce0b46703104d8c13b29df6149ac",
     "network": "mutinynet",
     "originFingerprint": 770078098,
-    "originPath": [
-      2147483732,
-      2147483649,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483732, 2147483649, 2147483648, 0, 0],
     "originType": "p2wpkh",
     "payments": [
       {
@@ -548,13 +506,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20d5a276dd12e37a4b3db540ee954f83ece28f106fd300b5171e68eee86103e893ad202f84ac1737659e7ceb68f674353ad30baf6cd5ce0b46703104d8c13b29df6149ac",
     "network": "mutinynet",
     "originFingerprint": 770078098,
-    "originPath": [
-      2147483732,
-      2147483649,
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483732, 2147483649, 2147483648, 0, 0],
     "originType": "p2wpkh",
     "payments": [
       {
@@ -626,11 +578,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad206242a446af29872ea9d8d43f257c98b49b621dc901a603a78ba249fc61e2e2fcad203f6641fbadada565270dd21e440800d55361e37fed57dd3a655a5de00da50de1ac",
     "network": "mainnet",
     "originFingerprint": 3001244285,
-    "originPath": [
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483648, 0, 0],
     "originType": "electrum",
     "payments": [
       {
@@ -700,11 +648,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad206242a446af29872ea9d8d43f257c98b49b621dc901a603a78ba249fc61e2e2fcad203f6641fbadada565270dd21e440800d55361e37fed57dd3a655a5de00da50de1ac",
     "network": "mainnet",
     "originFingerprint": 3001244285,
-    "originPath": [
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483648, 0, 0],
     "originType": "electrum",
     "payments": [
       {
@@ -776,11 +720,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20eec6b7a054c473c4c9da582d3702b6c0c2118d41b3b69a9072c53c9a31fa3d38ad2060510b88987102be12806cfb89e42c09a14485aa69e44b395306d41443a75fabac",
     "network": "mutinynet",
     "originFingerprint": 3001244285,
-    "originPath": [
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483648, 0, 0],
     "originType": "electrum",
     "payments": [
       {
@@ -850,11 +790,7 @@
     "leaf": "20f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9ad20eec6b7a054c473c4c9da582d3702b6c0c2118d41b3b69a9072c53c9a31fa3d38ad2060510b88987102be12806cfb89e42c09a14485aa69e44b395306d41443a75fabac",
     "network": "mutinynet",
     "originFingerprint": 3001244285,
-    "originPath": [
-      2147483648,
-      0,
-      0
-    ],
+    "originPath": [2147483648, 0, 0],
     "originType": "electrum",
     "payments": [
       {
