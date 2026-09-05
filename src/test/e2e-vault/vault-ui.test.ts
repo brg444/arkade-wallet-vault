@@ -696,7 +696,7 @@ test('validates a pasted Recovery Kit against its committed descriptor', async (
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByTestId('tab-vault').click()
   await page.getByTestId('security-kit').click()
-  await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Recovery Kit', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'I already have a kit file' }).click()
 
   const input = page.getByTestId('recovery-kit-json')
@@ -724,7 +724,9 @@ test('starts recovery only from a confirmed Savings coin and fences a second des
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByTestId('tab-vault').click()
   await page.getByTestId('security-lost').click()
-  await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Access and recovery', exact: true })).toBeVisible()
+  await page.getByRole('radio', { name: 'I can’t use my passkey' }).click()
+  await page.getByRole('button', { name: 'Review recovery preparation' }).click()
 
   state.savingsUtxos = [{ ...coin, status: { confirmed: false } }]
   await page.getByTestId('recover-initiate').click()
@@ -732,7 +734,7 @@ test('starts recovery only from a confirmed Savings coin and fences a second des
 
   state.savingsUtxos = [coin]
   await page.getByTestId('recover-initiate').click()
-  await expect(page.getByText('Transaction copied. Sign it with the key you still have.')).toBeVisible()
+  await expect(page.getByTestId('recovery-prepared')).toBeVisible()
   const psbt = await page.evaluate(() => navigator.clipboard.readText())
   const initiation = await page.evaluate(
     async ({ id, kitPath, rawPsbt, spendPath }) => {
@@ -773,14 +775,14 @@ test('surfaces a mature recovery and preserves claimant-aware guardian cancellat
   await installPendingRecovery(page, status.vaultId, 'hardware', coin)
 
   const alert = page.getByTestId('initiate-alert')
-  await expect(alert).toContainText('Recovery started with hardware')
+  await expect(alert).toContainText('Savings recovery detected')
   await alert.click()
   await expect(page.getByRole('heading', { name: 'Recovery', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Recovery status' })).toContainText('In process')
 
   await page.getByTestId('recover-claim-dest').fill(status.savingsAddress)
   await page.getByTestId('recover-claim').click()
-  await expect(page.getByText('Transaction copied. Sign it with the key you still have.')).toBeVisible()
+  await expect(page.getByTestId('recovery-prepared')).toBeVisible()
   const claimPsbt = await page.evaluate(() => navigator.clipboard.readText())
   const claim = await page.evaluate(
     async ({ rawPsbt, spendPath }) => {
@@ -1021,7 +1023,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByTestId('security-lost')).toBeVisible()
 
   await page.getByTestId('security-kit').click()
-  await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Recovery Kit', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('recovery-kit.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: /I lost a key/ }).click()
@@ -1417,18 +1419,26 @@ test('@interaction launcher momentum glides, can be caught, and remembers its re
   const y = start.y + 20
   // Native touch input in Chromium; WebKit uses its native mouse pointer stream.
   const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
-  if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  const gestureTime = Date.now() / 1000
+  if (cdp)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', timestamp: gestureTime, touchPoints: [{ x, y }] })
   else {
     await page.mouse.move(x, y)
     await page.mouse.down()
   }
   for (let step = 1; step <= 5; step++) {
-    if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 24 }] })
+    if (cdp)
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        timestamp: gestureTime + step * 0.02,
+        touchPoints: [{ x, y: y - step * 24 }],
+      })
     else await page.mouse.move(x, y - step * 24)
     await page.waitForTimeout(16)
   }
   const released = (await tab.boundingBox())!.y
-  if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  if (cdp)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', timestamp: gestureTime + 0.12, touchPoints: [] })
   else await page.mouse.up()
   await expect(tab).toHaveClass(/is-coasting/)
   await expect.poll(async () => (await tab.boundingBox())!.y).toBeLessThan(released - 12)
