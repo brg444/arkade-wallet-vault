@@ -1,8 +1,9 @@
 import { Landmark, Settings, Shield, Wallet, X } from 'lucide-react'
+import { useLauncherPosition } from './qg/useLauncherPosition'
 import HollowPixelMark from '../../icons/HollowPixelMark'
 import { prettyNumber } from '../../lib/format'
 import { hapticLight, hapticSubtle } from '../../lib/haptics'
-import { useContext, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { VaultContext, type VaultAccount, type VaultScreen } from '../../vault/context'
 
 export type VaultDestination = 'wallet' | 'security' | 'settings'
@@ -22,38 +23,55 @@ const ACCOUNTS: { id: VaultAccount; label: string; testId: string; icon: ReactNo
   { id: 'savings', label: 'Savings', testId: 'account-savings', icon: <Landmark /> },
 ]
 
-const LOCK = 8
-const OPEN_DISTANCE = 52
-const PEEK = 96
-
 export default function VaultNavigation() {
   const { account, balancesLoaded, navigate, positions, setAccount } = useContext(VaultContext)
   const [open, setOpen] = useState(false)
-  const [intro, setIntro] = useState(true)
+  const [closing, setClosing] = useState(false)
   const [pull, setPull] = useState(0)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const layerRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const restoreTriggerFocus = useRef(false)
-  const drag = useRef({
-    startX: 0,
-    startY: 0,
-    dx: 0,
-    active: false,
-    locked: false,
-    suppressClick: false,
-  })
 
   useEffect(() => {
-    if (open || !restoreTriggerFocus.current) return
+    if (open || closing || !restoreTriggerFocus.current) return
     restoreTriggerFocus.current = false
     triggerRef.current?.focus()
-  }, [open])
+  }, [open, closing])
+
+  useEffect(() => {
+    if (!closing) return
+    const timer = window.setTimeout(() => setClosing(false), 180)
+    return () => window.clearTimeout(timer)
+  }, [closing])
+
+  useEffect(() => {
+    if (!open && !closing) return
+    const content = layerRef.current?.previousElementSibling as HTMLElement | null
+    if (content) content.inert = true
+    if (open) navRef.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus({ preventScroll: true })
+    return () => {
+      if (content) content.inert = false
+    }
+  }, [open, closing])
 
   useEffect(() => {
     if (!open) return
     const collapse = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      restoreTriggerFocus.current = true
-      setOpen(false)
+      if (event.key === 'Escape') {
+        restoreTriggerFocus.current = true
+        setOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+      const buttons = navRef.current?.querySelectorAll<HTMLButtonElement>('button')
+      if (!buttons?.length) return
+      const next = event.shiftKey ? buttons[buttons.length - 1] : buttons[0]
+      const edge = event.shiftKey ? buttons[0] : buttons[buttons.length - 1]
+      if (document.activeElement === edge) {
+        event.preventDefault()
+        next.focus()
+      }
     }
     window.addEventListener('keydown', collapse)
     return () => window.removeEventListener('keydown', collapse)
@@ -61,13 +79,15 @@ export default function VaultNavigation() {
 
   const close = () => {
     hapticSubtle()
-    restoreTriggerFocus.current = false
+    restoreTriggerFocus.current = true
     setPull(0)
+    setClosing(!window.matchMedia('(prefers-reduced-motion: reduce)').matches)
     setOpen(false)
   }
 
   const openLauncher = () => {
-    setIntro(false)
+    hapticLight()
+    setClosing(false)
     setPull(0)
     setOpen(true)
   }
@@ -79,69 +99,37 @@ export default function VaultNavigation() {
   }
 
   const chooseAccount = (next: VaultAccount) => {
-    hapticSubtle()
     setAccount(next)
-    restoreTriggerFocus.current = true
-    setOpen(false)
+    close()
   }
 
-  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    if (event.button) return
-    setIntro(false)
-    hapticLight()
-    drag.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      dx: 0,
-      active: true,
-      locked: false,
-      suppressClick: false,
-    }
-  }
-
-  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
-    if (!drag.current.active) return
-    const dx = event.clientX - drag.current.startX
-    const dy = event.clientY - drag.current.startY
-    if (!drag.current.locked) {
-      if (Math.abs(dy) > LOCK && Math.abs(dy) > Math.abs(dx)) {
-        drag.current.active = false
-        setPull(0)
-        return
-      }
-      if (dx > -LOCK) return
-      drag.current.locked = true
-      drag.current.suppressClick = true
-      event.currentTarget.setPointerCapture?.(event.pointerId)
-    }
-    const travel = Math.max(0, -dx)
-    drag.current.dx = -travel
-    setPull(Math.min(1, travel / PEEK))
-  }
-
-  const onPointerUp = () => {
-    if (!drag.current.active) return
-    const opened = drag.current.locked && -drag.current.dx >= OPEN_DISTANCE
-    drag.current.active = false
-    drag.current.locked = false
-    if (opened) {
-      openLauncher()
-      return
-    }
-    setPull(0)
-  }
+  const placement = useLauncherPosition(layerRef, setPull, openLauncher)
 
   const progress = open ? 1 : pull
   const peeking = !open && pull > 0
 
+  const closeButton = (
+    <button
+      type='button'
+      className='qg-launcher-close vault-navigation-close'
+      aria-label='Close navigation'
+      onClick={close}
+      tabIndex={open ? undefined : -1}
+    >
+      <X />
+    </button>
+  )
+
   const stack = (
     <nav
+      ref={navRef}
       className='qg-launcher-stack'
       aria-label='Main navigation'
       id='vault-main-navigation'
       style={peeking ? { transform: `translateX(${Math.round((1 - progress) * 72)}px)` } : undefined}
       onClick={(event) => event.stopPropagation()}
     >
+      {placement.upper ? closeButton : null}
       {ACCOUNTS.map((item) => {
         const position = item.id === 'spend' ? positions.spending : positions.savings
         const on = account === item.id
@@ -184,60 +172,50 @@ export default function VaultNavigation() {
           </span>
         </button>
       ))}
-      <button
-        type='button'
-        className='qg-launcher-close vault-navigation-close'
-        aria-label='Close navigation'
-        onClick={close}
-        tabIndex={open ? undefined : -1}
-      >
-        <X />
-      </button>
+      {placement.upper ? null : closeButton}
     </nav>
   )
 
   return (
-    <div className={open ? 'qg-launcher is-open' : peeking ? 'qg-launcher is-peeking' : 'qg-launcher'}>
-      {open || peeking ? (
+    <div
+      ref={layerRef}
+      data-placement={placement.upper ? 'upper' : 'lower'}
+      className={
+        open
+          ? 'qg-launcher is-open'
+          : closing
+            ? 'qg-launcher is-closing'
+            : peeking
+              ? 'qg-launcher is-peeking'
+              : 'qg-launcher'
+      }
+    >
+      {open || peeking || closing ? (
         <div
           className='qg-launcher-backdrop'
+          aria-hidden={!open}
           onClick={open ? close : undefined}
           style={peeking ? { opacity: progress, pointerEvents: 'none' } : undefined}
         >
           {stack}
         </div>
       ) : null}
-      {open ? null : (
+      {open || closing ? null : (
         <button
           ref={triggerRef}
           type='button'
-          className={[
-            'qg-launcher-trigger vault-navigation-trigger',
-            intro ? 'is-intro' : '',
-            peeking ? 'is-pulling' : '',
-          ]
+          className={['qg-launcher-trigger vault-navigation-trigger', peeking ? 'is-pulling' : '']
             .filter(Boolean)
             .join(' ')}
           aria-label='Open navigation'
           aria-expanded={open}
           aria-controls='vault-main-navigation'
           style={peeking ? { transform: `translateX(${Math.round(-progress * 28)}px)` } : undefined}
-          onAnimationEnd={(event) => {
-            if (event.target !== event.currentTarget) return
-            if (event.animationName.includes('qg-launcher-pulse')) setIntro(false)
-          }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onClick={(event) => {
-            if (drag.current.suppressClick) {
-              event.preventDefault()
-              drag.current.suppressClick = false
-              return
-            }
-            openLauncher()
-          }}
+          onPointerDown={placement.onPointerDown}
+          onClick={placement.onClick}
+          onKeyDown={placement.onKeyDown}
+          aria-description='Drag up or down to reposition. Alt plus Arrow Up or Arrow Down also moves the tab.'
+          onContextMenu={(event) => event.preventDefault()}
         >
           <span className='qg-launcher-mark' aria-hidden='true'>
             <HollowPixelMark />

@@ -204,20 +204,15 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-header-sheet {
-  grid-template-columns: 1fr;
-  grid-template-rows: 36px auto;
-  justify-items: center;
-  padding-top: max(2px, var(--qg-top-inset));
+  position: relative;
+  padding-top: max(8px, var(--qg-top-inset));
   touch-action: none;
 }
 
-.qg-handle-btn {
-  width: 100%;
-  height: 36px;
-  touch-action: none;
-}
-
-.qg-handle {
+.qg-header .qg-handle {
+  position: absolute;
+  top: max(3px, var(--qg-top-inset));
+  left: calc(50% - 18px);
   display: block;
   width: 36px;
   height: 4px;
@@ -879,7 +874,7 @@ body:has(.vault-screen-unlock) {
 
 .page > .qg-screen,
 [data-testid='vault-app'] > .qg-screen {
-  max-width: 640px;
+  max-width: 100%;
   width: 100%;
   height: auto;
   margin: 0 auto !important;
@@ -1601,6 +1596,8 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-dest-field input {
+  align-self: stretch;
+  min-height: 56px;
   min-width: 0;
   padding: 0 16px;
   border: 0;
@@ -2185,7 +2182,8 @@ body:has(.vault-screen-unlock) {
   pointer-events: none;
 }
 
-.qg-launcher.is-open {
+.qg-launcher.is-open,
+.qg-launcher.is-closing {
   top: 0;
   right: 0;
   bottom: 0;
@@ -2195,7 +2193,7 @@ body:has(.vault-screen-unlock) {
 .qg-launcher .qg-launcher-trigger,
 .qg-launcher .qg-launcher-close {
   display: grid;
-  width: 46px;
+  width: 56px;
   height: 72px;
   place-items: center;
   border: 1px solid var(--qg-line);
@@ -2215,10 +2213,6 @@ body:has(.vault-screen-unlock) {
   z-index: 122;
   touch-action: none;
   user-select: none;
-}
-
-.qg-launcher-trigger.is-intro {
-  animation: qg-launcher-pulse 2.1s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
 }
 
 .qg-launcher.is-peeking .qg-launcher-backdrop,
@@ -2244,42 +2238,11 @@ body:has(.vault-screen-unlock) {
   transform-origin: 50% 50%;
 }
 
-.qg-launcher-trigger.is-intro .qg-launcher-mark {
-  animation: qg-launcher-turn 1.2s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 .qg-launcher-trigger svg,
 .qg-launcher-close svg,
 .qg-launcher-icon svg {
   width: 22px;
   height: 22px;
-}
-
-@keyframes qg-launcher-pulse {
-  0% {
-    transform: translateX(7px);
-    box-shadow: none;
-  }
-  32% {
-    transform: translateX(0);
-    box-shadow: -10px 0 20px -12px rgb(20 18 15 / 38%);
-  }
-  58% {
-    transform: translateX(3px);
-  }
-  100% {
-    transform: translateX(0);
-    box-shadow: -10px 0 22px -18px rgb(20 18 15 / 55%);
-  }
-}
-
-@keyframes qg-launcher-turn {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .qg-launcher-backdrop {
@@ -2364,4 +2327,172 @@ body:has(.vault-screen-unlock) {
   .qg-launcher-trigger.is-intro .qg-launcher-mark {
     animation: none;
   }
+}
+
+/* Deliberate presses and one shared motion rhythm. */
+[data-testid='vault-app'] {
+  --qg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  isolation: isolate;
+}
+
+[data-testid='vault-app'] button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    scale 160ms var(--qg-ease);
+}
+
+[data-testid='vault-app'] button[data-intent-pressed]:not(:disabled):not(.qg-launcher-trigger) {
+  scale: 0.98;
+  transition-duration: 70ms;
+}
+
+[data-testid='vault-app'] .qg-launcher-trigger {
+  touch-action: none;
+}
+
+.qg-header > h2 {
+  font-size: 15px;
+}
+
+.qg-primary,
+.qg-secondary {
+  min-height: 56px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 550;
+}
+
+[data-testid='vault-app'] .qg-main,
+[data-testid='vault-app'] .content {
+  overscroll-behavior-y: contain;
+}
+
+[data-testid='vault-app'] .vault-refresh {
+  flex: 0 0 auto;
+  transition:
+    height 200ms var(--qg-ease),
+    opacity 160ms ease;
+}
+
+[data-testid='vault-app'] .vault-refresh:not(.is-refreshing) svg {
+  animation-play-state: paused;
+}
+
+[data-testid='vault-app'] > .qg-launcher {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  margin: 0;
+}
+
+.qg-launcher-trigger,
+.qg-launcher.is-peeking .qg-launcher-backdrop,
+.qg-launcher.is-peeking .qg-launcher-stack {
+  position: absolute;
+}
+
+.qg-launcher.is-peeking {
+  inset: 0;
+}
+
+.qg-launcher.is-open .qg-launcher-backdrop {
+  animation: qg-menu-fade 180ms ease both;
+}
+
+.qg-launcher.is-open .qg-launcher-stack {
+  animation: qg-menu-enter 240ms var(--qg-ease) both;
+}
+
+.qg-launcher.is-closing .qg-launcher-backdrop {
+  animation: qg-menu-fade 180ms ease reverse both;
+}
+
+.qg-launcher.is-closing .qg-launcher-stack {
+  pointer-events: none;
+  animation: qg-menu-enter 180ms var(--qg-ease) reverse both;
+}
+
+@keyframes qg-menu-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes qg-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-testid='vault-app'] :is(.qg-header button, .qg-utilities button):hover {
+    background: color-mix(in srgb, var(--qg-ink) 6%, transparent);
+  }
+  .qg-secondary:hover {
+    background: color-mix(in srgb, var(--qg-ink) 5%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid='vault-app'] button,
+  [data-testid='vault-app'] .qg-dest-field,
+  [data-testid='vault-app'] .vault-refresh {
+    transition: none;
+  }
+  [data-testid='vault-app'] button[data-intent-pressed]:not(:disabled):not(.qg-launcher-trigger) {
+    scale: 1;
+  }
+  .qg-launcher.is-open .qg-launcher-backdrop,
+  .qg-launcher.is-open .qg-launcher-stack,
+  .qg-launcher.is-closing .qg-launcher-backdrop,
+  .qg-launcher.is-closing .qg-launcher-stack {
+    animation: none;
+  }
+}
+
+/* The visible tab is the grab surface. Position follows the pointer without layout animation. */
+[data-testid='vault-app'] > .qg-launcher {
+  --qg-launcher-top-inset: max(16px, calc(env(safe-area-inset-top, 0px) + 12px));
+  --qg-launcher-bottom-inset: max(16px, calc(var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px));
+  padding-top: var(--qg-launcher-top-inset);
+  padding-bottom: var(--qg-launcher-bottom-inset);
+}
+.qg-launcher .qg-launcher-trigger {
+  width: 56px;
+  top: var(--qg-launcher-y);
+  bottom: auto;
+  transform: translate3d(0, var(--qg-launcher-drag-y, 0px), 0);
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+.qg-launcher .qg-launcher-trigger.is-repositioning {
+  cursor: grabbing;
+  will-change: transform;
+  transition: none;
+}
+.qg-launcher .qg-launcher-stack {
+  bottom: clamp(
+    var(--qg-launcher-bottom-inset),
+    calc(100% - var(--qg-launcher-y) - 72px),
+    calc(100% - 336px - var(--qg-launcher-top-inset))
+  );
+  max-height: calc(100% - var(--qg-launcher-top-inset) - var(--qg-launcher-bottom-inset));
+  overflow-y: auto;
+}
+.qg-launcher[data-placement='upper'] .qg-launcher-stack {
+  top: clamp(var(--qg-launcher-top-inset), var(--qg-launcher-y), calc(100% - 336px - var(--qg-launcher-bottom-inset)));
+  bottom: auto;
 }
