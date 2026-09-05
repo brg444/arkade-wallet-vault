@@ -1,6 +1,11 @@
+import { mockEnrollmentAccess } from './fixtures/enrollmentAccess'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
+
+test.beforeEach(async ({ page }) => {
+  await mockEnrollmentAccess(page)
+})
 
 const ENROLLMENT_MODULE = '/src/lib/vault/enrollmentStore.ts'
 
