@@ -15,6 +15,7 @@ import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { isSameVtxoPayment, loadPersistedVtxoSpend } from '../../lib/vault/vtxo/spend'
 import { VaultContext } from '../../vault/context'
 import Scanner from './Scanner'
+import { amountSizeStyle } from './qg/QgAmount'
 import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
 
 function lightningInvoice(value: string, network?: string) {
@@ -208,7 +209,10 @@ export default function VaultSend() {
         </>
       }
     >
-      <section className='qg-amount-entry'>
+      <section
+        className='qg-amount-entry'
+        style={amountSizeStyle(amountUnit === 'usd' ? usdInput : prettyNumber(spend.amount, 0))}
+      >
         <label htmlFor='qg-send-amount'>Amount</label>
         <div>
           <button

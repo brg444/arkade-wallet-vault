@@ -1,8 +1,6 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { hex } from '@scure/base'
-import FingerprintIcon from '../../icons/Fingerprint'
-import SafeIcon from '../../icons/Safe'
-import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import { Fingerprint, FileKey, ShieldCheck } from 'lucide-react'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount } from '../../lib/format'
@@ -57,9 +55,9 @@ const KEY_DETAIL: Record<Claimant, string> = {
 }
 
 const KEY_ICON: Record<Claimant, ReactNode> = {
-  phone: <FingerprintIcon />,
-  hardware: <ShieldCheckOutlineIcon />,
-  recovery: <SafeIcon />,
+  phone: <Fingerprint />,
+  hardware: <ShieldCheck />,
+  recovery: <FileKey />,
 }
 
 function RecoverAlert({ text }: { text: string }) {

@@ -1,8 +1,5 @@
 import { useContext, type ReactNode } from 'react'
-import FingerprintIcon from '../../icons/Fingerprint'
-import SafeIcon from '../../icons/Safe'
-import ServerIcon from '../../icons/Server'
-import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import { Fingerprint, FileKey, Server, ShieldCheck } from 'lucide-react'
 import { prettyAmount } from '../../lib/format'
 import { shortKey } from '../../lib/vault/setupPlan'
 import { VaultContext } from '../../vault/context'
@@ -102,7 +99,7 @@ export default function VaultKeys() {
 
         <div className='vault-security-grid'>
           <SecurityTile
-            icon={<FingerprintIcon />}
+            icon={<Fingerprint />}
             label='Protection tier'
             value={protectionTier === 'advanced' ? 'Advanced' : 'Standard'}
             detail={
@@ -110,7 +107,7 @@ export default function VaultKeys() {
             }
           />
           <SecurityTile
-            icon={<SafeIcon />}
+            icon={<FileKey />}
             label='Recovery Kit'
             value={hasRecoveryKit ? 'Available' : 'Review'}
             detail={hasRecoveryKit ? 'Public vault map on this device' : 'Restore or save your vault map'}
@@ -118,13 +115,13 @@ export default function VaultKeys() {
             testId='security-kit'
           />
           <SecurityTile
-            icon={<ShieldCheckOutlineIcon />}
+            icon={<ShieldCheck />}
             label='Spending limits'
             value={`${prettyAmount(perPayment)} each`}
             detail={`${prettyAmount(limit)} / rolling 24 hours`}
           />
           <SecurityTile
-            icon={<ServerIcon />}
+            icon={<Server />}
             label='Vault service'
             value={readinessLabel}
             detail='Enforces limits and assists recovery'
@@ -135,7 +132,7 @@ export default function VaultKeys() {
         <div className='vault-security-groups'>
           <HubGroup label='Keys'>
             <HubRow
-              icon={<FingerprintIcon />}
+              icon={<Fingerprint />}
               title='This device'
               status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
               onClick={
@@ -147,14 +144,14 @@ export default function VaultKeys() {
               }
             />
             <HubRow
-              icon={<ShieldCheckOutlineIcon />}
+              icon={<ShieldCheck />}
               title='Hardware'
               detail='Independent approval for Savings'
               status={shortKey(hardwarePub)}
             />
             {hasRecovery ? (
               <HubRow
-                icon={<SafeIcon />}
+                icon={<FileKey />}
                 title='Recovery'
                 detail='Restores access after a visible delay'
                 status={shortKey(recoveryPub)}
