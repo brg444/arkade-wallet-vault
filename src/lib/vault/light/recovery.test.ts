@@ -4,9 +4,12 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { hex } from '@scure/base'
 import { p2tr } from '@scure/btc-signer'
 import { getNetwork, serializeExitPackage, type ExecutorEvent } from '@arkade-os/sdk'
+import * as recoveryArchive from './recoveryArchive'
+import { networkPins } from '../networkPins'
 import { LightScript, lightDescriptorDigest } from './contract'
 import {
   executeLightRecovery,
+  prepareLightRecoveryWithSecret,
   requireConfirmedLightRecovery,
   validateLightRecoveryFile,
   type LightRecoveryFile,
@@ -55,6 +58,41 @@ async function recoveryFixture(): Promise<LightRecoveryFile> {
 }
 
 describe('Light owner-authenticated emergency files', () => {
+  it('uses a validated imported archive when local browser storage is unavailable', async () => {
+    const file = await recoveryFixture()
+    const pins = networkPins('mutinynet')
+    file.archive = {
+      version: 1,
+      descriptorHash: lightDescriptorDigest(file.descriptor),
+      capturedAt: new Date().toISOString(),
+      info: JSON.stringify({
+        network: pins.operatorGetInfoNetwork,
+        signerPubkey: pins.operatorSignerPub,
+        checkpointTapscript: pins.checkpointTapscript,
+        forfeitPubkey: pins.checkpointForfeitPub,
+      }),
+      coins: '[]',
+      branches: {},
+      transactions: {},
+    }
+    const storage = vi
+      .spyOn(recoveryArchive, 'loadLightRecoveryArchive')
+      .mockRejectedValue(new Error('Storage unavailable'))
+    const fetch = vi.fn(() => {
+      throw new Error('Unexpected provider request')
+    })
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const prepared = await prepareLightRecoveryWithSecret(file, hex.encode(testSecret), file.feeFundingAddress!, true)
+      expect(prepared.archive).toEqual(file.archive)
+      expect(prepared.exitPackage).toBeUndefined()
+      expect(fetch).not.toHaveBeenCalled()
+    } finally {
+      storage.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('round trips a key backup without claiming it has current exit paths', async () => {
     const record = await lightTestEnrollment()
     const file = validateLightRecoveryFile({ name: 'vaulted-light-recovery', version: 1, ...record })

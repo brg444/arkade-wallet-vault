@@ -11,6 +11,7 @@ test('Light enrolls, receives and pays with real Mutinynet providers', async ({ 
   const directory = process.env.VAULT_LIGHT_DRILL_DIRECTORY!
   await mkdir(directory, { recursive: true, mode: 0o700 })
   await chmod(directory, 0o700)
+  await writeFile(join(directory, 'funded-enrollment-started'), new Date().toISOString(), { mode: 0o600, flag: 'wx' })
   const save = async (name: string, value: unknown) =>
     writeFile(join(directory, name), JSON.stringify(value, null, 2), { mode: 0o600 })
   const errors: string[] = []
@@ -19,6 +20,8 @@ test('Light enrolls, receives and pays with real Mutinynet providers', async ({ 
     const request = route.request()
     const url = new URL(request.url())
     if (url.hostname !== 'localhost') return route.continue()
+    if (url.pathname === '/v1/light/renew/register')
+      await save('register-request.json', JSON.parse(request.postData()!))
     const response = await page.request.fetch(`http://127.0.0.1:18899${url.pathname}${url.search}`, {
       method: request.method(),
       headers: request.headers(),
@@ -74,6 +77,24 @@ test('Light enrolls, receives and pays with real Mutinynet providers', async ({ 
   })
   await save('browser-payment-evidence.json', { text: await page.locator('.light-app').innerText(), errors })
   expect(errors).toEqual([])
+  if (process.env.VAULT_LIGHT_TEST_RENEWAL === '1') {
+    await page.getByRole('button', { name: 'Done', exact: true }).click()
+    await page.getByRole('button', { name: 'Security', exact: true }).click()
+    await page.getByRole('button', { name: 'Renew Spending', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Keep your Spending active', exact: true })).toBeVisible({
+      timeout: 45000,
+    })
+    await save('browser-renewal-review.json', { text: await page.locator('.light-app').innerText() })
+    await page.getByRole('button', { name: 'Confirm renewal', exact: true }).click()
+    await expect(page.getByRole('status')).toContainText(/Renewal submitted|Spending renewed/, { timeout: 150000 })
+    await save('browser-renewal-evidence.json', { text: await page.locator('.light-app').innerText(), errors })
+    expect(errors).toEqual([])
+    await page.reload()
+    await page.getByRole('button', { name: 'Unlock with passkey', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '40,000 sats', exact: true })).toBeVisible({ timeout: 60000 })
+    await page.getByRole('button', { name: 'Security', exact: true }).click()
+    await page.screenshot({ path: join(directory, 'renewed-light-security.png'), fullPage: true })
+  }
 })
 
 test('Light prepares recovery of funded change without a passkey', async ({ page }) => {
@@ -118,6 +139,52 @@ test('Light prepares recovery of funded change without a passkey', async ({ page
       null,
       2,
     ),
+    { mode: 0o600 },
+  )
+  // Reload before the outage drill so recovery depends on persisted data.
+  await page.reload()
+  await page.getByRole('button', { name: 'Restore a Light wallet', exact: true }).click()
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'backup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(saved)),
+  })
+  await page.getByRole('button', { name: 'I no longer have my passkey', exact: true }).click()
+  await page.getByLabel('Bitcoin address to recover to').fill(destination)
+  await page.getByLabel('Recovery secret', { exact: true }).fill(secret)
+  await page.getByLabel('Use saved recovery data without contacting the Operator').check()
+  const operatorRequests: string[] = []
+  await page.route('https://mutinynet.arkade.sh/**', (route) => {
+    operatorRequests.push(new URL(route.request().url()).pathname)
+    return route.abort()
+  })
+  const offlineDownload = page.waitForEvent('download', { timeout: 90000 })
+  await page.getByRole('button', { name: 'Prepare emergency exit', exact: true }).click()
+  const offline = JSON.parse(await readFile((await (await offlineDownload).path())!, 'utf8'))
+  expect(offline.exitPackage.vtxos.map((coin: { outpoint: string }) => coin.outpoint)).toEqual(
+    exit.exitPackage.vtxos.map((coin: { outpoint: string }) => coin.outpoint),
+  )
+  expect(operatorRequests).toEqual([])
+  await writeFile(join(directory, 'browser-offline-change-recovery.json'), JSON.stringify(offline, null, 2), {
+    mode: 0o600,
+  })
+})
+
+test.afterEach(async ({ page, passkey }, info) => {
+  if (process.env.VAULT_LIGHT_TEST_RENEWAL !== '1') return
+  const directory = process.env.VAULT_LIGHT_DRILL_DIRECTORY!
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+
+  await writeFile(
+    join(directory, info.title.includes('enrolls') ? 'browser-state.json' : 'browser-recovery-state.json'),
+    JSON.stringify({
+      state: await page.context().storageState(),
+      credentials: await passkey.credentials(),
+      text: await page
+        .locator('body')
+        .innerText()
+        .catch(() => ''),
+    }),
     { mode: 0o600 },
   )
 })

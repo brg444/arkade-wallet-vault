@@ -69,6 +69,7 @@ test('Light enrolls through the Go runtime with a real PRF passkey and verifies 
   await expect(page.getByText('50,000 sats available within your rolling 24-hour limit.')).toBeVisible()
   await page.getByRole('button', { name: 'Receive', exact: true }).click()
   await expect(page.locator('.light-address')).toHaveText(/^tark1/)
+  const originalAddress = (await page.locator('.light-address').innerText()).trim()
   await page.screenshot({ path: '/tmp/vaulted-light-receive-mobile.png', fullPage: true })
   await page.setViewportSize({ width: 320, height: 640 })
   expect(await page.locator('.light-app').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true)
@@ -84,6 +85,19 @@ test('Light enrolls through the Go runtime with a real PRF passkey and verifies 
   await expect(page.getByText('Passkey + policy cosigner', { exact: true })).toBeVisible()
   const persistent = await page.evaluate(() => JSON.stringify({ ...localStorage }))
   expect(persistent).not.toContain(secret)
+  // Keep the original authenticator but remove this device's app record.
+  // Restoring the downloaded file must recover the same script and policy.
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('vaulted:active-setup', 'light')
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Restore a Light wallet', exact: true }).click()
+  await page.locator('input[type=file]').setInputFiles(path!)
+  await page.getByRole('button', { name: 'Verify file and unlock', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '0 sats', exact: true })).toBeVisible({ timeout: 30000 })
+  await page.getByRole('button', { name: 'Receive', exact: true }).click()
+  await expect(page.locator('.light-address')).toHaveText(originalAddress)
   expect(await passkey.credentials()).toHaveLength(1)
   expect(errors).toEqual([])
 })

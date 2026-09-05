@@ -8,7 +8,6 @@ import {
   InMemoryContractRepository,
   InMemoryWalletRepository,
   OnchainWallet,
-  RestIndexerProvider,
   SingleKey,
   UnilateralExit,
   Wallet,
@@ -27,6 +26,13 @@ import { vaultArkServer } from '../vtxo/spend'
 import { networkPins, sdkNetworkName } from '../networkPins'
 import type { VaultStatus } from '../types'
 import { hex } from '@scure/base'
+import {
+  captureLightRecoveryArchive,
+  loadLightRecoveryArchive,
+  lightArchiveProviders,
+  validateLightRecoveryArchive,
+  type LightRecoveryArchive,
+} from './recoveryArchive'
 
 export interface LightRecoveryFile extends LightEnrollment {
   name: 'vaulted-light-recovery'
@@ -35,6 +41,7 @@ export interface LightRecoveryFile extends LightEnrollment {
   exitPackage?: ExitPackage
   exitPackageSignature?: string
   feeFundingAddress?: string
+  archive?: LightRecoveryArchive
 }
 
 /** Graph mode signs recovery paths without broadcasting or funding an exit. */
@@ -42,12 +49,19 @@ export async function prepareLightRecoveryFile(
   record: LightEnrollment,
   status: VaultStatus,
   recoveryAddress: string,
+  useSavedData = false,
 ): Promise<LightRecoveryFile> {
   const valid = validateLightEnrollment(record)
   const bound = lightStatusMatchesDescriptor(status, valid.descriptor)
   const owner = await unlockPhoneBip340(valid.enrollment, bound)
   try {
-    return await prepareLightRecoveryWithOwner(valid, owner, recoveryAddress)
+    return await prepareLightRecoveryWithOwner(
+      valid,
+      owner,
+      recoveryAddress,
+      (record as LightRecoveryFile).archive,
+      useSavedData,
+    )
   } finally {
     owner.fill(0)
   }
@@ -57,6 +71,7 @@ export async function prepareLightRecoveryWithSecret(
   record: LightEnrollment,
   secret: string,
   recoveryAddress: string,
+  useSavedData = false,
 ): Promise<LightRecoveryFile> {
   const valid = validateLightEnrollment(record)
   if (!/^[0-9a-f]{64}$/.test(secret.trim())) throw new Error('Enter your complete recovery secret')
@@ -64,7 +79,13 @@ export async function prepareLightRecoveryWithSecret(
   let owner: Uint8Array | undefined
   try {
     owner = await unlockLightOwnerKey(valid.recoveryBackup, material, 'recovery-secret', valid.descriptor)
-    return await prepareLightRecoveryWithOwner(valid, owner, recoveryAddress)
+    return await prepareLightRecoveryWithOwner(
+      valid,
+      owner,
+      recoveryAddress,
+      (record as LightRecoveryFile).archive,
+      useSavedData,
+    )
   } finally {
     material.fill(0)
     owner?.fill(0)
@@ -75,6 +96,8 @@ async function prepareLightRecoveryWithOwner(
   record: LightEnrollment,
   owner: Uint8Array,
   recoveryAddress: string,
+  suppliedArchive?: LightRecoveryArchive,
+  useSavedData = false,
 ): Promise<LightRecoveryFile> {
   if (!isVaultBitcoinAddress(recoveryAddress, record.descriptor.network))
     throw new Error('Enter a Bitcoin recovery address for this network')
@@ -86,22 +109,39 @@ async function prepareLightRecoveryWithOwner(
   const onchainWallet = await OnchainWallet.create(identity, network, onchain)
   const walletRepository = new InMemoryWalletRepository()
   const contractRepository = new InMemoryContractRepository()
-  const provider = new RestIndexerProvider(vaultArkServer(record.descriptor.network))
-  const result = await provider.getVtxos({ scripts: [record.descriptor.scriptPubKey] })
-  const coins = result.vtxos.filter((v) => !v.isSpent)
+  const savedArchive = async () => {
+    const imported = suppliedArchive ? validateLightRecoveryArchive(suppliedArchive, record.descriptor).archive : null
+    const stored = await loadLightRecoveryArchive(record.descriptor).catch((error) => {
+      // An independently validated file remains usable when browser storage
+      // is unavailable or its previous snapshot is corrupt.
+      if (!imported) throw error
+      return null
+    })
+    const candidates = [stored, imported].filter((v): v is LightRecoveryArchive => !!v)
+    candidates.sort((a, b) => Date.parse(b.capturedAt) - Date.parse(a.capturedAt))
+    if (!candidates[0])
+      throw new Error('No recovery data is saved here. Reconnect to the Operator or import a current recovery file.')
+    return candidates[0]
+  }
+  const archive = useSavedData ? await savedArchive() : await captureLightRecoveryArchive(record.descriptor)
+  const local = lightArchiveProviders(archive, record.descriptor)
+  const coins = local.coins
   const file: LightRecoveryFile = {
     name: 'vaulted-light-recovery',
     version: 1,
     createdAt: new Date().toISOString(),
     ...record,
+    archive,
   }
   if (!coins.length) return file
   // The explicit script-filtered set keeps default SDK funds out of recovery.
   const wallet = await Wallet.create({
     identity,
     arkServerUrl: vaultArkServer(record.descriptor.network),
+    arkProvider: local.arkProvider,
+    indexerProvider: local.indexerProvider,
     esploraUrl: '/esplora',
-    storage: { walletRepository, contractRepository },
+    storage: { walletRepository, contractRepository, exitDataCapture: { mode: 'full', sources: [local.source] } },
     walletMode: 'static',
     settlementConfig: { boardingUtxoSweep: false, deprecatedSignerMigration: false, autoRenewVtxos: false },
   })
@@ -155,7 +195,11 @@ export function validateLightRecoveryFile(value: unknown): LightRecoveryFile {
   const supplied = value as LightRecoveryFile
   if (supplied.name !== 'vaulted-light-recovery' || supplied.version !== 1)
     throw new Error('Unsupported Light recovery file')
-  if (!supplied.exitPackage) return { ...valid, name: supplied.name, version: 1, createdAt: supplied.createdAt || '' }
+  const archive = supplied.archive
+    ? validateLightRecoveryArchive(supplied.archive, valid.descriptor).archive
+    : undefined
+  if (!supplied.exitPackage)
+    return { ...valid, name: supplied.name, version: 1, createdAt: supplied.createdAt || '', archive }
   const pkg = deserializeExitPackage(serializeExitPackage(supplied.exitPackage))
   const file: LightRecoveryFile = {
     ...valid,
@@ -165,6 +209,7 @@ export function validateLightRecoveryFile(value: unknown): LightRecoveryFile {
     exitPackage: pkg,
     exitPackageSignature: supplied.exitPackageSignature,
     feeFundingAddress: supplied.feeFundingAddress,
+    archive,
   }
   if (
     !isVaultBitcoinAddress(file.feeFundingAddress || '', valid.descriptor.network) ||

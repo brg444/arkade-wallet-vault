@@ -70,6 +70,21 @@
   resize: vertical;
   overflow-wrap: anywhere;
 }
+
+.light-field.light-checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.light-checkbox input[type='checkbox'] {
+  flex: 0 0 1.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--qg-ink);
+}
 .light-secret-label {
   display: block;
   margin-block: 1.5rem;

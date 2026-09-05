@@ -36,4 +36,8 @@ Use a fresh private directory for the enrollment and payment test. It saves the 
 HTTPS=true VAULT_E2E_PORT=3120 VAULT_E2E_OPERATOR_PORT=18900 VAULT_LIGHT_LIVE=mutinynet pnpm exec playwright test -c playwright.light-live.config.ts --project='Mobile Chrome'
 ```
 
-The browser harness uses temporary runtime storage and stops after 20 minutes. Retain the private browser backup and prepared exit files after the harness ends. This harness does not qualify a production runtime restart or durable policy-sequence recovery.
+Set `VAULT_LIGHT_TEST_RENEWAL=1` to include fee review, real batch participation, reload/unlock, and recovery of the renewed output. The live configuration selects Mobile Chrome only. It disables hot reload so source edits cannot interrupt an active signing session. Each funding directory has an exclusive funding-attempt marker; a failed test must be investigated before another funded wallet is created.
+
+For restart qualification, set the runtime's `VAULT_LIGHT_BROWSER_DIRECTORY` to an absolute private directory and retain it across harness restarts. This Mutinynet-only mode saves a random test cosigner key, the SQLite ledger, and a test policy sequence. Its integrity key remains a public test fixture, so this directory is unsuitable for a real deployment. The harness stops after 45 minutes. `VAULT_LIGHT_BROWSER_DISABLE_ENROLLMENT=1` starts it with Light enrollment disabled while retaining existing wallets.
+
+Retain browser backups and prepared exit files after the harness ends. The virtual passkey export is diagnostic data; importing it into a new Chromium authenticator does not recreate the original PRF secret. Original-passkey restoration is checked with the original authenticator; all-passkeys-lost recovery uses the saved file and secret.

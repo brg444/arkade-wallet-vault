@@ -1,3 +1,7 @@
+import { checkLightRenewal, renewLightSpending } from '../../lib/vault/light/renewal'
+import type { LightRenewalPlan } from '../../lib/vault/light/renewalTypes'
+import { lightRenewalTiming } from '../../lib/vault/light/renewalTiming'
+import { captureLightRecoveryArchive, validateLightRecoveryArchive } from '../../lib/vault/light/recoveryArchive'
 import {
   prepareLightRecoveryFile,
   prepareLightRecoveryWithSecret,
@@ -103,6 +107,9 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
   const [quote, setQuote] = useState<VaultVtxoSpendQuote | null>(null)
   const [lastTx, setLastTx] = useState('')
   const [selectedTx, setSelectedTx] = useState<VaultHistoryItem | null>(null)
+  const [renewalReview, setRenewalReview] = useState<LightRenewalPlan | null>(null)
+  const renewalApproval = useRef<((accepted: boolean) => void) | null>(null)
+  useEffect(() => () => renewalApproval.current?.(false), [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -113,11 +120,46 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
   const [recoveryFile, setRecoveryFile] = useState<LightRecoveryFile | null>(null)
   const [recoveryDestination, setRecoveryDestination] = useState('')
   const [recoveryEvents, setRecoveryEvents] = useState<string[]>([])
+  const [useSavedRecovery, setUseSavedRecovery] = useState(false)
+  const [recoveryDataDate, setRecoveryDataDate] = useState('')
+  const [renewalTiming, setRenewalTiming] = useState<ReturnType<typeof lightRenewalTiming> | null>(null)
+  const [recoveryDataError, setRecoveryDataError] = useState('')
   const recoveryController = useRef<AbortController | null>(null)
   useEffect(() => () => recoveryController.current?.abort(), [])
+  useEffect(() => {
+    if (!record || !status || view === 'unlock' || view === 'emergency') return
+    let active = true
+    const capture = () => {
+      if (document.visibilityState === 'hidden') return
+      void captureLightRecoveryArchive(record.descriptor)
+        .then((archive) => {
+          if (active) {
+            setRecoveryDataDate(archive.capturedAt)
+            setRenewalTiming(lightRenewalTiming(validateLightRecoveryArchive(archive, record.descriptor).coins))
+            setRecoveryDataError('')
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setRenewalTiming(null)
+            setRecoveryDataError(
+              'Recovery data could not be updated. Keep this wallet open and reconnect before updating your recovery file.',
+            )
+          }
+        })
+    }
+    capture()
+    const timer = window.setInterval(capture, 30_000)
+    window.addEventListener('focus', capture)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', capture)
+    }
+  }, [record, status?.vaultId, view === 'unlock', view === 'emergency', snapshot])
 
-  useScreenMotion(root, view)
-  const intent = useIntentPress(view)
+  useScreenMotion(root, renewalReview ? 'renewal-review' : view)
+  const intent = useIntentPress(renewalReview ? 'renewal-review' : view)
   const navigate = (next: View) => {
     if (busyRef.current) return
     setError('')
@@ -510,7 +552,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
             setRestoreRaw('')
             const selected = e.target.files?.[0]
             if (selected) {
-              if (selected.size > 5_000_000) {
+              if (selected.size > 32_000_000) {
                 setRestoreRaw('')
                 setError('This file is too large')
                 return
@@ -588,6 +630,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
                     recoveryFile,
                     confirmation,
                     recoveryDestination.trim(),
+                    useSavedRecovery,
                   )
                   if (!next.exitPackage) throw new Error('No unspent Light outputs were found')
                   setRecoveryFile(next)
@@ -602,7 +645,8 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
         <h1>Recover to Bitcoin</h1>
         <p className='qg-copy'>
           Use the secret you saved during setup to recover without your passkey. A prepared exit needs only a Bitcoin
-          explorer; preparing a new exit also needs the Arkade transaction indexer and Operator information.
+          explorer. To prepare a new exit while the Operator is unavailable, use recovery data previously saved on this
+          device or included in your file.
         </p>
         {!recoveryFile.exitPackage ? (
           <label className='light-field'>
@@ -620,6 +664,21 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
             <p className='light-address'>{recoveryFile.exitPackage.sweepAddress}</p>
           </>
         )}
+        {!recoveryFile.exitPackage ? (
+          <label className='light-field light-checkbox'>
+            <input
+              type='checkbox'
+              checked={useSavedRecovery}
+              onChange={(event) => setUseSavedRecovery(event.target.checked)}
+            />
+            Use saved recovery data without contacting the Operator
+          </label>
+        ) : recoveryFile.archive ? (
+          <p className='qg-copy'>
+            Recovery data saved {new Date(recoveryFile.archive.capturedAt).toLocaleString()}. Payments received or sent
+            after that time are not covered by this file.
+          </p>
+        ) : null}
         <label className='light-field'>
           Recovery secret
           <textarea
@@ -704,7 +763,21 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
             onClick={() => navigate('send')}
           />
         </div>
+        {renewalTiming?.due ? (
+          <div className='light-panel'>
+            <Clock3 />
+            <div>
+              <strong>{renewalTiming.expired ? 'Check expired Spending' : 'Spending needs renewal soon'}</strong>
+              <p>
+                {renewalTiming.expired
+                  ? 'Some Spending has expired. Open Security to check your recovery options.'
+                  : `The next expiry is ${new Date(renewalTiming.expiresAt!).toLocaleString()}. Open Security to renew before then.`}
+              </p>
+            </div>
+          </div>
+        ) : null}
         <h2>Activity</h2>
+        {recoveryDataError ? <p className='qg-copy'>{recoveryDataError}</p> : null}
         {activity(snapshot?.history || [])}
         {status && loadPersistedVtxoSpend(status.vaultId) ? (
           <QgSecondary
@@ -833,7 +906,10 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
     )
   else if (view === 'success')
     content = (
-      <QgScreen title='Payment sent' footer={<QgPrimary label='Done' onClick={() => navigate('home')} />}>
+      <QgScreen
+        title='Payment sent'
+        footer={<QgPrimary label='Done' disabled={busy} onClick={() => navigate('home')} />}
+      >
         <span className='light-success'>
           <Check />
         </span>
@@ -942,6 +1018,74 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
           Your passkey unlocks the owner key on this device. Vaulted checks normal payments before cosigning. The
           delayed Bitcoin exit belongs to the owner key and does not enforce these payment limits.
         </p>
+        <div className='light-panel'>
+          <Clock3 />
+          <div>
+            <strong>Keep Spending active</strong>
+            <p>
+              {renewalTiming?.expiresAt
+                ? `Next expiry: ${new Date(renewalTiming.expiresAt).toLocaleString()}.`
+                : snapshot?.balance
+                  ? 'Checking the next expiry…'
+                  : 'Expiry dates appear after you receive bitcoin.'}
+            </p>
+            {renewalTiming?.incomplete ? <p>Some expiry dates are unavailable. Reconnect to check them.</p> : null}
+            <p>Renew before expiry to keep payments available. The same spending limits still apply.</p>
+          </div>
+        </div>
+        <QgSecondary
+          label='Renew Spending'
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              if (!status) throw new Error('Unlock the wallet first')
+              const result = await renewLightSpending(
+                record,
+                status,
+                (plan) =>
+                  new Promise<boolean>((resolve) => {
+                    setNotice('')
+                    setRenewalReview(plan)
+                    renewalApproval.current = (accepted) => {
+                      renewalApproval.current = null
+                      setRenewalReview(null)
+                      resolve(accepted)
+                    }
+                  }),
+                setNotice,
+              )
+              await refresh()
+              setNotice(
+                result.state === 'confirmed'
+                  ? 'Spending renewed'
+                  : ['cancelled', 'released', 'rejected'].includes(result.state)
+                    ? 'Renewal stopped. Your bitcoin stays in this wallet.'
+                    : 'Renewal submitted. Use Check renewal to confirm it has completed.',
+              )
+            })
+          }
+        />
+        <QgSecondary
+          label='Check renewal'
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              const result = await checkLightRenewal(record)
+              await refresh()
+              setNotice(
+                !result
+                  ? 'No renewal is waiting'
+                  : result.state === 'confirmed'
+                    ? 'Spending renewed'
+                    : ['cancelled', 'released', 'rejected'].includes(result.state)
+                      ? 'The earlier renewal is closed. You can start again.'
+                      : result.state === 'waiting_expiry'
+                        ? 'The earlier request is expiring. Check again in a few minutes.'
+                        : 'The earlier renewal is still being checked. Your funds remain reserved until its outcome is known.',
+              )
+            })
+          }
+        />
         <label className='light-field'>
           Bitcoin recovery destination
           <input
@@ -972,7 +1116,14 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
         />
         <p className='qg-copy'>
           The file contains encrypted keys. Keep your recovery secret separately. Emergency recovery also needs current
-          transaction paths and Bitcoin network fees.
+          transaction paths and Bitcoin network fees. Download a new file after receiving, paying, or renewing; older
+          files do not update themselves.
+        </p>
+        <p className='qg-copy'>
+          {recoveryDataError ||
+            (recoveryDataDate
+              ? `Recovery data saved on this device ${new Date(recoveryDataDate).toLocaleString()}. Keep an updated file elsewhere in case you lose this device.`
+              : 'Saving recovery data on this device…')}
         </p>
         <QgTextButton label='Return to Standard / Advanced' onClick={onExit} />
       </QgScreen>
@@ -1003,6 +1154,33 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
       <QgScreen title='Vaulted Light'>
         <p className='qg-copy'>Loading your wallet…</p>
         <QgSecondary label='Return' onClick={() => navigate(record ? 'unlock' : 'setup')} />
+      </QgScreen>
+    )
+  if (renewalReview)
+    content = (
+      <QgScreen
+        title='Review renewal'
+        back={() => renewalApproval.current?.(false)}
+        footer={<QgPrimary label='Confirm renewal' onClick={() => renewalApproval.current?.(true)} />}
+      >
+        <h1>Keep your Spending active</h1>
+        <p className='qg-copy'>
+          Your bitcoin returns to the same Spending wallet with a new expiry date and the same payment limits.
+        </p>
+        <div className='light-panel'>
+          <div>
+            <p>Amount renewed</p>
+            <strong>{sats(renewalReview.valueSats)}</strong>
+            <p>Renewal fee</p>
+            <strong>{sats(renewalReview.feeSats)}</strong>
+            <p>Amount after renewal</p>
+            <strong>{sats(renewalReview.receiverSats)}</strong>
+          </div>
+        </div>
+        <p className='qg-copy'>
+          Only the fee counts against your daily limit. Keep this page open until submission completes.
+        </p>
+        <QgSecondary label='Cancel' onClick={() => renewalApproval.current?.(false)} />
       </QgScreen>
     )
   return (
