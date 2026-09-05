@@ -1,5 +1,5 @@
 import { hex } from '@scure/base'
-import { Transaction } from '@scure/btc-signer'
+import { Address, TEST_NETWORK, Transaction } from '@scure/btc-signer'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { pinEnrolledStatus } from './pin'
 import {
@@ -139,6 +139,26 @@ describe('savings admin PSBT', () => {
     const phoneSigned = signSavingsPsbt(unsigned, scalarSecret(3))
     const hardwareSigned = signSavingsPsbt(phoneSigned, scalarSecret(4))
     expect(finalizeSavingsPsbt(hardwareSigned).txid).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('rejects a recipient below the decoded script dust threshold', () => {
+    const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
+    const status = statusFromDescriptor(descriptor)
+    saveLocalKit(buildRecoveryKit(descriptor))
+    pinEnrolledStatus(status)
+    const p2pkh = Address(TEST_NETWORK).encode({ type: 'pkh', hash: new Uint8Array(20).fill(1) })
+    const build = (amountSats: number) =>
+      buildSavingsPsbt({
+        status,
+        phonePub: descriptor.keys.phoneBip340,
+        destAddress: p2pkh,
+        amountSats,
+        feeSats: 1_500,
+        coins: [{ txid: '11'.repeat(32), vout: 0, value: 100_000, confirmedHeight: 1 }],
+        leaf: 'admin',
+      })
+    expect(() => build(330)).toThrow(/at least ₿546/)
+    expect(inspectSavingsPsbt(build(546)).outputs[0].amount).toBe(546)
   })
 
   it('combines fragmented Savings and requires hardware to sign every canonical input', () => {

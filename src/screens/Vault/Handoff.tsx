@@ -5,7 +5,7 @@ import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
 import { prettyAmount, prettyNumber } from '../../lib/format'
 import { encodePsbtFrames, parsePsbtFrame } from '../../lib/vault/savingsQr'
-import { psbtHexToBase64, readPsbtFile } from '../../lib/vault/savingsSpend'
+import { psbtFile as savingsPsbtFile, psbtHexToBase64, readPsbtFile } from '../../lib/vault/savingsSpend'
 import { VaultContext } from '../../vault/context'
 import PsbtQr from './PsbtQr'
 import Scanner from './Scanner'
@@ -28,8 +28,8 @@ export default function VaultHandoff() {
   const [fileError, setFileError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
   const psbtFile = useMemo(
-    () => (payload ? new File([payload], 'Savings transfer.psbt', { type: 'application/octet-stream' }) : null),
-    [payload],
+    () => (handoffPsbt ? savingsPsbtFile(handoffPsbt, 'Savings transfer.psbt') : null),
+    [handoffPsbt],
   )
   const canShareFile = Boolean(
     psbtFile &&
