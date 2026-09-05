@@ -236,8 +236,8 @@ export default function VaultHome() {
               <ShieldAlert />
             </span>
             <div>
-              <strong>Recovery started with hardware</strong>
-              <p>Open Recovery to review the available cancellation paths.</p>
+              <strong>Savings recovery detected</strong>
+              <p>{initiateAlert}</p>
             </div>
             <ChevronRight />
           </button>

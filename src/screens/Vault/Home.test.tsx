@@ -84,14 +84,16 @@ describe('Vault home account boundaries', () => {
     expect(screen.queryByText(/hardware key/i)).toBeNull()
   })
 
-  it('surfaces recovery attention as a compact alert instead of an emergency block', () => {
-    renderHome({ initiateAlert: 'Someone started recovery' })
-    expect(screen.getByTestId('initiate-alert')).toHaveTextContent('Recovery started with hardware')
-    expect(screen.getByTestId('initiate-alert')).toHaveTextContent(
-      'Open Recovery to review the available cancellation paths.',
-    )
-    expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
-  })
+  it.each(['this device', 'hardware', 'recovery'])(
+    'shows the recovery alert for %s without substituting another key',
+    (key) => {
+      const initiateAlert = `Someone started recovery on Savings with ${key}. If this wasn’t you, cancel it.`
+      renderHome({ initiateAlert })
+      expect(screen.getByTestId('initiate-alert')).toHaveTextContent('Savings recovery detected')
+      expect(screen.getByTestId('initiate-alert')).toHaveTextContent(initiateAlert)
+      expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
+    },
+  )
 
   it('toggles the hero between ₿sats and USD using the fetched price', async () => {
     const user = userEvent.setup()
