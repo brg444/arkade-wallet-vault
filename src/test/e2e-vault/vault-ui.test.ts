@@ -494,6 +494,35 @@ test('fails closed without an Operator cache and recovers in the background', as
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 })
 
+test('keeps a submitted payment and its change visible after reload and opens its original review', async ({
+  page,
+}) => {
+  const { destination, status } = await openVault(page)
+  await seedReviewedSpend(page, status, destination, 1505, 0, 31953)
+  await page.evaluate(
+    async ({ vaultId, script }) => {
+      const modulePath = '/src/lib/vault/vtxo/spend.ts'
+      const spends = await import(/* @vite-ignore */ modulePath)
+      const pending = spends.loadPersistedVtxoSpend(vaultId)
+      spends.persistVtxoSpend({
+        ...pending,
+        stage: 'operator-submitted',
+        reservedInputs: [{ txid: 'aa'.repeat(32), vout: 0, valueSats: 33458, scriptHex: script }],
+      })
+    },
+    { vaultId: status.vaultId, script: status.spendingArkScript },
+  )
+  await page.reload()
+  await expect(page.getByTestId('vault-balance')).toContainText('31,953')
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
+  await expect(page.getByRole('region', { name: 'Pending payment' })).toContainText('1,505')
+  await page.getByRole('button', { name: 'Resume payment', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Resume payment' })).toBeVisible()
+  await expect(page.getByText('₿1,505', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Reveal' }).click()
+  await expect(page.getByRole('region', { name: 'Payment details' })).toContainText(destination)
+})
+
 test('renders an exact reviewed VTXO send before approval', async ({ page }) => {
   const { destination, status } = await openVault(page)
   await setOperatorVtxos([await wireVtxo(page, status, { amount: 20_000, txid: VTXO_TXID })])

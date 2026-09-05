@@ -7,7 +7,6 @@ import {
   RestArkProvider,
   RestIndexerProvider,
   ServiceWorkerWallet,
-  hasTerminalSpend,
   type ExtendedCoin,
   type IContractManager,
   type SettleParams,
@@ -38,7 +37,8 @@ import {
   vaultWalletWorkerPath,
   vaultWalletWorkerScope,
 } from './walletWorkerNames'
-import { vaultArkServer } from './spend'
+import { listPersistedVtxoSpends, vaultArkServer } from './spend'
+import { vtxoBalanceWithPending } from './pendingBalance'
 import { requireBoardingStatus } from './board'
 
 type WalletRuntime = {
@@ -561,12 +561,9 @@ export function scheduleVaultBoardingSettlement(
   return tracked
 }
 
-export function spendableVtxoSats(vtxos: ({ value: number } & Parameters<typeof hasTerminalSpend>[0])[]): number {
-  return vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0)
-}
-
 export interface VaultWalletVtxoSnapshot {
   balance: number
+  pendingBalance?: number
   boardingBalance?: number
   boardingConfirmedBalance?: number
   commitmentIds?: string[]
@@ -617,8 +614,10 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
   const detectedBoardingHistory = historyFromBoardingUtxos(boardingUtxos).filter(
     (item) => !knownTransactions.has(item.txid),
   )
+  const position = vtxoBalanceWithPending(vtxos, listPersistedVtxoSpends(status.vaultId))
   return {
-    balance: spendableVtxoSats(vtxos),
+    balance: position.availableSats,
+    pendingBalance: position.pendingSats,
     commitmentIds: [...commitmentIds],
     boardingBalance: balance.boarding.total,
     boardingConfirmedBalance: balance.boarding.confirmed,
