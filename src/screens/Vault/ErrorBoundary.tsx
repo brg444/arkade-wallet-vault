@@ -39,7 +39,9 @@ export default class VaultErrorBoundary extends Component<Props, State> {
         >
           <p className='qg-eyebrow'>Something went wrong</p>
           <h1>Vaulted could not display this screen.</h1>
-          <p className='qg-copy'>Nothing was sent. This device was not changed.</p>
+          <p className='qg-copy'>
+            If you were sending a payment, check its status after reopening the wallet before trying again.
+          </p>
           <section className='qg-alert'>
             <div>
               <strong>Incident reference</strong>
