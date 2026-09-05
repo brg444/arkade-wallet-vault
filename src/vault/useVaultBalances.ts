@@ -17,6 +17,7 @@ import {
   reloadVaultWalletWorker,
   reviveVaultWalletWorker,
   subscribeVaultWalletEvents,
+  type VaultWalletVtxoSnapshot,
 } from '../lib/vault/vtxo/walletWorker'
 import { reconcilePersistedVtxoSpend } from '../lib/vault/vtxo/spend'
 import { vaultAccountPositions } from './balances'
@@ -229,7 +230,7 @@ export function useVaultBalances({
           return
         }
         const emptySavings = { balance: 0, spendable: 0, history: [] as VaultHistoryItem[] }
-        const emptySpending = {
+        const emptySpending: VaultWalletVtxoSnapshot = {
           balance: 0,
           boardingBalance: undefined as number | undefined,
           history: [] as VaultHistoryItem[],
@@ -253,18 +254,6 @@ export function useVaultBalances({
                 consoleError(error, 'Vault savings balance refresh')
               })
           : Promise.resolve()
-        const boardingTask = boardingAddress
-          ? fetchAddressUtxos(boardingAddress)
-              .then((utxos) => {
-                boarding = {
-                  balance: boardingUtxoBalance(utxos),
-                  history: historyFromBoardingUtxos(utxos),
-                }
-              })
-              .catch((error) => {
-                consoleError(error, 'Vault boarding balance refresh')
-              })
-          : Promise.resolve()
         const spendingTask =
           spendingAddress && liveStatus.enrolled
             ? fetchVaultWalletVtxoSnapshot(liveStatus)
@@ -276,24 +265,33 @@ export function useVaultBalances({
                   consoleError(error, 'Vault spending balance refresh')
                 })
             : Promise.resolve()
-        await Promise.all([savingsTask, boardingTask, spendingTask])
+        await Promise.all([savingsTask, spendingTask])
+        // Esplora is a cold-start fallback, never another layer over a worker
+        // snapshot. It can still list a deposit that the SDK has settled.
+        if (
+          boardingAddress &&
+          (!spendingAddress || !liveStatus.enrolled || (spendingError && !hasSnapshotRef.current))
+        ) {
+          try {
+            const utxos = await fetchAddressUtxos(boardingAddress)
+            boarding = { balance: boardingUtxoBalance(utxos), history: historyFromBoardingUtxos(utxos) }
+          } catch (error) {
+            consoleError(error, 'Vault boarding balance refresh')
+          }
+        }
         if (version !== refreshVersion.current) return
         setStatus(liveStatus)
-        const boardingSats = Math.max(spending.boardingBalance || 0, boarding.balance)
         if (spendingError) {
+          const preserveSpending = hasSnapshotRef.current
           setSnapshot((current) => ({
-            boardingBalance: boardingSats || (hasSnapshotRef.current ? current.boardingBalance : 0),
+            boardingBalance: preserveSpending ? current.boardingBalance : boarding.balance,
             history: mergeVaultHistory(
               savings.history,
-              boarding.history,
-              spending.history,
-              hasSnapshotRef.current
-                ? current.history.filter((item) => item.account === 'spend' && item.activity !== 'boarding')
-                : [],
+              preserveSpending ? current.history.filter((item) => item.account === 'spend') : boarding.history,
             ),
             savingsSats: savings.balance,
             savingsSpendableSats: savings.spendable,
-            vtxoSpendingSats: hasSnapshotRef.current ? current.vtxoSpendingSats : 0,
+            vtxoSpendingSats: preserveSpending ? current.vtxoSpendingSats : 0,
           }))
           setBalancesLoaded(true)
           hasSnapshotRef.current = true
@@ -302,8 +300,11 @@ export function useVaultBalances({
           return
         }
         const nextSnapshot = {
-          boardingBalance: boardingSats,
-          history: mergeVaultHistory(savings.history, boarding.history, spending.history),
+          boardingBalance: spendingAddress && liveStatus.enrolled ? spending.boardingBalance || 0 : boarding.balance,
+          history: mergeVaultHistory(
+            savings.history,
+            spendingAddress && liveStatus.enrolled ? spending.history : boarding.history,
+          ),
           savingsSats: savings.balance,
           savingsSpendableSats: savings.spendable,
           vtxoSpendingSats: spending.balance,
