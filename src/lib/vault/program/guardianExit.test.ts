@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { Transaction } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { describe, expect, it } from 'vitest'
 import { type Claimant } from './constants'
 import { PROGRAM_FIXTURE, PROGRAM_FIXTURE_FAMILY, scalarSecret } from './fixtures'
 import {
@@ -80,4 +81,23 @@ describe('Savings guardian-exit signers', () => {
       expect(hex.decode(done.txHex).length).toBeGreaterThan(100)
     },
   )
+
+  it('rejects an invalid imported guardian signature', () => {
+    const family = buildVaultProgramFamily(PROGRAM_FIXTURE_FAMILY)
+    const built = buildGuardianExitPsbt({
+      family,
+      claimant: 'phone',
+      coin: COIN,
+      destAddress: family.quarantine['savings-phone'].address,
+      feeSats: 500,
+      network: PROGRAM_FIXTURE.network,
+    })
+    const signed = Transaction.fromPSBT(hex.decode(signGuardianExitPsbt(built.psbtHex, SECRETS.hardware)))
+    const [data] = signed.getInput(0).tapScriptSig![0]
+    const internal = signed as unknown as { inputs: ReturnType<Transaction['getInput']>[] }
+    internal.inputs[0].tapScriptSig = [[data, new Uint8Array(64)]]
+    expect(() =>
+      acceptGuardianExitSignature(built.psbtHex, hex.encode(signed.toPSBT()), PROGRAM_FIXTURE.hardwarePub),
+    ).toThrow(/Invalid signature/)
+  })
 })

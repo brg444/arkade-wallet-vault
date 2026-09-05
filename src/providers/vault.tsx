@@ -832,6 +832,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           pendingSavingsHandoff.destAddress,
           pendingSavingsHandoff.amountSats,
           pendingSavingsHandoff.network,
+          enrollment?.phoneBip340Pub || '',
+          status?.externalOwnerWalletPub || '',
         )
         const final = finalizeSavingsPsbt(incoming)
         const txid = await broadcastTx(final.txHex)
@@ -843,7 +845,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [discardPendingSavingsHandoff, finishBroadcast, handoffPsbt, pendingSavingsHandoff],
+    [
+      discardPendingSavingsHandoff,
+      enrollment?.phoneBip340Pub,
+      finishBroadcast,
+      handoffPsbt,
+      pendingSavingsHandoff,
+      status?.externalOwnerWalletPub,
+    ],
   )
 
   const approveSend = useCallback(async () => {
