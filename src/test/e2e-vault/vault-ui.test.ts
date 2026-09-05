@@ -1198,3 +1198,25 @@ for (const theme of ['light', 'dark'] as const) {
     await page.screenshot({ path: testInfo.outputPath('protection-advanced.png'), animations: 'disabled' })
   })
 }
+
+test('@interaction Home camera returns to its originating account on cancel and close', async ({ page }) => {
+  await openVault(page)
+  for (const account of ['savings', 'spend'] as const) {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page.getByTestId(`account-${account}`).click()
+    const accountName = account === 'savings' ? 'Savings' : 'Spending'
+    await expect(page.getByTestId('account-switcher')).toHaveText(accountName)
+    for (const action of ['Cancel', 'Go back']) {
+      await page.getByTestId('account-scan').click()
+      await expect(
+        page.getByRole('heading', {
+          name: account === 'savings' ? 'Scan Bitcoin address' : 'Scan payment',
+          exact: true,
+        }),
+      ).toBeVisible()
+      await page.getByRole('button', { name: action, exact: true }).click()
+      await expect(page.getByTestId('account-switcher')).toHaveText(accountName)
+      await expect(page.locator('.qg-camera')).toHaveCount(0)
+    }
+  }
+})
