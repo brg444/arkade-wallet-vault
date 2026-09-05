@@ -39,6 +39,7 @@ const bus = new MessageBus(walletRepository, contractRepository, {
   messageHandlers: [new WalletMessageHandler({ messageTag: vaultWalletUpdaterTagForNamespace(namespace) })],
   tickIntervalMs: 5_000,
   messageTimeoutMs: 60_000,
+  messageTimeoutOverrides: { SETTLE: 15 * 60_000 },
   buildServices: async (config) => {
     const active = await loadActiveBoardingKeyForNamespace(namespace)
     const transient = active.secret.slice()
