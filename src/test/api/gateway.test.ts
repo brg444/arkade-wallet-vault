@@ -257,6 +257,42 @@ describe('gateway response cache policy', () => {
     expect(result.headers.get('content-type')).toBe('application/json')
   })
 
+  it('logs the public vault-board-v1 error when upstream rejects prepare', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: 'vault-board-v1 receiver must be the enrolled Spending script', code: 'REJECTED' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({
+        method: 'POST',
+        url: '/api/gateway?route=board&phase=prepare',
+        body: JSON.stringify({ vaultId: 'vault-a', inputs: [], recipients: [] }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      result.response,
+    )
+    expect(result.response.statusCode).toBe(400)
+    expect(logged).toHaveBeenCalledWith(
+      'vault-board-v1 upstream',
+      JSON.stringify({
+        status: 400,
+        path: '/v1/vtxo/board/prepare',
+        error: JSON.stringify({
+          error: 'vault-board-v1 receiver must be the enrolled Spending script',
+          code: 'REJECTED',
+        }),
+      }),
+    )
+    logged.mockRestore()
+  })
+
   it('does not replace an upstream cache policy', async () => {
     vi.stubGlobal(
       'fetch',
