@@ -204,7 +204,7 @@ describe('gateway response cache policy', () => {
       expect.objectContaining({ method: 'GET' }),
     )
     expect(result.response.statusCode).toBe(503)
-    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false }))
+    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false, arkadeOrigin: 'configured' }))
   })
 
   it('marks an oversized request as no-store without contacting the upstream', async () => {
@@ -257,7 +257,7 @@ describe('gateway response cache policy', () => {
     expect(result.headers.get('content-type')).toBe('application/json')
   })
 
-  it('logs the public vault-board-v1 error when upstream rejects prepare', async () => {
+  it('logs only the route and status when upstream rejects prepare', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const fetchMock = vi
       .fn()
@@ -284,10 +284,6 @@ describe('gateway response cache policy', () => {
       JSON.stringify({
         status: 400,
         path: '/v1/vtxo/board/prepare',
-        error: JSON.stringify({
-          error: 'vault-board-v1 receiver must be the enrolled Spending script',
-          code: 'REJECTED',
-        }),
       }),
     )
     logged.mockRestore()
@@ -295,7 +291,10 @@ describe('gateway response cache policy', () => {
 
   it('records a funding rejection without logging request credentials or payment details', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const payload = JSON.stringify({ code: 'REJECTED', error: 'Operator fee policy unavailable' })
+    const payload = JSON.stringify({
+      code: 'REJECTED',
+      error: 'upstream https://private-signer.example.com/v1/sign unavailable',
+    })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(payload, { status: 400 })))
     const result = gatewayResponse()
     await gatewayHandler(
@@ -311,8 +310,41 @@ describe('gateway response cache policy', () => {
     expect(result.body()?.toString()).toBe(payload)
     expect(log).toHaveBeenCalledExactlyOnceWith(
       'vault funding upstream',
-      JSON.stringify({ status: 400, path: '/v1/vtxo/reserve', error: payload }),
+      JSON.stringify({ status: 400, path: '/v1/vtxo/reserve' }),
     )
+  })
+
+  it('keeps private transport details out of public readiness during server upgrades', async () => {
+    const privateOrigin = 'https://private-signer.example.com'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            schema: 1,
+            network: 'mainnet',
+            enrollTemplate: 'phone-hww-recovery-savings-v1',
+            arkadeOrigin: privateOrigin,
+            arkadeVersion: 'v1',
+            debugEndpoint: privateOrigin,
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const result = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ method: 'GET', url: '/ready' }), result.response)
+    expect(result.response.statusCode).toBe(200)
+    expect(JSON.parse(String(result.body()))).toEqual({
+      ok: true,
+      schema: 1,
+      network: 'mainnet',
+      enrollTemplate: 'phone-hww-recovery-savings-v1',
+      arkadeOrigin: 'configured',
+      arkadeVersion: 'v1',
+    })
+    expect(String(result.body())).not.toContain(privateOrigin)
   })
 
   it('does not replace an upstream cache policy', async () => {

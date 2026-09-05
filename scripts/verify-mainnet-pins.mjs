@@ -13,7 +13,7 @@ const expectedEmulator = {
 
 async function requireJson(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`)
+  if (!response.ok) throw new Error(`Release dependency returned HTTP ${response.status}`)
   return response.json()
 }
 
@@ -23,9 +23,12 @@ function verify(label, actual, expected) {
   }
 }
 
+const emulatorOrigin = process.env.VAULT_ARKADE_COSIGNER_ORIGIN
+if (!emulatorOrigin) throw new Error('VAULT_ARKADE_COSIGNER_ORIGIN is required for the private release check')
+
 const [operator, emulator] = await Promise.all([
   requireJson('https://arkade.computer/v1/info'),
-  requireJson('https://mainnet-signer.invalid/v1/info'),
+  requireJson(new URL('/v1/info', emulatorOrigin)),
 ])
 verify('Operator', operator, expectedOperator)
 verify('Emulator', emulator, expectedEmulator)
