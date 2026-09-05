@@ -11,7 +11,7 @@ for (const dark of [false, true]) {
     await expect(trigger).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await trigger.click()
-      const sheet = page.getByRole('dialog', { name: 'Install Vaulted', exact: true })
+    const sheet = page.getByRole('dialog', { name: 'Install Vaulted', exact: true })
     await expect(sheet).toBeVisible()
     const iphone = await page.evaluate(() => /iPhone|iPad/.test(navigator.userAgent))
     if (iphone) await expect(sheet.getByText('Add to Home Screen', { exact: true })).toBeVisible()
