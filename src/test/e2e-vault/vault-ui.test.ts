@@ -1082,7 +1082,19 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await page.getByRole('button', { name: /Received ₿80,000/ }).click()
   await expect(page.getByRole('heading', { name: 'Transaction' })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
+  await expect(page.getByRole('img', { name: 'Confirmed status' })).toHaveClass(/lucide-circle-check/)
+  await expect(page.getByText(VTXO_TXID, { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'View on Arkade Space' })).toHaveAttribute(
+    'href',
+    `https://explorer.mutinynet.arkade.sh/tx/${VTXO_TXID}`,
+  )
   await expect(page).toHaveScreenshot('transaction-received.png', { animations: 'disabled', fullPage: true })
+  const originalViewport = page.viewportSize()!
+  await page.setViewportSize({ width: 320, height: 740 })
+  const reference = page.getByRole('region', { name: 'Transaction reference' })
+  await expect(reference.locator('code')).toBeVisible()
+  expect(await reference.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+  await page.setViewportSize(originalViewport)
   await page.getByRole('button', { name: 'Go back' }).click()
 
   await setEsploraState(status, state)

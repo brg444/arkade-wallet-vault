@@ -4,7 +4,8 @@ import { prettyAmount } from '../../lib/format'
 import { vaultTransactionExplorer } from '../../lib/vault/explorer'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
-import QgScreen, { QgCheck, QgPrimary, QgSecondary } from './qg/QgScreen'
+import TransactionReference from './qg/TransactionReference'
+import QgScreen, { QgCheck, QgPrimary } from './qg/QgScreen'
 
 export default function VaultSuccess() {
   const { boardingAddress, lastSend, lastTxid, lastTxKind, navigate, status } = useContext(VaultContext)
@@ -27,22 +28,7 @@ export default function VaultSuccess() {
           : 'Done'
 
   return (
-    <QgScreen
-      variant='success'
-      footer={
-        <>
-          <QgPrimary onClick={() => navigate('home')} label='Done' />
-          {explorer ? (
-            <QgSecondary
-              onClick={() => window.open(explorer.url, '_blank', 'noopener,noreferrer')}
-              label={explorer.label}
-            />
-          ) : lastTxid ? (
-            <QgSecondary onClick={() => navigate('tx')} label='View transaction' />
-          ) : null}
-        </>
-      }
-    >
+    <QgScreen variant='success' footer={<QgPrimary onClick={() => navigate('home')} label='Done' />}>
       <div className='qg-centered qg-success-screen'>
         <div className='qg-success-label'>
           <span>
@@ -66,18 +52,13 @@ export default function VaultSuccess() {
                 {movingToSpending ? 'Spending' : lightning ? 'Lightning' : truncateAddress(lastSend.address, 8)}
               </strong>
             </div>
-            {lastTxid ? (
-              <div>
-                <span>{lastTxKind === 'vtxo' ? 'VTXO identifier' : 'Transaction ID'}</span>
-                <strong>{truncateAddress(lastTxid, 8)}</strong>
-              </div>
-            ) : null}
             <div>
               <span>Network</span>
               <strong>{status?.network === 'mainnet' ? 'Bitcoin' : 'Mutinynet'}</strong>
             </div>
           </section>
         ) : null}
+        <TransactionReference txid={lastTxid} explorer={explorer} funding={lightning} />
       </div>
     </QgScreen>
   )

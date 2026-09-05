@@ -1,11 +1,12 @@
 import { useContext } from 'react'
-import { Clock3 } from 'lucide-react'
+import { CircleAlert, CircleCheck, CircleHelp, Clock3 } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
 import { prettyAmount, prettyDate } from '../../lib/format'
 import { vaultTransactionExplorer } from '../../lib/vault/explorer'
 import { VaultContext } from '../../vault/context'
 import QgAmount, { amountSizeStyle } from './qg/QgAmount'
-import QgScreen, { QgPrimary, QgSecondary } from './qg/QgScreen'
+import TransactionReference from './qg/TransactionReference'
+import QgScreen, { QgPrimary } from './qg/QgScreen'
 
 export default function VaultTx() {
   const { busy, error, navigate, retryLightningRefund, selectedTx, status: vaultStatus } = useContext(VaultContext)
@@ -34,6 +35,27 @@ export default function VaultTx() {
         ? 'Confirmed'
         : 'Pending'
     : 'Unknown'
+  const complete = lightning ? ['Paid', 'Refunded'].includes(status) : Boolean(selectedTx?.confirmed)
+  const needsAction = ['Ready to return', 'Needs recovery'].includes(status)
+  const state = !selectedTx ? 'unknown' : complete ? 'complete' : needsAction ? 'attention' : 'pending'
+  const StatusIcon = !selectedTx ? CircleHelp : complete ? CircleCheck : needsAction ? CircleAlert : Clock3
+  const copy = lightning
+    ? status === 'Paid'
+      ? 'This Lightning payment is complete.'
+      : status === 'Refunded'
+        ? 'This Lightning payment was refunded.'
+        : status === 'Ready to return'
+          ? 'Return the remaining payment funds to Spending.'
+          : status === 'Needs recovery'
+            ? 'This Lightning payment needs recovery.'
+            : 'This Lightning payment is still processing.'
+    : !selectedTx
+      ? 'Transaction details are not available.'
+      : selectedTx.confirmed
+        ? 'This payment is confirmed.'
+        : boarding || selectedTx.account === 'savings'
+          ? 'This will update automatically after Bitcoin confirmation.'
+          : 'This transfer is still processing.'
   const amount = selectedTx?.displayAmount ?? selectedTx?.amount ?? 0
 
   return (
@@ -52,21 +74,23 @@ export default function VaultTx() {
             />
           ) : null}
           <QgPrimary onClick={() => navigate('home')} label='Back to Wallet' />
-          {explorer ? (
-            <QgSecondary
-              onClick={() => window.open(explorer.url, '_blank', 'noopener,noreferrer')}
-              label={explorer.label}
-            />
-          ) : null}
         </>
       }
     >
-      <div className='qg-pending-label'>
-        <Clock3 />
+      <div className='qg-pending-label' data-state={state}>
+        <StatusIcon role='img' aria-label={`${status} status`} />
         <span>
           <strong>{status}</strong>
           <small>
-            {selectedTx?.account === 'savings' ? 'From Savings' : lightning ? 'Lightning' : sent ? 'Sent' : 'Received'}
+            {selectedTx?.account === 'savings'
+              ? sent
+                ? 'From Savings'
+                : 'To Savings'
+              : lightning
+                ? 'Lightning'
+                : sent
+                  ? 'Sent'
+                  : 'Received'}
           </small>
         </span>
       </div>
@@ -107,11 +131,8 @@ export default function VaultTx() {
           <strong>{vaultStatus?.network === 'mainnet' ? 'Bitcoin' : 'Mutinynet'}</strong>
         </div>
       </section>
-      <p className='qg-copy'>
-        {selectedTx?.confirmed
-          ? 'This payment is confirmed.'
-          : 'This will update automatically after Bitcoin confirmation.'}
-      </p>
+      <TransactionReference txid={selectedTx?.txid || ''} explorer={explorer} funding={lightning} />
+      <p className='qg-copy'>{copy}</p>
     </QgScreen>
   )
 }
