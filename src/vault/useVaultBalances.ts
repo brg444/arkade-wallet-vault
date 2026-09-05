@@ -241,18 +241,16 @@ export function useVaultBalances({
         let boarding = emptyBoarding
         let spendingError: unknown
         const savingsTask = savingsAddress
-          ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)])
-              .then(([utxos, transactions]) => {
+          ? Promise.all([fetchAddressUtxos(savingsAddress), fetchAddressTxs(savingsAddress)]).then(
+              ([utxos, transactions]) => {
                 const balance = savingsUtxoBalance(utxos, transactions, savingsAddress)
                 savings = {
                   balance: balance.total,
                   spendable: balance.spendable,
                   history: historyFromTxs(transactions, savingsAddress, 'savings'),
                 }
-              })
-              .catch((error) => {
-                consoleError(error, 'Vault savings balance refresh')
-              })
+              },
+            )
           : Promise.resolve()
         const spendingTask =
           spendingAddress && liveStatus.enrolled
