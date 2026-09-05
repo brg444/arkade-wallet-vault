@@ -6,8 +6,11 @@ const appOrigin = `http://localhost:${appPort}`
 const operatorOrigin = `http://127.0.0.1:${operatorPort}`
 
 export default defineConfig({
-  testDir: './src/test/e2e-vault',
-  globalSetup: './src/test/e2e-vault/globalSetup.ts',
+  testDir: './.vault-browser-tests',
+  globalSetup: './.vault-browser-tests/globalSetup.ts',
+  testMatch: '**/*.test.ts',
+  respectGitIgnore: false,
+  snapshotPathTemplate: '{testDir}/../src/test/e2e-vault/{testFilePath}-snapshots/{arg}{-projectName}{-platform}{ext}',
   timeout: 60000,
   fullyParallel: false,
   retries: 0,
