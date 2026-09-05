@@ -5,6 +5,9 @@ export interface VaultNetworkPins {
   operatorGetInfoNetwork: 'mutinynet' | 'bitcoin'
   operatorOrigin: string
   operatorSignerPub: string
+  checkpointForfeitPub: string
+  checkpointTapscript: string
+  checkpointDelaySeconds: number
   emulatorOrigin: string
   emulatorSignerPub: string
   policyExitDelay: number
@@ -22,6 +25,9 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
     operatorGetInfoNetwork: 'mutinynet',
     operatorOrigin: 'https://mutinynet.arkade.sh',
     operatorSignerPub: '03301078808e4f7bc0dadfe29e34b1df8eaf0108ef06b1722274075ebc107a127a',
+    checkpointForfeitPub: '02dfcaec558c7e78cf3e38b898ba8a43cfb5727266bae32c5c5b3aeb32c558aa0b',
+    checkpointTapscript: '03080040b27520dfcaec558c7e78cf3e38b898ba8a43cfb5727266bae32c5c5b3aeb32c558aa0bac',
+    checkpointDelaySeconds: 4096,
     emulatorOrigin: 'https://emulator.mutinynet.arkade.sh',
     emulatorSignerPub: '03f823b9b2febc81f4af967e77aed2f541cbd3397c6d8f5a72e32eb7b471af889a',
     policyExitDelay: 4608,
@@ -37,6 +43,9 @@ const PINS: Record<VaultNetwork, VaultNetworkPins> = {
     operatorGetInfoNetwork: 'bitcoin',
     operatorOrigin: 'https://arkade.computer',
     operatorSignerPub: '038202bebddeb1f7442803897a85eaf3ce9254d07df0172fc3725ab5f0d097779c',
+    checkpointForfeitPub: '03b43a8363118c084a04d4f6a50ebfa58e81957f8cceceb2aee0ab64c9fd2d9977',
+    checkpointTapscript: '039e0440b27520b43a8363118c084a04d4f6a50ebfa58e81957f8cceceb2aee0ab64c9fd2d9977ac',
+    checkpointDelaySeconds: 605_184,
     emulatorOrigin: 'https://mainnet-signer.invalid',
     emulatorSignerPub: '0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e',
     policyExitDelay: 605_184,
