@@ -1,0 +1,44 @@
+.qg-guidance {
+  border-block: 1px solid var(--qg-line);
+  margin-block: 20px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.qg-guidance > summary {
+  cursor: pointer;
+  padding-block: 14px;
+  min-height: 44px;
+  font-weight: 500;
+}
+.qg-guidance > summary:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.qg-guidance-body {
+  padding-bottom: 16px;
+}
+.qg-guidance-body p + p,
+.qg-guidance-body dl,
+.qg-guidance-body ol {
+  margin-top: 12px;
+}
+.qg-guidance-body dt {
+  font-weight: 500;
+  margin-top: 12px;
+}
+.qg-guidance-body dd {
+  margin: 3px 0 0;
+  color: var(--qg-muted);
+}
+.qg-guidance-body ol {
+  padding-left: 20px;
+}
+.qg-guidance-body li + li {
+  margin-top: 10px;
+}
+.qg-backup-status {
+  margin-top: 20px;
+  font-size: 14px;
+  line-height: 1.55;
+}

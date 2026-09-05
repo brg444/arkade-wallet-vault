@@ -13,23 +13,25 @@ export default function VaultCreated() {
           <span>
             <QgCheck />
           </span>
-          <p>Enrollment complete</p>
+          <p>Vault created</p>
         </div>
         <h1>
           Your Vault
           <br />
           was created
         </h1>
-        <p className='qg-copy'>Your protection choices are enrolled and verified on this device.</p>
+        <p className='qg-copy'>
+          Your keys and Spending limits are registered. Next, save the Recovery Kit for this vault outside this device.
+        </p>
         <section className='qg-next'>
-          <strong>Your safeguards</strong>
+          <strong>Registered for this vault</strong>
           <span>
             <QgCheck />
-            Savings requires this device and hardware
+            Savings uses your passkey and hardware key
           </span>
           <span>
             <QgCheck />
-            {advanced ? 'Separate recovery key enrolled' : 'One-lost-key recovery active'}
+            {advanced ? 'Separate recovery key enrolled' : 'Standard selected; no separate recovery key'}
           </span>
           <span>
             <QgCheck />
