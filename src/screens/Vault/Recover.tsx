@@ -7,7 +7,7 @@ import { prettyAmount } from '../../lib/format'
 import { broadcastTx, fetchAddressUtxos } from '../../lib/vault/esplora'
 import { recoveryOnchainFeeSats, SAVINGS_CLAIM_VBYTES, SAVINGS_TRANSITION_VBYTES } from '../../lib/vault/onchainFee'
 import { parseIncomingPsbt, psbtFile } from '../../lib/vault/savingsSpend'
-import { CLAIMANTS, SAVINGS_TEMPLATE, type Claimant } from '../../lib/vault/program/constants'
+import { familyClaimants, SAVINGS_TEMPLATE, type Claimant } from '../../lib/vault/program/constants'
 import { familyFromDescriptor } from '../../lib/vault/program/descriptor'
 import {
   acceptGuardianExitSignature,
@@ -21,7 +21,9 @@ import { planClaim, planClawback, planInitiate } from '../../lib/vault/program/r
 import { buildGuardianExitPsbt } from '../../lib/vault/program/spend'
 import { findMatureBoardingInputs } from '../../lib/vault/vtxo/boardingRecovery'
 import { VaultContext } from '../../vault/context'
+import RecoveryHelp from './RecoveryHelp'
 import { HubGroup, HubRow } from './ui'
+import { useBackupConfirmation } from './qg/useBackupConfirmation'
 import QgScreen, { QgCheck, QgPrimary, QgSecondary } from './qg/QgScreen'
 
 function downloadJson(name: string, body: string) {
@@ -43,9 +45,9 @@ function downloadPsbt(name: string, psbtHex: string) {
 }
 
 const KEY_LABEL: Record<Claimant, string> = {
-  phone: 'This device',
-  hardware: 'Hardware',
-  recovery: 'Recovery',
+  phone: 'Passkey access',
+  hardware: 'Hardware wallet',
+  recovery: 'Recovery key',
 }
 
 const KEY_DETAIL: Record<Claimant, string> = {
@@ -88,11 +90,14 @@ export default function VaultRecover() {
     status,
   } = useContext(VaultContext)
   const { toast } = useToast()
+  const { confirmed, confirm } = useBackupConfirmation()
   const [view, setView] = useState<'kit' | 'lost'>(recoverEntry)
+  const [reviewingRecovery, setReviewingRecovery] = useState(false)
   const [fromKit, setFromKit] = useState(false)
 
   useEffect(() => {
     setView(recoverEntry)
+    setReviewingRecovery(false)
     setFromKit(false)
   }, [recoverEntry])
   const [pasted, setPasted] = useState('')
@@ -101,6 +106,7 @@ export default function VaultRecover() {
   const [claimant, setClaimant] = useState<Claimant>('hardware')
   const [claimDest, setClaimDest] = useState('')
   const [psbtOut, setPsbtOut] = useState('')
+  const [preparedAction, setPreparedAction] = useState<'initiate' | 'cancel' | 'claim' | null>(null)
   const [cancelPsbt, setCancelPsbt] = useState('')
   const [cancelSigners, setCancelSigners] = useState<Claimant[]>([])
   const [cancelHave, setCancelHave] = useState<Claimant[]>([])
@@ -132,6 +138,15 @@ export default function VaultRecover() {
     }
   }, [downloadRecoveryKit])
 
+  const currentKit = useMemo(() => {
+    try {
+      return parseRecoveryKit(JSON.parse(kitJson))
+    } catch {
+      return null
+    }
+  }, [kitJson])
+  const eligibleClaimants = currentKit ? familyClaimants(Boolean(currentKit.descriptor.keys.recovery)) : []
+
   const canCancelWithoutServices = useMemo(() => {
     try {
       return parseRecoveryKit(JSON.parse(downloadRecoveryKit())).descriptor.templateVersion === SAVINGS_TEMPLATE
@@ -154,7 +169,7 @@ export default function VaultRecover() {
     setLocalError('')
     try {
       downloadJson('Recovery Kit.json', downloadRecoveryKit())
-      toast('Recovery Kit saved')
+      toast('Download requested. Check your saved files.')
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'No Recovery Kit yet')
     }
@@ -165,6 +180,27 @@ export default function VaultRecover() {
     const externalRole = cancelSigners.find((role) => role !== 'phone' && !cancelHave.includes(role))
     const backToKit = fromKit || recoverEntry === 'kit'
     const fromHome = recoverExit === 'home'
+    if (!inProcess && !reviewingRecovery) {
+      return (
+        <RecoveryHelp
+          onBack={backToKit ? () => setView('kit') : fromHome ? undefined : () => navigate(recoverExit)}
+          onDismiss={!backToKit && fromHome ? () => navigate('home') : undefined}
+          protectionTier={currentKit?.protectionTier}
+          mainnet={currentKit?.descriptor.network === 'mainnet'}
+          onPrepare={
+            currentKit
+              ? (key) => {
+                  setClaimant(key)
+                  setLocalError('')
+                  setPsbtOut('')
+                  setPreparedAction(null)
+                  setReviewingRecovery(true)
+                }
+              : undefined
+          }
+        />
+      )
+    }
     return (
       <QgScreen
         title={fromHome && !backToKit ? 'Recovery' : 'Lost a key'}
@@ -175,7 +211,7 @@ export default function VaultRecover() {
             <>
               <RecoverAlert text={error || localError} />
               <QgPrimary
-                label='Cancel recovery'
+                label='Prepare cancellation'
                 testId='recover-clawback'
                 onClick={() => {
                   setLocalError('')
@@ -191,10 +227,11 @@ export default function VaultRecover() {
                         vaultId: kit.descriptor.vaultId,
                       })
                       setPsbtOut(built.psbtHex)
-                      void copyToClipboard(built.psbtHex)
-                      toast('Cancel copied. This leaves out the key that started recovery.')
+                      setPreparedAction('cancel')
+                      await copyToClipboard(built.psbtHex)
+                      toast('Cancellation transaction copied')
                     } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not cancel recovery')
+                      setLocalError(err instanceof Error ? err.message : 'Could not prepare cancellation')
                     }
                   })()
                 }}
@@ -229,6 +266,7 @@ export default function VaultRecover() {
                         setCancelHave([])
                         setSignedCancelPsbt('')
                         setPsbtOut(built.psbtHex)
+                        setPreparedAction(null)
                         toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
                       } catch (err) {
                         setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
@@ -238,7 +276,7 @@ export default function VaultRecover() {
                 />
               ) : null}
               <QgSecondary
-                label='Move coins'
+                label='Prepare recovery transfer'
                 testId='recover-claim'
                 disabled={!claimDest.trim()}
                 onClick={() => {
@@ -256,10 +294,11 @@ export default function VaultRecover() {
                         network: kit.descriptor.network,
                       })
                       setPsbtOut(built.psbtHex)
-                      void copyToClipboard(built.psbtHex)
-                      toast('Move copied. Only after the wait.')
+                      setPreparedAction('claim')
+                      await copyToClipboard(built.psbtHex)
+                      toast('Recovery transfer copied')
                     } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not move coins')
+                      setLocalError(err instanceof Error ? err.message : 'Could not prepare recovery transfer')
                     }
                   })()
                 }}
@@ -269,8 +308,9 @@ export default function VaultRecover() {
             <>
               <RecoverAlert text={error || localError} />
               <QgPrimary
-                label='Start recovery'
+                label='Prepare recovery'
                 testId='recover-initiate'
+                disabled={!eligibleClaimants.includes(claimant)}
                 onClick={() => {
                   setLocalError('')
                   void (async () => {
@@ -290,10 +330,11 @@ export default function VaultRecover() {
                         vaultId: kit.descriptor.vaultId,
                       })
                       setPsbtOut(built.psbtHex)
+                      setPreparedAction('initiate')
                       await copyToClipboard(built.psbtHex)
-                      toast('Recovery started. A waiting period begins once this confirms.')
+                      toast('Recovery transaction copied')
                     } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not start recovery')
+                      setLocalError(err instanceof Error ? err.message : 'Could not prepare recovery')
                     }
                   })()
                 }}
@@ -308,18 +349,23 @@ export default function VaultRecover() {
               <strong>Recovery protection</strong>
               <span className={inProcess ? 'is-attention' : 'is-ready'}>{inProcess ? 'In process' : 'Idle'}</span>
             </div>
-            <h2>{inProcess ? 'Recovery is waiting.' : 'Recover with a key you still control.'}</h2>
+            <h2>{inProcess ? 'Recovery detected on Savings.' : 'Recover with a key you still control.'}</h2>
             <p>
               {inProcess
-                ? initiateAlert || 'Savings is in a waiting period. Cancel if you didn’t start this.'
-                : 'Starting recovery creates a visible waiting period. Your other keys can cancel it if the request was not yours.'}
+                ? initiateAlert || 'Review this recovery and the keys available to cancel it.'
+                : 'Prepare a recovery transaction for external signing and submission. Starting recovery requires a key you still control and approval from the recovery services.'}
             </p>
           </section>
 
+          {!inProcess ? (
+            <button type='button' className='qg-text' onClick={() => setReviewingRecovery(false)}>
+              Choose another recovery situation
+            </button>
+          ) : null}
           <div className='vault-section'>
             <p className='vault-section-label'>Recover with</p>
             <div className='vault-hub' role='radiogroup' aria-label='Key to use for recovery'>
-              {CLAIMANTS.map((item) => (
+              {eligibleClaimants.map((item) => (
                 <button
                   key={item}
                   type='button'
@@ -347,17 +393,35 @@ export default function VaultRecover() {
           </div>
           {inProcess ? (
             <label className='qg-field'>
-              <span>After the wait, send coins here</span>
+              <span>Recovery destination</span>
               <input
                 value={claimDest}
-                placeholder='tb1p…'
+                placeholder='Bitcoin address'
                 data-testid='recover-claim-dest'
                 onChange={(event) => setClaimDest(event.target.value)}
               />
             </label>
           ) : null}
-          {psbtOut && !cancelSigners.length ? (
-            <p className='qg-copy'>Transaction copied. Sign it with the key you still have.</p>
+          {psbtOut && preparedAction && !cancelSigners.length ? (
+            <section className='qg-note' role='status' data-testid='recovery-prepared'>
+              <FileKey />
+              <div>
+                <strong>
+                  {preparedAction === 'initiate'
+                    ? 'Recovery transaction prepared'
+                    : preparedAction === 'cancel'
+                      ? 'Cancellation transaction prepared'
+                      : 'Recovery transfer prepared'}
+                </strong>
+                <p>
+                  {preparedAction === 'initiate'
+                    ? 'This transaction still needs your selected key and the recovery services to approve it, then submission with compatible recovery software. The waiting period starts after Bitcoin confirmation.'
+                    : preparedAction === 'cancel'
+                      ? 'This transaction still needs an eligible remaining key and the recovery services to approve it, then submission with compatible recovery software. Recovery remains active until cancellation is confirmed.'
+                      : 'Sign with the key that started recovery and submit with compatible recovery software after the waiting period ends. Preparing this transaction does not move your funds.'}
+                </p>
+              </div>
+            </section>
           ) : null}
           {cancelSigners.length ? (
             <>
@@ -491,9 +555,9 @@ export default function VaultRecover() {
           <RecoverAlert text={error || localError} />
           {hasRecoveryKit ? (
             <>
-              <QgPrimary label='Save Recovery Kit' testId='download-recovery-kit' onClick={saveKit} />
+              <QgPrimary label='Download Recovery Kit' testId='download-recovery-kit' onClick={saveKit} />
               <QgSecondary
-                label={busy ? 'Waiting for passkey…' : 'Back up map'}
+                label={busy ? 'Waiting for passkey…' : 'Save copy with Vault service'}
                 testId='backup-recovery-kit'
                 disabled={busy}
                 onClick={() => {
@@ -501,7 +565,7 @@ export default function VaultRecover() {
                   void (async () => {
                     try {
                       const pushed = await backupRecoveryKit()
-                      toast(pushed ? 'Map backed up with this vault' : 'Map saved on this device')
+                      toast(pushed ? 'Kit copy saved with the Vault service' : 'Kit saved on this device only')
                     } catch (err) {
                       setLocalError(err instanceof Error ? err.message : 'Could not back up the map')
                     }
@@ -511,7 +575,7 @@ export default function VaultRecover() {
             </>
           ) : (
             <QgPrimary
-              label={busy ? 'Waiting for passkey…' : 'Get map'}
+              label={busy ? 'Waiting for passkey…' : 'Retrieve Recovery Kit'}
               testId='restore-recovery-kit'
               disabled={busy}
               onClick={() => {
@@ -519,7 +583,7 @@ export default function VaultRecover() {
                 void (async () => {
                   try {
                     await restoreRecoveryKit()
-                    toast('Map is on this device')
+                    toast('Recovery Kit retrieved on this device')
                   } catch (err) {
                     setLocalError(err instanceof Error ? err.message : 'Could not get the map')
                   }
@@ -538,25 +602,47 @@ export default function VaultRecover() {
               {hasRecoveryKit ? 'On this device' : 'Needed'}
             </span>
           </div>
-          <h2>Keep your vault map available</h2>
+          <h2>Keep your Recovery Kit available</h2>
           <p>
             The Recovery Kit is a public map of this vault—not a seed or private key. It lets recovery software rebuild
             the correct addresses and recovery paths, but cannot move bitcoin by itself.
           </p>
         </section>
 
+        <section className='qg-note'>
+          <FileKey />
+          <div>
+            <strong>{confirmed ? 'Separate copy confirmed by you' : 'Separate copy still needs confirmation'}</strong>
+            <p>
+              {confirmed
+                ? 'The app records your confirmation, but cannot verify the saved file.'
+                : 'After saving this vault’s kit outside this device, record that you have a separate copy.'}
+            </p>
+            {!confirmed && hasRecoveryKit ? (
+              <button
+                type='button'
+                className='qg-text'
+                onClick={() => {
+                  if (!confirm()) toast('Could not save your confirmation. Try again.')
+                }}
+              >
+                I have a copy outside this device
+              </button>
+            ) : null}
+          </div>
+        </section>
         <HubGroup label='Keep a durable copy'>
           <HubRow
             title='On this device'
             detail={
               hasRecoveryKit
                 ? 'The vault map is here. Save another copy outside this device.'
-                : 'No vault map is available here. Restore it with your passkey or a saved file.'
+                : 'No vault map is available here. Retrieve a service copy with your passkey, or inspect a saved file below.'
             }
           />
           <HubRow
             title='When you need the file'
-            detail='Use it with recovery software when this app cannot reconstruct your vault. Everyday payments do not need it.'
+            detail='Recovery software uses this file to reconstruct the vault’s addresses and recovery rules when the app cannot.'
           />
           <HubRow
             title='When the file cannot help'
@@ -588,10 +674,11 @@ export default function VaultRecover() {
         <HubGroup label='If something is wrong'>
           <HubRow
             title='I lost a key'
-            detail='Start a waiting period. Cancel if it wasn’t you.'
+            detail='Check the remaining keys, service requirements, and next steps for Savings.'
             onClick={() => {
               setLocalError('')
               setFromKit(true)
+              setReviewingRecovery(false)
               setView('lost')
             }}
           />

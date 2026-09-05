@@ -18,8 +18,8 @@ async function expectNoBlockingAxeViolations(page: Page) {
 
 test('@polish welcome is accessible and visually stable', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText('Spend freely.')).toBeVisible()
-  await expect(page.getByText('Have your hardware public key and invite ready')).toBeVisible()
+  await expect(page.getByText('Everyday spending.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Setup needs an invite and a compatible hardware wallet.')).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('welcome.png', { animations: 'disabled', fullPage: true })
 

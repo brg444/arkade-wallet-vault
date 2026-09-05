@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { buildVaultProgramDescriptor } from '../../lib/vault/program/descriptor'
 import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
+import { fetchFeeEstimates } from '../../lib/vault/esplora'
 import { buildRecoveryKit } from '../../lib/vault/program/kit'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultRecover from './Recover'
@@ -16,12 +17,16 @@ const boardingRecovery = vi.hoisted(() => ({
 vi.mock('../../lib/vault/esplora', () => ({
   broadcastTx: vi.fn(),
   fetchAddressUtxos: vi.fn().mockResolvedValue([]),
-  fetchFeeEstimates: vi.fn().mockRejectedValue(new Error('fee service unavailable')),
+  fetchFeeEstimates: vi.fn(),
 }))
 
 vi.mock('../../lib/vault/vtxo/boardingRecovery', () => ({
   findMatureBoardingInputs: boardingRecovery.find,
 }))
+
+beforeEach(() => {
+  vi.mocked(fetchFeeEstimates).mockResolvedValue({ '3': 1 })
+})
 
 const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
 const dest = kit.descriptor.savings.address
@@ -113,9 +118,9 @@ describe('Vaulted recovery chrome', () => {
       recoverExit: 'home',
     })
     expect(document.querySelector('.qg-handle')).toBeTruthy()
-    expect(screen.getByTestId('screen-title')).toHaveTextContent('Recovery')
-    expect(screen.getByRole('heading', { name: 'Recover with a key you still control.' })).toBeTruthy()
-    expect(screen.queryByText('This device')).toBeTruthy()
+    expect(screen.getByTestId('screen-title')).toHaveTextContent('Access and recovery')
+    expect(screen.getByRole('heading', { name: 'What do you still have access to?' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'I can’t use my passkey' })).toBeTruthy()
     fireEvent.click(screen.getByTestId('header-back'))
     expect(navigate).toHaveBeenCalledWith('home')
   })
@@ -129,7 +134,7 @@ describe('Vaulted recovery chrome', () => {
       recoverExit: 'keys',
     })
     expect(document.querySelector('.qg-handle')).toBeNull()
-    expect(screen.getByTestId('screen-title')).toHaveTextContent('Lost a key')
+    expect(screen.getByTestId('screen-title')).toHaveTextContent('Access and recovery')
     fireEvent.click(screen.getByTestId('header-back'))
     expect(navigate).toHaveBeenCalledWith('keys')
   })

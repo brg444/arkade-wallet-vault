@@ -1,36 +1,32 @@
-import { useContext } from 'react'
+import { useContext, useState } from 'react'
 import { Fingerprint } from 'lucide-react'
 import ErrorMessage from '../../../components/Error'
 import { isCoarsePhone } from '../../../lib/vault/webauthn'
 import { VaultContext } from '../../../vault/context'
-import QgScreen, { QgPrimary } from '../qg/QgScreen'
+import QgScreen, { QgPrimary, QgTextButton } from '../qg/QgScreen'
+
+import RecoveryHelp from '../RecoveryHelp'
 
 export default function VaultSignIn() {
-  const { busy, error, navigate, signIn, status } = useContext(VaultContext)
+  const { busy, error, navigate, signIn } = useContext(VaultContext)
   const onPhone = isCoarsePhone()
+  const [showHelp, setShowHelp] = useState(false)
+  if (showHelp) return <RecoveryHelp onBack={() => setShowHelp(false)} />
+
   return (
     <QgScreen
       title='Sign in'
       back={() => navigate('welcome')}
       footer={
         <>
+          <QgTextButton onClick={() => setShowHelp(true)} label='Access and recovery help' />
           <ErrorMessage error={Boolean(error)} text={error} />
           <QgPrimary
             onClick={() => void signIn()}
             disabled={busy}
             loading={busy}
             icon={<Fingerprint />}
-            label={
-              busy
-                ? onPhone
-                  ? 'Waiting for passkey…'
-                  : 'Waiting for QR…'
-                : error
-                  ? 'Try again'
-                  : onPhone
-                    ? 'Sign in'
-                    : 'Sign in with QR'
-            }
+            label={busy ? 'Waiting for passkey…' : error ? 'Try again' : 'Sign in with passkey'}
           />
         </>
       }
@@ -38,15 +34,18 @@ export default function VaultSignIn() {
       <p className='qg-eyebrow'>Existing vault</p>
       <h1>Sign in with your passkey</h1>
       <p className='qg-copy'>
-        {onPhone
-          ? 'Use your passkey if you set this vault up here. Face ID, Touch ID, or your device PIN may approve it.'
-          : 'This device will show a QR. Scan it with the device that created the vault, then approve with its passkey.'}
+        Use the passkey saved during setup. Your browser may offer a saved passkey or a QR code for another device;
+        follow the options it provides.
       </p>
       <section className='qg-device-key'>
         <Fingerprint />
         <span>
           <strong>This device</strong>
-          <small>{status?.passkeyLoginAvailable ? 'Ready to sign in' : 'Not enabled on the original device yet'}</small>
+          <small>
+            {onPhone
+              ? 'Approve with face recognition, a fingerprint, or your device PIN when prompted.'
+              : 'Choose your existing vault passkey when the browser prompts you.'}
+          </small>
         </span>
       </section>
     </QgScreen>

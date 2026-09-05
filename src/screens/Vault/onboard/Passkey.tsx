@@ -40,20 +40,28 @@ export default function VaultPasskey() {
         </>
       }
     >
-      <p className='qg-eyebrow'>Final step</p>
+      <p className='qg-eyebrow'>Create access, then save your kit</p>
       <h1>Create your passkey</h1>
       <p className='qg-copy'>
-        Your passkey protects everyday approvals and works with your enrolled limits. Biometric data stays on this
-        device.
+        Your passkey unlocks your device’s wallet key to approve payments. Use face recognition, a fingerprint, or your
+        device PIN when prompted. Biometric data stays on your device.
       </p>
       <section className='qg-device-key'>
         <Fingerprint />
         <span>
-          <strong>{passkeyAvailable === false ? 'Passkey unavailable' : 'Passkey available'}</strong>
+          <strong>
+            {passkeyAvailable === null
+              ? 'Checking passkey support…'
+              : passkeyAvailable
+                ? 'Device supports passkeys'
+                : 'Passkey unavailable'}
+          </strong>
           <small>
             {passkeyAvailable === false
               ? 'Open this invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
-              : 'Use Face ID, Touch ID, fingerprint, or device PIN'}
+              : passkeyAvailable === null
+                ? 'Checking this browser and device'
+                : 'Vaulted will check the required unlock support when you create your passkey.'}
           </small>
         </span>
       </section>
@@ -67,7 +75,7 @@ export default function VaultPasskey() {
           placeholder='Paste your invite'
           onChange={(event) => setToken(event.target.value)}
         />
-        <small>The invite is checked and consumed during enrollment</small>
+        <small>Your invite can create one vault and is checked when you continue.</small>
       </label>
       <button
         type='button'
