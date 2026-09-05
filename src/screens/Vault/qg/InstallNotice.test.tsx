@@ -1,0 +1,98 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import InstallNotice from './InstallNotice'
+
+beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.open = true
+    },
+  })
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.open = false
+      this.dispatchEvent(new Event('close'))
+    },
+  })
+})
+
+afterEach(() => {
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal')
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'close')
+})
+
+function offerInstall(prompt: () => Promise<{ outcome: 'accepted' | 'dismissed' }>) {
+  const event = new Event('beforeinstallprompt', { cancelable: true })
+  Object.assign(event, { prompt })
+  act(() => window.dispatchEvent(event))
+  return event
+}
+
+describe('Welcome installation notice', () => {
+  it('hides in an installed app, including iOS standalone mode', () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList)
+    const first = render(<InstallNotice />)
+    expect(screen.queryByRole('button', { name: /Install Vaulted/ })).toBeNull()
+    first.unmount()
+    vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList)
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true })
+    try {
+      render(<InstallNotice />)
+      expect(screen.queryByRole('button', { name: /Install Vaulted/ })).toBeNull()
+    } finally {
+      delete (navigator as Navigator & { standalone?: boolean }).standalone
+    }
+  })
+
+  it('shows iPhone installation steps only when requested and permits dismissal', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone')
+    render(<InstallNotice />)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
+    const sheet = screen.getByRole('dialog')
+    expect(within(sheet).getByText('Add to Home Screen')).toBeVisible()
+    expect(within(sheet).getByText('Open as Web App')).toBeVisible()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Continue in browser' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: /Install Vaulted/ })).toBeVisible()
+  })
+
+  it('uses a native offer once, keeps fallback steps after cancellation, and accepts a fresh offer', async () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Android')
+    render(<InstallNotice />)
+    const prompt = vi.fn().mockResolvedValue({ outcome: 'dismissed' })
+    expect(offerInstall(prompt).defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
+    const sheet = screen.getByRole('dialog')
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Install Vaulted' }))
+    await waitFor(() => expect(within(sheet).queryByRole('button', { name: 'Install Vaulted' })).toBeNull())
+    expect(prompt).toHaveBeenCalledTimes(1)
+    expect(within(sheet).getByText('Add to Home screen')).toBeVisible()
+    const retry = vi.fn().mockResolvedValue({ outcome: 'accepted' })
+    offerInstall(retry)
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Install Vaulted' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('handles an unavailable native prompt and hides after the browser confirms installation', async () => {
+    render(<InstallNotice />)
+    offerInstall(vi.fn().mockRejectedValue(new Error('unavailable')))
+    fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Install Vaulted' }))
+    await screen.findByRole('status')
+    act(() => window.dispatchEvent(new Event('appinstalled')))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Install Vaulted/ })).toBeNull()
+  })
+})

@@ -6,6 +6,7 @@ import { VaultContext } from '../../vault/context'
 import QgScreen, { QgPrimary, QgTextButton } from './qg/QgScreen'
 
 import RecoveryHelp from './RecoveryHelp'
+import InstallNotice from './qg/InstallNotice'
 
 export default function VaultWelcome() {
   const { busy, error, hasLocalEnrollment, locked, navigate, signIn } = useContext(VaultContext)
@@ -70,6 +71,7 @@ export default function VaultWelcome() {
           Two-key Savings
         </span>
       </div>
+      <InstallNotice />
     </QgScreen>
   )
 }
