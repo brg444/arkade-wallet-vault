@@ -8,7 +8,7 @@ const EVENT_SOURCE_CLOSED = 2
 const STREAM_READY_TIMEOUT_MS = 60_000
 const FETCH_SSE_RECONNECT_MS = 1_000
 
-type FetchLike = typeof fetch
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /** Duck-typed EventSource used by the settlement wrapper. */
 export type VaultEventSourceTransport = {
@@ -186,7 +186,13 @@ export function createVaultEventSourceFactory(
   return (url) => {
     const source = nativeFactory(url)
     const topics = settlementTopics(url)
-    if (!topics) return source
+    if (!topics) {
+      return {
+        addEventListener: (type, listener) => source.addEventListener(type, listener as EventListener),
+        removeEventListener: (type, listener) => source.removeEventListener(type, listener as EventListener),
+        close: () => source.close(),
+      }
+    }
 
     const record: SettlementStream = {
       topics,
