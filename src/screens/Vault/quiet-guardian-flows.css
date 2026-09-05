@@ -404,29 +404,6 @@
 
 /* Security / settings */
 
-.vault-security-hero,
-.vault-security-tile,
-.vault-security-tile.is-green,
-.vault-security-tile.is-orange,
-.vault-security-tile.is-ink,
-.vault-security-tile.is-purple {
-  border: 1px solid var(--vault-line) !important;
-  background: var(--vault-paper) !important;
-  color: var(--vault-ink) !important;
-  box-shadow: none !important;
-}
-
-.vault-security-tile-icon,
-.vault-security-hero-head .is-ready,
-.vault-security-hero-head .is-attention {
-  background: transparent !important;
-  color: var(--vault-ink) !important;
-}
-
-.vault-security-hero-head .is-ready {
-  color: var(--vault-positive) !important;
-}
-
 .vault-settings-row {
   width: 100%;
   min-height: 52px;

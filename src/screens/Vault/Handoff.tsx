@@ -1,3 +1,4 @@
+import QgAmount from './qg/QgAmount'
 import { useContext, useMemo, useRef, useState } from 'react'
 import { Check, Clipboard, Clock3, Copy, QrCode, ScanLine, Share2, TriangleAlert, Upload } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
@@ -186,15 +187,21 @@ export default function VaultHandoff() {
         <section className='qg-details'>
           <div>
             <span>Amount</span>
-            <strong>{prettyAmount(spend.amount)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(spend.amount)} />
+            </strong>
           </div>
           <div>
             <span>Network fee</span>
-            <strong>{prettyAmount(spend.fee)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(spend.fee)} />
+            </strong>
           </div>
           <div>
             <span>Total</span>
-            <strong>{prettyAmount(spend.amount + spend.fee)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(spend.amount + spend.fee)} />
+            </strong>
           </div>
           <div>
             <span>To</span>
