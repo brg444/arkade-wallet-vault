@@ -1,3 +1,6 @@
+import type { ExecutorEvent } from '@arkade-os/sdk'
+import { networkPins } from '../../lib/vault/networkPins'
+import { lightExitDelayLabel, lightRecoveryProgress } from '../../lib/vault/light/recoveryProgress'
 import { checkLightRenewal, renewLightSpending } from '../../lib/vault/light/renewal'
 import type { LightRenewalPlan } from '../../lib/vault/light/renewalTypes'
 import { lightRenewalTiming } from '../../lib/vault/light/renewalTiming'
@@ -89,6 +92,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
   const [policy, setPolicy] = useState<LightPolicy>(defaultLightPolicy('mainnet'))
   const [mode, setMode] = useState('token')
   const [available, setAvailable] = useState(false)
+  const [setupExitDelay, setSetupExitDelay] = useState<number | null>(null)
   const [invite, setInvite] = useState('')
   const [pending, setPending] = useState<PendingLightEnrollment | null>(null)
   const [setupExpired, setSetupExpired] = useState(false)
@@ -119,7 +123,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
   const [restoreRaw, setRestoreRaw] = useState('')
   const [recoveryFile, setRecoveryFile] = useState<LightRecoveryFile | null>(null)
   const [recoveryDestination, setRecoveryDestination] = useState('')
-  const [recoveryEvents, setRecoveryEvents] = useState<string[]>([])
+  const [recoveryEvents, setRecoveryEvents] = useState<ExecutorEvent[]>([])
   const [useSavedRecovery, setUseSavedRecovery] = useState(false)
   const [recoveryDataDate, setRecoveryDataDate] = useState('')
   const [renewalTiming, setRenewalTiming] = useState<ReturnType<typeof lightRenewalTiming> | null>(null)
@@ -207,6 +211,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
           setMode(s.enrollmentMode)
           setAvailable(Boolean(s.supportedSetups?.includes('light')))
           setPolicy(defaultLightPolicy(s.network as 'mainnet' | 'mutinynet'))
+          setSetupExitDelay(networkPins(s.network as 'mainnet' | 'mutinynet').policyExitDelay)
         }
       })
       .catch(() => {
@@ -387,8 +392,11 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
           are needed to recover your wallet key.
         </p>
         <p className='qg-copy'>
-          The owner key also has a delayed Bitcoin exit that does not require Vaulted’s approval. Spending limits apply
-          to normal payments, not this emergency exit.
+          The owner key also has a Bitcoin exit that does not require Vaulted’s approval.
+          {setupExitDelay
+            ? ` It includes a waiting period of ${lightExitDelayLabel(setupExitDelay)} after the required Bitcoin transactions confirm, plus network fees.`
+            : ''}{' '}
+          Spending limits apply to normal payments, not this emergency exit.
         </p>
         <p className='qg-copy'>
           Savings can show a Bitcoin address from another wallet. That wallet keeps control of those funds.
@@ -606,10 +614,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
                   setRecoveryEvents([])
                   try {
                     await executeLightRecovery(recoveryFile, confirmation, controller.signal, (event) =>
-                      setRecoveryEvents((prev) => [
-                        ...prev.slice(-7),
-                        `${event.status}: ${event.txid || event.reason || event.kind}`,
-                      ]),
+                      setRecoveryEvents((prev) => [...prev.slice(-7), event]),
                     )
                     setNotice('Bitcoin recovery completed')
                   } finally {
@@ -695,6 +700,10 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
                 <strong>{sats(recoveryFile.exitPackage.totals.recoveredSats)} to recover</strong>
                 <p>Estimated network fees: {sats(recoveryFile.exitPackage.totals.totalFeeSats)}</p>
                 <p>
+                  Owner-only delay: {lightExitDelayLabel(recoveryFile.descriptor.exitDelaySeconds)}. Bitcoin
+                  confirmation times are additional.
+                </p>
+                <p>
                   Provide at least {sats(recoveryFile.exitPackage.totals.fundingRequiredSats)} in Bitcoin for recovery
                   fees at the address below. Fees are separate from your spending balance.
                 </p>
@@ -724,11 +733,25 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
           <QgSecondary label='Stop and resume later' onClick={() => recoveryController.current?.abort()} />
         ) : null}
         <div className='light-recovery-log' role='log' aria-live='polite'>
-          {Array.from(new Set(recoveryEvents)).map((event) => (
-            <p key={event} className='light-address'>
-              {event}
-            </p>
-          ))}
+          {Array.from(
+            new Map(
+              recoveryEvents.map((event) => [`${event.stepIndex}:${event.status}:${event.txid ?? ''}`, event]),
+            ).entries(),
+          ).map(([key, event]) => {
+            const explorer = event.txid
+              ? vaultTransactionExplorer(event.txid, 'onchain', recoveryFile.descriptor.network)
+              : null
+            return (
+              <div key={key}>
+                <p className='qg-copy'>{lightRecoveryProgress(event)}</p>
+                {explorer ? (
+                  <a className='light-address' href={explorer.url} target='_blank' rel='noopener noreferrer'>
+                    {event.txid}
+                  </a>
+                ) : null}
+              </div>
+            )
+          })}
         </div>
       </QgScreen>
     )
@@ -1116,8 +1139,7 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
         />
         <p className='qg-copy'>
           The file contains encrypted keys. Keep your recovery secret separately. Emergency recovery also needs current
-          transaction paths and Bitcoin network fees. Download a new file after receiving, paying, or renewing; older
-          files do not update themselves.
+          transaction paths and Bitcoin network fees. Download a new file after receiving, paying, or renewing.
         </p>
         <p className='qg-copy'>
           {recoveryDataError ||
