@@ -1,3 +1,4 @@
+import type { VaultNetwork } from './constants'
 import type { SpendingPolicy } from './spendingPolicy'
 import type { ProtectionTier } from './protectionTier'
 
@@ -106,7 +107,7 @@ export interface BoardingDescriptor {
   schema: 'arkade-vault/board-v1'
   program: 'vault-board-v1'
   template: 'vault-board-v1-boarding-vault-and-operator'
-  network: 'mutinynet'
+  network: VaultNetwork
   boardingPub: string
   recoveryPhonePub: string
   vaultBoardCosignerPub: string

@@ -1,3 +1,4 @@
+import { releaseBuild } from './scripts/release-build'
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
 
@@ -7,6 +8,7 @@ function vaultE2eOperatorOrigin(): string {
 }
 
 export default defineConfig({
+  plugins: [releaseBuild()],
   define: {
     __VAULT_E2E_OPERATOR_ORIGIN__: JSON.stringify(vaultE2eOperatorOrigin()),
   },
