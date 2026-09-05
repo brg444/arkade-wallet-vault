@@ -461,6 +461,7 @@ export function subscribeVaultWalletEvents(status: VaultStatus, listener: () => 
 
 export async function reloadVaultWalletWorker(status: VaultStatus) {
   const current = await ensureVaultWalletWorker(status)
+  if (current.boardingSettle) return
   await current.lightningObserver.refresh()
   await current.wallet.reload()
 }
