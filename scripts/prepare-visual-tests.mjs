@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 const require = createRequire(import.meta.url)
 const viteRequire = createRequire(require.resolve('vite/package.json'))
 const { build } = viteRequire('esbuild')
-for (const name of ['globalSetup', 'vault-ui.test', 'haptics.test']) {
+for (const name of ['globalSetup', 'vault-ui.test', 'haptics.test', 'guidance.test', 'polish.test']) {
   await build({
     entryPoints: [resolve(`src/test/e2e-vault/${name}.ts`)],
     outfile: resolve(`.vault-visual-tests/${name.replace(/\.test$/, '.pw')}.mjs`),

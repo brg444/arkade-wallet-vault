@@ -42,3 +42,18 @@
   font-size: 14px;
   line-height: 1.55;
 }
+
+.qg-help-choices {
+  margin-top: 20px;
+  gap: 8px;
+}
+.qg-help-choices button {
+  min-height: 56px;
+}
+
+.qg-guidance-body h2 {
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 600;
+  margin-bottom: 12px;
+}

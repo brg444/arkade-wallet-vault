@@ -11,7 +11,8 @@ export default function ProtectionModel({ compact = false }: { compact?: boolean
       </div>
       {compact ? null : (
         <p className='qg-model-note'>
-          The next steps explain which keys you need for recovery, the waiting periods, and when the recovery services must be available.
+          The next steps explain which keys you need for recovery, the waiting periods, and when the recovery services
+          must be available.
         </p>
       )}
     </section>

@@ -77,6 +77,10 @@ describe('recovery preparation status', () => {
     ['recover-claim', 'Recovery transfer prepared', true, 'Preparing this transaction does not move your funds.'],
   ] as const)('reports preparation without submission for %s', async (testId, heading, pending, nextStep) => {
     renderRecovery(pending)
+    if (!pending) {
+      fireEvent.click(screen.getByRole('radio', { name: 'I can’t use my passkey' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Review recovery preparation' }))
+    }
     if (pending) {
       expect(screen.getByText('Recovery detected on Savings.')).toBeTruthy()
       fireEvent.change(screen.getByTestId('recover-claim-dest'), {
