@@ -324,9 +324,9 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 502, 'API response too large')
     return
   }
-  if (pathOnly.startsWith('/v1/vtxo/board') && upstream.status >= 400) {
+  if ((pathOnly.startsWith('/v1/vtxo/board') || pathOnly === '/v1/vtxo/reserve') && upstream.status >= 400) {
     console.error(
-      'vault-board-v1 upstream',
+      'vault funding upstream',
       JSON.stringify({
         status: upstream.status,
         path: pathOnly,
