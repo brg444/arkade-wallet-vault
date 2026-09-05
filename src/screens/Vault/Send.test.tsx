@@ -59,12 +59,15 @@ function renderSend(overrides: Partial<VaultContextProps> = {}) {
 describe('Vault send scanner origin', () => {
   afterEach(() => localStorage.clear())
 
-  it('returns Home when the Home camera is cancelled', () => {
+  it.each(['spend', 'savings'] as const)('returns Home when the %s Home camera is cancelled', (account) => {
     const value = renderSend({
+      account,
       scanOnSend: true,
       spend: { address: 'tark1previousattempt', amount: 12_000, fee: 0 },
     })
-    expect(screen.getByRole('heading', { name: 'Scan payment' })).toBeTruthy()
+    expect(
+      screen.getByRole('heading', { name: account === 'savings' ? 'Scan Bitcoin address' : 'Scan payment' }),
+    ).toBeTruthy()
     expect(screen.queryByDisplayValue('tark1previousattempt')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(value.clearSendScan).toHaveBeenCalled()

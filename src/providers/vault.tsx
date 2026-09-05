@@ -1189,8 +1189,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       canReplaceInFlightSend,
       replaceInFlightSend,
       openSendScan: () => {
-        setAccount('spend')
-        clearSpendDraft('spend')
+        clearSpendDraft(account)
         setScanOnSend(true)
         setError('')
         setScreen('send')
