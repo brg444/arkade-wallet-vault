@@ -163,10 +163,10 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('authenticator is not available') ||
     msg.includes('no available authenticator')
   ) {
-    return 'This browser can’t create the device key. Open the invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
+    return 'This browser can’t create the device key. Open Vaulted in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
   }
   if (msg.includes('not allowed') || msg.includes('timed out') || msg.includes('the operation was aborted')) {
-    return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open the invite in Safari or Chrome.'
+    return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open Vaulted in Safari or Chrome.'
   }
   if (msg.includes('already set up') || msg.includes('already enrolled')) {
     return 'This vault already has a passkey. Sign in instead.'
@@ -197,6 +197,7 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('api response too large')) {
     return 'The vault sent too much data. Try again.'
   }
+  if (msg.includes('invite required')) return 'Setup now requires an invite. Return to setup to enter one.'
   if (msg.includes('setup code required') || msg.includes('paste your setup code')) {
     return 'Paste your invite.'
   }

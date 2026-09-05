@@ -134,6 +134,20 @@ describe('same-origin authorizer gateway', () => {
     )
   })
 
+  it('limits open setup issuance separately from ordinary wallet requests', async () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret')
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify([{ result: 6 }, { result: 1 }, { result: 6 }, { result: 1 }])),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(allowMainnetGatewayRate('203.0.113.1', '', true)).resolves.toBe(false)
+    await expect(allowMainnetGatewayRate('203.0.113.1')).resolves.toBe(true)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)[2][1]).toMatch(/^vault-rate:enrollment:/)
+  })
+
   it('rejects an oversize upstream body', async () => {
     const res = new Response('x'.repeat(MAX_GATEWAY_BYTES + 1))
     await expect(readBoundedUpstream(res)).rejects.toThrow(/too large/)
@@ -291,7 +305,10 @@ describe('gateway response cache policy', () => {
 
   it('records a funding rejection without logging request credentials or payment details', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const payload = JSON.stringify({ code: 'REJECTED', error: 'upstream https://private-signer.example.com/v1/sign unavailable' })
+    const payload = JSON.stringify({
+      code: 'REJECTED',
+      error: 'upstream https://private-signer.example.com/v1/sign unavailable',
+    })
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(payload, { status: 400 })))
     const result = gatewayResponse()
     await gatewayHandler(

@@ -5,7 +5,7 @@ import { VaultContext } from '../../../vault/context'
 import QgScreen, { QgPrimary, QgSecondary } from '../qg/QgScreen'
 
 export default function VaultProblem() {
-  const { error, navigate } = useContext(VaultContext)
+  const { enrollmentMode, error, navigate } = useContext(VaultContext)
   return (
     <QgScreen
       title='Setup help'
@@ -21,7 +21,7 @@ export default function VaultProblem() {
       <h1>Check what stopped setup</h1>
       <p className='qg-copy'>
         {error ||
-          'A passkey prompt, invite, or connection problem may interrupt setup. Use the steps below for the problem you saw.'}
+          'A passkey prompt or connection problem may interrupt setup. Use the steps below for the problem you saw.'}
       </p>
       <section className='qg-alert'>
         <CircleHelp />
@@ -30,15 +30,17 @@ export default function VaultProblem() {
           <p>Try signing in with the passkey you created before starting another vault.</p>
         </div>
       </section>
-      <details className='qg-guidance'>
-        <summary>The invite was rejected</summary>
-        <div className='qg-guidance-body'>
-          <p>
-            Check that you pasted the complete invite. It may have expired or already been used; ask the person who
-            shared it for a new one if needed.
-          </p>
-        </div>
-      </details>
+      {enrollmentMode === 'token' ? (
+        <details className='qg-guidance'>
+          <summary>The invite was rejected</summary>
+          <div className='qg-guidance-body'>
+            <p>
+              Check that you pasted the complete invite. It may have expired or already been used; ask the person who
+              shared it for a new one if needed.
+            </p>
+          </div>
+        </details>
+      ) : null}
       <details className='qg-guidance'>
         <summary>The passkey prompt failed or closed</summary>
         <div className='qg-guidance-body'>

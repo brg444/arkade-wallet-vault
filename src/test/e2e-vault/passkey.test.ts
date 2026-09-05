@@ -231,3 +231,17 @@ test('reload after PRF derivation but before recovery response installs no sessi
   expect(JSON.stringify(audit.serviceWorkerMessages)).not.toMatch(/phone.?secret|phone.?scalar|private.?key|prf/i)
   expect(await passkey.credentials()).toHaveLength(1)
 })
+
+test('open enrollment creates a vault without an invite and retains passkey sign-in', async ({
+  page,
+  authorizer,
+  passkey,
+}) => {
+  authorizer.setInviteOnly(false)
+  await enrollVaultWithPasskey(page, authorizer, false)
+  expect(await passkey.credentials()).toHaveLength(1)
+  expect(await page.evaluate(() => sessionStorage.getItem('vaulted.open-enrollment-session'))).toBeNull()
+  await lock(page)
+  await page.getByRole('button', { name: 'Unlock with passkey' }).click()
+  await expect(page.getByTestId('account-switcher')).toBeVisible()
+})

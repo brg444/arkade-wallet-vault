@@ -77,6 +77,7 @@ export interface VaultContextProps {
   dailyRemaining: number
   dailySpent: number
   enablePasskeyLogin: () => Promise<void>
+  enrollmentMode: string
   enroll: (token?: string) => Promise<void>
   enrolled: boolean
   error: string
@@ -157,6 +158,7 @@ export const VaultContext = createContext<VaultContextProps>({
   dailyRemaining: 0,
   dailySpent: 0,
   enablePasskeyLogin: async () => {},
+  enrollmentMode: 'token',
   enroll: async () => {},
   enrolled: false,
   error: '',

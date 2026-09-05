@@ -41,7 +41,7 @@ vi.mock('../lib/vault/status', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/vault/status')>()
   return {
     ...original,
-    fetchPublicStatus: vi.fn(),
+    fetchPublicStatus: vi.fn(async () => ({ enrollmentMode: 'token' })),
     fetchVaultStatus: mocks.fetchStatus,
   }
 })
