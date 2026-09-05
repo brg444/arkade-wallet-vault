@@ -7,10 +7,24 @@ import {
   isVtxoSpendInFlightError,
 } from './vtxo/spend'
 
+function nestedErrorMessages(err: unknown, seen = new Set<unknown>()): string[] {
+  if (err == null || seen.has(err)) return []
+  seen.add(err)
+  const messages: string[] = []
+  if (typeof err === 'string' && err.trim()) messages.push(err)
+  if (err instanceof Error && err.message) messages.push(err.message)
+  if (err instanceof Error && err.cause) messages.push(...nestedErrorMessages(err.cause, seen))
+  if (err instanceof AggregateError) {
+    for (const inner of err.errors) messages.push(...nestedErrorMessages(inner, seen))
+  }
+  return messages
+}
+
 export function humanizeVaultError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err || 'Something went wrong')
+  const parts = nestedErrorMessages(err)
+  const raw = parts[0] || (err instanceof Error ? err.message : String(err || 'Something went wrong'))
   const name = err instanceof Error ? err.name.toLowerCase() : ''
-  const msg = raw.toLowerCase()
+  const msg = parts.join(' \n ').toLowerCase() || raw.toLowerCase()
   if (isVaultConcurrencyUnavailableError(err)) {
     return 'This browser can’t safely coordinate wallet activity. Update it or use a supported browser.'
   }
@@ -96,8 +110,32 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('http://localhost:3003') && msg.includes('127.0.0.1')) {
     return 'Open this page as http://localhost:3003.'
   }
-  if (msg.includes('rp id') || msg.includes('origin does not match') || msg.includes('signing client')) {
-    return 'Wrong site. Open the Vault app from its approved address.'
+  if (
+    msg.includes('rp id') ||
+    msg.includes('origin does not match') ||
+    msg.includes('signing client') ||
+    msg.includes('signing address')
+  ) {
+    return 'Wrong site. Open this vault at rc.getvaulted.xyz — passkeys for this RC are bound to that address.'
+  }
+  if (
+    msg.includes('sdk worker') ||
+    msg.includes('worker network') ||
+    msg.includes('did not register the spending contract') ||
+    msg.includes('different boarding address') ||
+    msg.includes('unsupported network') ||
+    msg.includes('initialization and teardown') ||
+    msg.includes('active vault-board-v1 key required') ||
+    msg.includes('message bus') ||
+    msg.includes('message timeout')
+  ) {
+    return 'Spending could not start on this network. Keep this page open; the wallet will retry in the background. If it stays down, reopen the vault at rc.getvaulted.xyz.'
+  }
+  if (msg.includes('could not load activity') || msg.includes('could not load coins')) {
+    return 'Bitcoin activity could not be loaded. Keep this page open while the wallet retries.'
+  }
+  if (msg.includes('vault-board-v1 descriptor does not match')) {
+    return 'This app doesn’t match the vault. Update and try again.'
   }
   if (msg.includes('passkey sign-in must first be enabled') || msg.includes('has not been enabled')) {
     return 'Enable sign-in on the original device first.'
@@ -125,10 +163,10 @@ export function humanizeVaultError(err: unknown): string {
     msg.includes('authenticator is not available') ||
     msg.includes('no available authenticator')
   ) {
-    return 'This browser can’t create the device key. Open the invite in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
+    return 'This browser can’t create the device key. Open Vaulted in Safari or Chrome on a phone or computer with Face ID, Touch ID, or a device PIN.'
   }
   if (msg.includes('not allowed') || msg.includes('timed out') || msg.includes('the operation was aborted')) {
-    return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open the invite in Safari or Chrome.'
+    return 'The device key wasn’t created. Try again and approve the device prompt. If this browser can’t use your device, open Vaulted in Safari or Chrome.'
   }
   if (msg.includes('already set up') || msg.includes('already enrolled')) {
     return 'This vault already has a passkey. Sign in instead.'
@@ -159,6 +197,7 @@ export function humanizeVaultError(err: unknown): string {
   if (msg.includes('api response too large')) {
     return 'The vault sent too much data. Try again.'
   }
+  if (msg.includes('invite required')) return 'Setup now requires an invite. Return to setup to enter one.'
   if (msg.includes('setup code required') || msg.includes('paste your setup code')) {
     return 'Paste your invite.'
   }

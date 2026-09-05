@@ -1,0 +1,3 @@
+[submodule "tools/offline-recovery"]
+	path = tools/offline-recovery
+	url = https://github.com/brg444/vaulted-emergency-recovery.git

@@ -2,6 +2,7 @@ import { useContext, useState } from 'react'
 import { prettyNumber } from '../../../lib/format'
 import { fingerprint } from '../../../lib/vault/hex'
 import { VaultContext } from '../../../vault/context'
+import RecoveryExplanation from '../qg/RecoveryExplanation'
 import QgScreen, { QgPrimary } from '../qg/QgScreen'
 
 function shortPub(pub: string) {
@@ -9,7 +10,7 @@ function shortPub(pub: string) {
 }
 
 export default function VaultPlan() {
-  const { finishPlan, navigate, setup } = useContext(VaultContext)
+  const { finishPlan, navigate, networkLabel, setup } = useContext(VaultContext)
   const [consented, setConsented] = useState(false)
   const advanced = setup.protectionTier === 'advanced'
 
@@ -20,12 +21,12 @@ export default function VaultPlan() {
       back={() => navigate('conditions')}
       footer={<QgPrimary onClick={finishPlan} disabled={!consented} label='Continue' />}
     >
-      <p className='qg-eyebrow'>Ready to enroll</p>
+      <p className='qg-eyebrow'>Your setup</p>
       <h1>Review your Vault</h1>
       <section className='qg-summary'>
         <div>
           <span>Network</span>
-          <strong>Mutinynet</strong>
+          <strong>{networkLabel}</strong>
         </div>
         <div>
           <span>Protection</span>
@@ -41,28 +42,32 @@ export default function VaultPlan() {
         </div>
         <div>
           <span>Per payment</span>
-          <strong>₿{prettyNumber(setup.txCapSats, 0)}</strong>
+          <strong>{prettyNumber(setup.txCapSats, 0)} sats</strong>
         </div>
         <div>
           <span>Rolling 24 hours</span>
-          <strong>₿{prettyNumber(setup.dailyLimitSats, 0)}</strong>
+          <strong>{prettyNumber(setup.dailyLimitSats, 0)} sats</strong>
         </div>
         <div>
           <span>Savings</span>
-          <strong>Two-key approval</strong>
+          <strong>Passkey and hardware wallet</strong>
         </div>
         <div>
           <span>Recovery</span>
-          <strong>Delayed and cancellable</strong>
+          <strong>{advanced ? 'Separate recovery key' : 'One remaining normal key'}</strong>
         </div>
         <div>
           <span>Spending</span>
           <strong>Limits enforced</strong>
         </div>
       </section>
+      <p className='qg-copy'>
+        The short hardware and recovery codes identify the keys you chose. Check them against your saved public keys.
+      </p>
+      <RecoveryExplanation advanced={advanced} mainnet={networkLabel === 'Bitcoin'} />
       <label className='qg-consent'>
         <input type='checkbox' checked={consented} onChange={(event) => setConsented(event.target.checked)} />
-        <span>I understand these limits are enrolled with this Vault and cannot be changed after setup.</span>
+        <span>I understand that this protection choice and these Spending limits cannot be changed after setup.</span>
       </label>
     </QgScreen>
   )

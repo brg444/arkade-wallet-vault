@@ -17,6 +17,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
@@ -50,8 +52,16 @@ jobs:
           "
       - name: Unit tests
         run: corepack pnpm test:unit
+      - name: Reject ambiguous builds
+        run: node scripts/verify-release-build.mjs
       - name: Build vault
-        run: corepack pnpm build
+        run: |
+          corepack pnpm build:mutinynet
+          corepack pnpm build:mainnet
+      - name: Verify compiled mainnet policy
+        run: |
+          corepack pnpm exec playwright install --with-deps chromium
+          node scripts/verify-mainnet-build.mjs
       - name: Production audit
         run: corepack pnpm audit --prod
 
@@ -60,6 +70,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:

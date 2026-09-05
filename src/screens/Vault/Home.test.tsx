@@ -51,6 +51,24 @@ describe('Vault home account boundaries', () => {
     localStorage.removeItem('arkade-vault-balance-unit')
   })
 
+  it('keeps an authorized payment reachable even when available balance is zero', async () => {
+    const user = userEvent.setup()
+    const openPendingPayment = vi.fn().mockResolvedValue(undefined)
+    renderHome({
+      canSend: false,
+      openPendingPayment,
+      pendingPayments: [{ operationId: 'original', amountSats: 1505, authorized: true }],
+      positions: {
+        spending: { availableSats: 0, pendingSats: 31953, totalSats: 31953 },
+        savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+      },
+    })
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(screen.getByRole('region', { name: 'Pending payment' })).toHaveTextContent('Not confirmed as paid')
+    await user.click(screen.getByRole('button', { name: 'Resume payment' }))
+    expect(openPendingPayment).toHaveBeenCalledWith('original')
+  })
+
   it('keeps receive details behind the explicit Home utilities', () => {
     renderHome({ account: 'spend' })
     expect(screen.queryByTestId('account-address')).toBeNull()
@@ -84,14 +102,16 @@ describe('Vault home account boundaries', () => {
     expect(screen.queryByText(/hardware key/i)).toBeNull()
   })
 
-  it('surfaces recovery attention as a compact alert instead of an emergency block', () => {
-    renderHome({ initiateAlert: 'Someone started recovery' })
-    expect(screen.getByTestId('initiate-alert')).toHaveTextContent('Recovery started with hardware')
-    expect(screen.getByTestId('initiate-alert')).toHaveTextContent(
-      'Open Recovery to review the available cancellation paths.',
-    )
-    expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
-  })
+  it.each(['this device', 'hardware', 'recovery'])(
+    'shows the recovery alert for %s without substituting another key',
+    (key) => {
+      const initiateAlert = `Someone started recovery on Savings with ${key}. If this wasn’t you, cancel it.`
+      renderHome({ initiateAlert })
+      expect(screen.getByTestId('initiate-alert')).toHaveTextContent('Savings recovery detected')
+      expect(screen.getByTestId('initiate-alert')).toHaveTextContent(initiateAlert)
+      expect(screen.getByRole('button', { name: 'Open Recovery' })).toBeTruthy()
+    },
+  )
 
   it('toggles the hero between ₿sats and USD using the fetched price', async () => {
     const user = userEvent.setup()
@@ -177,13 +197,14 @@ describe('Vault home account boundaries', () => {
     expect(screen.getByTestId('vault-balance')).toHaveAccessibleName('Spending balance loading')
   })
 
-  it('replaces terminal loading with a clear balance retry action', async () => {
-    const user = userEvent.setup()
-    const value = renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
+  it('keeps loading the first snapshot in the background without a retry control', () => {
+    renderHome({ balanceError: 'Wallet activity is unavailable.', balancesLoaded: false })
 
-    expect(screen.getByTestId('vault-balance')).not.toHaveAttribute('aria-busy')
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(value.refreshBalance).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('vault-balance')).toHaveAttribute('aria-busy')
+    expect(screen.getByTestId('vault-balance')).toHaveTextContent('—')
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByText('Wallet activity is unavailable.')).toBeNull()
   })
 
   it('does not show a background refresh failure over a known balance', () => {

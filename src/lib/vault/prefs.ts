@@ -48,7 +48,7 @@ export function applyVaultTheme(theme: Themes) {
   document.documentElement.classList.toggle('palette-dark', resolved === Themes.Dark)
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    ?.setAttribute('content', resolved === Themes.Dark ? '#101010' : '#fff')
+    ?.setAttribute('content', resolved === Themes.Dark ? '#0e0d10' : '#fff')
 }
 
 export function saveVaultTheme(theme: Themes) {

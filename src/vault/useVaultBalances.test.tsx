@@ -9,22 +9,25 @@ import { defaultSpendingPolicy, spendingPolicyDigest } from '../lib/vault/spendi
 import {
   fetchVaultWalletVtxoSnapshot,
   reloadVaultWalletWorker,
+  reviveVaultWalletWorker,
   subscribeVaultWalletEvents,
 } from '../lib/vault/vtxo/walletWorker'
 import { loadBalanceSnapshot, saveBalanceSnapshot } from '../lib/vault/balanceStore'
-import { confirmedUtxoBalance, savingsUtxoBalance, useVaultBalances } from './useVaultBalances'
+import { boardingUtxoBalance, confirmedUtxoBalance, savingsUtxoBalance, useVaultBalances } from './useVaultBalances'
 
 vi.mock('../lib/vault/esplora', () => ({
   fetchAddressTxs: vi.fn(),
   fetchAddressUtxos: vi.fn(),
 }))
 vi.mock('../lib/vault/status', () => ({ fetchVaultStatus: vi.fn() }))
-vi.mock('../lib/vault/vtxo/spend', () => ({
+vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/vtxo/spend')>()),
   reconcilePersistedVtxoSpend: vi.fn().mockResolvedValue({ kind: 'none' }),
 }))
 vi.mock('../lib/vault/vtxo/walletWorker', () => ({
   fetchVaultWalletVtxoSnapshot: vi.fn(),
   reloadVaultWalletWorker: vi.fn().mockResolvedValue(undefined),
+  reviveVaultWalletWorker: vi.fn().mockResolvedValue(undefined),
   subscribeVaultWalletEvents: vi.fn().mockReturnValue(() => undefined),
 }))
 
@@ -67,6 +70,7 @@ const mockedUtxos = vi.mocked(fetchAddressUtxos)
 const mockedTxs = vi.mocked(fetchAddressTxs)
 const mockedSnapshot = vi.mocked(fetchVaultWalletVtxoSnapshot)
 const mockedWorkerReload = vi.mocked(reloadVaultWalletWorker)
+const mockedWorkerRevive = vi.mocked(reviveVaultWalletWorker)
 const mockedWorkerEvents = vi.mocked(subscribeVaultWalletEvents)
 
 function deferred<T>() {
@@ -109,10 +113,23 @@ beforeEach(() => {
   mockedTxs.mockResolvedValue([])
   mockedSnapshot.mockResolvedValue({ balance: 0, history: [] })
   mockedWorkerReload.mockResolvedValue(undefined)
+  mockedWorkerRevive.mockResolvedValue({} as Awaited<ReturnType<typeof reviveVaultWalletWorker>>)
   mockedWorkerEvents.mockReturnValue(() => undefined)
 })
 
 afterEach(() => vi.useRealTimers())
+
+describe('boardingUtxoBalance', () => {
+  it('counts unique boarding outputs including unconfirmed deposits', () => {
+    expect(
+      boardingUtxoBalance([
+        { txid: 'a', vout: 0, value: 33_458, status: { confirmed: true } },
+        { txid: 'a', vout: 0, value: 33_458, status: { confirmed: true } },
+        { txid: 'b', vout: 0, value: 1_000, status: { confirmed: false } },
+      ]),
+    ).toBe(34_458)
+  })
+})
 
 describe('confirmedUtxoBalance', () => {
   it('counts unique confirmed and currently unspent Savings outputs', () => {
@@ -229,11 +246,49 @@ describe('useVaultBalances', () => {
     expect(mockedSnapshot).toHaveBeenCalledWith(STATUS)
   })
 
+  it('replaces pending boarding with the settled snapshot while Esplora still lists the deposit', async () => {
+    const deposit = { txid: 'deposit', vout: 0, value: 33_458, status: { confirmed: true } }
+    const pending = {
+      txid: 'deposit',
+      type: 'received' as const,
+      amount: 33_458,
+      confirmed: false,
+      account: 'spend' as const,
+      activity: 'boarding' as const,
+    }
+    const settled = { ...pending, txid: 'commitment', confirmed: true }
+    mockedUtxos.mockImplementation(async (address) => (address === STATUS.vtxoBoardingAddress ? [deposit] : []))
+    mockedSnapshot.mockResolvedValueOnce({ balance: 0, boardingBalance: 33_458, history: [pending] })
+    const { result } = setupHook()
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending.totalSats).toBe(33_458)
+    expect(result.current.history).toEqual([pending])
+
+    mockedSnapshot.mockResolvedValueOnce({ balance: 33_458, boardingBalance: 0, history: [settled] })
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending).toEqual({ availableSats: 33_458, pendingSats: 0, totalSats: 33_458 })
+    expect(result.current.history).toEqual([settled])
+    expect(loadBalanceSnapshot(STATUS.vaultId)?.boardingBalance).toBe(0)
+    expect(loadBalanceSnapshot(STATUS.vaultId)?.history).toEqual([settled])
+
+    // A failed read must not reintroduce the stale pending deposit beside
+    // the previously observed settled balance, including after a reload.
+    mockedSnapshot.mockRejectedValueOnce(new Error('worker unavailable'))
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.positions.spending).toEqual({ availableSats: 33_458, pendingSats: 0, totalSats: 33_458 })
+    expect(result.current.history).toEqual([settled])
+    expect(mockedUtxos).not.toHaveBeenCalledWith(STATUS.vtxoBoardingAddress)
+  })
+
   it('ignores an older refresh that finishes after a newer snapshot', async () => {
     const older = deferred<Awaited<ReturnType<typeof fetchAddressUtxos>>>()
-    mockedUtxos
-      .mockImplementationOnce(() => older.promise)
-      .mockResolvedValueOnce([{ txid: 'new', vout: 0, value: 25_000, status: { confirmed: true } }])
+    let savingsCalls = 0
+    mockedUtxos.mockImplementation((address) => {
+      if (address === STATUS.vtxoBoardingAddress) return Promise.resolve([])
+      savingsCalls += 1
+      if (savingsCalls === 1) return older.promise
+      return Promise.resolve([{ txid: 'new', vout: 0, value: 25_000, status: { confirmed: true } }])
+    })
     mockedSnapshot
       .mockResolvedValueOnce({ balance: 10_000, history: [] })
       .mockResolvedValueOnce({ balance: 30_000, history: [] })
@@ -254,8 +309,69 @@ describe('useVaultBalances', () => {
     expect(result.current.positions.spending.availableSats).toBe(30_000)
   })
 
+  it('shows boarding coins from Esplora and revives the Spending worker after a snapshot failure', async () => {
+    mockedUtxos.mockImplementation(async (address) => {
+      if (address === STATUS.vtxoBoardingAddress) {
+        return [{ txid: 'b8ed', vout: 0, value: 33_458, status: { confirmed: true } }]
+      }
+      if (address === STATUS.savingsAddress) {
+        return [{ txid: 'sav', vout: 0, value: 20_000, status: { confirmed: true } }]
+      }
+      return []
+    })
+    mockedSnapshot
+      .mockRejectedValueOnce(
+        new AggregateError([new Error('SDK worker did not register the Spending contract')], 'teardown failed'),
+      )
+      .mockResolvedValueOnce({
+        balance: 0,
+        boardingBalance: 33_458,
+        history: [
+          {
+            txid: 'b8ed',
+            type: 'received',
+            amount: 33_458,
+            confirmed: false,
+            account: 'spend',
+            activity: 'boarding',
+          },
+        ],
+      })
+    const { result } = setupHook()
+    await act(async () => result.current.refreshBalance())
+    expect(result.current.balancesLoaded).toBe(true)
+    expect(result.current.positions.savings.totalSats).toBe(20_000)
+    expect(result.current.positions.spending).toEqual({
+      availableSats: 0,
+      pendingSats: 33_458,
+      totalSats: 33_458,
+    })
+    expect(result.current.history.filter((item) => item.txid === 'b8ed')).toEqual([
+      {
+        txid: 'b8ed',
+        type: 'received',
+        amount: 33_458,
+        confirmed: false,
+        account: 'spend',
+        activity: 'boarding',
+      },
+    ])
+
+    await waitFor(() => expect(mockedWorkerRevive).toHaveBeenCalledWith(STATUS))
+    expect(result.current.history.filter((item) => item.txid === 'b8ed')).toHaveLength(1)
+    expect(result.current.positions.spending.pendingSats).toBe(33_458)
+    expect(result.current.balanceError).toBe('')
+  })
+
   it('keeps the previous account snapshot when a worker read fails', async () => {
-    mockedUtxos.mockResolvedValueOnce([{ txid: 'old', vout: 0, value: 20_000, status: { confirmed: true } }])
+    let savingsRound = 0
+    mockedUtxos.mockImplementation(async (address) => {
+      if (address === STATUS.vtxoBoardingAddress) return []
+      savingsRound += 1
+      return savingsRound === 1
+        ? [{ txid: 'old', vout: 0, value: 20_000, status: { confirmed: true } }]
+        : [{ txid: 'new', vout: 0, value: 40_000, status: { confirmed: true } }]
+    })
     mockedSnapshot.mockResolvedValueOnce({
       balance: 15_000,
       history: [
@@ -265,11 +381,10 @@ describe('useVaultBalances', () => {
     const { result } = setupHook()
     await act(async () => result.current.refreshBalance())
 
-    mockedUtxos.mockResolvedValueOnce([{ txid: 'new', vout: 0, value: 40_000, status: { confirmed: true } }])
     mockedSnapshot.mockRejectedValueOnce(new Error('activity unavailable'))
     await act(async () => result.current.refreshBalance())
 
-    expect(result.current.positions.savings.totalSats).toBe(20_000)
+    expect(result.current.positions.savings.totalSats).toBe(40_000)
     expect(result.current.positions.spending.availableSats).toBe(15_000)
     expect(result.current.history.map((item) => item.txid)).toEqual(['old-spend'])
     expect(result.current.balanceError).toBe('')
@@ -293,4 +408,23 @@ describe('useVaultBalances', () => {
     window.dispatchEvent(new Event('focus'))
     await waitFor(() => expect(mockedWorkerReload).toHaveBeenCalledWith(STATUS))
   })
+})
+
+it('keeps the last known Savings funds when Esplora fails', async () => {
+  saveBalanceSnapshot(STATUS.vaultId, {
+    boardingBalance: 0,
+    history: [],
+    savingsSats: 9000,
+    savingsSpendableSats: 9000,
+    vtxoSpendingSats: 42000,
+  })
+  mockedUtxos.mockImplementation(async (address) => {
+    if (address === STATUS.savingsAddress) throw new Error('Esplora unavailable')
+    return []
+  })
+  mockedSnapshot.mockResolvedValue({ balance: 42000, history: [] })
+  const { result } = setupHook(true)
+  await act(async () => result.current.refreshBalance())
+  expect(result.current.positions.savings.totalSats).toBe(9000)
+  expect(loadBalanceSnapshot(STATUS.vaultId)?.savingsSats).toBe(9000)
 })

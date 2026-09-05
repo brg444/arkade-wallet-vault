@@ -33,6 +33,18 @@ describe('Vercel worker caching', () => {
     ])
   })
 
+  it.each(['vercel.json', 'vercel.mainnet.json'])('routes open enrollment through a flat function in %s', (file) => {
+    const config = JSON.parse(readFileSync(file, 'utf8')) as {
+      rewrites: { source: string; destination: string }[]
+    }
+    const session = config.rewrites.findIndex((entry) => entry.source === '/v1/enroll/session')
+    const enrollment = config.rewrites.findIndex((entry) => entry.source === '/v1/enroll/:action')
+    expect(session).toBeGreaterThanOrEqual(0)
+    expect(session).toBeLessThan(enrollment)
+    expect(config.rewrites[session].destination).toBe('/api/gateway?route=enroll-session')
+    expect(readFileSync('api/gateway.ts', 'utf8')).toContain('./authorizer/[...path].js')
+  })
+
   it('routes readiness through the authorizer gateway', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf8')) as {
       rewrites: { source: string; destination: string }[]
@@ -64,19 +76,47 @@ describe('Vercel worker caching', () => {
   it('keeps the mainnet deployment explicit and isolated from Mutinynet', () => {
     const config = JSON.parse(readFileSync('vercel.mainnet.json', 'utf8')) as {
       buildCommand: string
+      env?: Record<string, string>
       headers: { source: string; headers: { key: string; value: string }[] }[]
       rewrites: { source: string; destination: string }[]
     }
     const csp = config.headers
       .find((entry) => entry.source === '/(.*)')
       ?.headers.find((header) => header.key === 'Content-Security-Policy')?.value
+    const connectSrc = csp
+      ?.split(';')
+      .map((directive) => directive.trim().split(/\s+/))
+      .find(([name]) => name === 'connect-src')
 
     expect(config.buildCommand).toBe('pnpm build:mainnet')
+    expect(config.env).toEqual({
+      VAULT_RELEASE_NETWORK: 'mainnet',
+      VITE_VAULT_RELEASE_NETWORK: 'mainnet',
+      VITE_VAULT_LIGHTNING_SEND: 'true',
+    })
     expect(config.rewrites).toContainEqual({
       source: '/esplora/:path*',
       destination: 'https://mempool.space/api/:path*',
     })
-    expect(csp).toContain('https://arkade.computer')
+    expect(connectSrc).toEqual([
+      'connect-src',
+      "'self'",
+      'https://arkade.computer',
+      'https://mempool.arkade.sh',
+      'wss://mempool.arkade.sh',
+      'https://blockchain.info',
+      'wss://nostr.arkade.sh',
+    ])
     expect(csp).not.toContain('mutinynet')
+    expect(csp).not.toContain('getvaulted')
+    expect(JSON.stringify(config)).not.toContain('mutinynet')
+  })
+
+  it('does not put mainnet origins or the production wallet host in the Mutinynet deployment', () => {
+    const config = readFileSync('vercel.json', 'utf8')
+    expect(config).toContain('mutinynet')
+    expect(config).not.toContain('arkade.computer')
+    expect(config).not.toContain('app.getvaulted.xyz')
+    expect(config).not.toContain('mempool.space')
   })
 })

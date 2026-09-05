@@ -1,7 +1,9 @@
-const [canonicalUrl, deploymentTarget] = process.argv.slice(2)
+import { createHash } from 'node:crypto'
 
-if (!canonicalUrl || !deploymentTarget) {
-  throw new Error('usage: pnpm verify:deployment <canonical-url> <deployment-url-or-index-asset>')
+const [canonicalUrl, deploymentTarget, expectedNetwork] = process.argv.slice(2)
+
+if (!canonicalUrl || !deploymentTarget || !['mainnet', 'mutinynet'].includes(expectedNetwork)) {
+  throw new Error('usage: pnpm verify:deployment <canonical-url> <deployment-url-or-index-asset> <mainnet|mutinynet>')
 }
 
 async function indexAsset(origin) {
@@ -24,3 +26,24 @@ if (canonicalAsset !== deploymentAsset) {
 }
 
 console.log(`verified ${canonicalAsset}`)
+
+async function releaseResponse(path) {
+  const response = await fetch(new URL(path, canonicalUrl), {
+    headers: { 'cache-control': 'no-cache' },
+    signal: AbortSignal.timeout(15000),
+  })
+  if (!response.ok) throw new Error(`${path} returned ${response.status}`)
+  return response
+}
+const manifest = await (await releaseResponse('/release.json')).json()
+if (manifest.network !== expectedNetwork) throw new Error('Compiled release network mismatch')
+const worker = await (await releaseResponse('/vault-wallet-service-worker.mjs')).arrayBuffer()
+if (createHash('sha256').update(new Uint8Array(worker)).digest('hex') !== manifest.workerSha256) {
+  throw new Error('Service worker differs from the release manifest')
+}
+const ready = await (await releaseResponse('/ready')).json()
+const status = await (await releaseResponse('/v1/status')).json()
+if (!ready.ok || ready.network !== expectedNetwork || status.network !== expectedNetwork) {
+  throw new Error('Guardian readiness or network mismatch')
+}
+console.log(`verified ${expectedNetwork} app, worker, and Guardian`)

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+import { isMainnetWalletHost } from '../mainnetHosts.js'
+
 const HOP_BY_HOP = new Set([
   'connection',
   'keep-alive',
@@ -38,6 +41,10 @@ function authorizerOrigin(): string {
 
 function gatewaySecret(): string {
   return String(process.env.AUTHORIZER_GATEWAY_SECRET || '').trim()
+}
+
+export function isMainnetGatewayRelease(value = process.env.VAULT_RELEASE_NETWORK): boolean {
+  return String(value || '').trim() === 'mainnet'
 }
 
 export function allowAuthorizerPath(path: string): boolean {
@@ -100,14 +107,22 @@ function requestVaultId(pathAndQuery: string, body?: Buffer): string {
   }
 }
 
-export async function allowMainnetGatewayRate(client: string, vaultId = ''): Promise<boolean> {
+export async function allowMainnetGatewayRate(
+  client: string,
+  vaultId = '',
+  enrollmentSession = false,
+): Promise<boolean> {
   const origin = String(process.env.UPSTASH_REDIS_REST_URL || '').replace(/\/$/, '')
   const token = String(process.env.UPSTASH_REDIS_REST_TOKEN || '').trim()
   if (!origin || !token) throw new Error('shared durable rate limit is not configured')
   const window = Math.floor(Date.now() / RATE_WINDOW_MS)
   const keys = [`vault-rate:client:${rateIdentity(client)}:${window}`]
   if (vaultId) keys.push(`vault-rate:vault:${rateIdentity(vaultId)}:${window}`)
-  const commands = keys.flatMap((key) => [['INCR', key], ['PEXPIRE', key, String(RATE_WINDOW_MS * 2), 'NX']])
+  if (enrollmentSession) keys.push(`vault-rate:enrollment:${rateIdentity(client)}:${window}`)
+  const commands = keys.flatMap((key) => [
+    ['INCR', key],
+    ['PEXPIRE', key, String(RATE_WINDOW_MS * 2), 'NX'],
+  ])
   const response = await fetch(`${origin}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -116,7 +131,11 @@ export async function allowMainnetGatewayRate(client: string, vaultId = ''): Pro
   })
   if (!response.ok) throw new Error('shared durable rate limit is unavailable')
   const results = (await response.json()) as { result?: unknown; error?: unknown }[]
-  return keys.every((_, index) => Number(results[index * 2]?.result) <= RATE_LIMIT && !results[index * 2]?.error)
+  return keys.every(
+    (_, index) =>
+      Number(results[index * 2]?.result) <= (enrollmentSession && index === keys.length - 1 ? 5 : RATE_LIMIT) &&
+      !results[index * 2]?.error,
+  )
 }
 
 export function clientAddress(headers: Record<string, string | string[] | undefined>): string {
@@ -155,6 +174,7 @@ export function publicAuthorizerPath(url = ''): string {
     const route = params.get('route') || ''
     if (route === 'health') return '/health'
     if (route === 'ready') return '/ready'
+    if (route === 'enroll-session') return '/v1/enroll/session'
     const phase = params.get('phase') || ''
     if (route === 'board' && BOARD_PHASES.has(phase)) return `/v1/vtxo/board/${phase}`
     return raw + q
@@ -254,13 +274,24 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 403, 'cross-origin authorizer access denied')
     return
   }
+  const secret = gatewaySecret()
+  const mainnet = isMainnetGatewayRelease()
+  if (mainnet) {
+    if (!secret) {
+      jsonError(res, 503, 'gateway authentication is not configured')
+      return
+    }
+    if (!isMainnetWalletHost(requestHost(req.headers.host))) {
+      jsonError(res, 403, 'mainnet gateway host is not this release')
+      return
+    }
+  }
   const headers: Record<string, string> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     const name = key.toLowerCase()
     if (!value || HOP_BY_HOP.has(name) || REBUFFERED.has(name)) continue
     headers[key] = Array.isArray(value) ? value.join(',') : value
   }
-  const secret = gatewaySecret()
   if (secret) headers['x-vault-gateway-secret'] = secret
 
   let body: Buffer | undefined
@@ -272,10 +303,13 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   }
   if (pathOnly !== '/health' && pathOnly !== '/ready') {
     try {
-      const allowed =
-        process.env.VAULT_RELEASE_NETWORK === 'mainnet'
-          ? await allowMainnetGatewayRate(clientAddress(req.headers), requestVaultId(pathAndQuery, body))
-          : allowGatewayRate(clientAddress(req.headers))
+      const allowed = mainnet
+        ? await allowMainnetGatewayRate(
+            clientAddress(req.headers),
+            requestVaultId(pathAndQuery, body),
+            pathOnly === '/v1/enroll/session',
+          )
+        : allowGatewayRate(clientAddress(req.headers))
       if (!allowed) {
         jsonError(res, 429, 'too many requests')
         return
@@ -304,6 +338,35 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
     jsonError(res, 502, 'API response too large')
     return
   }
+  if (pathOnly === '/ready') {
+    try {
+      const ready = JSON.parse(payload.toString('utf8'))
+      if (!ready || typeof ready !== 'object' || Array.isArray(ready)) throw new Error('invalid readiness')
+      payload = Buffer.from(
+        JSON.stringify({
+          ok: ready.ok,
+          schema: ready.schema,
+          network: ready.network,
+          enrollTemplate: ready.enrollTemplate,
+          arkadeOrigin: 'configured',
+          arkadeVersion: ready.arkadeVersion,
+          ...(ready.error ? { error: 'service unavailable' } : {}),
+        }),
+      )
+    } catch {
+      jsonError(res, 502, 'invalid readiness response')
+      return
+    }
+  }
+  if ((pathOnly.startsWith('/v1/vtxo/board') || pathOnly === '/v1/vtxo/reserve') && upstream.status >= 400) {
+    console.error(
+      'vault funding upstream',
+      JSON.stringify({
+        status: upstream.status,
+        path: pathOnly,
+      }),
+    )
+  }
   res.statusCode = upstream.status
   upstream.headers.forEach((value, key) => {
     const name = key.toLowerCase()
@@ -312,4 +375,3 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
   res.setHeader('Content-Length', String(payload.byteLength))
   res.end(payload)
 }
-import { createHash } from 'node:crypto'

@@ -1,33 +1,64 @@
 import { useContext } from 'react'
-import { TicketX } from 'lucide-react'
+import { CircleHelp } from 'lucide-react'
+import '../qg/guidance.css'
 import { VaultContext } from '../../../vault/context'
 import QgScreen, { QgPrimary, QgSecondary } from '../qg/QgScreen'
 
 export default function VaultProblem() {
-  const { error, navigate } = useContext(VaultContext)
+  const { enrollmentMode, error, navigate } = useContext(VaultContext)
   return (
     <QgScreen
-      title='Can’t continue'
+      title='Setup help'
       back={() => navigate('passkey')}
       footer={
         <>
-          <QgPrimary onClick={() => navigate('passkey')} label='Try another code' />
-          <QgSecondary onClick={() => navigate('passkey')} label='Try again' />
+          <QgPrimary onClick={() => navigate('passkey')} label='Return to setup' />
+          <QgSecondary onClick={() => navigate('signin')} label='I already have a vault' />
         </>
       }
     >
-      <p className='qg-eyebrow'>Invite code</p>
-      <h1>This invite can’t be used</h1>
+      <p className='qg-eyebrow'>Before trying again</p>
+      <h1>Check what stopped setup</h1>
       <p className='qg-copy'>
-        {error || 'It may have expired or already been used. Ask for a new invite, then try again.'}
+        {error ||
+          'A passkey prompt or connection problem may interrupt setup. Use the steps below for the problem you saw.'}
       </p>
       <section className='qg-alert'>
-        <TicketX />
+        <CircleHelp />
         <div>
-          <strong>Invite unavailable</strong>
-          <p>No enrollment was created and this device was not changed.</p>
+          <strong>If setup may have finished</strong>
+          <p>Try signing in with the passkey you created before starting another vault.</p>
         </div>
       </section>
+      {enrollmentMode === 'token' ? (
+        <details className='qg-guidance'>
+          <summary>The invite was rejected</summary>
+          <div className='qg-guidance-body'>
+            <p>
+              Check that you pasted the complete invite. It may have expired or already been used; ask the person who
+              shared it for a new one if needed.
+            </p>
+          </div>
+        </details>
+      ) : null}
+      <details className='qg-guidance'>
+        <summary>The passkey prompt failed or closed</summary>
+        <div className='qg-guidance-body'>
+          <p>
+            Return to setup and try the prompt again. Use a browser and passkey provider that support Vaulted’s unlock
+            requirements; a successful device check alone does not confirm that support.
+          </p>
+        </div>
+      </details>
+      <details className='qg-guidance'>
+        <summary>The service could not be reached</summary>
+        <div className='qg-guidance-body'>
+          <p>
+            Check your connection and try signing in if you already created a passkey. Keep app data intact while you
+            check whether setup completed.
+          </p>
+        </div>
+      </details>
     </QgScreen>
   )
 }

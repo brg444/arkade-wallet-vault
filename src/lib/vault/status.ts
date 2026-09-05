@@ -1,6 +1,7 @@
 import { readBounded } from './bounded'
 import { POLICY_VERSION } from './constants'
 import { requireReleaseNetwork } from './releaseNetwork'
+import { authorizerWalletHref, requireMainnetWalletOrigin, requireMainnetWalletRpId } from './productionDomains'
 import { SAVINGS_TEMPLATE } from './program/constants'
 import { bindStatusToLocalPin } from './pin'
 import type { VaultStatus, VaultStatusWire } from './types'
@@ -88,7 +89,19 @@ export async function fetchPublicStatus(signal?: AbortSignal): Promise<PublicAut
   }
   const body = parseJsonObject<PublicAuthorizerStatus>(text, 'status')
   if ('vaultId' in body && body.vaultId) throw new Error('public status must not name a vault')
-  requireReleaseNetwork(body.network)
+  const network = requireReleaseNetwork(body.network)
+  if (network === 'mainnet' && import.meta.env.PROD) {
+    requireMainnetWalletOrigin(body.clientOrigin)
+    requireMainnetWalletRpId(body.rpId)
+    if (typeof location !== 'undefined' && location.origin) {
+      requireMainnetWalletOrigin(location.origin)
+      const signingHref = authorizerWalletHref(body.clientOrigin, location.href)
+      if (signingHref) {
+        location.replace(signingHref)
+        throw new Error('Open this vault from its signing address.')
+      }
+    }
+  }
   if (body.templateVersion !== SAVINGS_TEMPLATE) throw new Error('template version is not this release')
   if (body.policyVersion !== POLICY_VERSION) throw new Error('policy version is not this release')
   body.spendingPolicyCapabilities = requireCurrentSpendingPolicyCapabilities(body.spendingPolicyCapabilities)

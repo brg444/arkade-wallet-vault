@@ -65,5 +65,14 @@ describe('frozen wallet protocol domains', () => {
       '026d7d45360014bce9a8ad30a10c28dd1571a22a2e90c9682268404d37b5b114a6',
     )
     expect(pack.programs['vault-policy-v1'].exit.delay).toBe('4608')
+    expect(mainnetPack.programs['vault-policy-v1'].policySchema.bounds.absoluteFeeCapSats).toEqual({
+      min: 20000,
+      max: 20000,
+    })
+    expect(mainnetPack.programs['vault-policy-v1'].policySchema.bounds.feerateCapSatPerV).toEqual({
+      min: 25,
+      max: 25,
+    })
+    expect(pack.programs['vault-policy-v1'].policySchema.bounds.absoluteFeeCapSats).toEqual({ min: 5000, max: 5000 })
   })
 })

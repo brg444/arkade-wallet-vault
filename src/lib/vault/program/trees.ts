@@ -1,6 +1,6 @@
 import { hex } from '@scure/base'
 import { p2tr } from '@scure/btc-signer'
-import { vaultAddressNetwork } from '../bitcoin'
+import { vaultAddressNetwork } from '../addressNetwork'
 import { hexToBytes } from '../hex'
 import { TAPROOT_NUMS_XONLY, checksigScript, csvChecksigScript, xOnlyFromCompressed } from '../savingsTree'
 import { FORBIDDEN_PUBLIC_KEY_2G, FORBIDDEN_PUBLIC_KEY_G } from '../setupPlan'

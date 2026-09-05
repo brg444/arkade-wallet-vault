@@ -142,4 +142,26 @@ describe('humanizeVaultError', () => {
       'Something went wrong. Try again.',
     )
   })
+
+  it('sends a split-host passkey to the authorizer signing origin', () => {
+    expect(humanizeVaultError(new Error('deployment RP ID does not match this signing client host'))).toMatch(
+      /rc\.getvaulted\.xyz/,
+    )
+    expect(humanizeVaultError(new Error('Open this vault from its signing address.'))).toMatch(/rc\.getvaulted\.xyz/)
+  })
+
+  it('explains a failed Spending worker start without asking the user to tap Retry', () => {
+    const message = humanizeVaultError(new Error('SDK worker did not register the Spending contract'))
+    expect(message).toMatch(/Spending could not start/)
+    expect(message).not.toMatch(/tap retry/i)
+    expect(humanizeVaultError(new Error('Unsupported network: mainnet'))).toMatch(/Spending could not start/)
+    expect(
+      humanizeVaultError(
+        new AggregateError(
+          [new Error('SDK worker derived a different boarding address'), new Error('teardown failed')],
+          'Vault wallet initialization and teardown failed',
+        ),
+      ),
+    ).toMatch(/Spending could not start/)
+  })
 })

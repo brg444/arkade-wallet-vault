@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { decodeVaultBip21 } from '../../lib/vault/bip21'
 import { POLICY_VERSION } from '../../lib/vault/constants'
@@ -8,6 +9,8 @@ import type { VaultStatus } from '../../lib/vault/types'
 
 const UI_FIXTURE = '/src/test/e2e-vault/fixtures/vault-ui.ts'
 const WORKER_FIXTURE = '/src/test/e2e-vault/fixtures/vtxo-browser.ts'
+const KIT_STORE_MODULE = '/src/lib/vault/program/kitStore.ts'
+const RECOVERY_SPEND_MODULE = '/src/lib/vault/program/spend.ts'
 const APP_PORT = process.env.VAULT_E2E_PORT || '3003'
 const OPERATOR_PORT = process.env.VAULT_E2E_OPERATOR_PORT || '18888'
 const APP_ORIGIN = `http://localhost:${APP_PORT}`
@@ -19,6 +22,13 @@ const BOARDING_TXID = '11'.repeat(32)
 const SAVINGS_TXID = '22'.repeat(32)
 const VTXO_TXID = 'aa'.repeat(32)
 const COMMITMENT_TXID = 'cc'.repeat(32)
+
+// Navigation tests must not depend on the host camera or permission prompts.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', { value: async () => [] })
+  })
+})
 
 type EsploraUtxo = {
   txid: string
@@ -241,6 +251,43 @@ async function openVault(page: Page, initial: Partial<VaultUiState> = {}, option
   return { destination: installed.destination as string, state, status: currentStatus }
 }
 
+async function recoveryKitJson(page: Page, vaultId: string): Promise<string> {
+  return page.evaluate(
+    async ({ id, storePath }) => {
+      const store = await import(/* @vite-ignore */ storePath)
+      const kit = store.loadLocalKit(id)
+      if (!kit) throw new Error('Recovery Kit fixture is missing')
+      return JSON.stringify(kit)
+    },
+    { id: vaultId, storePath: KIT_STORE_MODULE },
+  )
+}
+
+async function installPendingRecovery(
+  page: Page,
+  vaultId: string,
+  claimant: 'phone' | 'hardware' | 'recovery',
+  utxo: EsploraUtxo,
+) {
+  const address = await page.evaluate(
+    async ({ id, role, storePath }) => {
+      const store = await import(/* @vite-ignore */ storePath)
+      const kit = store.loadLocalKit(id)
+      if (!kit) throw new Error('Recovery Kit fixture is missing')
+      return kit.descriptor.pending[`savings-${role}`].address as string
+    },
+    { id: vaultId, role: claimant, storePath: KIT_STORE_MODULE },
+  )
+  await page.route('**/esplora/**', (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === `/esplora/address/${address}/utxo`) return json(route, [utxo])
+    if (url.pathname === '/esplora/blocks/tip/height') return route.fulfill({ status: 200, body: '20' })
+    return route.fallback()
+  })
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.getByTestId('initiate-alert')).toBeVisible()
+}
+
 async function clearVaultWorkers(context: BrowserContext) {
   for (const page of context.pages()) {
     await page
@@ -435,16 +482,45 @@ test('keeps cached Spending balance and history during an open-session outage, t
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
 })
 
-test('fails closed without an Operator cache and recovers through Retry', async ({ page }) => {
+test('fails closed without an Operator cache and recovers in the background', async ({ page }) => {
   const { status } = await openVault(page, {}, { operatorAvailable: false, waitForBalance: false })
-  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
-  await expect(page.getByText('Activity is unavailable. Refresh to try again.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0)
+  await expect(page.getByText('Loading activity…')).toBeVisible()
   await expect(page.getByTestId('vault-balance')).toHaveText('—')
 
   await setOperatorVtxos([await wireVtxo(page, status, { amount: 25_000, txid: VTXO_TXID })])
-  await page.getByRole('button', { name: 'Retry' }).click()
+  await refreshHome(page)
   await expect(page.getByTestId('vault-balance')).toContainText('25,000')
   await expect(page.getByTestId(`vault-tx-${VTXO_TXID}`)).toBeVisible()
+})
+
+test('keeps a submitted payment and its change visible after reload and opens its original review', async ({
+  page,
+}) => {
+  const { destination, status } = await openVault(page)
+  await seedReviewedSpend(page, status, destination, 1505, 0, 31953)
+  await page.evaluate(
+    async ({ vaultId, script }) => {
+      const modulePath = '/src/lib/vault/vtxo/spend.ts'
+      const spends = await import(/* @vite-ignore */ modulePath)
+      const pending = spends.loadPersistedVtxoSpend(vaultId)
+      spends.persistVtxoSpend({
+        ...pending,
+        stage: 'operator-submitted',
+        reservedInputs: [{ txid: 'aa'.repeat(32), vout: 0, valueSats: 33458, scriptHex: script }],
+      })
+    },
+    { vaultId: status.vaultId, script: status.spendingArkScript },
+  )
+  await page.reload()
+  await expect(page.getByTestId('vault-balance')).toContainText('31,953')
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
+  await expect(page.getByRole('region', { name: 'Pending payment' })).toContainText('1,505')
+  await page.getByRole('button', { name: 'Resume payment', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Resume payment' })).toBeVisible()
+  await expect(page.getByText('₿1,505', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Reveal' }).click()
+  await expect(page.getByRole('region', { name: 'Payment details' })).toContainText(destination)
 })
 
 test('renders an exact reviewed VTXO send before approval', async ({ page }) => {
@@ -611,6 +687,135 @@ test('never treats visible boarding value as spendable VTXO balance', async ({ p
   await expect(page.getByRole('heading', { name: 'Review' })).toHaveCount(0)
 })
 
+test('validates a pasted Recovery Kit against its committed descriptor', async ({ page }) => {
+  const { status } = await openVault(page)
+  const validKit = await recoveryKitJson(page, status.vaultId)
+  const tampered = JSON.parse(validKit) as Record<string, unknown>
+  tampered.descriptorHash = '00'.repeat(32)
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByTestId('tab-vault').click()
+  await page.getByTestId('security-kit').click()
+  await expect(page.getByRole('heading', { name: 'Recovery Kit', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'I already have a kit file' }).click()
+
+  const input = page.getByTestId('recovery-kit-json')
+  await input.fill(JSON.stringify(tampered))
+  await expect(page.getByText('Recovery Kit hash does not match the rebuilt descriptor')).toBeVisible()
+
+  await input.fill(validKit)
+  await expect(page.getByText(/This kit is for vault e2e-vaul… · 7 addresses/)).toBeVisible()
+  await expect(page.getByText('Recovery Kit hash does not match the rebuilt descriptor')).toHaveCount(0)
+})
+
+test('starts recovery only from a confirmed Savings coin and fences a second destination', async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_ORIGIN })
+  const { state, status } = await openVault(page)
+  const coin: EsploraUtxo = {
+    txid: '71'.repeat(32),
+    vout: 0,
+    value: 50_000,
+    status: { confirmed: true, block_height: 1 },
+  }
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByTestId('tab-vault').click()
+  await page.getByTestId('security-lost').click()
+  await expect(page.getByRole('heading', { name: 'Access and recovery', exact: true })).toBeVisible()
+  await page.getByRole('radio', { name: 'I can’t use my passkey' }).click()
+  await page.getByRole('button', { name: 'Review recovery preparation' }).click()
+
+  state.savingsUtxos = [{ ...coin, status: { confirmed: false } }]
+  await page.getByTestId('recover-initiate').click()
+  await expect(page.getByText('No confirmed coin on that account')).toBeVisible()
+
+  state.savingsUtxos = [coin]
+  await page.getByTestId('recover-initiate').click()
+  await expect(page.getByTestId('recovery-prepared')).toBeVisible()
+  const psbt = await page.evaluate(() => navigator.clipboard.readText())
+  const initiation = await page.evaluate(
+    async ({ id, kitPath, rawPsbt, spendPath }) => {
+      const [kitStore, spend] = await Promise.all([
+        import(/* @vite-ignore */ kitPath),
+        import(/* @vite-ignore */ spendPath),
+      ])
+      const kit = kitStore.loadLocalKit(id)
+      if (!kit) throw new Error('Recovery Kit fixture is missing')
+      return {
+        expectedDestScript: kit.descriptor.pending['savings-hardware'].script,
+        view: spend.inspectTransitionPsbt(rawPsbt),
+      }
+    },
+    { id: status.vaultId, kitPath: KIT_STORE_MODULE, rawPsbt: psbt, spendPath: RECOVERY_SPEND_MODULE },
+  )
+  expect(initiation.view).toMatchObject({
+    destScript: initiation.expectedDestScript,
+    destSats: 49_260,
+    feeSats: 500,
+    inputVout: 0,
+  })
+
+  await page.getByTestId('recover-key-phone').click()
+  await page.getByTestId('recover-initiate').click()
+  await expect(page.getByText('second dest for this outpoint')).toBeVisible()
+})
+
+test('surfaces a mature recovery and preserves claimant-aware guardian cancellation', async ({ context, page }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_ORIGIN })
+  const { status } = await openVault(page)
+  const coin: EsploraUtxo = {
+    txid: '72'.repeat(32),
+    vout: 1,
+    value: 20_000,
+    status: { confirmed: true, block_height: 1 },
+  }
+  await installPendingRecovery(page, status.vaultId, 'hardware', coin)
+
+  const alert = page.getByTestId('initiate-alert')
+  await expect(alert).toContainText('Savings recovery detected')
+  await alert.click()
+  await expect(page.getByRole('heading', { name: 'Recovery', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Recovery status' })).toContainText('In process')
+
+  await page.getByTestId('recover-claim-dest').fill(status.savingsAddress)
+  await page.getByTestId('recover-claim').click()
+  await expect(page.getByTestId('recovery-prepared')).toBeVisible()
+  const claimPsbt = await page.evaluate(() => navigator.clipboard.readText())
+  const claim = await page.evaluate(
+    async ({ rawPsbt, spendPath }) => {
+      const spend = await import(/* @vite-ignore */ spendPath)
+      return spend.inspectClaimPsbt(rawPsbt)
+    },
+    { rawPsbt: claimPsbt, spendPath: RECOVERY_SPEND_MODULE },
+  )
+  expect(claim).toMatchObject({
+    sequence: 6,
+    destScript: status.savingsScript,
+    destSats: 19_500,
+    feeSats: 500,
+  })
+
+  await page.getByTestId('recover-guardian-exit').click()
+  await expect(page.getByTestId('recover-guardian-signers')).toContainText('This device and Recovery')
+  await expect(page.getByTestId('recover-guardian-signers')).not.toContainText('Hardware and')
+  await expect(page.getByTestId('recover-guardian-device')).toBeVisible()
+  await expect(page.getByTestId('recover-guardian-external')).toContainText('Recovery')
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByTestId('recover-guardian-external-download').click()
+  const download = await downloadPromise
+  const path = await download.path()
+  if (!path) throw new Error('cancel PSBT download path is missing')
+  const unsignedCancel = await readFile(path)
+  await page.getByTestId('recover-guardian-signed-psbt').fill(unsignedCancel.toString('hex'))
+  await page.getByTestId('recover-guardian-external').click()
+  await expect(page.getByText('signed cancel must add exactly one signature')).toBeVisible()
+  await expect(page.getByTestId('recover-guardian-broadcast')).toHaveCount(0)
+})
+
 async function expectNoBlockingAxeViolations(page: Page) {
   const results = await new AxeBuilder({ page }).analyze()
   const blocking = results.violations
@@ -640,7 +845,7 @@ async function expectReachableAbove(page: Page, targetSelector: string, chromeSe
   expect(chromeBox).not.toBeNull()
   const overlap = targetBox!.y + targetBox!.height - chromeBox!.y
   if (overlap > 0) {
-    await page.locator('.content').evaluate((content, amount) => content.scrollBy(0, amount + 16), overlap)
+    await page.locator('.qg-main').evaluate((content, amount) => content.scrollBy(0, amount + 16), overlap)
     targetBox = await target.boundingBox()
     chromeBox = await page.locator(chromeSelector).boundingBox()
   }
@@ -818,11 +1023,11 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expect(page.getByTestId('security-lost')).toBeVisible()
 
   await page.getByTestId('security-kit').click()
-  await expect(page.getByRole('heading', { name: 'Recovery Kit' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Recovery Kit', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('recovery-kit.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: /I lost a key/ }).click()
-  await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Access and recovery', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('recovery-lost-key.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
@@ -906,4 +1111,375 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   expect(frame?.width).toBe(720)
   expect(frame?.x).toBe(360)
   expect(frame?.y).toBe(24)
+})
+
+// Motion remains enabled here so touch and transition regressions are exercised together.
+test.describe('interaction quality', () => {
+  test.use({ contextOptions: { reducedMotion: 'no-preference' } })
+
+  test('@interaction native taps, header gestures and menu browsing', async ({ page, browserName }, testInfo) => {
+    const { status } = await openVault(page)
+    await setOperatorVtxos([await wireVtxo(page, status, { amount: 80_000, txid: VTXO_TXID })])
+    await refreshHome(page)
+    await expect(page.getByTestId('vault-balance')).toContainText('80,000')
+    const open = page.getByRole('button', { name: 'Open navigation' })
+    await open.click()
+    await expect(page.getByTestId('account-spend')).toBeFocused()
+    await expect(page.getByTestId('account-spend')).toHaveCSS('outline-style', 'none')
+    await expect(page.getByTestId('account-spend')).toHaveCSS('box-shadow', 'none')
+    await expect(page.locator('.content')).toHaveAttribute('inert', '')
+    const shell = await page.getByTestId('vault-app').boundingBox()
+    const backdrop = await page.locator('.qg-launcher-backdrop').boundingBox()
+    expect(Math.abs(shell!.width - backdrop!.width)).toBeLessThanOrEqual(2)
+    await page.screenshot({ path: testInfo.outputPath('navigation.png'), animations: 'disabled' })
+    for (let index = 0; index < 5; index++) {
+      // Mobile WebKit follows the platform's text-only Tab preference.
+      if (browserName === 'webkit') await page.locator('.qg-launcher-stack button').nth(index).focus()
+      else await page.keyboard.press('Tab')
+      await expect(page.locator('.qg-launcher :focus')).toHaveCSS('outline-style', 'none')
+      const focusedItem = page.locator('.qg-launcher-item:focus')
+      if (await focusedItem.count()) await expect(focusedItem).toHaveCSS('box-shadow', 'none')
+    }
+    await page.getByTestId('tab-vault').click()
+    await expect(page.getByRole('heading', { name: 'Security', exact: true })).toBeVisible()
+    await page.getByTestId('header-back').click()
+    await page.getByRole('button', { name: 'Send', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Send', exact: true })).toBeVisible()
+    await page.getByTestId('vault-send-amount').fill('12000')
+    await expect(page.getByTestId('vault-send-amount')).toHaveCSS('outline-style', 'none')
+    await expect(page.getByTestId('vault-send-amount')).toHaveCSS('box-shadow', 'none')
+    await page.screenshot({ path: testInfo.outputPath('send.png'), animations: 'disabled' })
+
+    if (browserName === 'chromium') {
+      const cdp = await page.context().newCDPSession(page)
+      const swipe = async (x: number, y: number, dx: number, dy: number, cancel = false) => {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+        for (let step = 1; step <= 6; step++) {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ x: x + (dx * step) / 6, y: y + (dy * step) / 6 }],
+          })
+        }
+        await cdp.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] })
+      }
+      const amount = (await page.getByTestId('vault-send-amount').boundingBox())!
+      await swipe(amount.x + 40, amount.y + 15, 0, 125)
+      await expect(page.getByRole('heading', { name: 'Send', exact: true })).toBeVisible()
+      await page.getByTestId('vault-send-amount').blur()
+      const heading = (await page.getByTestId('screen-title').boundingBox())!
+      await swipe(heading.x + heading.width / 2, heading.y + 5, 0, 120, true)
+      await expect(page.getByRole('heading', { name: 'Send', exact: true })).toBeVisible()
+      await swipe(heading.x + heading.width / 2, heading.y + 5, 0, 120)
+      await expect(open).toBeVisible()
+      const tab = (await open.boundingBox())!
+      await swipe(tab.x + 20, tab.y + 25, -80, 0, true)
+      await expect(page.getByRole('navigation')).toHaveCount(0)
+      await swipe(tab.x + 20, tab.y + 25, 0, -70)
+      await expect(page.getByRole('navigation')).toHaveCount(0)
+      await cdp.detach()
+    } else {
+      await page.getByTestId('header-back').click()
+    }
+    await open.click()
+    await page.getByTestId('tab-settings').click()
+    await page.getByTestId('settings-theme').click()
+    await page.getByTestId('select-option-1').click()
+    await page.getByTestId('header-back').click()
+    await page.getByTestId('header-back').click()
+    await page.getByTestId('account-receive').click()
+    await expect(page.getByRole('heading', { name: 'Receive', exact: true })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('receive-dark.png'), animations: 'disabled' })
+  })
+  test('@interaction address field accepts taps across its full surface', async ({ page, isMobile }, testInfo) => {
+    const { status } = await openVault(page)
+    await setOperatorVtxos([await wireVtxo(page, status, { amount: 80_000, txid: VTXO_TXID })])
+    await refreshHome(page)
+    await page.getByRole('button', { name: 'Send', exact: true }).click()
+    const input = page.getByRole('textbox', { name: 'To', exact: true })
+    const surface = page.locator('.qg-dest-field > div')
+    await expect(input).toBeVisible()
+    const restingBorder = await surface.evaluate((element) => getComputedStyle(element).borderColor)
+    const hits = await surface.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return [5, box.height / 2, box.height - 5].map(
+        (y) => document.elementFromPoint(box.left + 24, box.top + y)?.tagName,
+      )
+    })
+    expect(hits).toEqual(['INPUT', 'INPUT', 'INPUT'])
+    for (const fraction of [0.1, 0.5, 0.9]) {
+      await page.getByTestId('screen-title').click()
+      const box = (await surface.boundingBox())!
+      if (isMobile) await page.touchscreen.tap(box.x + 24, box.y + box.height * fraction)
+      else await page.mouse.click(box.x + 24, box.y + box.height * fraction)
+      await expect(input).toBeFocused()
+    }
+    await input.fill('example destination')
+    await input.dblclick()
+    expect(
+      await input.evaluate((element: HTMLInputElement) => element.selectionEnd! - element.selectionStart!),
+    ).toBeGreaterThan(0)
+    await page.getByRole('button', { name: 'Scan destination', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Scan payment', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await expect(input).toHaveValue('example destination')
+    await input.focus()
+    await expect(input).toHaveCSS('outline-style', 'none')
+    await expect(input).toHaveCSS('box-shadow', 'none')
+    await expect(surface).toHaveCSS('box-shadow', 'none')
+    await expect(surface).toHaveCSS('border-color', restingBorder)
+    await page.screenshot({ path: testInfo.outputPath('address-focus.png'), animations: 'disabled' })
+  })
+  test('@interaction launcher follows the grab point and remembers placement', async ({
+    page,
+    browserName,
+  }, testInfo) => {
+    await openVault(page)
+    const tab = page.getByRole('button', { name: 'Open navigation' })
+    const start = (await tab.boundingBox())!
+    expect(start.width).toBeGreaterThanOrEqual(56)
+    const x = start.x + 8
+    const y = start.y + 10
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x - 3, y - 16)
+    await page.mouse.move(x - 120, y - 180, { steps: 12 })
+    await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(start.y - 180, 0)
+    expect((await tab.boundingBox())!.x).toBeCloseTo(start.x, 0)
+    await page.mouse.up()
+    await expect(tab).not.toHaveClass(/is-coasting/)
+    await expect(page.getByRole('navigation')).toHaveCount(0)
+    const placed = (await tab.boundingBox())!
+    await page.reload()
+    await expect(tab).toBeVisible()
+    await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(placed.y, 0)
+
+    if (browserName === 'chromium') {
+      const cdp = await page.context().newCDPSession(page)
+      const box = (await tab.boundingBox())!
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: box.x + 20, y: box.y + 12 }],
+      })
+      for (let step = 1; step <= 10; step++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: box.x + 20 - step * 2, y: box.y + 12 + step * 8 }],
+        })
+      }
+      await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(box.y + 80, 0)
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+      await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(box.y, 0)
+      await expect(page.getByRole('navigation')).toHaveCount(0)
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: box.x + 20, y: box.y + 12 }],
+      })
+      for (let step = 1; step <= 10; step++) {
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ x: box.x + 20, y: box.y + 12 + step * 8 }],
+        })
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await expect(tab).not.toHaveClass(/is-coasting/)
+      const touchPlaced = (await tab.boundingBox())!.y
+      expect(touchPlaced).toBeGreaterThanOrEqual(box.y + 79.5)
+      await expect(page.getByRole('navigation')).toHaveCount(0)
+      await cdp.detach()
+      await page.reload()
+      await expect(tab).toBeVisible()
+      await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(touchPlaced, 0)
+    }
+
+    // Place at the upper edge and verify that the complete menu stays in the wallet frame.
+    const current = (await tab.boundingBox())!
+    await page.mouse.move(current.x + 12, current.y + 12)
+    await page.mouse.down()
+    await page.mouse.move(current.x + 12, 0, { steps: 12 })
+    await page.mouse.up()
+    await tab.click()
+    const menu = page.getByRole('navigation')
+    const frame = (await page.getByTestId('vault-app').boundingBox())!
+    const menuBox = (await menu.boundingBox())!
+    expect(menuBox.y).toBeGreaterThanOrEqual(frame.y)
+    expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(frame.y + frame.height)
+    await page.screenshot({ path: testInfo.outputPath('launcher-upper.png'), animations: 'disabled' })
+    await page.getByRole('button', { name: 'Close navigation' }).click()
+    await expect(tab).toBeVisible()
+    await page.setViewportSize({ width: 390, height: 520 })
+    const resizedFrame = (await page.getByTestId('vault-app').boundingBox())!
+    await expect.poll(async () => (await tab.boundingBox())!.y).toBeGreaterThanOrEqual(resizedFrame.y)
+    const resizedTab = (await tab.boundingBox())!
+    expect(resizedTab.y + resizedTab.height).toBeLessThanOrEqual(resizedFrame.y + resizedFrame.height)
+  })
+})
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`@visual-refinement ${theme} layout keeps amounts, fields and surfaces within the wallet`, async ({
+    page,
+  }, testInfo) => {
+    const { status, destination } = await openVault(page)
+    await setOperatorVtxos([await wireVtxo(page, status, { amount: 100_000_000, txid: VTXO_TXID })])
+    await refreshHome(page)
+    await expect(page.getByTestId('vault-balance')).toContainText('100,000,000')
+    await page.evaluate((dark) => document.documentElement.classList.toggle('palette-dark', dark), theme === 'dark')
+    const capture = async (name: string) => {
+      await page.evaluate(() => document.fonts.ready)
+      await page.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: 'disabled' })
+    }
+    const contained = async (selector: string) => {
+      const boxes = await page.locator(selector).evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const rect = node.getBoundingClientRect()
+          const shell = node.closest('[data-testid="vault-app"]')!.getBoundingClientRect()
+          return {
+            left: rect.left - shell.left,
+            right: shell.right - rect.right,
+            scroll: node.scrollWidth - node.clientWidth,
+          }
+        }),
+      )
+      expect(boxes.length).toBeGreaterThan(0)
+      for (const box of boxes) {
+        expect(box.left).toBeGreaterThanOrEqual(-1)
+        expect(box.right).toBeGreaterThanOrEqual(-1)
+        expect(box.scroll).toBeLessThanOrEqual(1)
+      }
+    }
+    await contained('.qg-balance strong, .vault-history-amt')
+    await expect(page.locator('.vault-history-amt')).toHaveCSS('white-space', 'nowrap')
+    await capture('home-long-balance')
+    await page.getByRole('button', { name: 'Send', exact: true }).click()
+    await page.getByTestId('vault-send-amount').fill('100000000')
+    await page.getByTestId('vault-send-amount').blur()
+    await expect(page.locator('.qg-capacity')).toHaveCSS('border-top-width', '0px')
+    await contained('.qg-dest-field, .qg-amount-entry')
+    const amount = page.getByTestId('vault-send-amount')
+    expect(await amount.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    await capture('send-long-amount')
+    await page.getByTestId('vault-send-amount').fill('12000')
+    await page.getByRole('textbox', { name: 'To', exact: true }).fill(destination)
+    await seedReviewedSpend(page, status, destination, 12_000, 500, 99_987_500)
+    await page.getByTestId('vault-send-amount').blur()
+    const gutter = (page.viewportSize()?.width || 390) < 360 ? '20px' : '24px'
+    await expect(page.locator('.qg-main')).toHaveCSS('padding-left', gutter)
+    await expect(page.locator('.qg-footer')).toHaveCSS('padding-left', gutter)
+    await capture('send')
+    await page.getByRole('button', { name: /Resume payment|Review payment/ }).click()
+    await expect(page.getByRole('heading', { name: 'Review payment' })).toBeVisible()
+    await contained('.qg-review-amount strong, .qg-details')
+    await capture('review')
+    await page.locator('.qg-approvals > div').last().scrollIntoViewIfNeeded()
+    const approval = await page.locator('.qg-approvals > div').last().boundingBox()
+    const footer = await page.locator('.qg-footer').boundingBox()
+    expect(approval!.y + approval!.height).toBeLessThanOrEqual(footer!.y + 1)
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page.getByTestId('tab-vault').click()
+    await expect(page.getByRole('heading', { name: 'Security', exact: true })).toBeVisible()
+    await expect(page.locator('.vault-security-tile')).toHaveCount(4)
+    await expect(page.locator('.vault-security-tile').first()).toHaveCSS('border-radius', '0px')
+    await contained('.vault-security-grid, .vault-security-tile')
+    await expect(page.locator('.vault-security .vault-hub').first()).toHaveCSS('border-radius', '0px')
+    await capture('security')
+    await page.getByRole('button', { name: 'Go back' }).click()
+    await page.getByTestId('account-receive').click()
+    await expect(page.locator('.vault-receive-qr-large svg')).toBeVisible()
+    await capture('receive')
+  })
+
+  test(`@visual-refinement ${theme} welcome and protection remain readable`, async ({ page }, testInfo) => {
+    await page.goto('/')
+    await expect(page.getByRole('button', { name: 'Get started' })).toBeVisible()
+    await page.evaluate((dark) => document.documentElement.classList.toggle('palette-dark', dark), theme === 'dark')
+    await page.screenshot({ path: testInfo.outputPath('welcome.png'), animations: 'disabled' })
+    await page.getByRole('button', { name: 'Get started' }).click()
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByTestId('hardware-pub').fill('0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798')
+    await page.getByRole('button', { name: 'Use this hardware key' }).click()
+    await expect(page.getByRole('heading', { name: 'Protection', exact: true })).toBeVisible()
+    await page.screenshot({ path: testInfo.outputPath('protection.png'), animations: 'disabled' })
+    await page.getByTestId('protection-advanced').click()
+    await expect(page.getByTestId('recovery-pub')).toBeVisible()
+    await expect(page.locator('.qg-note')).toHaveCSS('border-bottom-width', '0px')
+    await page.screenshot({ path: testInfo.outputPath('protection-advanced.png'), animations: 'disabled' })
+  })
+}
+
+test('@interaction launcher momentum glides, can be caught, and remembers its resting position', async ({
+  page,
+  browserName,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await openVault(page)
+  const tab = page.getByRole('button', { name: 'Open navigation' })
+  const start = (await tab.boundingBox())!
+  const x = start.x + 20
+  const y = start.y + 20
+  // Native touch input in Chromium; WebKit uses its native mouse pointer stream.
+  const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
+  const gestureTime = Date.now() / 1000
+  if (cdp)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', timestamp: gestureTime, touchPoints: [{ x, y }] })
+  else {
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+  }
+  for (let step = 1; step <= 5; step++) {
+    if (cdp)
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        timestamp: gestureTime + step * 0.02,
+        touchPoints: [{ x, y: y - step * 24 }],
+      })
+    else await page.mouse.move(x, y - step * 24)
+    await page.waitForTimeout(16)
+  }
+  const released = (await tab.boundingBox())!.y
+  if (cdp)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', timestamp: gestureTime + 0.12, touchPoints: [] })
+  else await page.mouse.up()
+  await expect(tab).toHaveClass(/is-coasting/)
+  await expect.poll(async () => (await tab.boundingBox())!.y).toBeLessThan(released - 12)
+  await expect(page.getByRole('navigation')).toHaveCount(0)
+
+  // Catch with a real pointer without turning the catch into a menu activation.
+  const moving = (await tab.boundingBox())!
+  await page.mouse.move(moving.x + 20, moving.y + 20)
+  await page.mouse.down()
+  await expect(tab).not.toHaveClass(/is-coasting/)
+  const caught = (await tab.boundingBox())!.y
+  await page.mouse.up()
+  await expect(page.getByRole('navigation')).toHaveCount(0)
+  await page.waitForTimeout(100)
+  expect((await tab.boundingBox())!.y).toBeCloseTo(caught, 0)
+  await cdp?.detach()
+  await page.reload()
+  await expect(tab).toBeVisible()
+  await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(caught, 0)
+  await tab.click()
+  await expect(page.getByRole('navigation')).toBeVisible()
+})
+
+test('@interaction Home camera returns to its originating account on cancel and close', async ({ page }) => {
+  await openVault(page)
+  for (const account of ['savings', 'spend'] as const) {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page.getByTestId(`account-${account}`).click()
+    const accountName = account === 'savings' ? 'Savings' : 'Spending'
+    await expect(page.getByTestId('account-switcher')).toHaveText(accountName)
+    for (const action of ['Cancel', 'Go back']) {
+      await page.getByTestId('account-scan').click()
+      await expect(
+        page.getByRole('heading', {
+          name: account === 'savings' ? 'Scan Bitcoin address' : 'Scan payment',
+          exact: true,
+        }),
+      ).toBeVisible()
+      await page.getByRole('button', { name: action, exact: true }).click()
+      await expect(page.getByTestId('account-switcher')).toHaveText(accountName)
+      await expect(page.locator('.qg-camera')).toHaveCount(0)
+    }
+  }
 })

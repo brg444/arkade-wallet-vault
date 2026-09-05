@@ -9,6 +9,7 @@ import {
   WalletMessageHandler,
 } from '@arkade-os/sdk'
 import { hexToBytes } from './lib/vault/hex'
+import { requireSupportedVaultNetwork } from './lib/vault/constants'
 import { fetchVaultStatusUnpinned } from './lib/vault/status'
 import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './lib/vault/vtxo/contractHandler'
 import {
@@ -28,7 +29,9 @@ import { vaultArkServer, vaultPolicyV1ScriptFromStatus } from './lib/vault/vtxo/
 
 declare const self: ServiceWorkerGlobalScope
 
-const namespace = new URL(self.location.href).searchParams.get('vault') || ''
+const workerLocation = new URL(self.location.href)
+const namespace = workerLocation.searchParams.get('vault') || ''
+const pinnedNetwork = workerLocation.searchParams.get('network') || ''
 
 installVaultSettlementEventSource()
 registerVaultPolicyV1ContractHandler()
@@ -41,6 +44,7 @@ const bus = new MessageBus(walletRepository, contractRepository, {
   messageHandlers: [new WalletMessageHandler({ messageTag: vaultWalletUpdaterTagForNamespace(namespace) })],
   tickIntervalMs: 5_000,
   messageTimeoutMs: 60_000,
+  messageTimeoutOverrides: { SETTLE: 15 * 60_000 },
   buildServices: async (config) => {
     const active = await loadActiveBoardingKeyForNamespace(namespace)
     const transient = active.secret.slice()
@@ -48,6 +52,9 @@ const bus = new MessageBus(walletRepository, contractRepository, {
     let identityOwnsSecret = false
     try {
       const status = await fetchVaultStatusUnpinned(undefined, active.vaultId)
+      if (pinnedNetwork && status.network !== requireSupportedVaultNetwork(pinnedNetwork)) {
+        throw new Error('worker network does not match this release')
+      }
       const descriptor = requireBoardingStatus(status, active.boardingPub)
       const pins = boardingWorkerPins(active.network, status.network)
       if (active.descriptorHash !== status.vtxoBoardingDescriptorHash) {

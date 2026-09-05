@@ -6,6 +6,7 @@ import {
   historyFromBoardingUtxos,
   historyFromSdkActivities,
   historyFromTxs,
+  mergeVaultHistory,
   recentAccountHistory,
   type VaultHistoryItem,
 } from './history'
@@ -251,6 +252,41 @@ describe('vault history', () => {
         txid: 'boarding',
         type: 'received',
         amount: 50_000,
+        confirmed: false,
+        account: 'spend',
+        activity: 'boarding',
+      },
+    ])
+    expect(groupVaultHistory(rows)[0].label).toBe('Pending')
+  })
+
+  it('keeps one pending boarding row when Esplora also reports the confirmed deposit', () => {
+    const rows = mergeVaultHistory(
+      [
+        {
+          txid: 'b8ed',
+          type: 'received',
+          amount: 33_458,
+          confirmed: true,
+          blockTime: 1_700_000_000,
+          account: 'spend',
+        },
+        {
+          txid: 'b8ed',
+          type: 'received',
+          amount: 33_458,
+          confirmed: true,
+          blockTime: 1_700_000_000,
+          account: 'spend',
+        },
+      ],
+      historyFromBoardingUtxos([{ txid: 'b8ed', vout: 0, value: 33_458, status: { confirmed: true } }]),
+    )
+    expect(rows).toEqual([
+      {
+        txid: 'b8ed',
+        type: 'received',
+        amount: 33_458,
         confirmed: false,
         account: 'spend',
         activity: 'boarding',

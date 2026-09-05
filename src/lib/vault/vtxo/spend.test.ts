@@ -77,6 +77,37 @@ vi.mock('./sdkOperationAdapter', async (importOriginal) => ({
   submitExactVaultSdkOperation: sdkOperationAdapterMocks.submit,
 }))
 
+// PSBT map ordering is not part of the transaction or signature. The Go
+// Guardian and the SDK serialize the same fields in different orders.
+function reversePsbtMapOrder(raw: string): string {
+  const bytes = base64.decode(raw)
+  let offset = 5 // psbt magic
+  const result = [...bytes.slice(0, offset)]
+  const readSize = () => {
+    const prefix = bytes[offset++]
+    if (prefix < 253) return prefix
+    const width = prefix === 253 ? 2 : prefix === 254 ? 4 : 8
+    let value = 0
+    for (let i = 0; i < width; i++) value += bytes[offset++] * 256 ** i
+    return value
+  }
+  while (offset < bytes.length) {
+    const entries: Uint8Array[] = []
+    while (true) {
+      const start = offset
+      const keySize = readSize()
+      if (keySize === 0) break
+      offset += keySize
+      const valueSize = readSize()
+      offset += valueSize
+      entries.push(bytes.slice(start, offset))
+    }
+    for (const entry of entries.reverse()) result.push(...entry)
+    result.push(0)
+  }
+  return base64.encode(Uint8Array.from(result))
+}
+
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 const OP_1 = '11'.repeat(16)
 const OP_2 = '22'.repeat(16)
@@ -362,6 +393,8 @@ async function authorizedPendingFixture() {
 describe('regular VTXO spend coordinator', () => {
   it('uses the release-pinned public Operator directly', () => {
     expect(vaultArkServer()).toBe('https://mutinynet.arkade.sh')
+    expect(vaultArkServer('mutinynet')).toBe('https://mutinynet.arkade.sh')
+    expect(vaultArkServer('mainnet')).toBe('https://arkade.computer')
   })
 
   it.each([
@@ -531,6 +564,102 @@ describe('regular VTXO spend coordinator', () => {
       }
     }
   })
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, true],
+  ])(
+    'completes the real SDK lifecycle with signatures, interrupted=%s, reordered Guardian fields=%s',
+    async (interrupted, reordered) => {
+      const actual = await vi.importActual<typeof import('./sdkOperationAdapter')>('./sdkOperationAdapter')
+      sdkOperationAdapterMocks.submit.mockImplementation(actual.submitExactVaultSdkOperation)
+      const pending = freshPolicyPending()
+      persistVtxoSpend(pending)
+      const restoreLock = installImmediateNavigatorLock()
+      const vault = SingleKey.fromPrivateKey(hex.decode('02'.padStart(64, '0')))
+      const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+      const phoneSecret = hex.decode('01'.padStart(64, '0'))
+      const unlock = vi.fn(async () => ({
+        assertion: { credentialId: 'aa', clientDataJSON: 'bb', authenticatorData: 'cc', signature: 'dd' },
+        phoneSecret,
+        scalar: hex.decode('03'.padStart(64, '0')),
+      }))
+      const unlocker = createVtxoSpendUnlocker({} as never, status(), pending.bundleDigest, unlock)
+      vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(pending))
+      vi.spyOn(vaultCosignerClient.spending, 'operation').mockResolvedValue(reviewedOperation(pending) as never)
+      vi.spyOn(vaultCosignerClient.spending, 'authorize').mockImplementation(async (request) => {
+        const canonical = base64.encode(
+          (await vault.sign(Transaction.fromPSBT(base64.decode(request.unsignedArkPsbt)))).toPSBT(),
+        )
+        const authorizedPsbt = reordered ? reversePsbtMapOrder(canonical) : canonical
+        if (reordered) {
+          expect(authorizedPsbt).not.toBe(canonical)
+          expect(base64.encode(Transaction.fromPSBT(base64.decode(authorizedPsbt)).toPSBT())).toBe(canonical)
+        }
+        return {
+          operationId: pending.operationId,
+          bundleDigest: pending.bundleDigest,
+          arkTxid: pending.arkTxid,
+          authorizedPsbt,
+          authorizedPendingProof: base64.encode(
+            (await vault.sign(Transaction.fromPSBT(base64.decode(request.pendingProof)))).toPSBT(),
+          ),
+        }
+      })
+      const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx').mockImplementation(async (ark, checkpoints) => ({
+        arkTxid: pending.arkTxid,
+        finalArkTx: base64.encode((await operator.sign(Transaction.fromPSBT(base64.decode(ark)))).toPSBT()),
+        signedCheckpointTxs: await Promise.all(
+          checkpoints.map(async (raw) =>
+            base64.encode((await operator.sign(Transaction.fromPSBT(base64.decode(raw)))).toPSBT()),
+          ),
+        ),
+      }))
+      const authorizeCheckpoints = vi
+        .spyOn(vaultCosignerClient.spending, 'authorizeCheckpoints')
+        .mockImplementation(async (request) => ({
+          operationId: pending.operationId,
+          bundleDigest: pending.bundleDigest,
+          arkTxid: pending.arkTxid,
+          checkpointPsbts: await Promise.all(
+            request.checkpointPsbts.map(async (raw) =>
+              base64.encode((await vault.sign(Transaction.fromPSBT(base64.decode(raw)))).toPSBT()),
+            ),
+          ),
+        }))
+      const finalize = vi.spyOn(RestArkProvider.prototype, 'finalizeTx').mockResolvedValue(undefined)
+      vi.spyOn(vaultCosignerClient.spending, 'finalize').mockResolvedValue({
+        operationId: pending.operationId,
+        bundleDigest: pending.bundleDigest,
+        arkTxid: pending.arkTxid,
+        state: 'finalized',
+      })
+      try {
+        if (interrupted) {
+          authorizeCheckpoints.mockRejectedValueOnce(new Error('checkpoint response lost'))
+          await expect(sendVaultVtxo({} as never, status(), reviewedQuote(pending), () => unlocker)).rejects.toThrow(
+            'checkpoint response lost',
+          )
+          expect(loadPersistedVtxoSpend('vault-a')?.stage).toBe('operator-submitted')
+          expect(phoneSecret.every((byte) => byte === 0)).toBe(true)
+          phoneSecret.set(hex.decode('01'.padStart(64, '0')))
+        }
+        await expect(
+          sendVaultVtxo({} as never, status(), reviewedQuote(pending), () => unlocker),
+        ).resolves.toMatchObject({ txid: pending.arkTxid })
+        expect(unlock).toHaveBeenCalledTimes(interrupted ? 2 : 1)
+        expect(submit).toHaveBeenCalledTimes(1)
+        expect(authorizeCheckpoints).toHaveBeenCalledTimes(interrupted ? 2 : 1)
+        expect(finalize).toHaveBeenCalledTimes(1)
+        expect(phoneSecret.every((byte) => byte === 0)).toBe(true)
+        expect(loadPersistedVtxoSpend('vault-a')).toBeUndefined()
+      } finally {
+        restoreLock()
+        clearPersistedVtxoSpend('vault-a')
+      }
+    },
+  )
 
   it('runs one fresh reserved v1 operation through the SDK adapter and clears it only after finalization', async () => {
     sdkOperationAdapterMocks.submit.mockReset()

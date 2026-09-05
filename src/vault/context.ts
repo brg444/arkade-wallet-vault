@@ -3,7 +3,11 @@ import type { VaultHistoryItem } from '../lib/vault/history'
 import { emptySetupPlan, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import type { InitiateAlert } from '../lib/vault/program/watch'
-import type { SpendingPolicy, SpendingPolicyCapabilities } from '../lib/vault/spendingPolicy'
+import {
+  CURRENT_SPENDING_POLICY_CAPABILITIES,
+  type SpendingPolicy,
+  type SpendingPolicyCapabilities,
+} from '../lib/vault/spendingPolicy'
 import type { ProtectionTier } from '../lib/vault/protectionTier'
 import type { VaultFiatDisplayRate } from '../lib/vault/fiatDisplay'
 import { EMPTY_VAULT_POSITIONS, type VaultAccountPositions } from './balances'
@@ -73,6 +77,7 @@ export interface VaultContextProps {
   dailyRemaining: number
   dailySpent: number
   enablePasskeyLogin: () => Promise<void>
+  enrollmentMode: string
   enroll: (token?: string) => Promise<void>
   enrolled: boolean
   error: string
@@ -101,6 +106,9 @@ export interface VaultContextProps {
   refreshingBalance: boolean
   reset: () => void
   reviewSpend: () => Promise<void>
+  resumingPayment: boolean
+  pendingPayments: { operationId: string; amountSats: number; authorized: boolean }[]
+  openPendingPayment: (operationId: string) => Promise<void>
   canReplaceInFlightSend: boolean
   replaceInFlightSend: () => Promise<void>
   openSendScan: () => void
@@ -145,22 +153,12 @@ export const VaultContext = createContext<VaultContextProps>({
   handoffPsbt: '',
   confirmConditions: () => {},
   setSpendingPolicy: () => {},
-  spendingPolicyCapabilities: {
-    program: 'vault-policy-v1',
-    schema: 'vault-spending-policy-v1',
-    period: 'rolling-24h',
-    bounds: {
-      periodAllowanceSats: { min: 330, max: 1_000_000_000 },
-      txRecipientCapSats: { min: 330, max: 100_000_000 },
-      absoluteFeeCapSats: { min: 5_000, max: 5_000 },
-      feerateCapSatPerV: { min: 10, max: 10 },
-    },
-    presets: [],
-  },
+  spendingPolicyCapabilities: CURRENT_SPENDING_POLICY_CAPABILITIES,
   dailyLimit: 0,
   dailyRemaining: 0,
   dailySpent: 0,
   enablePasskeyLogin: async () => {},
+  enrollmentMode: 'token',
   enroll: async () => {},
   enrolled: false,
   error: '',
@@ -189,6 +187,9 @@ export const VaultContext = createContext<VaultContextProps>({
   refreshingBalance: false,
   reset: () => {},
   reviewSpend: async () => {},
+  resumingPayment: false,
+  pendingPayments: [],
+  openPendingPayment: async () => {},
   canReplaceInFlightSend: false,
   replaceInFlightSend: async () => {},
   openSendScan: () => {},

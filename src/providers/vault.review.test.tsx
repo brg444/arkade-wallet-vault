@@ -10,10 +10,13 @@ import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import golden from '../lib/vault/vtxo/testdata/vault-policy-v1-tree.json'
-import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
+import { persistVtxoSpend, VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
 import { VaultContext, VaultProvider } from './vault'
 
 const mocks = vi.hoisted(() => ({
+  availableSats: 20000,
+  refreshBalance: vi.fn(),
+  loadLightningFunding: vi.fn(),
   FundingNotStartedError: class FundingNotStartedError extends Error {},
   fetchStatus: vi.fn(),
   reserve: vi.fn(),
@@ -38,7 +41,7 @@ vi.mock('../lib/vault/status', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/vault/status')>()
   return {
     ...original,
-    fetchPublicStatus: vi.fn(),
+    fetchPublicStatus: vi.fn(async () => ({ enrollmentMode: 'token' })),
     fetchVaultStatus: mocks.fetchStatus,
   }
 })
@@ -62,6 +65,11 @@ vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/vault/vtxo/walletWorker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/vtxo/walletWorker')>()),
+  ensureVaultWalletWorker: vi.fn().mockResolvedValue({}),
+}))
+
 vi.mock('../lib/vault/savingsSpend', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/vault/savingsSpend')>()
   return { ...original, unlockPhoneBip340: mocks.unlock }
@@ -77,6 +85,7 @@ vi.mock('../lib/vault/lightning', () => ({
   assertVaultLightningQuoteCurrent: vi.fn(),
   beginVaultLightningFunding: mocks.beginLightningFunding,
   resumeVaultLightningFunding: mocks.resumeLightningFunding,
+  loadVaultLightningFundingQuote: mocks.loadLightningFunding,
   recordVaultLightningFundingTxid: mocks.recordLightningFunding,
   getVaultLightningStatus: mocks.getLightningStatus,
   requestVaultLightningQuote: mocks.requestLightning,
@@ -97,10 +106,10 @@ vi.mock('../vault/useVaultBalances', () => ({
     balancesLoaded: true,
     history: [],
     positions: {
-      spending: { availableSats: 20_000, pendingSats: 0, totalSats: 20_000 },
+      spending: { availableSats: mocks.availableSats, pendingSats: 0, totalSats: mocks.availableSats },
       savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
     },
-    refreshBalance: vi.fn().mockResolvedValue(undefined),
+    refreshBalance: mocks.refreshBalance,
     refreshingBalance: false,
   }),
 }))
@@ -167,12 +176,17 @@ function Probe() {
   const vault = useContext(VaultContext)
   return (
     <div>
+      <button onClick={() => vault.openPendingPayment('11'.repeat(16))}>Open pending</button>
       <span data-testid='screen'>{vault.screen}</span>
+      <span data-testid='account'>{vault.account}</span>
+      <span data-testid='scan'>{String(vault.scanOnSend)}</span>
       <span data-testid='ready'>{String(Boolean(vault.status?.enrolled))}</span>
       <span data-testid='fee'>{vault.spend.fee}</span>
       <span data-testid='destination'>{vault.spend.address}</span>
       <span data-testid='error'>{vault.error}</span>
       <span data-testid='kind'>{vault.lastTxKind}</span>
+      <span data-testid='sent-amount'>{vault.lastSend?.amount}</span>
+      <span data-testid='sent-destination'>{vault.lastSend?.address}</span>
       <span data-testid='activity'>{vault.history[0]?.activity || ''}</span>
       <button type='button' onClick={() => vault.setSpendDraft({ address: destination, amount: 12_000 })}>
         Set draft
@@ -212,6 +226,9 @@ describe('VaultProvider reviewed VTXO reservation', () => {
   })
 
   beforeEach(() => {
+    mocks.refreshBalance.mockReset().mockResolvedValue(undefined)
+    mocks.availableSats = 20000
+    mocks.loadLightningFunding.mockResolvedValue(undefined)
     localStorage.clear()
     localStorage.setItem(SELECTED_VAULT_STORE, 'vault-a')
     localStorage.setItem(
@@ -261,6 +278,62 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     })
   })
 
+  it('resumes an existing Arkade payment with no available balance and without another reservation', async () => {
+    mocks.availableSats = 0
+    persistVtxoSpend({ ...reviewed, vaultId: 'vault-a', arkTxid: 'aa'.repeat(32), stage: 'operator-submitted' })
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByText('Open pending'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
+    expect(screen.getByTestId('destination')).toHaveTextContent(destination)
+    fireEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(mocks.send).toHaveBeenCalled())
+    expect(mocks.reserve).not.toHaveBeenCalled()
+    expect(mocks.send).toHaveBeenCalledWith(expect.anything(), status, reviewed, expect.any(Function))
+  })
+
+  it('restores an authorized Lightning payment without a new quote, balance, or expiry gate', async () => {
+    mocks.availableSats = 0
+    const funding = { ...reviewed, amountSats: 2125, feeSats: 50 }
+    persistVtxoSpend({ ...funding, vaultId: 'vault-a', arkTxid: 'aa'.repeat(32), stage: 'operator-submitted' })
+    const quote = {
+      rfqId: '44'.repeat(32),
+      invoice: MUTINYNET_INVOICE,
+      invoiceAmountSats: 2100,
+      fundAddress: destination,
+      fundAmountSats: 2125,
+      corridorFeeSats: 25,
+      validUntil: 1,
+      refundLocktime: 1,
+    }
+    mocks.loadLightningFunding.mockResolvedValue(quote)
+    mocks.resumeLightningFunding.mockResolvedValue({ address: destination, amountSats: 2125 })
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByText('Open pending'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
+    expect(screen.getByTestId('destination')).toHaveTextContent(MUTINYNET_INVOICE)
+    fireEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(mocks.send).toHaveBeenCalled())
+    expect(mocks.requestLightning).not.toHaveBeenCalled()
+    expect(mocks.reserve).not.toHaveBeenCalled()
+    expect(mocks.beginLightningFunding).not.toHaveBeenCalled()
+    expect(mocks.resumeLightningFunding).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fundingFeeSats: 50 }),
+      undefined,
+      true,
+    )
+  })
+
   it('forgets a previous send destination when returning home or opening the Home camera', async () => {
     render(
       <VaultProvider>
@@ -281,6 +354,22 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
     expect(screen.getByTestId('screen')).toHaveTextContent('send')
     expect(screen.getByTestId('destination')).toHaveTextContent('')
+  })
+
+  it.each(['spend', 'savings'] as const)('opens the Home camera without changing the %s account', async (account) => {
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    if (account === 'savings') fireEvent.click(screen.getByRole('button', { name: 'Show Savings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open scan' }))
+    expect(screen.getByTestId('account')).toHaveTextContent(account)
+    expect(screen.getByTestId('screen')).toHaveTextContent('send')
+    expect(screen.getByTestId('scan')).toHaveTextContent('true')
+    expect(screen.getByTestId('destination')).toBeEmptyDOMElement()
   })
 
   it('requires another review when the authoritative VTXO fee changes', async () => {
@@ -312,6 +401,44 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.unlock).not.toHaveBeenCalled()
     expect(mocks.reserve).toHaveBeenCalledTimes(2)
   })
+
+  it.each(['resolve', 'reject'] as const)(
+    'shows the completed payment before a delayed balance refresh can %s',
+    async (outcome) => {
+      let resolveRefresh!: () => void
+      let rejectRefresh!: (error: Error) => void
+      const refresh = new Promise<void>((resolve, reject) => {
+        resolveRefresh = resolve
+        rejectRefresh = reject
+      })
+      mocks.refreshBalance.mockReturnValue(refresh)
+      mocks.reserve.mockResolvedValue({ ...reviewed, feeSats: 0 })
+      mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 0, operationId: reviewed.operationId })
+      render(
+        <VaultProvider>
+          <Probe />
+        </VaultProvider>,
+      )
+      await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+      fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      try {
+        await waitFor(() => expect(mocks.refreshBalance).toHaveBeenCalled())
+        expect(screen.getByTestId('screen')).toHaveTextContent('success')
+        expect(screen.getByTestId('sent-amount')).toHaveTextContent('12000')
+        expect(screen.getByTestId('sent-destination')).toHaveTextContent(destination)
+      } finally {
+        await act(async () => {
+          if (outcome === 'resolve') resolveRefresh()
+          else rejectRefresh(new Error('balance service unavailable'))
+        })
+      }
+      expect(screen.getByTestId('screen')).toHaveTextContent('success')
+      expect(screen.getByTestId('error')).toBeEmptyDOMElement()
+      expect(mocks.send).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('clears a stale review and returns to Send without reporting success', async () => {
     mocks.reserve.mockResolvedValueOnce({ ...reviewed, feeSats: 0 })
@@ -388,7 +515,13 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.lightningEnabled.mockReturnValue(true)
     vi.spyOn(Date, 'now').mockReturnValue((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000)
     const lightningFunding = { ...reviewed, destAddress: destination, amountSats: 2_125, feeSats: 50 }
-    mocks.reserve.mockResolvedValue(lightningFunding)
+    const phoneSecret = new Uint8Array(32).fill(7)
+    mocks.unlock.mockResolvedValue(phoneSecret)
+    mocks.reserve.mockImplementation(async (_enrollment, _status, _dest, _amount, options) => {
+      expect(options.phoneSecret).toBe(phoneSecret)
+      expect(options.phoneSecret).toEqual(new Uint8Array(32).fill(7))
+      return lightningFunding
+    })
     mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 50 })
 
     render(
@@ -402,7 +535,9 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
     expect(screen.getByTestId('fee')).toHaveTextContent('75')
-    expect(mocks.reserve).toHaveBeenCalledWith(expect.any(Object), status, destination, 2_125)
+    expect(mocks.reserve).toHaveBeenCalledWith(expect.any(Object), status, destination, 2_125, { phoneSecret })
+    expect(mocks.unlock).toHaveBeenCalledTimes(1)
+    expect(phoneSecret).toEqual(new Uint8Array(32))
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
@@ -422,6 +557,26 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.recordLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32), '55'.repeat(32))
     expect(mocks.send).toHaveBeenCalledWith(expect.any(Object), status, lightningFunding)
     expect(mocks.sdkWallet.mock.calls[0]?.[3]).toBeUndefined()
+  })
+
+  it.each(['quote', 'reservation'])('clears the unlocked phone key when Lightning %s fails', async (stage) => {
+    mocks.lightningEnabled.mockReturnValue(true)
+    vi.spyOn(Date, 'now').mockReturnValue((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000)
+    const phoneSecret = new Uint8Array(32).fill(7)
+    mocks.unlock.mockResolvedValue(phoneSecret)
+    const failed = stage === 'quote' ? mocks.requestLightning : mocks.reserve
+    failed.mockRejectedValue(new Error('test rejection'))
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Set Lightning draft' }))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
+    await waitFor(() => expect(screen.getByTestId('error')).not.toBeEmptyDOMElement())
+    expect(phoneSecret).toEqual(new Uint8Array(32))
+    expect(mocks.send).not.toHaveBeenCalled()
   })
 
   it('restores a pending Savings handoff and reopens its hardware step', async () => {

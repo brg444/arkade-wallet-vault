@@ -15,7 +15,6 @@ describe('vault UI lock', () => {
     expect(existsSync(resolve(root, 'src/screens/Vault/Navigation.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Settings.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Refresher.tsx'))).toBe(true)
-    expect(existsSync(resolve(root, 'src/icons/Vault.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/lib/vault/prefs.ts'))).toBe(true)
   })
 
@@ -43,14 +42,14 @@ describe('vault UI lock', () => {
     expect(recovery).not.toMatch(/recovery-secret/)
     expect(recovery).toMatch(/separately stored recovery key/)
     const design = read('src/screens/Vault/onboard/Design.tsx')
-    expect(design).toMatch(/Savings requires two independent keys/)
+    expect(design).toMatch(/Savings requires two independent\s+keys/)
     expect(design).toMatch(/ProtectionModel/)
     expect(design).not.toMatch(/Recovery is required/)
     const recover = read('src/screens/Vault/Recover.tsx')
     expect(recover).toMatch(/map of this vault/)
     expect(recover).toMatch(/not a seed/)
-    expect(recover).toMatch(/Back up map/)
-    expect(recover).toMatch(/Get map/)
+    expect(recover).toMatch(/Save copy with Vault service/)
+    expect(recover).toMatch(/Retrieve Recovery Kit/)
     expect(recover).not.toMatch(/Unlock map with hardware/)
     expect(recover).toMatch(/cannot sign, start recovery by itself/)
     const app = read('src/VaultApp.tsx')
@@ -73,8 +72,8 @@ describe('vault UI lock', () => {
     expect(settings).not.toMatch(/settings-hwsign/)
     expect(settings).toMatch(/Sign out/)
     const keys = read('src/screens/Vault/Keys.tsx')
-    expect(keys).toMatch(/title='Recovery'/)
-    expect(keys).toMatch(/This device/)
+    expect(keys).toMatch(/title='Recovery key'/)
+    expect(keys).toMatch(/Your passkey/)
     expect(keys).toMatch(/Recovery Kit/)
     expect(keys).toMatch(/hasRecovery/)
     expect(keys).not.toMatch(/Not on this vault/)
@@ -95,6 +94,25 @@ describe('vault UI lock', () => {
     }
     expect(recover).toMatch(/recover-guardian-signed-file/)
     expect(recover).toMatch(/acceptGuardianExitSignature/)
+    expect(app).not.toMatch(/offline-recovery/)
+    expect(existsSync(resolve(root, 'tools/offline-recovery/index.html'))).toBe(true)
+    expect(existsSync(resolve(root, 'tools/offline-recovery/Recover.command'))).toBe(true)
+    expect(read('.gitmodules')).toMatch(/vaulted-emergency-recovery/)
+  })
+
+  it('keeps emergency recovery copy free of protocol jargon', () => {
+    const userCopy = [
+      read('tools/offline-recovery/index.html'),
+      read('src/screens/Vault/onboard/Kit.tsx'),
+      read('src/screens/Vault/Recover.tsx'),
+      read('docs/emergency-recovery.md'),
+    ].join('\n')
+    expect(userCopy).not.toMatch(/version 4/i)
+    expect(userCopy).not.toMatch(/\bRP ID\b/)
+    expect(userCopy).not.toMatch(/envelope/i)
+    expect(read('tools/offline-recovery/index.html')).toMatch(/Is the Vaulted app still working/)
+    expect(read('tools/offline-recovery/index.html')).toMatch(/Choose Recovery Kit/)
+    expect(read('src/screens/Vault/onboard/Kit.tsx')).toMatch(/Recovery Kit/)
   })
 
   it('collapses the obsolete Savings page and keeps the live spend path', () => {

@@ -13,6 +13,12 @@
   --qg-green-soft: #e0eadf;
   --qg-orange: #a84421;
   --qg-orange-soft: #f9e4d4;
+  --qg-gutter: 24px;
+  --qg-caption: 12px;
+  --qg-body: 14px;
+  --qg-title: 16px;
+  --qg-surface-radius: 18px;
+  --qg-field-radius: 14px;
 }
 
 [data-testid='vault-app'] {
@@ -21,22 +27,33 @@
 }
 
 html.palette-dark [data-testid='vault-app'] {
-  --qg-oat: #111012;
-  --qg-paper: #1b191c;
-  --qg-ink: #fffdf9;
-  --qg-muted: #b8afa6;
-  --qg-line: #514a52;
-  --qg-purple: #b5a0ff;
-  --qg-green: #95c89d;
-  --qg-green-soft: #1d2c21;
-  --qg-orange: #e19a75;
-  --qg-orange-soft: #34231b;
+  color-scheme: dark;
+  --qg-oat: #0e0d10;
+  --qg-paper: #19171b;
+  --qg-ink: #f8f5f0;
+  --qg-muted: #aaa3ad;
+  --qg-line: #353139;
+  --qg-purple: #b8a5ff;
+  --qg-green: #91d3a1;
+  --qg-green-soft: #17271d;
+  --qg-orange: #efa27d;
+  --qg-orange-soft: #302018;
+  --qg-shadow-soft: 0 16px 38px -22px rgb(0 0 0 / 72%);
+  --qg-shadow-raised: 0 20px 46px -22px rgb(0 0 0 / 88%);
+  --qg-focus: #c6b8ff;
 }
 
 body:has(.vault-screen-home),
 body:has(.vault-screen-welcome),
 body:has(.vault-screen-unlock) {
   --background-color: #f5f0e8;
+}
+
+html.palette-dark body:has(.vault-screen-home),
+html.palette-dark body:has(.vault-screen-welcome),
+html.palette-dark body:has(.vault-screen-unlock),
+html.palette-dark body:has([data-testid='vault-app'] > .qg-screen) {
+  --background-color: #0e0d10;
 }
 
 .qg-screen {
@@ -65,8 +82,8 @@ body:has(.vault-screen-unlock) {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 0 28px 36px;
-  overflow: hidden;
+  padding: 32px var(--qg-gutter);
+  overflow: auto;
 }
 
 .qg-unlock {
@@ -123,7 +140,7 @@ body:has(.vault-screen-unlock) {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: max(4px, var(--qg-top-inset)) 26px 12px;
+  padding: max(4px, var(--qg-top-inset)) var(--qg-gutter) 12px;
 }
 
 .qg-brand strong {
@@ -133,7 +150,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-brand small {
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
   letter-spacing: 0.12em;
 }
 
@@ -170,7 +187,7 @@ body:has(.vault-screen-unlock) {
   display: grid;
   grid-template-columns: 44px 1fr 44px;
   align-items: center;
-  padding: max(2px, var(--qg-top-inset)) 18px 6px;
+  padding: max(2px, var(--qg-top-inset)) var(--qg-gutter) 6px;
 }
 
 .qg-header button {
@@ -193,7 +210,7 @@ body:has(.vault-screen-unlock) {
 .qg-header > h2 {
   margin: 0;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--qg-body);
   font-weight: 550;
 }
 
@@ -204,20 +221,15 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-header-sheet {
-  grid-template-columns: 1fr;
-  grid-template-rows: 36px auto;
-  justify-items: center;
-  padding-top: max(2px, var(--qg-top-inset));
+  position: relative;
+  padding-top: max(8px, var(--qg-top-inset));
   touch-action: none;
 }
 
-.qg-handle-btn {
-  width: 100%;
-  height: 36px;
-  touch-action: none;
-}
-
-.qg-handle {
+.qg-header .qg-handle {
+  position: absolute;
+  top: max(3px, var(--qg-top-inset));
+  left: calc(50% - 18px);
   display: block;
   width: 36px;
   height: 4px;
@@ -237,31 +249,32 @@ body:has(.vault-screen-unlock) {
 .qg-main {
   min-height: 0;
   overflow: auto;
-  padding: 25px 28px 12px;
+  padding: 24px var(--qg-gutter) 16px;
 }
 
 .has-vault-navigation > .qg-screen .qg-main {
-  padding: 8px 22px calc(var(--vault-navigation-clearance, 88px) + 12px);
+  padding: 24px var(--qg-gutter) calc(var(--vault-navigation-clearance, 88px) + 16px);
 }
 
 .qg-screen-welcome .qg-main {
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  padding: 0 28px 72px;
-  overflow: hidden;
+  justify-content: safe center;
+  padding: 32px var(--qg-gutter);
+  overflow: auto;
 }
 
 .qg-screen h1 {
-  margin: 7px 0 12px;
-  font-size: 38px;
-  font-weight: 560;
-  line-height: 1.02;
-  letter-spacing: -0.045em;
+  margin: 12px 0 16px;
+  font-size: 32px;
+  font-weight: 550;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
 }
 
-.qg-screen-welcome h1 {
-  font-size: 38px;
+.qg-screen-welcome .qg-main h1 {
+  font-size: clamp(36px, 9vw, 40px);
 }
 
 .qg-main h1 {
@@ -287,10 +300,11 @@ body:has(.vault-screen-unlock) {
 
 .qg-assurances {
   display: flex;
-  gap: 16px;
+  gap: 12px 24px;
   margin-top: 24px;
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
+  flex-wrap: wrap;
 }
 
 .qg-assurances span {
@@ -307,9 +321,9 @@ body:has(.vault-screen-unlock) {
 
 .qg-footer {
   display: grid;
-  gap: 8px;
-  padding: 16px 26px max(22px, calc(12px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
-  background: linear-gradient(180deg, rgba(245, 240, 232, 0), var(--qg-oat) 20%);
+  gap: 12px;
+  padding: 16px var(--qg-gutter) max(24px, calc(16px + var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px))));
+  background: linear-gradient(180deg, transparent, var(--qg-oat) 20%);
 }
 
 .qg-footer p {
@@ -327,9 +341,15 @@ body:has(.vault-screen-unlock) {
   background: var(--qg-orange-soft);
   color: var(--qg-ink);
   text-align: left;
-  font-size: 13px;
+  font-size: var(--qg-body);
   font-weight: 600;
   line-height: 1.4;
+}
+
+html.palette-dark .qg-footer-error,
+html.palette-dark .qg-footer .qg-footer-error,
+html.palette-dark [data-testid='vault-app'] .vault-error-message .shadow-surface {
+  border-color: color-mix(in srgb, var(--qg-orange) 32%, var(--qg-line)) !important;
 }
 
 [data-testid='vault-app'] .vault-error-message .shadow-surface {
@@ -382,12 +402,12 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-text {
-  min-height: 38px;
+  min-height: 44px;
   border: 0;
   background: transparent;
   color: var(--qg-muted);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--qg-body);
   cursor: pointer;
 }
 
@@ -412,12 +432,12 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-role-list strong {
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-role-list small {
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-role-list svg {
@@ -429,13 +449,13 @@ body:has(.vault-screen-unlock) {
 .qg-field {
   display: grid;
   gap: 8px;
-  margin-top: 34px;
+  margin-top: 32px;
 }
 
 .qg-field > span,
 .qg-money-field > span {
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-field input {
@@ -467,7 +487,7 @@ body:has(.vault-screen-unlock) {
   background: transparent;
   color: var(--qg-purple);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--qg-caption);
   font-weight: 600;
   cursor: pointer;
 }
@@ -481,29 +501,30 @@ body:has(.vault-screen-unlock) {
   display: grid;
   grid-template-columns: 28px 1fr;
   gap: 10px;
-  margin-top: 26px;
-  padding: 16px;
-  border: 1px solid var(--qg-line);
-  border-radius: 16px;
-  background: var(--qg-paper);
+  margin-top: 24px;
+  padding: 16px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   text-align: left;
+  border-top: 1px solid var(--qg-line);
 }
 
 .qg-note strong {
-  font-size: 12px;
+  font-size: var(--qg-body);
 }
 
 .qg-note p {
   margin: 4px 0 0;
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   line-height: 1.45;
 }
 
 .qg-choice-list {
   display: grid;
-  gap: 10px;
-  margin-top: 25px;
+  gap: 12px;
+  margin-top: 32px;
 }
 
 .qg-choice-list.is-keys button {
@@ -516,7 +537,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-choice-list button {
   display: grid;
-  grid-template-columns: 42px 1fr 20px;
+  grid-template-columns: 28px minmax(0, 1fr) 20px;
   align-items: center;
   gap: 12px;
   min-height: 104px;
@@ -531,16 +552,17 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-choice-list button[aria-checked='true'] {
-  border: 2px solid var(--qg-purple);
+  border: 1px solid var(--qg-purple);
+  background: color-mix(in srgb, var(--qg-purple) 5%, var(--qg-paper));
 }
 
 .qg-choice-icon {
   display: grid;
-  width: 42px;
-  height: 42px;
+  width: 28px;
+  height: 28px;
   place-items: center;
-  border: 1px solid var(--qg-line);
-  border-radius: 13px;
+  border: 0;
+  border-radius: 0;
 }
 
 .qg-choice-list button[aria-checked='true'] .qg-choice-icon {
@@ -549,7 +571,8 @@ body:has(.vault-screen-unlock) {
 
 .qg-choice-list button > span:nth-child(2) {
   display: grid;
-  gap: 3px;
+  gap: 8px;
+  min-width: 0;
 }
 
 .qg-choice-list strong {
@@ -558,12 +581,13 @@ body:has(.vault-screen-unlock) {
 
 .qg-choice-list small {
   color: var(--qg-muted);
-  font-size: 12px;
+  font-size: var(--qg-body);
+  line-height: 1.45;
 }
 
 .qg-choice-list em {
   color: var(--qg-purple);
-  font-size: 10px;
+  font-size: var(--qg-caption);
   font-style: normal;
 }
 
@@ -591,7 +615,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-device-key small {
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-money-field {
@@ -628,7 +652,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-money-field b {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-summary {
@@ -662,7 +686,7 @@ body:has(.vault-screen-unlock) {
   gap: 10px;
   margin-top: 18px;
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   line-height: 1.45;
 }
 
@@ -722,7 +746,7 @@ body:has(.vault-screen-unlock) {
 .qg-progress-screen > small {
   margin-top: 10px;
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-screen-success .qg-main {
@@ -732,7 +756,7 @@ body:has(.vault-screen-unlock) {
 .qg-success-screen {
   align-items: stretch;
   justify-content: flex-end;
-  padding: calc(48px + var(--qg-top-inset)) 28px 34px;
+  padding: calc(48px + var(--qg-top-inset)) var(--qg-gutter) 32px;
   text-align: left;
 }
 
@@ -760,7 +784,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-success-label p {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--qg-caption);
   font-weight: 650;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -787,7 +811,7 @@ body:has(.vault-screen-unlock) {
   align-items: center;
   gap: 9px;
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-next svg {
@@ -820,7 +844,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-document small {
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-checks {
@@ -828,7 +852,7 @@ body:has(.vault-screen-unlock) {
   gap: 12px;
   margin-top: 24px;
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-checks span {
@@ -867,19 +891,19 @@ body:has(.vault-screen-unlock) {
 
 .qg-alert strong {
   color: var(--qg-ink);
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-alert p {
   margin: 5px 0 0;
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
   line-height: 1.45;
 }
 
 .page > .qg-screen,
 [data-testid='vault-app'] > .qg-screen {
-  max-width: 640px;
+  max-width: 100%;
   width: 100%;
   height: auto;
   margin: 0 auto !important;
@@ -895,21 +919,21 @@ body:has(.vault-screen-unlock) {
 
 .qg-screen .vault-security {
   display: grid;
-  gap: 1.15rem;
+  gap: 24px;
   padding-bottom: 0.25rem;
 }
 
 .qg-screen .vault-security-hero {
-  padding: 18px;
-  border: 1px solid var(--qg-line);
+  padding: 24px;
+  border: 0;
   border-radius: 18px;
   background: var(--qg-paper);
-  box-shadow: none;
+  box-shadow: 0 4px 16px -12px rgb(17 16 21 / 20%);
   color: var(--qg-ink);
 }
 
 .qg-screen .vault-security-hero-head > strong {
-  font-size: 13px;
+  font-size: var(--qg-body);
   font-weight: 600;
 }
 
@@ -927,12 +951,12 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-screen .vault-security-hero h2 {
-  margin: 14px 0 8px;
+  margin: 24px 0 12px;
   color: var(--qg-ink);
-  font-size: clamp(1.75rem, 7vw, 2.15rem);
-  font-weight: 560;
+  font-size: 28px;
+  font-weight: 500;
   letter-spacing: -0.04em;
-  line-height: 1.08;
+  line-height: 1.15;
 }
 
 .qg-screen .vault-security-hero p {
@@ -943,7 +967,12 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-screen .vault-security-grid {
-  gap: 0.7rem;
+  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--qg-line);
+  border-radius: var(--qg-surface-radius);
+  background: color-mix(in srgb, var(--qg-paper) 50%, var(--qg-oat));
 }
 
 .qg-screen .vault-security-tile,
@@ -952,18 +981,24 @@ body:has(.vault-screen-unlock) {
 .qg-screen .vault-security-tile.is-ink,
 .qg-screen .vault-security-tile.is-purple,
 .qg-screen .vault-security-tile.is-paper {
-  min-height: 118px;
-  border: 1px solid var(--qg-line);
-  border-radius: 16px;
-  background: var(--qg-paper);
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--qg-ink);
   box-shadow: none;
+  padding: 16px;
+  gap: 12px;
+  justify-content: flex-start;
 }
 
 .qg-screen .vault-security-tile-icon {
-  border: 1px solid var(--qg-line);
+  border: 0;
   background: transparent;
   color: var(--qg-ink);
+  width: 24px;
+  height: 24px;
+  border-radius: 0;
 }
 
 .qg-screen .vault-security-tile-label,
@@ -975,13 +1010,14 @@ body:has(.vault-screen-unlock) {
 .qg-screen .vault-security-tile-copy strong {
   color: var(--qg-ink);
   overflow-wrap: normal;
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-size: var(--qg-title);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
 }
 
 .qg-screen .vault-section-label {
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
@@ -989,16 +1025,20 @@ body:has(.vault-screen-unlock) {
 
 .qg-screen .vault-hub {
   overflow: hidden;
-  border: 1px solid var(--qg-line);
-  border-radius: 18px;
-  background: var(--qg-paper);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
+  border-top: 1px solid var(--qg-line);
 }
 
 .qg-screen .vault-hub-row {
   background: transparent;
   border-color: var(--qg-line);
   color: var(--qg-ink);
+  padding: 16px 0;
+  gap: 12px;
+  min-height: 64px;
 }
 
 .qg-screen .vault-hub-copy p,
@@ -1070,7 +1110,7 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-screen .vault-icon {
-  border: 1px solid var(--qg-line);
+  border: 0;
   background: transparent !important;
   color: var(--qg-ink) !important;
 }
@@ -1093,7 +1133,8 @@ body:has(.vault-screen-unlock) {
 
 .qg-home {
   min-height: 0;
-  padding: 0 22px 82px;
+  padding: 0 var(--qg-gutter) 88px;
+  container-type: inline-size;
 }
 
 .qg-account-bar {
@@ -1202,14 +1243,14 @@ body:has(.vault-screen-unlock) {
 
 .qg-account-option-meta {
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   line-height: 1.4;
 }
 
 .qg-account-option-amt {
   margin-top: 8px;
   color: var(--qg-ink);
-  font-size: 13px;
+  font-size: var(--qg-body);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -1288,15 +1329,16 @@ body:has(.vault-screen-unlock) {
 .qg-balance {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  margin-top: 38px;
-  padding: 0 4px;
+  gap: 0;
+  margin-top: 32px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  width: 100%;
 }
 
 .qg-balance:disabled {
@@ -1305,16 +1347,16 @@ body:has(.vault-screen-unlock) {
 
 .qg-balance strong {
   max-width: 100%;
-  font-size: 62px;
+  font-size: min(3.5rem, calc((100cqi - 8px) / var(--qg-amount-length, 6) * 1.6));
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  letter-spacing: -0.055em;
-  line-height: 1;
+  font-weight: 450;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
   white-space: nowrap;
 }
 
 .qg-balance[data-balance-unit='usd'] strong {
-  font-size: clamp(42px, 13vw, 56px);
+  font-size: min(3.5rem, calc((100cqi - 8px) / var(--qg-amount-length, 6) * 1.6));
   letter-spacing: -0.045em;
 }
 
@@ -1326,13 +1368,13 @@ body:has(.vault-screen-unlock) {
 .qg-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 34px;
+  gap: 12px;
+  margin-top: 32px;
 }
 
 .qg-actions button {
   display: grid;
-  min-height: 58px;
+  min-height: 56px;
   place-items: center;
   padding: 0;
   border: 1px solid var(--qg-ink);
@@ -1383,7 +1425,7 @@ body:has(.vault-screen-unlock) {
   grid-template-columns: 42px 1fr;
   align-items: center;
   gap: 14px;
-  margin-top: 22px;
+  margin-top: 24px;
   padding: 16px;
   border: 1px solid var(--qg-line);
   border-radius: 18px;
@@ -1458,12 +1500,12 @@ body:has(.vault-screen-unlock) {
 .qg-recovery-alert p {
   margin: 0;
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
   line-height: 1.4;
 }
 
 .qg-home .vault-history {
-  margin-top: 26px;
+  margin-top: 32px;
 }
 
 .qg-home .vault-history-head h2,
@@ -1479,11 +1521,11 @@ body:has(.vault-screen-unlock) {
 .qg-home .vault-history-row {
   display: grid;
   width: 100%;
-  min-height: 66px;
-  grid-template-columns: 42px 1fr auto;
+  min-height: 72px;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 0;
+  padding: 16px 0;
   border: 0;
   border-bottom: 1px solid var(--qg-line);
   background: transparent;
@@ -1492,7 +1534,8 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-amount-entry {
-  padding: 16px 2px 24px;
+  padding: 8px 0 32px;
+  container-type: inline-size;
 }
 
 .qg-amount-entry label {
@@ -1503,25 +1546,33 @@ body:has(.vault-screen-unlock) {
 .qg-amount-entry div {
   display: flex;
   align-items: baseline;
-  gap: 7px;
-  margin-top: 7px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .qg-amount-entry input {
-  width: 230px;
+  width: 0;
   padding: 0;
   border: 0;
   outline: 0;
   background: transparent;
   color: inherit;
-  font-size: 58px;
-  letter-spacing: -0.05em;
+  font-size: min(3.5rem, calc((100cqi - 100px) / var(--qg-amount-length, 6) * 1.6));
+  letter-spacing: -0.035em;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 
 .qg-amount-entry span,
 .qg-denomination {
-  font-size: 13px;
+  font-size: 22px;
   font-weight: 500;
+  min-width: 36px;
+  min-height: 44px;
+  padding: 0;
+  flex: 0 0 auto;
 }
 
 .qg-denomination {
@@ -1535,15 +1586,16 @@ body:has(.vault-screen-unlock) {
 
 .qg-capacity {
   display: grid;
-  grid-template-columns: 1fr 1.4fr;
-  gap: 10px;
-  padding: 16px 0 20px;
-  border-top: 1px solid var(--qg-line);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 16px;
+  padding: 24px 0 0;
+  border: 0;
+  margin-top: 24px;
 }
 
 .qg-capacity > div {
   display: grid;
-  gap: 4px;
+  gap: 8px;
 }
 
 .qg-capacity span {
@@ -1552,8 +1604,10 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-capacity strong {
-  font-size: 11px;
+  font-size: var(--qg-body);
   font-weight: 500;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
 }
 
 .qg-capacity .qg-meter {
@@ -1563,7 +1617,7 @@ body:has(.vault-screen-unlock) {
   padding: 0;
   overflow: hidden;
   border-radius: 999px;
-  background: #ddd6cd;
+  background: var(--qg-line);
 }
 
 .qg-meter span {
@@ -1573,20 +1627,20 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-available {
-  margin: 0;
+  margin: 24px 0 0;
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-body);
 }
 
 .qg-dest-field {
   display: grid;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 12px;
+  margin-top: 0;
 }
 
 .qg-dest-field > span {
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-dest-field > div {
@@ -1596,11 +1650,13 @@ body:has(.vault-screen-unlock) {
   align-items: center;
   overflow: hidden;
   border: 1px solid var(--qg-line);
-  border-radius: 15px;
+  border-radius: var(--qg-field-radius);
   background: var(--qg-paper);
 }
 
 .qg-dest-field input {
+  align-self: stretch;
+  min-height: 56px;
   min-width: 0;
   padding: 0 16px;
   border: 0;
@@ -1619,36 +1675,43 @@ body:has(.vault-screen-unlock) {
   border: 0;
   border-left: 1px solid var(--qg-line);
   background: transparent;
+  color: var(--qg-ink);
 }
 
 .qg-dest-field small {
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-helper {
-  margin: 13px 2px 0;
+  margin: 24px 0 0;
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   line-height: 1.45;
 }
 
 .qg-review-amount {
-  padding: 12px 0 22px;
+  padding: 8px 0 32px;
   text-align: center;
+  container-type: inline-size;
 }
 
 .qg-review-amount small,
 .qg-review-amount p {
   color: var(--qg-muted);
+  font-size: var(--qg-body);
+  margin: 12px 0 0;
 }
 
 .qg-review-amount strong {
   display: block;
-  margin-top: 4px;
-  font-size: 42px;
+  margin-top: 12px;
+  font-size: min(3.5rem, calc((100cqi - 8px) / var(--qg-amount-length, 6) * 1.6));
   font-weight: 400;
   letter-spacing: -0.04em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .qg-review-amount strong span {
@@ -1658,7 +1721,7 @@ body:has(.vault-screen-unlock) {
 
 .qg-review-amount p {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-details {
@@ -1668,33 +1731,36 @@ body:has(.vault-screen-unlock) {
 
 .qg-details div {
   display: flex;
-  min-height: 42px;
+  min-height: 56px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--qg-line);
-  font-size: 12px;
+  font-size: var(--qg-body);
+  padding: 12px 0;
 }
 
 .qg-details span {
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-details strong {
   max-width: 62%;
   text-align: right;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .qg-approvals {
-  margin-top: 24px;
+  margin-top: 32px;
 }
 
 .qg-approvals h3 {
   margin: 0 0 5px;
   color: var(--qg-muted);
-  font-size: 11px;
+  font-size: var(--qg-caption);
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1702,11 +1768,12 @@ body:has(.vault-screen-unlock) {
 
 .qg-approvals > div {
   display: grid;
-  min-height: 54px;
-  grid-template-columns: 34px 1fr auto;
+  min-height: 72px;
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   border-bottom: 1px solid var(--qg-line);
+  padding: 12px 0;
 }
 
 .qg-approvals b,
@@ -1718,7 +1785,7 @@ body:has(.vault-screen-unlock) {
   border-radius: 50%;
   background: var(--qg-ink);
   color: var(--qg-paper);
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-approval-mark.is-safe {
@@ -1734,7 +1801,7 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-approvals strong {
-  font-size: 12px;
+  font-size: var(--qg-body);
   font-weight: 500;
 }
 
@@ -1761,7 +1828,7 @@ body:has(.vault-screen-unlock) {
   border-radius: 999px;
   background: var(--qg-green-soft);
   color: var(--qg-green);
-  font-size: 10px;
+  font-size: var(--qg-caption);
   font-weight: 500;
 }
 
@@ -1774,7 +1841,7 @@ body:has(.vault-screen-unlock) {
 .qg-receive-copy p {
   margin: 0;
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-qr {
@@ -1837,13 +1904,13 @@ body:has(.vault-screen-unlock) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: var(--qg-body);
   font-weight: 500;
 }
 
 .qg-addresses b {
   color: var(--qg-purple);
-  font-size: 11px;
+  font-size: var(--qg-body);
   font-weight: 500;
 }
 
@@ -1851,19 +1918,19 @@ body:has(.vault-screen-unlock) {
   margin-top: 12px;
   color: var(--qg-muted);
   font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-screen-scan {
   background: #17151a;
-  color: var(--qg-paper);
+  color: #fffdf9;
 }
 
 .qg-screen-scan .qg-header,
 .qg-screen-scan .qg-header button,
 .qg-screen-scan .qg-footer {
   background: #17151a;
-  color: var(--qg-paper);
+  color: #fffdf9;
 }
 
 .qg-screen-scan .qg-main {
@@ -1931,7 +1998,7 @@ body:has(.vault-screen-unlock) {
   margin: 0;
   text-align: center;
   color: rgba(255, 253, 249, 0.72);
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-screen-scan .qg-secondary {
@@ -1966,12 +2033,12 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-methods strong {
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-methods small {
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-status-line,
@@ -1993,7 +2060,7 @@ body:has(.vault-screen-unlock) {
   place-items: center;
   border: 1px solid var(--qg-ink);
   border-radius: 50%;
-  font-size: 11px;
+  font-size: var(--qg-caption);
 }
 
 .qg-status-line span,
@@ -2013,7 +2080,7 @@ body:has(.vault-screen-unlock) {
 .qg-success-line small,
 .qg-pending-label small {
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-success-line {
@@ -2045,7 +2112,7 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-transfer span {
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-transfer strong {
@@ -2060,7 +2127,7 @@ body:has(.vault-screen-unlock) {
   gap: 8px;
   margin: 10px 0 0;
   color: var(--qg-muted);
-  font-size: 10px;
+  font-size: var(--qg-caption);
 }
 
 .qg-main > .qg-primary,
@@ -2070,15 +2137,15 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-model {
-  margin-top: 26px;
+  margin-top: 32px;
   border-top: 1px solid var(--qg-line);
 }
 
 .qg-model-row {
   display: grid;
   min-height: 64px;
-  gap: 4px;
-  padding: 14px 0;
+  gap: 8px;
+  padding: 16px 0;
   border-bottom: 1px solid var(--qg-line);
 }
 
@@ -2089,14 +2156,14 @@ body:has(.vault-screen-unlock) {
 
 .qg-model-row span {
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   line-height: 1.4;
 }
 
 .qg-model-note {
   margin: 14px 0 0;
   color: var(--qg-muted);
-  font-size: 13px;
+  font-size: var(--qg-body);
   line-height: 1.45;
 }
 
@@ -2110,7 +2177,7 @@ body:has(.vault-screen-unlock) {
 }
 
 .qg-model.is-compact .qg-model-row strong {
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-max {
@@ -2120,14 +2187,17 @@ body:has(.vault-screen-unlock) {
   background: transparent;
   color: var(--qg-purple);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--qg-body);
   font-weight: 600;
+  min-width: 44px;
+  min-height: 44px;
+  flex: 0 0 auto;
 }
 
 .qg-field-error {
   margin: 8px 0 0;
   color: var(--qg-orange);
-  font-size: 13px;
+  font-size: var(--qg-body);
 }
 
 .qg-dest-type {
@@ -2140,8 +2210,8 @@ body:has(.vault-screen-unlock) {
 .qg-detail-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
-  min-height: 36px;
+  gap: 16px;
+  min-height: 56px;
   border-bottom: 1px solid var(--qg-line);
 }
 
@@ -2161,22 +2231,6 @@ body:has(.vault-screen-unlock) {
   }
 }
 
-@media (max-width: 420px) {
-  .qg-screen h1 {
-    font-size: 34px;
-  }
-  .qg-main h1 {
-    font-size: 29px;
-  }
-  .qg-balance strong {
-    font-size: 52px;
-  }
-  .qg-amount-entry input {
-    width: 215px;
-    font-size: 48px;
-  }
-}
-
 .qg-launcher {
   position: fixed;
   z-index: 120;
@@ -2185,7 +2239,8 @@ body:has(.vault-screen-unlock) {
   pointer-events: none;
 }
 
-.qg-launcher.is-open {
+.qg-launcher.is-open,
+.qg-launcher.is-closing {
   top: 0;
   right: 0;
   bottom: 0;
@@ -2195,7 +2250,7 @@ body:has(.vault-screen-unlock) {
 .qg-launcher .qg-launcher-trigger,
 .qg-launcher .qg-launcher-close {
   display: grid;
-  width: 46px;
+  width: 56px;
   height: 72px;
   place-items: center;
   border: 1px solid var(--qg-line);
@@ -2215,10 +2270,6 @@ body:has(.vault-screen-unlock) {
   z-index: 122;
   touch-action: none;
   user-select: none;
-}
-
-.qg-launcher-trigger.is-intro {
-  animation: qg-launcher-pulse 2.1s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
 }
 
 .qg-launcher.is-peeking .qg-launcher-backdrop,
@@ -2244,42 +2295,11 @@ body:has(.vault-screen-unlock) {
   transform-origin: 50% 50%;
 }
 
-.qg-launcher-trigger.is-intro .qg-launcher-mark {
-  animation: qg-launcher-turn 1.2s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
 .qg-launcher-trigger svg,
 .qg-launcher-close svg,
 .qg-launcher-icon svg {
   width: 22px;
   height: 22px;
-}
-
-@keyframes qg-launcher-pulse {
-  0% {
-    transform: translateX(7px);
-    box-shadow: none;
-  }
-  32% {
-    transform: translateX(0);
-    box-shadow: -10px 0 20px -12px rgb(20 18 15 / 38%);
-  }
-  58% {
-    transform: translateX(3px);
-  }
-  100% {
-    transform: translateX(0);
-    box-shadow: -10px 0 22px -18px rgb(20 18 15 / 55%);
-  }
-}
-
-@keyframes qg-launcher-turn {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .qg-launcher-backdrop {
@@ -2355,6 +2375,42 @@ body:has(.vault-screen-unlock) {
   background: var(--qg-paper);
 }
 
+html.palette-dark .qg-account-menu,
+html.palette-dark .qg-launcher .qg-launcher-trigger,
+html.palette-dark .qg-launcher .qg-launcher-close {
+  background: color-mix(in srgb, var(--qg-paper) 78%, transparent);
+  border-color: color-mix(in srgb, white 13%, transparent);
+}
+
+html.palette-dark .qg-launcher-backdrop {
+  background: rgb(7 6 9 / 66%);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  backdrop-filter: blur(20px) saturate(1.1);
+}
+
+html.palette-dark .qg-primary {
+  border-color: var(--qg-ink);
+  background: var(--qg-ink);
+  color: var(--qg-oat);
+  box-shadow: 0 12px 28px -17px rgb(0 0 0 / 92%);
+}
+
+html.palette-dark .qg-secondary {
+  border-color: color-mix(in srgb, var(--qg-ink) 82%, transparent);
+}
+
+html.palette-dark .qg-screen .vault-hub-row.is-on,
+html.palette-dark .qg-account-option.is-on {
+  background: color-mix(in srgb, var(--qg-purple) 13%, var(--qg-paper));
+}
+
+html.palette-dark .qg-handle {
+  background: color-mix(in srgb, var(--qg-ink) 24%, transparent);
+}
+
+html.palette-dark .qg-progress {
+  background: color-mix(in srgb, white 9%, transparent);
+}
 @media (prefers-reduced-motion: reduce) {
   .qg-screen.is-sheet {
     will-change: auto;
@@ -2364,4 +2420,328 @@ body:has(.vault-screen-unlock) {
   .qg-launcher-trigger.is-intro .qg-launcher-mark {
     animation: none;
   }
+}
+
+/* Deliberate presses and one shared motion rhythm. */
+[data-testid='vault-app'] {
+  --qg-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  isolation: isolate;
+}
+
+[data-testid='vault-app'] button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    scale 160ms var(--qg-ease);
+}
+
+[data-testid='vault-app'] button[data-intent-pressed]:not(:disabled):not(.qg-launcher-trigger) {
+  scale: 0.98;
+  transition-duration: 70ms;
+}
+
+[data-testid='vault-app'] .qg-launcher-trigger {
+  touch-action: none;
+}
+
+.qg-header > h2 {
+  font-size: 15px;
+}
+
+.qg-primary,
+.qg-secondary {
+  min-height: 56px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 550;
+}
+
+[data-testid='vault-app'] .qg-main,
+[data-testid='vault-app'] .content {
+  overscroll-behavior-y: contain;
+}
+
+[data-testid='vault-app'] .vault-refresh {
+  flex: 0 0 auto;
+  transition:
+    height 200ms var(--qg-ease),
+    opacity 160ms ease;
+}
+
+[data-testid='vault-app'] .vault-refresh:not(.is-refreshing) svg {
+  animation-play-state: paused;
+}
+
+[data-testid='vault-app'] > .qg-launcher {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  margin: 0;
+}
+
+.qg-launcher-trigger,
+.qg-launcher.is-peeking .qg-launcher-backdrop,
+.qg-launcher.is-peeking .qg-launcher-stack {
+  position: absolute;
+}
+
+.qg-launcher.is-peeking {
+  inset: 0;
+}
+
+.qg-launcher.is-open .qg-launcher-backdrop {
+  animation: qg-menu-fade 180ms ease both;
+}
+
+.qg-launcher.is-open .qg-launcher-stack {
+  animation: qg-menu-enter 240ms var(--qg-ease) both;
+}
+
+.qg-launcher.is-closing .qg-launcher-backdrop {
+  animation: qg-menu-fade 180ms ease reverse both;
+}
+
+.qg-launcher.is-closing .qg-launcher-stack {
+  pointer-events: none;
+  animation: qg-menu-enter 180ms var(--qg-ease) reverse both;
+}
+
+@keyframes qg-menu-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes qg-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-testid='vault-app'] :is(.qg-header button, .qg-utilities button):hover {
+    background: color-mix(in srgb, var(--qg-ink) 6%, transparent);
+  }
+  .qg-secondary:hover {
+    background: color-mix(in srgb, var(--qg-ink) 5%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid='vault-app'] button,
+  [data-testid='vault-app'] .qg-dest-field,
+  [data-testid='vault-app'] .vault-refresh {
+    transition: none;
+  }
+  [data-testid='vault-app'] button[data-intent-pressed]:not(:disabled):not(.qg-launcher-trigger) {
+    scale: 1;
+  }
+  .qg-launcher.is-open .qg-launcher-backdrop,
+  .qg-launcher.is-open .qg-launcher-stack,
+  .qg-launcher.is-closing .qg-launcher-backdrop,
+  .qg-launcher.is-closing .qg-launcher-stack {
+    animation: none;
+  }
+}
+
+/* The visible tab is the grab surface. Position follows the pointer without layout animation. */
+[data-testid='vault-app'] > .qg-launcher {
+  --qg-launcher-top-inset: max(16px, calc(env(safe-area-inset-top, 0px) + 12px));
+  --qg-launcher-bottom-inset: max(16px, calc(var(--vault-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 12px));
+  padding-top: var(--qg-launcher-top-inset);
+  padding-bottom: var(--qg-launcher-bottom-inset);
+}
+.qg-launcher .qg-launcher-trigger {
+  width: 56px;
+  top: var(--qg-launcher-y);
+  bottom: auto;
+  transform: translate3d(0, var(--qg-launcher-drag-y, 0px), 0);
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+.qg-launcher .qg-launcher-trigger.is-repositioning {
+  cursor: grabbing;
+  will-change: transform;
+  transition: none;
+}
+.qg-launcher .qg-launcher-stack {
+  bottom: clamp(
+    var(--qg-launcher-bottom-inset),
+    calc(100% - var(--qg-launcher-y) - 72px),
+    calc(100% - 336px - var(--qg-launcher-top-inset))
+  );
+  max-height: calc(100% - var(--qg-launcher-top-inset) - var(--qg-launcher-bottom-inset));
+  overflow-y: auto;
+}
+.qg-launcher[data-placement='upper'] .qg-launcher-stack {
+  top: clamp(var(--qg-launcher-top-inset), var(--qg-launcher-y), calc(100% - 336px - var(--qg-launcher-bottom-inset)));
+  bottom: auto;
+}
+
+/* Amount prefixes share an optical size without changing denomination or value. */
+.qg-balance strong .qg-amount,
+.qg-review-amount strong .qg-amount,
+.qg-amount {
+  font-size: inherit;
+  font-weight: inherit;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.qg-balance strong .qg-amount-symbol,
+.qg-review-amount strong .qg-amount-symbol,
+.qg-amount-symbol {
+  display: inline-block;
+  margin-right: 0.2em;
+  font-size: 0.42em;
+  font-weight: 500;
+  letter-spacing: 0;
+  vertical-align: baseline;
+}
+.qg-transaction-amount {
+  container-type: inline-size;
+}
+.qg-main .qg-transaction-amount h1 {
+  font-size: min(3.5rem, calc((100cqi - 8px) / var(--qg-amount-length, 6) * 1.6));
+  font-weight: 450;
+}
+.qg-home .vault-history-amt {
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.qg-home .vault-history-unit {
+  font-size: 0.8em;
+  margin-right: 2px;
+}
+.qg-home .vault-history-copy {
+  min-width: 0;
+}
+.qg-home .vault-history-copy p {
+  white-space: normal;
+  overflow-wrap: normal;
+  font-size: var(--qg-body);
+  line-height: 1.45;
+}
+.qg-home .vault-history-copy p + p {
+  font-size: var(--qg-caption);
+  color: var(--qg-muted);
+}
+.qg-home .vault-history-icon {
+  width: 32px;
+  height: 32px;
+}
+.qg-screen .vault-security-tile:nth-child(2n) {
+  border-left: 1px solid var(--qg-line);
+}
+.qg-screen .vault-security-tile:nth-child(n + 3) {
+  border-top: 1px solid var(--qg-line);
+}
+.qg-screen .vault-security-tile-label {
+  font-size: var(--qg-caption);
+}
+.qg-screen .vault-security-tile-copy small {
+  margin-top: 8px;
+  font-size: var(--qg-caption);
+  line-height: 1.5;
+}
+.qg-screen .vault-hub-copy p {
+  font-size: var(--qg-body);
+  line-height: 1.45;
+}
+.qg-screen .vault-hub-end p {
+  font-size: var(--qg-caption);
+}
+.qg-screen .vault-security-groups {
+  gap: 32px;
+}
+.qg-auto {
+  grid-column: 2;
+  margin-top: -8px;
+}
+.qg-details .qg-detail-actions {
+  justify-content: flex-end;
+}
+[data-testid='vault-app'] .lucide {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  stroke-width: 1.8;
+}
+[data-testid='vault-app']
+  :is(.qg-primary, .qg-secondary, .qg-actions, .qg-assurances, .qg-paste, .qg-checks, .qg-approval-mark)
+  .lucide {
+  width: 16px;
+  height: 16px;
+}
+[data-testid='vault-app'] :is(.qg-primary, .qg-secondary, .qg-actions button):disabled {
+  opacity: 1;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--qg-ink) 9%, var(--qg-oat));
+  color: var(--qg-muted);
+  box-shadow: none;
+}
+.qg-launcher .qg-launcher-trigger,
+.qg-launcher .qg-launcher-close {
+  box-shadow: -4px 2px 16px -10px rgb(17 16 21 / 24%);
+}
+.qg-screen-welcome .qg-lead {
+  max-width: 38ch;
+}
+@media (max-width: 359px) {
+  [data-testid='vault-app'] {
+    --qg-gutter: 20px;
+  }
+  .qg-home .vault-history-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .qg-home .vault-history-icon {
+    display: none;
+  }
+  .qg-account {
+    gap: 4px;
+  }
+  .qg-utilities {
+    gap: 0;
+  }
+  .qg-screen .vault-security-tile {
+    padding: 12px;
+  }
+}
+
+.qg-details .qg-amount,
+.vault-security-tile .qg-amount,
+.qg-summary .qg-amount {
+  font-size: inherit;
+  color: inherit;
+}
+.qg-details .qg-amount-symbol,
+.vault-security-tile .qg-amount-symbol,
+.qg-summary .qg-amount-symbol {
+  font-size: 0.8em;
+  color: inherit;
+}
+.qg-summary :is(span, strong),
+.qg-document strong,
+.qg-next strong,
+.qg-device-key strong,
+.qg-status-line strong,
+.qg-success-line strong,
+.qg-pending-label strong {
+  font-size: var(--qg-body);
 }

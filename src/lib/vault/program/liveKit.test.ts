@@ -61,6 +61,21 @@ describe('live Savings kit policy', () => {
     ).toBe(true)
   })
 
+  it('binds recovery metadata to an opaque signer identity without changing its address', () => {
+    const original = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
+    const descriptor = buildVaultProgramDescriptor({
+      ...PROGRAM_FIXTURE,
+      arkadeCosigner: { ...PROGRAM_FIXTURE.arkadeCosigner, origin: 'urn:vaulted:mainnet-signer:v1' },
+    })
+    const kit = buildRecoveryKit(descriptor)
+    expect(descriptor.savings).toEqual(original.savings)
+    expect(
+      kitMatchesLiveVault(kit, { ...statusForProgram(), arkadeCosignerOrigin: descriptor.arkadeCosigner.origin }),
+    ).toBe(true)
+    expect(kitMatchesLiveVault(kit, statusForProgram())).toBe(false)
+    expect(JSON.stringify(kit)).not.toContain(PROGRAM_FIXTURE.arkadeCosigner.origin)
+  })
+
   it('does not let pre-enrollment state drive recovery', () => {
     const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
     expect(selectLiveKit({ status: { ...statusForProgram(), enrolled: false }, stored: kit })).toBeNull()

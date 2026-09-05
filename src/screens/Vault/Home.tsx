@@ -8,23 +8,25 @@ import { loadVaultBalanceUnit, saveVaultBalanceUnit } from '../../lib/vault/pref
 import { reloadIfNewerWallet } from '../../lib/vault/update'
 import { VaultContext } from '../../vault/context'
 import Content from './Content'
+import QgAmount, { amountSizeStyle } from './qg/QgAmount'
 import VaultHistory from './History'
 import { QgMark } from './qg/QgScreen'
 
 export default function VaultHome() {
   const {
     account,
-    balanceError,
     balancesLoaded,
     boardingAddress,
     canSend,
+    busy,
     error,
+    pendingPayments = [],
+    openPendingPayment,
     fiatDisplayRate,
     navigate,
     openSendScan,
     openRecover,
     initiateAlert,
-    refreshBalance,
     refreshingBalance,
     positions,
     clearSpendDraft,
@@ -155,8 +157,9 @@ export default function VaultHome() {
           className='qg-balance'
           data-testid='vault-balance'
           data-balance-unit={balanceUnit}
+          style={amountSizeStyle(balance.amount)}
           disabled={!balancesLoaded || loadingFiat}
-          aria-busy={(!balancesLoaded && !balanceError) || refreshingBalance || loadingFiat ? true : undefined}
+          aria-busy={!balancesLoaded || refreshingBalance || loadingFiat ? true : undefined}
           aria-live='polite'
           aria-label={
             balancesLoaded
@@ -167,7 +170,9 @@ export default function VaultHome() {
           }
           onClick={() => void toggleBalanceUnit()}
         >
-          <strong>{balancesLoaded ? balance.amount : '—'}</strong>
+          <strong>
+            <QgAmount value={balancesLoaded ? balance.amount : '—'} />
+          </strong>
           {balancesLoaded && balance.unit ? <span>{balance.unit}</span> : null}
         </button>
         <div className='qg-actions'>
@@ -200,26 +205,51 @@ export default function VaultHome() {
           </button>
         </div>
 
-        {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
-          <section className='qg-arrival' aria-label='Funds arriving' data-testid='spending-pending'>
-            <span className='qg-status-icon' aria-hidden>
-              <Clock3 />
-            </span>
-            <div>
-              <strong>₿{prettyNumber(positions.spending.pendingSats)} arriving</strong>
-              <p>Available after Bitcoin confirmation.</p>
-            </div>
-          </section>
+        {spending
+          ? pendingPayments.map((payment) => (
+              <section className='qg-arrival' aria-label='Pending payment' key={payment.operationId}>
+                <span className='qg-status-icon' aria-hidden>
+                  <Clock3 />
+                </span>
+                <div>
+                  <strong>Pending payment · ₿{prettyNumber(payment.amountSats)}</strong>
+                  <p>
+                    {payment.authorized
+                      ? 'Not confirmed as paid. Its funds remain unavailable for another payment.'
+                      : 'Reserved for review; this payment has not been authorized.'}
+                  </p>
+                  <button
+                    className='qg-text'
+                    type='button'
+                    disabled={busy}
+                    onClick={() => void openPendingPayment(payment.operationId)}
+                  >
+                    {payment.authorized ? 'Resume payment' : 'Review reserved payment'}
+                  </button>
+                </div>
+              </section>
+            ))
+          : null}
+        {error && pendingPayments.length > 0 ? (
+          <p className='qg-footer-error' role='alert'>
+            {error}
+          </p>
         ) : null}
 
-        {balancesLoaded && !spending && positions.savings.pendingSats > 0 ? (
-          <section className='qg-arrival' aria-label='Funds pending' data-testid='savings-pending'>
+        {balancesLoaded && spending && positions.spending.pendingSats > 0 ? (
+          <section className='qg-arrival' aria-label='Funds pending' data-testid='spending-pending'>
             <span className='qg-status-icon' aria-hidden>
               <Clock3 />
             </span>
             <div>
-              <strong>₿{prettyNumber(positions.savings.pendingSats)} pending</strong>
-              <p>Waiting for Bitcoin confirmation.</p>
+              <strong>
+                ₿{prettyNumber(positions.spending.pendingSats)} {pendingPayments.length ? 'pending' : 'arriving'}
+              </strong>
+              <p>
+                {pendingPayments.length
+                  ? 'Includes funds reserved for the pending payment and change awaiting completion.'
+                  : 'Available after Bitcoin confirmation.'}
+              </p>
             </div>
           </section>
         ) : null}
@@ -235,25 +265,13 @@ export default function VaultHome() {
               <ShieldAlert />
             </span>
             <div>
-              <strong>Recovery started with hardware</strong>
-              <p>Open Recovery to review the available cancellation paths.</p>
+              <strong>Savings recovery detected</strong>
+              <p>{initiateAlert}</p>
             </div>
             <ChevronRight />
           </button>
         ) : null}
 
-        {!balancesLoaded && (error || balanceError) ? (
-          <>
-            <p className='qg-copy' role='alert'>
-              {error || balanceError}
-            </p>
-            {balanceError ? (
-              <button type='button' className='qg-secondary' onClick={() => void refreshBalance()}>
-                Retry
-              </button>
-            ) : null}
-          </>
-        ) : null}
         <VaultHistory />
       </main>
     </Content>

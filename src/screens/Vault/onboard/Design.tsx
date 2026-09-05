@@ -4,7 +4,7 @@ import ProtectionModel from '../qg/ProtectionModel'
 import QgScreen, { QgPrimary } from '../qg/QgScreen'
 
 export default function VaultDesign() {
-  const { acceptDesign, navigate } = useContext(VaultContext)
+  const { acceptDesign, enrollmentMode, navigate } = useContext(VaultContext)
   return (
     <QgScreen
       title='How it works'
@@ -12,13 +12,17 @@ export default function VaultDesign() {
       back={() => navigate('welcome')}
       footer={<QgPrimary onClick={acceptDesign} label='Continue' />}
     >
-      <p className='qg-eyebrow'>Protection by purpose</p>
-      <h1>Different money needs different protection</h1>
+      <p className='qg-eyebrow'>Spending and Savings</p>
+      <h1>Everyday spending, protected savings</h1>
       <p className='qg-copy'>
-        Limits reduce the impact of a compromised device. Savings requires two independent keys, with delayed recovery
-        if one is lost.
+        Approve everyday payments with your passkey, within the limits you choose. Savings requires two independent
+        keys: the wallet key your passkey unlocks and your hardware key.
       </p>
       <ProtectionModel />
+      <p className='qg-copy'>
+        You’ll need {enrollmentMode === 'token' ? 'an invite and ' : ''}a hardware wallet that can sign Vaulted
+        transactions. Advanced protection also needs a separate recovery key, stored independently.
+      </p>
     </QgScreen>
   )
 }

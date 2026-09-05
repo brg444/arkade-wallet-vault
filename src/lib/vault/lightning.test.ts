@@ -21,8 +21,10 @@ import {
   discoverVaultLightningSolver,
   getVaultLightningStatus,
   isVaultLightningInput,
+  BITCOIN_LIGHTNING_SOLVER,
   MUTINYNET_LIGHTNING_SOLVER,
   requestVaultLightningQuote,
+  requireMatchingLightningOperatorNetwork,
   validateVaultLightningRefund,
   vaultLightningRequestWallet,
   vaultLightningSendEnabled,
@@ -71,21 +73,31 @@ describe('Lightning SEND release boundary', () => {
     expect(vaultLightningSendEnabled('mutinynet', 'TRUE')).toBe(false)
     expect(vaultLightningSendEnabled('mutinynet', '1')).toBe(false)
     expect(vaultLightningSendEnabled('mutinynet', 'true')).toBe(true)
-    expect(vaultLightningSendEnabled('bitcoin', 'true')).toBe(false)
+    expect(vaultLightningSendEnabled('bitcoin', 'true')).toBe(true)
+    expect(vaultLightningSendEnabled('mainnet', 'true')).toBe(true)
   })
 
-  it('pins only the dedicated Mutinynet solver in the active release profile', () => {
+  it('pins a dedicated solver per product network and never cross-wires them', () => {
     expect(vaultLightningSolverProfile('mutinynet')).toEqual(MUTINYNET_LIGHTNING_SOLVER)
-    expect(vaultLightningSolverProfile('bitcoin')).toBeUndefined()
+    expect(vaultLightningSolverProfile('bitcoin')).toEqual(BITCOIN_LIGHTNING_SOLVER)
+    expect(vaultLightningSolverProfile('mainnet')).toEqual(BITCOIN_LIGHTNING_SOLVER)
     expect(MUTINYNET_LIGHTNING_SOLVER).toMatchObject({
       network: 'mutinynet',
       minSats: 1_000,
       maxSats: 25_000,
       maxFundingSats: 50_000,
     })
+    expect(BITCOIN_LIGHTNING_SOLVER).toMatchObject({
+      network: 'bitcoin',
+      pubkey: '66422c952f8dcb96e4d0c3f049cd1e265b8461b916d9913c65c2494b64b4e3ce',
+      minSats: 500,
+      maxSats: 50_000,
+    })
+    expect(BITCOIN_LIGHTNING_SOLVER.maxFundingSats).toBeGreaterThanOrEqual(50_000)
+    expect(BITCOIN_LIGHTNING_SOLVER.pubkey).not.toBe(MUTINYNET_LIGHTNING_SOLVER.pubkey)
   })
 
-  it('loads the bundled Mutinynet card through official discovery without following a registry', async () => {
+  it('loads the bundled solver card through official discovery without following a registry', async () => {
     await expect(discoverVaultLightningSolver('mutinynet')).resolves.toMatchObject({
       pubkey: MUTINYNET_LIGHTNING_SOLVER.pubkey,
       relays: ['wss://nostr.arkade.sh'],
@@ -94,7 +106,17 @@ describe('Lightning SEND release boundary', () => {
       maxFundingSats: 50_000,
       market: { pair: 'BTC/lightning:BTC', fee_bps: 30 },
     })
-    await expect(discoverVaultLightningSolver('bitcoin')).resolves.toBeUndefined()
+    const bitcoin = await discoverVaultLightningSolver('bitcoin')
+    const mainnetAlias = await discoverVaultLightningSolver('mainnet')
+    expect(bitcoin).toMatchObject({
+      pubkey: BITCOIN_LIGHTNING_SOLVER.pubkey,
+      relays: ['wss://nostr.arkade.sh'],
+      minSats: 500,
+      maxSats: 50_000,
+      market: { pair: 'BTC/lightning:BTC', fee_bps: 30 },
+    })
+    expect(mainnetAlias?.pubkey).toBe(bitcoin?.pubkey)
+    expect(bitcoin?.pubkey).not.toBe(MUTINYNET_LIGHTNING_SOLVER.pubkey)
   })
 
   it('uses one required per-vault Web Lock for Lightning lifecycle work', async () => {
@@ -199,6 +221,39 @@ describe('Lightning SEND release boundary', () => {
 
     expect(validateVaultLightningRefund(status, 'mutinynet', operatorPubkey).encode()).toBe(address)
     expect(() => validateVaultLightningRefund(status, 'bitcoin', operatorPubkey)).toThrow(/networks do not match/)
+  })
+
+  it('treats Guardian mainnet status as the bitcoin Operator network and ark HRP', async () => {
+    const operator = SingleKey.fromPrivateKey(hex.decode('04'.padStart(64, '0')))
+    const operatorPubkey = hex.encode(await operator.compressedPublicKey())
+    const address = await refundAddress('bitcoin')
+    const status = {
+      enrolled: true,
+      vaultId: 'vault-lightning-mainnet',
+      network: 'mainnet',
+      spendingArkAddress: address,
+      spendingArkScript: hex.encode(ArkAddress.decode(address).pkScript),
+    } as import('./types').VaultStatus
+
+    expect(requireMatchingLightningOperatorNetwork('mainnet', 'bitcoin')).toBe('bitcoin')
+    expect(requireMatchingLightningOperatorNetwork('bitcoin', 'bitcoin')).toBe('bitcoin')
+    expect(() => requireMatchingLightningOperatorNetwork('mainnet', 'mutinynet')).toThrow(/networks do not match/)
+    expect(() => requireMatchingLightningOperatorNetwork('mainnet', 'mainnet')).toThrow(/networks do not match/)
+    expect(validateVaultLightningRefund(status, 'bitcoin', operatorPubkey).encode()).toBe(address)
+    expect(ArkAddress.decode(address).hrp).toBe('ark')
+    expect(() => validateVaultLightningRefund(status, 'mutinynet', operatorPubkey)).toThrow(/networks do not match/)
+    const mutinynetAddress = await refundAddress('mutinynet')
+    expect(() =>
+      validateVaultLightningRefund(
+        {
+          ...status,
+          spendingArkAddress: mutinynetAddress,
+          spendingArkScript: hex.encode(ArkAddress.decode(mutinynetAddress).pkScript),
+        },
+        'bitcoin',
+        operatorPubkey,
+      ),
+    ).toThrow(/encoded for another network/)
   })
 
   it('passes the adapted wallet to the package client and retains its authoritative fee and refund facts', async () => {

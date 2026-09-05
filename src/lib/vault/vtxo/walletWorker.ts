@@ -7,7 +7,6 @@ import {
   RestArkProvider,
   RestIndexerProvider,
   ServiceWorkerWallet,
-  hasTerminalSpend,
   type ExtendedCoin,
   type IContractManager,
   type SettleParams,
@@ -38,7 +37,8 @@ import {
   vaultWalletWorkerPath,
   vaultWalletWorkerScope,
 } from './walletWorkerNames'
-import { vaultArkServer } from './spend'
+import { listPersistedVtxoSpends, vaultArkServer } from './spend'
+import { vtxoBalanceWithPending } from './pendingBalance'
 import { requireBoardingStatus } from './board'
 
 type WalletRuntime = {
@@ -165,9 +165,10 @@ export async function registerVaultWalletServiceWorker(
   vaultId: string,
   serviceWorkers: Pick<ServiceWorkerContainer, 'register'> = navigator.serviceWorker,
   locks: VaultLockManager | undefined = browserVaultLockManager(),
+  network?: string,
 ): Promise<{ registration: ServiceWorkerRegistration; worker: ServiceWorker }> {
   const register = async () => {
-    const registration = await serviceWorkers.register(vaultWalletWorkerPath(vaultId), {
+    const registration = await serviceWorkers.register(vaultWalletWorkerPath(vaultId, network), {
       scope: vaultWalletWorkerScope(vaultId),
       updateViaCache: 'none',
     })
@@ -253,6 +254,7 @@ async function createRuntime(status: VaultStatus): Promise<WalletRuntime> {
       status.vaultId,
       navigator.serviceWorker,
       browserVaultLockManager(),
+      status.network,
     )
     registration = registered.registration
     const serviceWorker = registered.worker
@@ -377,9 +379,7 @@ async function createRuntime(status: VaultStatus): Promise<WalletRuntime> {
       swapRepository[Symbol.asyncDispose](),
     ])
     if (!teardownError) await registration?.unregister().catch(() => undefined)
-    if (teardownError) {
-      throw new AggregateError([error, teardownError], 'Vault wallet initialization and teardown failed')
-    }
+    if (teardownError) consoleError(teardownError, 'Vault wallet teardown after failed initialization')
     throw error
   }
 }
@@ -459,8 +459,18 @@ export function subscribeVaultWalletEvents(status: VaultStatus, listener: () => 
 
 export async function reloadVaultWalletWorker(status: VaultStatus) {
   const current = await ensureVaultWalletWorker(status)
+  if (current.boardingSettle) return
   await current.lightningObserver.refresh()
   await current.wallet.reload()
+}
+
+/** Tear down a wedged worker and create a new one so boarding can resume. */
+export async function reviveVaultWalletWorker(status: VaultStatus): Promise<WalletRuntime> {
+  if (runtime?.vaultId === status.vaultId && runtime.boardingSettle) return runtime
+  await shutdownVaultWalletWorker(status.vaultId).catch((error) => {
+    consoleError(error, 'Vault wallet worker shutdown before revive')
+  })
+  return ensureVaultWalletWorker(status)
 }
 
 export interface VaultBoardingSettlementRuntime {
@@ -551,12 +561,9 @@ export function scheduleVaultBoardingSettlement(
   return tracked
 }
 
-export function spendableVtxoSats(vtxos: ({ value: number } & Parameters<typeof hasTerminalSpend>[0])[]): number {
-  return vtxos.filter((vtxo) => !hasTerminalSpend(vtxo)).reduce((sum, vtxo) => sum + vtxo.value, 0)
-}
-
 export interface VaultWalletVtxoSnapshot {
   balance: number
+  pendingBalance?: number
   boardingBalance?: number
   boardingConfirmedBalance?: number
   commitmentIds?: string[]
@@ -607,8 +614,10 @@ export async function fetchVaultWalletVtxoSnapshot(status: VaultStatus): Promise
   const detectedBoardingHistory = historyFromBoardingUtxos(boardingUtxos).filter(
     (item) => !knownTransactions.has(item.txid),
   )
+  const position = vtxoBalanceWithPending(vtxos, listPersistedVtxoSpends(status.vaultId))
   return {
-    balance: spendableVtxoSats(vtxos),
+    balance: position.availableSats,
+    pendingBalance: position.pendingSats,
     commitmentIds: [...commitmentIds],
     boardingBalance: balance.boarding.total,
     boardingConfirmedBalance: balance.boarding.confirmed,

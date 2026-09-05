@@ -3,6 +3,7 @@ import gatewayHandler, {
   allowAuthorizerPath,
   allowGatewayRate,
   allowMainnetGatewayRate,
+  isMainnetGatewayRelease,
   MAX_GATEWAY_BYTES,
   publicAuthorizerPath,
   readBoundedUpstream,
@@ -60,6 +61,7 @@ describe('same-origin authorizer gateway', () => {
     expect(publicAuthorizerPath('/api/ready')).toBe('/ready')
     expect(publicAuthorizerPath('/api/v1/status')).toBe('/v1/status')
     expect(publicAuthorizerPath('/api/v1/status?vault=x')).toBe('/v1/status?vault=x')
+    expect(publicAuthorizerPath('/api/authorizer/v1/enroll/session')).toBe('/v1/enroll/session')
     expect(publicAuthorizerPath('/api/v1/enroll/start')).toBe('/v1/enroll/start')
     expect(publicAuthorizerPath('/api/v1/passkey/challenge')).toBe('/v1/passkey/challenge')
     expect(publicAuthorizerPath('/api/authorizer/v1/enroll/start')).toBe('/v1/enroll/start')
@@ -133,6 +135,20 @@ describe('same-origin authorizer gateway', () => {
     )
   })
 
+  it('limits open setup issuance separately from ordinary wallet requests', async () => {
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret')
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify([{ result: 6 }, { result: 1 }, { result: 6 }, { result: 1 }])),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(allowMainnetGatewayRate('203.0.113.1', '', true)).resolves.toBe(false)
+    await expect(allowMainnetGatewayRate('203.0.113.1')).resolves.toBe(true)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)[2][1]).toMatch(/^vault-rate:enrollment:/)
+  })
+
   it('rejects an oversize upstream body', async () => {
     const res = new Response('x'.repeat(MAX_GATEWAY_BYTES + 1))
     await expect(readBoundedUpstream(res)).rejects.toThrow(/too large/)
@@ -203,7 +219,27 @@ describe('gateway response cache policy', () => {
       expect.objectContaining({ method: 'GET' }),
     )
     expect(result.response.statusCode).toBe(503)
-    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false }))
+    expect(result.body()?.toString()).toBe(JSON.stringify({ ok: false, arkadeOrigin: 'configured' }))
+  })
+
+  it('forwards open enrollment through the flat gateway without a user invite', async () => {
+    const session = JSON.stringify({ token: 'public-session', expiresAt: '2026-09-05T12:10:00Z' })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(session, { status: 200, headers: { 'Cache-Control': 'no-store' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({ method: 'POST', url: '/api/gateway?route=enroll-session', body: '{}' }),
+      result.response,
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://authorizer.example/v1/enroll/session',
+      expect.objectContaining({ method: 'POST', body: Buffer.from('{}') }),
+    )
+    expect(result.response.statusCode).toBe(200)
+    expect(result.body()?.toString()).toBe(session)
+    expect(result.headers.get('cache-control')).toBe('no-store')
   })
 
   it('marks an oversized request as no-store without contacting the upstream', async () => {
@@ -256,6 +292,96 @@ describe('gateway response cache policy', () => {
     expect(result.headers.get('content-type')).toBe('application/json')
   })
 
+  it('logs only the route and status when upstream rejects prepare', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: 'vault-board-v1 receiver must be the enrolled Spending script', code: 'REJECTED' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({
+        method: 'POST',
+        url: '/api/gateway?route=board&phase=prepare',
+        body: JSON.stringify({ vaultId: 'vault-a', inputs: [], recipients: [] }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      result.response,
+    )
+    expect(result.response.statusCode).toBe(400)
+    expect(logged).toHaveBeenCalledWith(
+      'vault funding upstream',
+      JSON.stringify({
+        status: 400,
+        path: '/v1/vtxo/board/prepare',
+      }),
+    )
+    logged.mockRestore()
+  })
+
+  it('records a funding rejection without logging request credentials or payment details', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const payload = JSON.stringify({
+      code: 'REJECTED',
+      error: 'upstream https://private-signer.example.com/v1/sign unavailable',
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(payload, { status: 400 })))
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({
+        method: 'POST',
+        url: '/api/v1/vtxo-reserve',
+        headers: { host: 'vault.example.com', origin: 'https://vault.example.com' },
+        body: JSON.stringify({ phoneSignature: 'private-signature', destAddress: 'private-destination' }),
+      }),
+      result.response,
+    )
+    expect(result.response.statusCode).toBe(400)
+    expect(result.body()?.toString()).toBe(payload)
+    expect(log).toHaveBeenCalledExactlyOnceWith(
+      'vault funding upstream',
+      JSON.stringify({ status: 400, path: '/v1/vtxo/reserve' }),
+    )
+  })
+
+  it('keeps private transport details out of public readiness during server upgrades', async () => {
+    const privateOrigin = 'https://private-signer.example.com'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            schema: 1,
+            network: 'mainnet',
+            enrollTemplate: 'phone-hww-recovery-savings-v1',
+            arkadeOrigin: privateOrigin,
+            arkadeVersion: 'v1',
+            debugEndpoint: privateOrigin,
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const result = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ method: 'GET', url: '/ready' }), result.response)
+    expect(result.response.statusCode).toBe(200)
+    expect(JSON.parse(String(result.body()))).toEqual({
+      ok: true,
+      schema: 1,
+      network: 'mainnet',
+      enrollTemplate: 'phone-hww-recovery-savings-v1',
+      arkadeOrigin: 'configured',
+      arkadeVersion: 'v1',
+    })
+    expect(String(result.body())).not.toContain(privateOrigin)
+  })
+
   it('does not replace an upstream cache policy', async () => {
     vi.stubGlobal(
       'fetch',
@@ -268,5 +394,67 @@ describe('gateway response cache policy', () => {
     expect(result.response.statusCode).toBe(202)
     expect(result.body()?.toString()).toBe('ok')
     expect(result.headers.get('cache-control')).toBe('private, max-age=7')
+  })
+
+  it('fails closed on a mainnet release without gateway authentication or a product host', async () => {
+    expect(isMainnetGatewayRelease('mainnet')).toBe(true)
+    expect(isMainnetGatewayRelease('mutinynet')).toBe(false)
+    vi.stubEnv('VAULT_RELEASE_NETWORK', 'mainnet')
+    vi.stubEnv('AUTHORIZER_GATEWAY_SECRET', '')
+    const missingSecret = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ headers: { host: 'app.getvaulted.xyz' } }), missingSecret.response)
+    expect(missingSecret.response.statusCode).toBe(503)
+    expect(missingSecret.body()).toBe(JSON.stringify({ error: 'gateway authentication is not configured' }))
+    expectLocalNoStore(missingSecret)
+
+    vi.stubEnv('AUTHORIZER_GATEWAY_SECRET', 'test-gateway-secret')
+    const wrongHost = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({ headers: { host: 'arkade-vault-mutinynet-rc.vercel.app' } }),
+      wrongHost.response,
+    )
+    expect(wrongHost.response.statusCode).toBe(403)
+    expect(wrongHost.body()).toBe(JSON.stringify({ error: 'mainnet gateway host is not this release' }))
+    expectLocalNoStore(wrongHost)
+
+    const rcHost = gatewayResponse()
+    await gatewayHandler(gatewayRequest({ headers: { host: 'rc.getvaulted.xyz' } }), rcHost.response)
+    expect(rcHost.response.statusCode).not.toBe(403)
+  })
+
+  it('uses the shared durable limiter and forwards the gateway secret on a mainnet product host', async () => {
+    vi.stubEnv('VAULT_RELEASE_NETWORK', 'mainnet')
+    vi.stubEnv('AUTHORIZER_GATEWAY_SECRET', 'test-gateway-secret')
+    vi.stubEnv('UPSTASH_REDIS_REST_URL', 'https://redis.example')
+    vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', 'secret')
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes('/pipeline')) {
+        return new Response(JSON.stringify([{ result: 1 }, { result: 1 }]), { status: 200 })
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const result = gatewayResponse()
+    await gatewayHandler(
+      gatewayRequest({
+        url: '/api/v1/status',
+        headers: { host: 'app.getvaulted.xyz', 'x-forwarded-for': '203.0.113.8' },
+      }),
+      result.response,
+    )
+    expect(result.response.statusCode).toBe(200)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://redis.example/pipeline',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://authorizer.example/v1/status',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-vault-gateway-secret': 'test-gateway-secret' }),
+      }),
+    )
   })
 })

@@ -1,3 +1,4 @@
+import QgAmount from './qg/QgAmount'
 import { useContext, useMemo, useRef, useState } from 'react'
 import { Check, Clipboard, Clock3, Copy, QrCode, ScanLine, Share2, TriangleAlert, Upload } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
@@ -78,8 +79,8 @@ export default function VaultHandoff() {
       <div className='qg-screen qg-screen-progress'>
         <main className='qg-main qg-centered qg-progress-screen'>
           <span className='qg-spinner' aria-hidden='true' />
-          <p className='qg-eyebrow'>Submitting to Bitcoin</p>
-          <h1>Broadcasting transaction</h1>
+          <p className='qg-eyebrow'>Savings transfer</p>
+          <h1>Checking and submitting</h1>
           <p className='qg-copy'>Keep this screen open until submission completes.</p>
         </main>
       </div>
@@ -159,7 +160,7 @@ export default function VaultHandoff() {
   if (view === 'ready') {
     return (
       <QgScreen
-        title='Ready to broadcast'
+        title='Check transaction'
         back={() => setView('import')}
         footer={
           <>
@@ -167,34 +168,36 @@ export default function VaultHandoff() {
             <QgPrimary
               onClick={() => void completeSavingsHandoff(pasted)}
               disabled={!signedReady}
-              label='Broadcast transaction'
+              label='Check and send transaction'
             />
           </>
         }
       >
-        <div className='qg-success-line'>
-          <Check />
+        <div className='qg-status-line'>
+          <Upload />
           <span>
-            <strong>Hardware signature verified</strong>
-            <small>
-              {selectedFile
-                ? `${selectedFile} is ready to broadcast.`
-                : 'The signed transaction matches your pending transfer.'}
-            </small>
+            <strong>Transaction received</strong>
+            <small>{selectedFile ? `${selectedFile} is ready to check.` : 'Your transaction is ready to check.'}</small>
           </span>
         </div>
         <section className='qg-details'>
           <div>
             <span>Amount</span>
-            <strong>{prettyAmount(spend.amount)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(spend.amount)} />
+            </strong>
           </div>
           <div>
             <span>Network fee</span>
-            <strong>{prettyAmount(spend.fee)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(spend.fee)} />
+            </strong>
           </div>
           <div>
             <span>Total</span>
-            <strong>{prettyAmount(spend.amount + spend.fee)}</strong>
+            <strong>
+              <QgAmount value={prettyAmount(spend.amount + spend.fee)} />
+            </strong>
           </div>
           <div>
             <span>To</span>
@@ -206,7 +209,8 @@ export default function VaultHandoff() {
           </div>
         </section>
         <p className='qg-copy'>
-          Broadcasting submits this Bitcoin transaction. It cannot be recalled after submission.
+          The wallet will check the transfer details before sending this transaction to Bitcoin. Once sent, you cannot
+          cancel it here.
         </p>
       </QgScreen>
     )

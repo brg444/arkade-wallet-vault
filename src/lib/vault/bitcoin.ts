@@ -1,12 +1,9 @@
 import { ArkAddress } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { Address, NETWORK, OutScript, TEST_NETWORK } from '@scure/btc-signer'
+import { vaultAddressNetwork } from './addressNetwork'
 
-export function vaultAddressNetwork(network: string) {
-  if (network === 'mutinynet') return TEST_NETWORK
-  if (network === 'bitcoin' || network === 'mainnet') return NETWORK
-  throw new Error('unsupported network')
-}
+export { vaultAddressNetwork } from './addressNetwork'
 
 export function isVaultBitcoinAddress(value: string, network?: string): boolean {
   const trimmed = value.trim()

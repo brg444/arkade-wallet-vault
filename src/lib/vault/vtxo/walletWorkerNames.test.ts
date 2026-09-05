@@ -14,7 +14,10 @@ describe('Vault wallet namespace', () => {
     expect(namespace).toMatch(/^[0-9a-f]{32}$/)
     expect(vaultWalletDatabase('vault/a')).toBe(`arkade-vault-wallet:${namespace}:wallet`)
     expect(vaultWalletIntentDatabase('vault/a')).toBe(`arkade-vault-wallet:${namespace}:intents`)
-    expect(vaultWalletWorkerPath('vault/a')).toBe(`/vault-wallet-service-worker.mjs?vault=${namespace}`)
+    expect(vaultWalletWorkerPath('vault/a')).toBe(`/vault-wallet-service-worker.mjs?vault=${namespace}&board=3`)
+    expect(vaultWalletWorkerPath('vault/a', 'mainnet')).toBe(
+      `/vault-wallet-service-worker.mjs?vault=${namespace}&network=mainnet&board=3`,
+    )
     expect(vaultWalletUpdaterTag('vault/a')).toBe(`ARKADE_VAULT_WALLET:${namespace}`)
     expect(vaultWalletWorkerScope('vault/a')).not.toBe(vaultWalletWorkerScope('vault/b'))
     expect(vaultWalletDatabase('vault/a')).not.toBe(vaultWalletDatabase('vault/b'))

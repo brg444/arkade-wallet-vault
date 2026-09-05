@@ -1,6 +1,7 @@
 import { expect, test as base, type BrowserContext, type CDPSession, type Page, type Route } from '@playwright/test'
-import { createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
+import { ArkAddress, createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { Transaction } from '@scure/btc-signer'
 import { buildVaultProgramDescriptor } from '../../../lib/vault/program/descriptor'
 import { hashBoardingEnrollmentDescriptor } from '../../../lib/vault/program/enroll'
 import { PROGRAM_FIXTURE } from '../../../lib/vault/program/fixtures'
@@ -21,6 +22,12 @@ import type {
   VaultPasskeyChallengeResponse,
 } from '../../../lib/vault/cosignerClient'
 import type { BoardingDescriptor, VaultStatus } from '../../../lib/vault/types'
+import {
+  VAULT_POLICY_V1_EXIT_DELAY,
+  VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+  VAULT_POLICY_V1_PINNED_DELEGATE,
+  VaultPolicyV1Script,
+} from '../../../lib/vault/vtxo/script'
 import {
   BOARDING_EXIT_DELAY,
   BOARDING_EXIT_DELAY_UNIT,
@@ -74,9 +81,12 @@ type PasskeyInstall = {
 }
 
 export type FakePasskeyAuthorizer = {
+  setInviteOnly(enabled: boolean): void
   readonly invite: string
   readonly vaultId: string
+  broadcastedTransaction(): string
   clearRecoverGate(): void
+  fundSavings(value: number): void
   rejectNextRecoveryAsWrongCredential(): void
   releaseRecover(): void
   selectedSpendingPolicy(): SpendingPolicy | undefined
@@ -122,9 +132,18 @@ function publicStatus() {
   }
 }
 
+function xonly(compressed: string): Uint8Array {
+  return hex.decode(compressed).subarray(1)
+}
+
 class FakeAuthorizer implements FakePasskeyAuthorizer {
   readonly invite = INVITE
   readonly vaultId = VAULT_ID
+
+  private inviteOnly = true
+  setInviteOnly(enabled: boolean) {
+    this.inviteOnly = enabled
+  }
 
   private enrolled = false
   private passkeyLoginAvailable = false
@@ -139,17 +158,35 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
   private recoverGate?: { promise: Promise<void>; release: () => void }
   private recoverSeen?: { promise: Promise<void>; resolve: () => void }
   private wrongRecovery = false
+  private savingsUtxos: Record<string, unknown>[] = []
+  private broadcastHex = ''
 
   constructor(private readonly page: Page) {}
 
   async installRoutes() {
     await this.page.route('**/v1/**', async (route) => this.handle(route))
     await this.page.route('**/esplora/**', async (route) => {
-      const url = route.request().url()
-      if (/\/address\/[^/]+\/(utxo|txs)$/.test(url)) return json(route, [])
-      if (/\/tx\/[0-9a-f]+\/status$/.test(url)) return json(route, { confirmed: false })
+      const request = route.request()
+      const url = new URL(request.url())
+      if (url.pathname.endsWith('/blocks/tip/height')) return route.fulfill({ status: 200, body: '1' })
+      if (url.pathname.endsWith('/tx') && request.method() === 'POST') {
+        this.broadcastHex = request.postData() || ''
+        return route.fulfill({ status: 200, body: Transaction.fromRaw(hex.decode(this.broadcastHex)).id })
+      }
+      const addressUtxos = url.pathname.match(/\/address\/([^/]+)\/utxo$/)
+      if (addressUtxos) {
+        const address = decodeURIComponent(addressUtxos[1])
+        return json(route, address === this.status().savingsAddress ? this.savingsUtxos : [])
+      }
+      if (/\/address\/[^/]+\/txs(?:\/chain\/[^/]+)?$/.test(url.pathname)) return json(route, [])
+      if (/\/tx\/[0-9a-f]+\/status$/.test(url.pathname)) return json(route, { confirmed: false })
+      if (/\/tx\/[0-9a-f]+\/outspends$/.test(url.pathname)) return json(route, [])
       return json(route, { error: 'not found' }, 404)
     })
+  }
+
+  broadcastedTransaction() {
+    return this.broadcastHex
   }
 
   clearRecoverGate() {
@@ -163,6 +200,18 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       seen = resolve
     })
     this.recoverSeen = { promise: seenPromise, resolve: seen }
+  }
+
+  fundSavings(value: number) {
+    if (!Number.isSafeInteger(value) || value <= 0) throw new Error('Savings fixture value must be positive sats')
+    this.savingsUtxos = [
+      {
+        txid: '77'.repeat(32),
+        vout: 0,
+        value,
+        status: { confirmed: true, block_height: 1 },
+      },
+    ]
   }
 
   releaseRecover() {
@@ -189,6 +238,19 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
     const spendingPolicy = proposed?.spendingPolicy
       ? validateSpendingPolicy(proposed.spendingPolicy)
       : defaultSpendingPolicy()
+    const spending = descriptor
+      ? new VaultPolicyV1Script({
+          userPub: xonly(descriptor.keys.phoneBip340),
+          vtxoVaultCosignerPub: xonly(descriptor.keys.vaultCosignerBase),
+          arkdServerPub: xonly(MUTINYNET_OPERATOR_SIGNER_PUB),
+          delegatePub: xonly(VAULT_POLICY_V1_PINNED_DELEGATE),
+          exitDelay: VAULT_POLICY_V1_EXIT_DELAY,
+          exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+          exitDevicePub: xonly(descriptor.keys.phoneBip340),
+          exitHardwarePub: xonly(descriptor.keys.hardware),
+          ...(descriptor.keys.recovery ? { exitRecoveryPub: xonly(descriptor.keys.recovery) } : {}),
+        })
+      : undefined
     return {
       enrolled: this.enrolled,
       network: 'mutinynet',
@@ -221,11 +283,13 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
       passkeyLoginAvailable: this.passkeyLoginAvailable,
       enrollmentMode: this.enrolled ? 'closed' : 'token',
       vtxoVaultCosignerPub: PROGRAM_FIXTURE.vaultCosignerBase,
-      vtxoExitDelay: 4608,
-      vtxoExitDelayUnit: 'seconds',
-      spendingArkAddress: 'tark1spending',
-      spendingArkScript: `5120${'22'.repeat(32)}`,
-      vtxoDelegatePub: PROGRAM_FIXTURE.arkadeCosignerBase,
+      vtxoExitDelay: Number(VAULT_POLICY_V1_EXIT_DELAY),
+      vtxoExitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+      spendingArkAddress: spending
+        ? new ArkAddress(xonly(MUTINYNET_OPERATOR_SIGNER_PUB), spending.tweakedPublicKey, 'tark').encode()
+        : '',
+      spendingArkScript: spending ? hex.encode(spending.pkScript) : '',
+      vtxoDelegatePub: VAULT_POLICY_V1_PINNED_DELEGATE,
       vtxoBoardingActive: Boolean(this.enrolled && this.boardingDescriptor),
       vtxoBoardingProgram: BOARDING_PROGRAM,
       vtxoBoardingAddress: this.boardingDescriptor?.address || '',
@@ -290,7 +354,16 @@ class FakeAuthorizer implements FakePasskeyAuthorizer {
 
     if (path === '/v1/status' && request.method() === 'GET') {
       const requestedVault = url.searchParams.get('vault')
-      return json(route, requestedVault ? this.status(requestedVault) : publicStatus())
+      return json(
+        route,
+        requestedVault
+          ? this.status(requestedVault)
+          : { ...publicStatus(), enrollmentMode: this.inviteOnly ? 'token' : 'open' },
+      )
+    }
+    if (path === '/v1/enroll/session') {
+      if (this.inviteOnly) return json(route, { error: 'invite required' }, 400)
+      return json(route, { token: 'A'.repeat(43), expiresAt: new Date(Date.now() + 600_000).toISOString() })
     }
     if (path === '/v1/enroll/start') {
       const spendingPolicy = validateSpendingPolicy(body?.spendingPolicy)
@@ -686,9 +759,9 @@ export const test = base.extend<Fixtures>({
   },
 })
 
-export async function reachPasskeySetup(page: Page) {
+export async function reachPasskeySetup(page: Page, inviteOnly = true) {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: /Spend freely/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Everyday spending/ })).toBeVisible()
   await page.getByRole('button', { name: 'Get started' }).click()
   await page.getByRole('button', { name: 'Continue' }).click()
   await page.getByTestId('hardware-pub').fill(PROGRAM_FIXTURE.hardwarePub)
@@ -697,16 +770,17 @@ export async function reachPasskeySetup(page: Page) {
   await page.getByRole('button', { name: 'Review setup' }).click()
   await page.getByRole('checkbox').check()
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page.getByTestId('enrollment-token')).toBeVisible()
+  if (inviteOnly) await expect(page.getByTestId('enrollment-token')).toBeVisible()
+  else await expect(page.getByRole('button', { name: 'Create Vault' })).toBeEnabled()
 }
 
-export async function enrollVaultWithPasskey(page: Page, authorizer: FakePasskeyAuthorizer) {
-  await reachPasskeySetup(page)
-  await page.getByTestId('enrollment-token').fill(authorizer.invite)
+export async function enrollVaultWithPasskey(page: Page, authorizer: FakePasskeyAuthorizer, inviteOnly = true) {
+  await reachPasskeySetup(page, inviteOnly)
+  if (inviteOnly) await page.getByTestId('enrollment-token').fill(authorizer.invite)
   await page.getByRole('button', { name: 'Create Vault' }).click()
-  await expect(page.getByText('Your Vault')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Your Vault was created', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Save Recovery Kit' }).click()
-  await page.getByRole('button', { name: 'I already saved it' }).click()
+  await page.getByRole('button', { name: 'I’ll save a separate copy later' }).click()
   await page.getByRole('button', { name: 'Open your Vault' }).click()
   await expect(page.getByTestId('account-switcher')).toBeVisible()
 }

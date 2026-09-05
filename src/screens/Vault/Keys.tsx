@@ -1,13 +1,12 @@
 import { useContext, type ReactNode } from 'react'
-import FingerprintIcon from '../../icons/Fingerprint'
-import SafeIcon from '../../icons/Safe'
-import ServerIcon from '../../icons/Server'
-import ShieldCheckOutlineIcon from '../../icons/ShieldCheckOutline'
+import { Fingerprint, FileKey, Server, ShieldCheck } from 'lucide-react'
 import { prettyAmount } from '../../lib/format'
 import { shortKey } from '../../lib/vault/setupPlan'
 import { VaultContext } from '../../vault/context'
 import { useVaultReadiness } from '../../vault/useVaultReadiness'
 import { HubGroup, HubRow } from './ui'
+import RecoveryExplanation from './qg/RecoveryExplanation'
+import { useBackupConfirmation } from './qg/useBackupConfirmation'
 import QgScreen from './qg/QgScreen'
 
 function SecurityTile({
@@ -63,6 +62,7 @@ export default function VaultKeys() {
     spendingArkAddress,
     status,
   } = useContext(VaultContext)
+  const { confirmed } = useBackupConfirmation()
   const phoneCovered = Boolean(status?.enrolled)
   const devicesCovered = Boolean(status?.passkeyLoginAvailable)
   const canEnableOther = hasLocalEnrollment && status?.enrolled && !status.passkeyLoginAvailable
@@ -92,39 +92,47 @@ export default function VaultKeys() {
             <strong>Vault protection</strong>
             <span className={vaultReady ? 'is-ready' : 'is-attention'}>{vaultReady ? 'Ready' : 'Review'}</span>
           </div>
-          <h2>{vaultReady ? 'Your vault is ready.' : 'Review your vault.'}</h2>
+          <h2>{vaultReady ? 'Your vault is available.' : 'Review your vault.'}</h2>
           <p>
             {vaultReady
-              ? 'Limits contain Spending exposure, two independent keys protect Savings, and delayed recovery protects against loss.'
+              ? 'Spending uses your registered limits, and Savings transfers require your passkey and hardware wallet. Check your backup and recovery options below.'
               : 'One or more safeguards needs attention. Check device access, wallet addresses, and service readiness.'}
           </p>
         </section>
 
         <div className='vault-security-grid'>
           <SecurityTile
-            icon={<FingerprintIcon />}
+            icon={<Fingerprint />}
             label='Protection tier'
             value={protectionTier === 'advanced' ? 'Advanced' : 'Standard'}
             detail={
-              protectionTier === 'advanced' ? 'Survives loss of both everyday keys' : 'Recovers after one lost key'
+              protectionTier === 'advanced'
+                ? 'Separate key for delayed Savings recovery'
+                : 'Savings recovery with one remaining key'
             }
           />
           <SecurityTile
-            icon={<SafeIcon />}
+            icon={<FileKey />}
             label='Recovery Kit'
-            value={hasRecoveryKit ? 'Available' : 'Review'}
-            detail={hasRecoveryKit ? 'Public vault map on this device' : 'Restore or save your vault map'}
+            value={confirmed ? 'Copy confirmed' : hasRecoveryKit ? 'On this device' : 'Review'}
+            detail={
+              confirmed
+                ? 'You confirmed a separate kit copy'
+                : hasRecoveryKit
+                  ? 'Save a copy outside this device'
+                  : 'Retrieve your vault map'
+            }
             onClick={() => openRecover('kit', 'keys')}
             testId='security-kit'
           />
           <SecurityTile
-            icon={<ShieldCheckOutlineIcon />}
+            icon={<ShieldCheck />}
             label='Spending limits'
             value={`${prettyAmount(perPayment)} each`}
             detail={`${prettyAmount(limit)} / rolling 24 hours`}
           />
           <SecurityTile
-            icon={<ServerIcon />}
+            icon={<Server />}
             label='Vault service'
             value={readinessLabel}
             detail='Enforces limits and assists recovery'
@@ -135,8 +143,8 @@ export default function VaultKeys() {
         <div className='vault-security-groups'>
           <HubGroup label='Keys'>
             <HubRow
-              icon={<FingerprintIcon />}
-              title='This device'
+              icon={<Fingerprint />}
+              title='Your passkey'
               status={!phoneCovered ? 'Needed' : devicesCovered ? 'Ready' : 'This device only'}
               onClick={
                 canEnableOther
@@ -147,21 +155,22 @@ export default function VaultKeys() {
               }
             />
             <HubRow
-              icon={<ShieldCheckOutlineIcon />}
-              title='Hardware'
+              icon={<ShieldCheck />}
+              title='Hardware wallet'
               detail='Independent approval for Savings'
               status={shortKey(hardwarePub)}
             />
             {hasRecovery ? (
               <HubRow
-                icon={<SafeIcon />}
-                title='Recovery'
-                detail='Restores access after a visible delay'
+                icon={<FileKey />}
+                title='Recovery key'
+                detail='Separate key for delayed Savings recovery'
                 status={shortKey(recoveryPub)}
               />
             ) : null}
           </HubGroup>
 
+          <RecoveryExplanation advanced={protectionTier === 'advanced'} mainnet={status?.network === 'mainnet'} />
           <HubGroup label='Recovery and access'>
             <HubRow title='I lost a key' onClick={() => openRecover('lost', 'keys')} testId='security-lost' />
             {canEnableOther ? (

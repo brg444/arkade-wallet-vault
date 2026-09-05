@@ -1,3 +1,4 @@
+import { clearOpenEnrollmentSession, openEnrollmentToken } from './openEnrollmentSession'
 import { p256 } from '@noble/curves/nist.js'
 import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { vaultCosignerClient } from './cosignerClient'
@@ -87,19 +88,18 @@ export async function enrollWithPasskey(
   enrollmentToken: string,
   roles: EnrollmentRoles,
 ): Promise<{ status: VaultStatus; enrollment: EnrollmentSecrets }> {
-  await beginTenantEnrollment(enrollmentToken, roles)
-  return finishTenantEnrollment(enrollmentToken)
+  const started = await beginTenantEnrollment(enrollmentToken, roles)
+  return finishTenantEnrollment(started.enrollmentToken)
 }
 
 export async function beginTenantEnrollment(
   enrollmentToken: string,
   roles: EnrollmentRoles,
-): Promise<{ enrollment: EnrollmentSecrets; descriptor?: VaultProgramDescriptor }> {
+): Promise<{ enrollment: EnrollmentSecrets; descriptor?: VaultProgramDescriptor; enrollmentToken: string }> {
   if (typeof location !== 'undefined' && location.hostname === '127.0.0.1') {
     throw new Error('Open this page as http://localhost:3003 so the passkey can bind to localhost.')
   }
-  const token = String(enrollmentToken || '').trim()
-  if (!token) throw new Error('setup code required')
+  let token = String(enrollmentToken || '').trim()
   const protectionTier = requireProtectionTierMatchesRecovery(roles.protectionTier, roles.recoveryPub || '')
   const wantRecovery = protectionTier === 'advanced'
   const selectedPolicy = validateSpendingPolicy(roles.spendingPolicy)
@@ -112,6 +112,10 @@ export async function beginTenantEnrollment(
   const recoveryXOnly = wantRecovery ? xOnly(roles.recoveryPub || '') : ''
   if (wantRecovery && hardwareXOnly === recoveryXOnly) throw new Error('Recovery must be a different key')
   const rpId = requireRPID(publicStatus)
+  if (!token) {
+    if (publicStatus.enrollmentMode !== 'open') throw new Error('setup code required')
+    token = await openEnrollmentToken()
+  }
   const start = await vaultCosignerClient.enrollment.start(token, {
     protectionTier,
     spendingPolicy: selectedPolicy,
@@ -273,7 +277,7 @@ export async function beginTenantEnrollment(
   }
   saveStagedEnrollment(staged)
   saveLocalKit(buildRecoveryKit(descriptor))
-  return { enrollment, descriptor }
+  return { enrollment, descriptor, enrollmentToken: token }
 }
 
 export async function finishTenantEnrollment(
@@ -323,6 +327,7 @@ export async function finishTenantEnrollment(
   requireStatusMatchesPin(live, pin)
   pinEnrolledStatus(live, storage)
   promoteStagedEnrollment(staged, storage)
+  clearOpenEnrollmentSession()
   return { status: live, enrollment: staged }
 }
 
@@ -352,6 +357,7 @@ export async function reconcileStagedEnrollment(
     pinEnrolledStatus(live, storage)
   }
   promoteStagedEnrollment(staged, storage)
+  clearOpenEnrollmentSession()
   return { status: live, enrollment: staged }
 }
 

@@ -505,6 +505,32 @@ export async function restoreMatchingVaultLightningFundingQuote(
   return undefined
 }
 
+/** Read the original invoice and quote for an existing funding operation, without negotiating again.
+ * Expiry gates new authorization; it must not hide an already-authorized transaction's recovery path.
+ */
+export async function loadVaultLightningFundingQuote(
+  repository: Pick<AssetSwapRepository, 'getAllRfqSwaps'>,
+  network: NetworkName,
+  proof: VaultLightningVtxoProof,
+): Promise<VaultLightningQuote | undefined> {
+  const matches = (await repository.getAllRfqSwaps()).filter((record) => {
+    if (record.kind !== 'lightning_send') return false
+    const raw = record.profile[VAULT_LIGHTNING_PROFILE] as Partial<StoredVaultLightningProfile> | undefined
+    if (raw?.fundingProof?.operationId !== proof.operationId) return false
+    const stored = storedLightningProfile(record)
+    if (
+      stored.network !== network ||
+      stored.fundingState !== 'funding' ||
+      !sameFundingProof(stored.fundingProof, { ...proof, rfqId: record.rfqId })
+    ) {
+      throw new Error('Lightning funding does not match the persisted VTXO reservation.')
+    }
+    return true
+  })
+  if (matches.length > 1) throw new Error('Multiple Lightning records refer to this payment. Recovery needs review.')
+  return matches[0] ? quoteFromRecord(matches[0]) : undefined
+}
+
 export async function persistVaultLightningQuote({
   result,
   facts,
@@ -601,6 +627,7 @@ export async function resumeVaultLightningFunding(
   repository: Pick<AssetSwapRepository, 'getRfqSwap'>,
   proof: VaultLightningFundingProof,
   nowSeconds = Math.floor(Date.now() / 1000),
+  alreadyAuthorized = false,
 ): Promise<VaultLightningFundingTarget> {
   const record = await repository.getRfqSwap(proof.rfqId)
   if (!record || record.fundingArkTxid || isRfqSwapTerminal(record.state)) {
@@ -611,7 +638,7 @@ export async function resumeVaultLightningFunding(
   if (stored.fundingState !== 'funding' || !sameFundingProof(stored.fundingProof, proof)) {
     throw new Error('Lightning funding does not match the persisted VTXO reservation.')
   }
-  assertVaultLightningQuoteCurrent(quoteFromRecord(record), nowSeconds)
+  if (!alreadyAuthorized) assertVaultLightningQuoteCurrent(quoteFromRecord(record), nowSeconds)
   return { rfqId: record.rfqId, address: record.lockupAddress, amountSats: record.amount! }
 }
 

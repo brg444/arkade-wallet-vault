@@ -1,6 +1,7 @@
 import { SingleKey } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { describe, expect, it } from 'vitest'
+import { networkPins } from '../networkPins'
 import {
   VaultPolicyV1ContractHandler,
   registerVaultPolicyV1ContractHandler,
@@ -41,6 +42,51 @@ describe('vault-policy-v1 SDK contract handler', () => {
       VaultPolicyV1ContractHandler.isGenericallySpendable?.(vaultPolicyV1Contract(expected, 'tark1test') as never),
     ).toBe(false)
     expect(VaultPolicyV1ContractHandler.getSpendablePaths(restored, {} as never, {} as never)).toEqual([])
+  })
+
+  it('round-trips mainnet CSV instead of freezing Mutinynet 4608s', async () => {
+    const pins = networkPins('mainnet')
+    const params = {
+      userPub: await publicKey(1),
+      vtxoVaultCosignerPub: await publicKey(2),
+      arkdServerPub: await publicKey(3),
+      delegatePub: hex.decode(pins.delegatePub.slice(2)),
+      exitDelay: BigInt(pins.policyExitDelay),
+      exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+      network: 'mainnet' as const,
+      exitDevicePub: await publicKey(4),
+      exitHardwarePub: await publicKey(5),
+      exitRecoveryPub: await publicKey(6),
+    }
+    const expected = new VaultPolicyV1Script(params)
+    const serialized = VaultPolicyV1ContractHandler.serializeParams(expected.params)
+    expect(serialized.network).toBe('mainnet')
+    expect(serialized.exitDelay).toBe(String(pins.policyExitDelay))
+
+    const restored = VaultPolicyV1ContractHandler.createScript(serialized)
+    expect(hex.encode(restored.pkScript)).toBe(hex.encode(expected.pkScript))
+
+    const withoutNetwork = { ...serialized }
+    delete withoutNetwork.network
+    const restoredWithoutNetwork = VaultPolicyV1ContractHandler.createScript(withoutNetwork)
+    expect(hex.encode(restoredWithoutNetwork.pkScript)).toBe(hex.encode(expected.pkScript))
+  })
+
+  it('refuses a mainnet delay under an explicit Mutinynet freeze', async () => {
+    expect(
+      () =>
+        new VaultPolicyV1Script({
+          userPub: hex.decode('11'.repeat(32)),
+          vtxoVaultCosignerPub: hex.decode('22'.repeat(32)),
+          arkdServerPub: hex.decode('33'.repeat(32)),
+          delegatePub: pinnedDelegateXOnly(),
+          exitDelay: BigInt(networkPins('mainnet').policyExitDelay),
+          exitDelayUnit: VAULT_POLICY_V1_EXIT_DELAY_UNIT,
+          network: 'mutinynet',
+          exitDevicePub: hex.decode('44'.repeat(32)),
+          exitHardwarePub: hex.decode('55'.repeat(32)),
+        }),
+    ).toThrow(/frozen at 4608/)
   })
 
   it('registers idempotently in page and worker realms', () => {

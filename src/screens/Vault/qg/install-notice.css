@@ -1,0 +1,145 @@
+.qg-install-notice {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 28px;
+  padding: 16px;
+  border: 1px solid var(--qg-line);
+  border-radius: var(--qg-surface-radius);
+  background: var(--qg-paper);
+  color: var(--qg-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.qg-install-notice span {
+  flex: 1;
+  min-width: 0;
+}
+.qg-install-notice strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.qg-install-notice small {
+  display: block;
+  margin-top: 4px;
+  color: var(--qg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.qg-install-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  box-sizing: border-box;
+  width: min(100%, 460px);
+  max-width: 100%;
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px));
+  margin: 0 auto;
+  padding: 24px var(--qg-gutter) max(24px, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--qg-line);
+  border-bottom: 0;
+  border-radius: 28px 28px 0 0;
+  background: var(--qg-oat);
+  color: var(--qg-ink);
+  box-shadow: 0 -16px 64px rgb(0 0 0 / 16%);
+}
+.qg-install-sheet[open] {
+  animation: qg-install-enter 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.qg-install-sheet::backdrop {
+  background: rgb(0 0 0 / 38%);
+}
+.qg-install-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.qg-install-logo {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--qg-paper);
+}
+.qg-install-heading button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--qg-paper);
+  color: var(--qg-ink);
+  cursor: pointer;
+}
+.qg-install-sheet h2 {
+  margin: 24px 0 12px;
+  font-size: 28px;
+  font-weight: 550;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+.qg-install-sheet p,
+.qg-install-sheet li {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.qg-install-sheet p {
+  margin: 0 0 24px;
+  color: var(--qg-muted);
+}
+.qg-install-sheet ol {
+  display: grid;
+  list-style: decimal;
+  gap: 16px;
+  padding-left: 24px;
+  margin: 24px 0;
+}
+.qg-install-sheet li {
+  padding-left: 4px;
+}
+.qg-install-sheet li::marker {
+  color: var(--qg-muted);
+}
+.qg-install-sheet strong {
+  font-weight: 600;
+}
+.qg-install-sheet .qg-install-inline-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  vertical-align: text-bottom;
+}
+.qg-install-sheet .qg-text {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+}
+@keyframes qg-install-enter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (min-width: 600px) {
+  .qg-install-sheet:not([data-ios='true']) {
+    inset: 0;
+    margin: auto;
+    border-bottom: 1px solid var(--qg-line);
+    border-radius: 28px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qg-install-sheet[open] {
+    animation: none;
+  }
+}

@@ -10,6 +10,8 @@
 | [Lightning send](lightning.md)                       | Package-native outbound BOLT11 boundary, refunds, and enablement gates.       |
 | [Mainnet v2 baseline](mainnet-v2-baseline.md)        | Fresh application boundary, release order, and unresolved gates.              |
 | [Security](security.md)                              | Current guarantees, assumptions, and excluded claims.                         |
+| [Emergency recovery](emergency-recovery.md)          | User guide to keep with the Recovery Kit if Vaulted is gone. The page lives in [vaulted-emergency-recovery](https://github.com/brg444/vaulted-emergency-recovery). |
+| [Offline PRF recovery](offline-prf-recovery.md)      | Later-product design: local-origin unwrap after Guardian is gone.             |
 | [Dependency advisories](advisories.md)               | Production audit findings and bundle status.                                  |
 | [Contract Pack](../src/lib/vault/contract-pack.json) | Machine-readable programs shared byte-for-byte with the server.               |
 

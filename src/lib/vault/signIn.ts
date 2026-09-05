@@ -15,6 +15,7 @@ import { pinEnrolledStatus, pinFromEnrolledStatus } from './pin'
 import type { VaultStatus } from './types'
 import { allowPasskey, isCoarsePhone, passkeyGetOptions, prfExtension, prfFrom } from './webauthn'
 import { provisionBoardingKey } from './vtxo/board'
+import { requireMainnetWalletOrigin, requireMainnetWalletRpId } from './productionDomains'
 
 const PRF_SALT = new TextEncoder().encode('arkade-2fa-vault/prf/v1')
 const HKDF_INFO = new TextEncoder().encode('arkade-2fa-vault/kek/v1')
@@ -26,6 +27,10 @@ function requireRPID(status: VaultStatus): string {
   }
   if (status.clientOrigin !== location.origin) {
     throw new Error('deployment origin does not match this signing client origin')
+  }
+  if (status.network === 'mainnet') {
+    requireMainnetWalletOrigin(status.clientOrigin)
+    requireMainnetWalletRpId(rpId)
   }
   return rpId
 }
@@ -219,6 +224,9 @@ export async function unlockLocalEnrollment(
 export async function discoverVaultIdFromPasskey(): Promise<string> {
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
+  if (rpId !== location.hostname.toLowerCase()) {
+    throw new Error('deployment RP ID does not match this signing client host')
+  }
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const got = (await navigator.credentials.get({
     publicKey: passkeyGetOptions(
