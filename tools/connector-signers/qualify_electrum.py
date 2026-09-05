@@ -37,6 +37,10 @@ async def main():
         db.put("gap_limit_for_change", 1)
         wallet = Standard_Wallet(db, config=config)
         wallet.synchronize()
+        if request.get("qt"):
+            from electrum_qt import review_and_sign
+            print(json.dumps(review_and_sign(wallet, config, request, directory)))
+            return
         tx = PartialTransaction.from_raw_psbt(request["psbt"])
         assert tx.inputs()[0].is_complete()
         assert not tx.inputs()[1].is_complete()

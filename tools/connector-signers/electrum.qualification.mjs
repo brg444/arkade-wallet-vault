@@ -56,6 +56,8 @@ for (const v of vectors.filter((v) => v.network === 'mainnet' && v.connectorType
             recipient,
             amount: p.amount,
             fee: p.fee,
+            qt: process.env.CONNECTOR_ELECTRUM_QT === '1',
+            case: `${v.originType}-${v.tier}-${p.full ? 'full' : 'partial'}`,
           }),
           encoding: 'utf8',
           timeout: 30000,
@@ -63,8 +65,9 @@ for (const v of vectors.filter((v) => v.network === 'mainnet' && v.connectorType
       )
       assert.equal(response.outputs[0].address, recipient)
       assert.equal(response.outputs[0].sats, p.amount)
-      assert.equal(request.accept(response.tx).txHex, response.tx)
-      assert.equal(request.accept(response.psbt).txHex, response.tx)
+      assert.equal(request.accept(response.tx).txHex, response.tx.trim())
+      assert.equal(request.accept(response.psbt).txHex, response.tx.trim())
+      if (process.env.CONNECTOR_ELECTRUM_QT === '1') assert.equal(response.review.recipient, recipient)
     })
   }
 }
