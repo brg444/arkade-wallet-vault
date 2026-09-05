@@ -376,7 +376,13 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     mocks.lightningEnabled.mockReturnValue(true)
     vi.spyOn(Date, 'now').mockReturnValue((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000)
     const lightningFunding = { ...reviewed, destAddress: destination, amountSats: 2_125, feeSats: 50 }
-    mocks.reserve.mockResolvedValue(lightningFunding)
+    const phoneSecret = new Uint8Array(32).fill(7)
+    mocks.unlock.mockResolvedValue(phoneSecret)
+    mocks.reserve.mockImplementation(async (_enrollment, _status, _dest, _amount, options) => {
+      expect(options.phoneSecret).toBe(phoneSecret)
+      expect(options.phoneSecret).toEqual(new Uint8Array(32).fill(7))
+      return lightningFunding
+    })
     mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 50 })
 
     render(
@@ -390,7 +396,9 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
     expect(screen.getByTestId('fee')).toHaveTextContent('75')
-    expect(mocks.reserve).toHaveBeenCalledWith(expect.any(Object), status, destination, 2_125)
+    expect(mocks.reserve).toHaveBeenCalledWith(expect.any(Object), status, destination, 2_125, { phoneSecret })
+    expect(mocks.unlock).toHaveBeenCalledTimes(1)
+    expect(phoneSecret).toEqual(new Uint8Array(32))
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
@@ -410,6 +418,26 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.recordLightningFunding).toHaveBeenCalledWith(expect.any(Object), '44'.repeat(32), '55'.repeat(32))
     expect(mocks.send).toHaveBeenCalledWith(expect.any(Object), status, lightningFunding)
     expect(mocks.sdkWallet.mock.calls[0]?.[3]).toBeUndefined()
+  })
+
+  it.each(['quote', 'reservation'])('clears the unlocked phone key when Lightning %s fails', async (stage) => {
+    mocks.lightningEnabled.mockReturnValue(true)
+    vi.spyOn(Date, 'now').mockReturnValue((MUTINYNET_INVOICE_TIMESTAMP + 1) * 1_000)
+    const phoneSecret = new Uint8Array(32).fill(7)
+    mocks.unlock.mockResolvedValue(phoneSecret)
+    const failed = stage === 'quote' ? mocks.requestLightning : mocks.reserve
+    failed.mockRejectedValue(new Error('test rejection'))
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByRole('button', { name: 'Set Lightning draft' }))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
+    await waitFor(() => expect(screen.getByTestId('error')).not.toBeEmptyDOMElement())
+    expect(phoneSecret).toEqual(new Uint8Array(32))
+    expect(mocks.send).not.toHaveBeenCalled()
   })
 
   it('restores a pending Savings handoff and reopens its hardware step', async () => {
