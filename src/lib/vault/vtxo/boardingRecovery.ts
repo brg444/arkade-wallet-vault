@@ -89,7 +89,7 @@ export async function recoverMatureBoardingInputs(
       try {
         const { inputs } = await findMatureBoardingInputs(status, dependencies)
         if (inputs.length === 0) throw new Error('No matured received Bitcoin is ready to recover')
-        const { descriptor, program, operatorPubKey, boardingTimelock } = exactProgram(status)
+        const { program, operatorPubKey, boardingTimelock } = exactProgram(status)
         phoneSecret = await (dependencies.unlockPhone || unlockPhoneBip340)(enrollment, status)
         const recoveryIdentity = SingleKey.fromPrivateKey(phoneSecret)
         const chain = getNetwork(networkPins(status.network).sdkNetwork)
@@ -105,7 +105,7 @@ export async function recoverMatureBoardingInputs(
           inputs,
           recoveryIdentity,
           destination,
-          network: getNetwork(descriptor.network),
+          network: chain,
           onchainProvider: dependencies.onchainProvider || new EsploraProvider('/esplora'),
           maxFeeRateSatVb: status.feerateCapSatVb,
           absoluteFeeCapSats: BigInt(status.absoluteFeeCap),
