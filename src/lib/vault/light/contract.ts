@@ -6,7 +6,7 @@ import { requireSupportedVaultNetwork, type VaultNetwork } from '../constants'
 import { networkPins } from '../networkPins'
 import { defaultSpendingPolicy, validateSpendingPolicy, type SpendingPolicy } from '../spendingPolicy'
 
-// Candidate contract only. Existing enrollment and SDK fund selection do not expose Light.
+// Light uses its own descriptor and policy domain; generic SDK selection remains disabled.
 export const LIGHT_PROFILE = 'vaulted-light-v1' as const
 export const LIGHT_PROGRAM = 'vault-light-policy-v1' as const
 export const LIGHT_POLICY_SCHEMA = 'vault-light-spending-policy-v1' as const

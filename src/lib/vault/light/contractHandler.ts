@@ -1,7 +1,8 @@
-import type { ContractHandler } from '@arkade-os/sdk'
+import { contractHandlers, timelockToSequence, type ContractHandler } from '@arkade-os/sdk'
+import { hex } from '@scure/base'
 import { LIGHT_PROGRAM, LightScript, validateLightScriptParams, type LightScriptParams } from './contract'
 
-// Registration belongs to the future Light activation path; no global side effect.
+// Register explicitly when loading a Light wallet; generic SDK selection stays disabled.
 export const LightContractHandler: ContractHandler<LightScriptParams, LightScript> = {
   type: LIGHT_PROGRAM,
   createScript(params) {
@@ -27,7 +28,31 @@ export const LightContractHandler: ContractHandler<LightScriptParams, LightScrip
     })
   },
   selectPath: () => null,
-  getAllSpendingPaths: () => [],
+  getAllSpendingPaths: (script, _contract, context) => {
+    const owner = script.params.ownerPub
+    if (context.collaborative || (context.walletDescriptor !== `tr(${owner})` && context.walletPubKey !== owner))
+      return []
+    return [
+      {
+        leaf: script.exit(),
+        sequence: timelockToSequence({ type: 'seconds', value: BigInt(script.params.exitDelaySeconds) }),
+      },
+    ]
+  },
   getSpendablePaths: () => [],
   isGenericallySpendable: () => false,
+}
+
+export function registerLightContractHandler() {
+  if (!contractHandlers.has(LIGHT_PROGRAM)) contractHandlers.register(LightContractHandler)
+}
+export function lightContract(script: LightScript, address: string) {
+  return {
+    type: LIGHT_PROGRAM,
+    label: 'Spending',
+    params: LightContractHandler.serializeParams(script.params),
+    script: hex.encode(script.pkScript),
+    address,
+    state: 'active' as const,
+  }
 }
