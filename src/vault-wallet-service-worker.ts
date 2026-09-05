@@ -13,8 +13,8 @@ import { fetchVaultStatusUnpinned } from './lib/vault/status'
 import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './lib/vault/vtxo/contractHandler'
 import {
   loadActiveBoardingKeyForNamespace,
+  boardingWorkerPins,
   requireBoardingStatus,
-  BOARDING_EXIT_DELAY,
   BOARDING_PROGRAM,
 } from './lib/vault/vtxo/board'
 import { createBoardingSigningAdapter } from './lib/vault/vtxo/boardingAdapter'
@@ -49,10 +49,11 @@ const bus = new MessageBus(walletRepository, contractRepository, {
     try {
       const status = await fetchVaultStatusUnpinned(undefined, active.vaultId)
       const descriptor = requireBoardingStatus(status, active.boardingPub)
+      const pins = boardingWorkerPins(active.network, status.network)
       if (active.descriptorHash !== status.vtxoBoardingDescriptorHash) {
         throw new Error('active vault-board-v1 key is bound to a different descriptor')
       }
-      const expectedArkServer = vaultArkServer()
+      const expectedArkServer = vaultArkServer(pins.network)
       if (config.arkServer.url !== expectedArkServer) {
         throw new Error('worker Arkade Operator origin does not match this release')
       }
@@ -81,7 +82,7 @@ const bus = new MessageBus(walletRepository, contractRepository, {
           recoveryPubKey: hexToBytes(descriptor.recoveryPhonePub).slice(1),
         },
         boardingSigningAdapter: signingAdapter,
-        boardingTimelock: { type: 'seconds', value: BigInt(BOARDING_EXIT_DELAY) },
+        boardingTimelock: { type: 'seconds', value: BigInt(pins.boardExitDelay) },
         settlementConfig: {
           boardingUtxoSweep: false,
           deprecatedSignerMigration: false,
