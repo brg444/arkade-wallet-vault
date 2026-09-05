@@ -1,5 +1,5 @@
-import { Transaction } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { Transaction } from '@scure/btc-signer'
 import { describe, expect, it } from 'vitest'
 import { type Claimant } from './constants'
 import { PROGRAM_FIXTURE, PROGRAM_FIXTURE_FAMILY, scalarSecret } from './fixtures'

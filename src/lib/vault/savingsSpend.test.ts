@@ -1,5 +1,5 @@
-import { Transaction } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
+import { Transaction } from '@scure/btc-signer'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { pinEnrolledStatus } from './pin'
 import {
