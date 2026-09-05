@@ -52,8 +52,12 @@ jobs:
           "
       - name: Unit tests
         run: corepack pnpm test:unit
+      - name: Reject ambiguous builds
+        run: node scripts/verify-release-build.mjs
       - name: Build vault
-        run: corepack pnpm build
+        run: |
+          corepack pnpm build:mutinynet
+          corepack pnpm build:mainnet
       - name: Production audit
         run: corepack pnpm audit --prod
 

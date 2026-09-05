@@ -1,3 +1,4 @@
+import { releaseBuild } from './scripts/release-build'
 import path from 'path'
 import { execSync } from 'child_process'
 import { defineConfig } from 'vite'
@@ -65,6 +66,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    releaseBuild(true),
     react(),
     tailwindcss(),
     !process.env.VERCEL &&

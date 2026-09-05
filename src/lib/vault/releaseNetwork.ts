@@ -1,10 +1,5 @@
-import { requireSupportedVaultNetwork, type VaultNetwork } from './constants'
-
-export function configuredReleaseNetwork(value: unknown, production: boolean): VaultNetwork | undefined {
-  const configured = String(value || '').trim()
-  if (!configured) return production ? 'mutinynet' : undefined
-  return requireSupportedVaultNetwork(configured)
-}
+import { configuredReleaseNetwork, requireSupportedVaultNetwork, type VaultNetwork } from './network'
+export { configuredReleaseNetwork } from './network'
 
 export function requireReleaseNetwork(network: unknown): VaultNetwork {
   const actual = requireSupportedVaultNetwork(network)

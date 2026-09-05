@@ -34,7 +34,7 @@
   "scripts": {
     "prepare": "husky install",
     "build:worker": "vite build -c vite.worker.config.ts",
-    "start": "pnpm build:worker && vite --port 3003 --host localhost",
+    "start": "VITE_VAULT_RELEASE_NETWORK=mutinynet pnpm build:worker && vite --port 3003 --host localhost",
     "recover:local": "bun tools/offline-recovery/serve.ts",
     "build": "pnpm build:worker && vite build",
     "build:mainnet": "VITE_VAULT_RELEASE_NETWORK=mainnet VITE_VAULT_LIGHTNING_SEND=true pnpm build",
@@ -52,7 +52,8 @@
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --max-warnings=0",
     "lint:fix": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --fix",
     "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format:check": "prettier --check src",
+    "build:mutinynet": "VITE_VAULT_RELEASE_NETWORK=mutinynet pnpm build"
   },
   "eslintConfig": {
     "extends": [

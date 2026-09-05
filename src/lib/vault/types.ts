@@ -1,6 +1,6 @@
+import type { VaultNetwork } from './constants'
 import type { SpendingPolicy } from './spendingPolicy'
 import type { ProtectionTier } from './protectionTier'
-import type { VaultNetwork } from './constants'
 
 // Exact JSON object emitted by GET /v1/status?vault=... . Keep normalized
 // compatibility aliases out of this type; they belong to VaultStatus below.
