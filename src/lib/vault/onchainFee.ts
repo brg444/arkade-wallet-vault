@@ -46,9 +46,12 @@ export function operationalOnchainFeeSats(input: {
 }
 
 export async function recoveryOnchainFeeSats(vbytes: number): Promise<number> {
-  const estimates = await fetchFeeEstimates()
-  return operationalOnchainFeeSats({
-    vbytes,
-    satPerV: satPerVFromFeeEstimates(estimates),
-  })
+  let satPerV: number
+  try {
+    satPerV = satPerVFromFeeEstimates(await fetchFeeEstimates())
+  } catch {
+    // Preserve the existing recovery fee when the optional estimate is unavailable.
+    return operationalOnchainFeeSats({ vbytes, satPerV: 500 / vbytes, absoluteFeeCapSats: 500 })
+  }
+  return operationalOnchainFeeSats({ vbytes, satPerV })
 }

@@ -61,6 +61,8 @@ export default function VaultSend() {
     fiatDisplayRate,
     navigate,
     reviewSpend,
+    pendingPayments = [],
+    openPendingPayment,
     canReplaceInFlightSend,
     replaceInFlightSend,
     scanOnSend,
@@ -87,8 +89,10 @@ export default function VaultSend() {
   const pendingSend = !fromSavings && status?.vaultId ? loadPersistedVtxoSpend(status.vaultId) : undefined
   const resumingPayment = Boolean(pendingSend && isSameVtxoPayment(pendingSend, spend.address, spend.amount))
   const reservedSats = pendingSend?.reservedInputs?.reduce((total, input) => total + input.valueSats, 0)
-  const amountError =
-    spend.amount <= 0
+  const blockedByPending = !fromSavings && pendingPayments.some((payment) => payment.authorized) && !resumingPayment
+  const amountError = blockedByPending
+    ? 'A payment is still pending. Resume it below before starting another.'
+    : spend.amount <= 0
       ? ''
       : spend.amount < 330
         ? 'The smallest send is ₿330.'
@@ -185,6 +189,16 @@ export default function VaultSend() {
               {error}
             </p>
           ) : null}
+          {!fromSavings
+            ? pendingPayments.map((payment) => (
+                <QgSecondary
+                  key={payment.operationId}
+                  label='Open pending payment'
+                  onClick={() => void openPendingPayment(payment.operationId)}
+                  disabled={busy}
+                />
+              ))
+            : null}
           {canReplaceInFlightSend ? (
             <QgSecondary label='Abort reserved send' onClick={() => void replaceInFlightSend()} disabled={busy} />
           ) : null}

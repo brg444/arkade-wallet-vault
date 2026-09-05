@@ -34,9 +34,8 @@
   "scripts": {
     "prepare": "husky install",
     "build:worker": "vite build -c vite.worker.config.ts",
-    "start": "pnpm build:worker && vite --port 3003 --host localhost",
+    "start": "VITE_VAULT_RELEASE_NETWORK=mutinynet pnpm build:worker && vite --port 3003 --host localhost",
     "recover:local": "bun tools/offline-recovery/serve.ts",
-    "recover:sync": "WALLET_ROOT=. bun tools/offline-recovery/scripts/sync-from-wallet.ts",
     "build": "pnpm build:worker && vite build",
     "build:mainnet": "VITE_VAULT_RELEASE_NETWORK=mainnet VITE_VAULT_LIGHTNING_SEND=true pnpm build",
     "verify:deployment": "node scripts/verify-deployment.mjs",
@@ -45,15 +44,16 @@
     "test:ui": "vitest run --ui",
     "test:unit": "vitest run --exclude '**/e2e/**'",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test -c playwright.vault.config.ts",
-    "test:visual": "node scripts/prepare-visual-tests.mjs && playwright test -c playwright.visual.config.ts",
-    "test:e2e:ui": "playwright test -c playwright.vault.config.ts --ui",
+    "test:e2e": "node scripts/prepare-browser-tests.mjs && playwright test -c playwright.vault.config.ts",
+    "test:visual": "node scripts/prepare-browser-tests.mjs && playwright test -c playwright.visual.config.ts",
+    "test:e2e:ui": "node scripts/prepare-browser-tests.mjs && playwright test -c playwright.vault.config.ts --ui",
     "test:codegen": "playwright codegen localhost:3003",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --max-warnings=0",
     "lint:fix": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --fix",
     "format": "prettier --write src",
-    "format:check": "prettier --check src"
+    "format:check": "prettier --check src",
+    "build:mutinynet": "VITE_VAULT_RELEASE_NETWORK=mutinynet pnpm build"
   },
   "eslintConfig": {
     "extends": [

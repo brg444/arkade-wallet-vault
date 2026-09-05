@@ -194,7 +194,10 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
   if (!input.arkadeCosigner.origin.trim() || !input.arkadeCosigner.version.trim()) {
     throw new Error('arkade cosigner origin and version required')
   }
-  const selectedPolicy = validateSpendingPolicy(input.spendingPolicy || defaultSpendingPolicy())
+  const selectedPolicy = validateSpendingPolicy(
+    input.spendingPolicy || defaultSpendingPolicy(input.network),
+    input.network,
+  )
   const protectionTier = requireProtectionTierMatchesRecovery(input.protectionTier, keys.recovery)
   const family = buildVaultProgramFamily({
     vaultId: input.vaultId,
@@ -243,7 +246,7 @@ export function buildVaultProgramDescriptor(input: VaultProgramDescriptorInput):
       program: selectedPolicy.program,
       schema: selectedPolicy.schema,
       period: selectedPolicy.period,
-      digest: spendingPolicyDigest(selectedPolicy),
+      digest: spendingPolicyDigest(selectedPolicy, input.network),
       recipientDustSats: DUST_SATS,
       recipientCapSats: selectedPolicy.txRecipientCapSats,
       periodAllowanceSats: selectedPolicy.periodAllowanceSats,
@@ -281,16 +284,20 @@ export function validateVaultProgramDescriptor(d: VaultProgramDescriptor): Vault
   }
   if (d.transitionSequence !== TRANSITION_SEQUENCE) throw new Error('transition sequence does not match this release')
   if (d.policy.recipientDustSats !== DUST_SATS) throw new Error('dust does not match this release')
-  const selectedPolicy = validateSpendingPolicy({
-    program: d.policy.program,
-    schema: d.policy.schema,
-    period: d.policy.period,
-    periodAllowanceSats: d.policy.periodAllowanceSats,
-    txRecipientCapSats: d.policy.recipientCapSats,
-    absoluteFeeCapSats: d.policy.absoluteFeeCapSats,
-    feerateCapSatPerV: d.policy.feerateCapSatVb,
-  })
-  if (spendingPolicyDigest(selectedPolicy) !== d.policy.digest) throw new Error('spending policy digest does not match')
+  const selectedPolicy = validateSpendingPolicy(
+    {
+      program: d.policy.program,
+      schema: d.policy.schema,
+      period: d.policy.period,
+      periodAllowanceSats: d.policy.periodAllowanceSats,
+      txRecipientCapSats: d.policy.recipientCapSats,
+      absoluteFeeCapSats: d.policy.absoluteFeeCapSats,
+      feerateCapSatPerV: d.policy.feerateCapSatVb,
+    },
+    d.network,
+  )
+  if (spendingPolicyDigest(selectedPolicy, d.network) !== d.policy.digest)
+    throw new Error('spending policy digest does not match')
   requireSecp(d.keys.phoneBip340, 'phone')
   requireP256(d.keys.phoneDirectP256, 'phoneDirectP256')
   requireSecp(d.keys.hardware, 'hardware')

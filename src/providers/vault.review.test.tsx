@@ -10,10 +10,12 @@ import { SAVINGS_TEMPLATE } from '../lib/vault/program/constants'
 import { SETUP_STORE_KEY } from '../lib/vault/setupPlan'
 import type { VaultStatus } from '../lib/vault/types'
 import golden from '../lib/vault/vtxo/testdata/vault-policy-v1-tree.json'
-import { VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
+import { persistVtxoSpend, VtxoReviewedReservationError, type VaultVtxoSpendQuote } from '../lib/vault/vtxo/spend'
 import { VaultContext, VaultProvider } from './vault'
 
 const mocks = vi.hoisted(() => ({
+  availableSats: 20000,
+  loadLightningFunding: vi.fn(),
   FundingNotStartedError: class FundingNotStartedError extends Error {},
   fetchStatus: vi.fn(),
   reserve: vi.fn(),
@@ -62,6 +64,11 @@ vi.mock('../lib/vault/vtxo/spend', async (importOriginal) => {
   }
 })
 
+vi.mock('../lib/vault/vtxo/walletWorker', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/vtxo/walletWorker')>()),
+  ensureVaultWalletWorker: vi.fn().mockResolvedValue({}),
+}))
+
 vi.mock('../lib/vault/savingsSpend', async (importOriginal) => {
   const original = await importOriginal<typeof import('../lib/vault/savingsSpend')>()
   return { ...original, unlockPhoneBip340: mocks.unlock }
@@ -77,6 +84,7 @@ vi.mock('../lib/vault/lightning', () => ({
   assertVaultLightningQuoteCurrent: vi.fn(),
   beginVaultLightningFunding: mocks.beginLightningFunding,
   resumeVaultLightningFunding: mocks.resumeLightningFunding,
+  loadVaultLightningFundingQuote: mocks.loadLightningFunding,
   recordVaultLightningFundingTxid: mocks.recordLightningFunding,
   getVaultLightningStatus: mocks.getLightningStatus,
   requestVaultLightningQuote: mocks.requestLightning,
@@ -97,7 +105,7 @@ vi.mock('../vault/useVaultBalances', () => ({
     balancesLoaded: true,
     history: [],
     positions: {
-      spending: { availableSats: 20_000, pendingSats: 0, totalSats: 20_000 },
+      spending: { availableSats: mocks.availableSats, pendingSats: 0, totalSats: mocks.availableSats },
       savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
     },
     refreshBalance: vi.fn().mockResolvedValue(undefined),
@@ -167,6 +175,7 @@ function Probe() {
   const vault = useContext(VaultContext)
   return (
     <div>
+      <button onClick={() => vault.openPendingPayment('11'.repeat(16))}>Open pending</button>
       <span data-testid='screen'>{vault.screen}</span>
       <span data-testid='account'>{vault.account}</span>
       <span data-testid='scan'>{String(vault.scanOnSend)}</span>
@@ -214,6 +223,8 @@ describe('VaultProvider reviewed VTXO reservation', () => {
   })
 
   beforeEach(() => {
+    mocks.availableSats = 20000
+    mocks.loadLightningFunding.mockResolvedValue(undefined)
     localStorage.clear()
     localStorage.setItem(SELECTED_VAULT_STORE, 'vault-a')
     localStorage.setItem(
@@ -263,6 +274,62 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     })
   })
 
+  it('resumes an existing Arkade payment with no available balance and without another reservation', async () => {
+    mocks.availableSats = 0
+    persistVtxoSpend({ ...reviewed, vaultId: 'vault-a', arkTxid: 'aa'.repeat(32), stage: 'operator-submitted' })
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByText('Open pending'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
+    expect(screen.getByTestId('destination')).toHaveTextContent(destination)
+    fireEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(mocks.send).toHaveBeenCalled())
+    expect(mocks.reserve).not.toHaveBeenCalled()
+    expect(mocks.send).toHaveBeenCalledWith(expect.anything(), status, reviewed, expect.any(Function))
+  })
+
+  it('restores an authorized Lightning payment without a new quote, balance, or expiry gate', async () => {
+    mocks.availableSats = 0
+    const funding = { ...reviewed, amountSats: 2125, feeSats: 50 }
+    persistVtxoSpend({ ...funding, vaultId: 'vault-a', arkTxid: 'aa'.repeat(32), stage: 'operator-submitted' })
+    const quote = {
+      rfqId: '44'.repeat(32),
+      invoice: MUTINYNET_INVOICE,
+      invoiceAmountSats: 2100,
+      fundAddress: destination,
+      fundAmountSats: 2125,
+      corridorFeeSats: 25,
+      validUntil: 1,
+      refundLocktime: 1,
+    }
+    mocks.loadLightningFunding.mockResolvedValue(quote)
+    mocks.resumeLightningFunding.mockResolvedValue({ address: destination, amountSats: 2125 })
+    render(
+      <VaultProvider>
+        <Probe />
+      </VaultProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+    fireEvent.click(screen.getByText('Open pending'))
+    await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('review'))
+    expect(screen.getByTestId('destination')).toHaveTextContent(MUTINYNET_INVOICE)
+    fireEvent.click(screen.getByText('Approve'))
+    await waitFor(() => expect(mocks.send).toHaveBeenCalled())
+    expect(mocks.requestLightning).not.toHaveBeenCalled()
+    expect(mocks.reserve).not.toHaveBeenCalled()
+    expect(mocks.beginLightningFunding).not.toHaveBeenCalled()
+    expect(mocks.resumeLightningFunding).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fundingFeeSats: 50 }),
+      undefined,
+      true,
+    )
+  })
+
   it('forgets a previous send destination when returning home or opening the Home camera', async () => {
     render(
       <VaultProvider>
@@ -301,8 +368,8 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(screen.getByTestId('destination')).toBeEmptyDOMElement()
   })
 
-  it('reviews a VTXO send with zero Face ID calls and unlocks once on Approve', async () => {
-    mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 0, operationId: reviewed.operationId })
+  it('requires another review when the authoritative VTXO fee changes', async () => {
+    mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 500, operationId: reviewed.operationId })
 
     render(
       <VaultProvider>
@@ -319,13 +386,20 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.reserve).not.toHaveBeenCalled()
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
+    await waitFor(() => expect(screen.getByTestId('fee')).toHaveTextContent('500'))
+    expect(screen.getByTestId('screen')).toHaveTextContent('review')
+    expect(screen.getByTestId('error')).toHaveTextContent('Review the updated total')
+    expect(mocks.send).not.toHaveBeenCalled()
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
-    expect(mocks.unlockSpend).toHaveBeenCalledTimes(1)
+    expect(mocks.unlockSpend).toHaveBeenCalledTimes(2)
     expect(mocks.unlock).not.toHaveBeenCalled()
-    expect(mocks.reserve).toHaveBeenCalledTimes(1)
+    expect(mocks.reserve).toHaveBeenCalledTimes(2)
   })
 
   it('clears a stale review and returns to Send without reporting success', async () => {
+    mocks.reserve.mockResolvedValueOnce({ ...reviewed, feeSats: 0 })
     render(
       <VaultProvider>
         <Probe />
@@ -342,7 +416,12 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('send'))
     expect(screen.getByTestId('fee')).toHaveTextContent('0')
     expect(screen.getByTestId('error')).toHaveTextContent('This fee quote expired or changed. Review the send again.')
-    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed, expect.any(Function))
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Object),
+      status,
+      { ...reviewed, feeSats: 0 },
+      expect.any(Function),
+    )
   })
 
   it('does not open Home when a stored enrollment has no pinned Vault Program', async () => {

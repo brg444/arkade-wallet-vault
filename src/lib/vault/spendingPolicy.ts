@@ -2,6 +2,12 @@ import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex, encodeUtf8 } from './hex'
 import {
   ABSOLUTE_FEE_CEILING_SATS,
+  MAINNET_ABSOLUTE_FEE_CEILING_SATS,
+  MAINNET_FEERATE_CEILING_SAT_PER_V,
+  MUTINYNET_ABSOLUTE_FEE_CEILING_SATS,
+  MUTINYNET_FEERATE_CEILING_SAT_PER_V,
+  requireSupportedVaultNetwork,
+  type VaultNetwork,
   FEERATE_CEILING_SAT_PER_V,
   PERIOD_ALLOWANCE_SATS,
   POLICY_VERSION,
@@ -43,15 +49,28 @@ export const SPENDING_POLICY_BOUNDS = {
   feerateCapSatPerV: { min: FEERATE_CEILING_SAT_PER_V, max: FEERATE_CEILING_SAT_PER_V },
 } as const
 
-export function defaultSpendingPolicy(): SpendingPolicy {
+function policyBounds(network?: VaultNetwork) {
+  if (network === undefined) return SPENDING_POLICY_BOUNDS
+  requireSupportedVaultNetwork(network)
+  const fee = network === 'mainnet' ? MAINNET_ABSOLUTE_FEE_CEILING_SATS : MUTINYNET_ABSOLUTE_FEE_CEILING_SATS
+  const rate = network === 'mainnet' ? MAINNET_FEERATE_CEILING_SAT_PER_V : MUTINYNET_FEERATE_CEILING_SAT_PER_V
+  return {
+    ...SPENDING_POLICY_BOUNDS,
+    absoluteFeeCapSats: { min: fee, max: fee },
+    feerateCapSatPerV: { min: rate, max: rate },
+  }
+}
+
+export function defaultSpendingPolicy(network?: VaultNetwork): SpendingPolicy {
+  const bounds = policyBounds(network)
   return {
     program: SPENDING_POLICY_PROGRAM,
     schema: POLICY_VERSION,
     period: SPENDING_POLICY_PERIOD,
     periodAllowanceSats: PERIOD_ALLOWANCE_SATS,
     txRecipientCapSats: TX_RECIPIENT_CAP_SATS,
-    absoluteFeeCapSats: ABSOLUTE_FEE_CEILING_SATS,
-    feerateCapSatPerV: FEERATE_CEILING_SAT_PER_V,
+    absoluteFeeCapSats: bounds.absoluteFeeCapSats.min,
+    feerateCapSatPerV: bounds.feerateCapSatPerV.min,
   }
 }
 
@@ -81,7 +100,8 @@ function requireBound(value: unknown, bound: SpendingPolicyBound, name: string):
   return Number(value)
 }
 
-export function validateSpendingPolicy(value: unknown): SpendingPolicy {
+export function validateSpendingPolicy(value: unknown, network?: VaultNetwork): SpendingPolicy {
+  const bounds = policyBounds(network)
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('spending policy required')
   const p = value as Record<string, unknown>
   const expected = [
@@ -104,22 +124,10 @@ export function validateSpendingPolicy(value: unknown): SpendingPolicy {
     program: SPENDING_POLICY_PROGRAM,
     schema: POLICY_VERSION,
     period: SPENDING_POLICY_PERIOD,
-    periodAllowanceSats: requireBound(
-      p.periodAllowanceSats,
-      SPENDING_POLICY_BOUNDS.periodAllowanceSats,
-      'period allowance',
-    ),
-    txRecipientCapSats: requireBound(
-      p.txRecipientCapSats,
-      SPENDING_POLICY_BOUNDS.txRecipientCapSats,
-      'transaction recipient cap',
-    ),
-    absoluteFeeCapSats: requireBound(
-      p.absoluteFeeCapSats,
-      SPENDING_POLICY_BOUNDS.absoluteFeeCapSats,
-      'absolute fee cap',
-    ),
-    feerateCapSatPerV: requireBound(p.feerateCapSatPerV, SPENDING_POLICY_BOUNDS.feerateCapSatPerV, 'feerate cap'),
+    periodAllowanceSats: requireBound(p.periodAllowanceSats, bounds.periodAllowanceSats, 'period allowance'),
+    txRecipientCapSats: requireBound(p.txRecipientCapSats, bounds.txRecipientCapSats, 'transaction recipient cap'),
+    absoluteFeeCapSats: requireBound(p.absoluteFeeCapSats, bounds.absoluteFeeCapSats, 'absolute fee cap'),
+    feerateCapSatPerV: requireBound(p.feerateCapSatPerV, bounds.feerateCapSatPerV, 'feerate cap'),
   }
   if (policy.periodAllowanceSats < policy.txRecipientCapSats) {
     throw new Error('period allowance must be at least the transaction recipient cap')
@@ -127,12 +135,12 @@ export function validateSpendingPolicy(value: unknown): SpendingPolicy {
   return policy
 }
 
-export function canonicalSpendingPolicy(policy: SpendingPolicy): string {
-  return JSON.stringify(validateSpendingPolicy(policy))
+export function canonicalSpendingPolicy(policy: SpendingPolicy, network?: VaultNetwork): string {
+  return JSON.stringify(validateSpendingPolicy(policy, network))
 }
 
-export function spendingPolicyDigest(policy: SpendingPolicy): string {
-  return bytesToHex(sha256(encodeUtf8(canonicalSpendingPolicy(policy))))
+export function spendingPolicyDigest(policy: SpendingPolicy, network?: VaultNetwork): string {
+  return bytesToHex(sha256(encodeUtf8(canonicalSpendingPolicy(policy, network))))
 }
 
 export function spendingPolicyFromLimits(input: {

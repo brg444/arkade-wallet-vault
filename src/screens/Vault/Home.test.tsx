@@ -51,6 +51,24 @@ describe('Vault home account boundaries', () => {
     localStorage.removeItem('arkade-vault-balance-unit')
   })
 
+  it('keeps an authorized payment reachable even when available balance is zero', async () => {
+    const user = userEvent.setup()
+    const openPendingPayment = vi.fn().mockResolvedValue(undefined)
+    renderHome({
+      canSend: false,
+      openPendingPayment,
+      pendingPayments: [{ operationId: 'original', amountSats: 1505, authorized: true }],
+      positions: {
+        spending: { availableSats: 0, pendingSats: 31953, totalSats: 31953 },
+        savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
+      },
+    })
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(screen.getByRole('region', { name: 'Pending payment' })).toHaveTextContent('Not confirmed as paid')
+    await user.click(screen.getByRole('button', { name: 'Resume payment' }))
+    expect(openPendingPayment).toHaveBeenCalledWith('original')
+  })
+
   it('keeps receive details behind the explicit Home utilities', () => {
     renderHome({ account: 'spend' })
     expect(screen.queryByTestId('account-address')).toBeNull()

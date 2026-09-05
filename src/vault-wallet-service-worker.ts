@@ -9,10 +9,15 @@ import {
   WalletMessageHandler,
 } from '@arkade-os/sdk'
 import { hexToBytes } from './lib/vault/hex'
+import { requireSupportedVaultNetwork } from './lib/vault/constants'
 import { fetchVaultStatusUnpinned } from './lib/vault/status'
 import { registerVaultPolicyV1ContractHandler, vaultPolicyV1Contract } from './lib/vault/vtxo/contractHandler'
-import { loadActiveBoardingKeyForNamespace, requireBoardingStatus, BOARDING_PROGRAM } from './lib/vault/vtxo/board'
-import { requireSupportedVaultNetwork } from './lib/vault/constants'
+import {
+  loadActiveBoardingKeyForNamespace,
+  boardingWorkerPins,
+  requireBoardingStatus,
+  BOARDING_PROGRAM,
+} from './lib/vault/vtxo/board'
 import { createBoardingSigningAdapter } from './lib/vault/vtxo/boardingAdapter'
 import { installVaultSettlementEventSource } from './lib/vault/vtxo/settlementEventSource'
 import {
@@ -51,10 +56,11 @@ const bus = new MessageBus(walletRepository, contractRepository, {
         throw new Error('worker network does not match this release')
       }
       const descriptor = requireBoardingStatus(status, active.boardingPub)
+      const pins = boardingWorkerPins(active.network, status.network)
       if (active.descriptorHash !== status.vtxoBoardingDescriptorHash) {
         throw new Error('active vault-board-v1 key is bound to a different descriptor')
       }
-      const expectedArkServer = vaultArkServer(status.network)
+      const expectedArkServer = vaultArkServer(pins.network)
       if (config.arkServer.url !== expectedArkServer) {
         throw new Error('worker Arkade Operator origin does not match this release')
       }
@@ -83,7 +89,7 @@ const bus = new MessageBus(walletRepository, contractRepository, {
           recoveryPubKey: hexToBytes(descriptor.recoveryPhonePub).slice(1),
         },
         boardingSigningAdapter: signingAdapter,
-        boardingTimelock: { type: 'seconds', value: BigInt(descriptor.exitDelay) },
+        boardingTimelock: { type: 'seconds', value: BigInt(pins.boardExitDelay) },
         settlementConfig: {
           boardingUtxoSweep: false,
           deprecatedSignerMigration: false,
