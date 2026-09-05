@@ -1,10 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDownToLine, ChevronRight, Share, X } from 'lucide-react'
-import { QgPrimary } from './QgScreen'
+import { QgMark, QgPrimary } from './QgScreen'
 import './install-notice.css'
 
 type InstallEvent = Event & {
   prompt: () => Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+const DISMISSED_KEY = 'vaulted:ios-install-dismissed'
+
+function dismissedThisSession() {
+  try {
+    return sessionStorage.getItem(DISMISSED_KEY) === 'true'
+  } catch {
+    return false
+  }
 }
 
 const installedMode = () =>
@@ -19,9 +29,28 @@ export default function InstallNotice() {
   const [installError, setInstallError] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const dismissed = useRef(false)
   const ios =
     /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
   const android = /Android/i.test(navigator.userAgent)
+
+  const dismiss = () => {
+    dismissed.current = true
+    if (ios) {
+      try {
+        sessionStorage.setItem(DISMISSED_KEY, 'true')
+      } catch {
+        // Dismissal still works when the browser disallows storage.
+      }
+    }
+    setOpen(false)
+  }
+
+  useEffect(() => {
+    if (!ios || installed || open || dismissed.current || dismissedThisSession()) return
+    const timer = window.setTimeout(() => setOpen(true), 600)
+    return () => window.clearTimeout(timer)
+  }, [ios, installed, open])
 
   useEffect(() => {
     const mode = window.matchMedia('(display-mode: standalone)')
@@ -102,15 +131,18 @@ export default function InstallNotice() {
       <dialog
         ref={dialog}
         className='qg-install-sheet'
+        data-ios={ios}
         aria-labelledby='install-title'
         onClose={() => {
-          setOpen(false)
+          dismiss()
           trigger.current?.focus({ preventScroll: true })
         }}
       >
         <div className='qg-install-heading'>
-          <img src='/vaulted-icon.svg' width='48' height='48' alt='' />
-          <button type='button' aria-label='Close install guide' onClick={() => setOpen(false)}>
+          <span className='qg-install-logo'>
+            <QgMark />
+          </span>
+          <button type='button' aria-label='Close install guide' onClick={dismiss}>
             <X aria-hidden='true' />
           </button>
         </div>
@@ -155,7 +187,7 @@ export default function InstallNotice() {
         {prompt || installing ? (
           <QgPrimary label='Install Vaulted' loading={installing} onClick={() => void install()} />
         ) : null}
-        <button className='qg-text' type='button' onClick={() => setOpen(false)}>
+        <button className='qg-text' type='button' onClick={dismiss}>
           Continue in browser
         </button>
       </dialog>

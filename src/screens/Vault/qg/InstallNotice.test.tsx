@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import InstallNotice from './InstallNotice'
 
 beforeEach(() => {
+  sessionStorage.clear()
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value(this: HTMLDialogElement) {
@@ -54,17 +55,29 @@ describe('Welcome installation notice', () => {
     }
   })
 
-  it('shows iPhone installation steps only when requested and permits dismissal', () => {
+  it('opens on iPhone automatically and remembers X dismissal across remounts', async () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('iPhone')
-    render(<InstallNotice />)
+    const first = render(<InstallNotice />)
     expect(screen.queryByRole('dialog')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
-    const sheet = screen.getByRole('dialog')
+    const sheet = await screen.findByRole('dialog')
     expect(within(sheet).getByText('Add to Home Screen')).toBeVisible()
     expect(within(sheet).getByText('Open as Web App')).toBeVisible()
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Continue in browser' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Close install guide' }))
     expect(screen.queryByRole('dialog')).toBeNull()
-    expect(screen.getByRole('button', { name: /Install Vaulted/ })).toBeVisible()
+    expect(sessionStorage.getItem('vaulted:ios-install-dismissed')).toBe('true')
+    first.unmount()
+    vi.useFakeTimers()
+    try {
+      render(<InstallNotice />)
+      act(() => vi.advanceTimersByTime(1200))
+      expect(screen.queryByRole('dialog')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /Install Vaulted/ }))
+      expect(screen.getByRole('dialog')).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Continue in browser' }))
+      expect(screen.queryByRole('dialog')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('opens the native offer directly and respects cancellation before accepting a fresh offer', async () => {
