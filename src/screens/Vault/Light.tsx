@@ -617,6 +617,9 @@ export default function VaultLight({ onExit }: { onExit: () => void }) {
                       setRecoveryEvents((prev) => [...prev.slice(-7), event]),
                     )
                     setNotice('Bitcoin recovery completed')
+                  } catch (error) {
+                    if (!(error instanceof Error) || error.name !== 'AbortError') throw error
+                    setNotice('Recovery paused. Reopen your saved exit file to resume.')
                   } finally {
                     recoveryController.current = null
                     setConfirmation('')

@@ -170,6 +170,47 @@ test('Light prepares recovery of funded change without a passkey', async ({ page
   })
 })
 
+test('Light explains and pauses an existing Bitcoin recovery delay', async ({ page }) => {
+  test.skip(
+    process.env.VAULT_LIGHT_TEST_WAITING_EXIT !== '1',
+    'Requires an existing confirmed prerequisite and pending CSV delay',
+  )
+  const directory = process.env.VAULT_LIGHT_DRILL_DIRECTORY!
+  const { secret } = JSON.parse(await readFile(join(directory, 'browser-owner-backup.json'), 'utf8'))
+  const saved = JSON.parse(await readFile(join(directory, 'browser-offline-change-recovery.json'), 'utf8'))
+  const broadcasts: string[] = []
+  await page.route('**/esplora/**', (route) => {
+    if (route.request().method() === 'POST') {
+      broadcasts.push(new URL(route.request().url()).pathname)
+      return route.abort()
+    }
+    return route.continue()
+  })
+  await page.addInitScript(() => localStorage.setItem('vaulted:active-setup', 'light'))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Restore a Light wallet', exact: true }).click()
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'saved-exit.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(saved)),
+  })
+  await page.getByRole('button', { name: 'I no longer have my passkey', exact: true }).click()
+  await page.getByLabel('Recovery secret', { exact: true }).fill(secret)
+  await page.getByRole('button', { name: 'Start Bitcoin recovery', exact: true }).click()
+  await expect(page.getByRole('log')).toContainText('the owner-only delay ends around', { timeout: 45000 })
+  await expect(page.getByRole('log')).not.toContainText('waiting_csv')
+  await expect(page.getByRole('log')).toContainText('already confirmed on Bitcoin')
+  await expect(page.getByRole('log').getByRole('link').first()).toHaveAttribute(
+    'href',
+    /^https:\/\/mempool\.mutinynet\.arkade\.sh\/tx\/[0-9a-f]{64}$/,
+  )
+  await page.getByRole('button', { name: 'Stop and resume later', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Recovery paused')
+  await expect(page.getByLabel('Recovery secret', { exact: true })).toHaveValue('')
+  expect(broadcasts).toEqual([])
+  await page.screenshot({ path: join(directory, 'recovery-wait-paused.png'), fullPage: true })
+})
+
 test.afterEach(async ({ page, passkey }, info) => {
   if (process.env.VAULT_LIGHT_TEST_RENEWAL !== '1') return
   const directory = process.env.VAULT_LIGHT_DRILL_DIRECTORY!

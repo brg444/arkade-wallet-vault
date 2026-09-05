@@ -17,6 +17,9 @@ export function lightRecoveryProgress(event: ExecutorEvent): string {
     case 'confirmed':
       return `${step}: confirmed on Bitcoin.`
     case 'skipped':
+      // The pinned SDK emits a reason for skipped failed branches; a txid
+      // without a reason means its Bitcoin confirmation was already observed.
+      if (event.txid && !event.reason) return `${step}: already confirmed on Bitcoin.`
       return `${step}: skipped${event.reason ? ` — ${event.reason}` : ''}.`
     case 'failed':
     case 'warning':
