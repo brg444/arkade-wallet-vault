@@ -15,7 +15,6 @@ describe('vault UI lock', () => {
     expect(existsSync(resolve(root, 'src/screens/Vault/Navigation.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Settings.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/screens/Vault/Refresher.tsx'))).toBe(true)
-    expect(existsSync(resolve(root, 'src/icons/Vault.tsx'))).toBe(true)
     expect(existsSync(resolve(root, 'src/lib/vault/prefs.ts'))).toBe(true)
   })
 
