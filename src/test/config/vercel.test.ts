@@ -85,7 +85,14 @@ describe('Vercel worker caching', () => {
       source: '/esplora/:path*',
       destination: 'https://mempool.space/api/:path*',
     })
-    expect(connectSrc).toEqual(['connect-src', "'self'", 'https://arkade.computer', 'https://blockchain.info'])
+    expect(connectSrc).toEqual([
+      'connect-src',
+      "'self'",
+      'https://arkade.computer',
+      'https://mempool.arkade.sh',
+      'wss://mempool.arkade.sh',
+      'https://blockchain.info',
+    ])
     expect(csp).not.toContain('mutinynet')
     expect(csp).not.toContain('nostr')
     expect(csp).not.toContain('getvaulted')
