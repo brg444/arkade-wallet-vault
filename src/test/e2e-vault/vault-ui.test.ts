@@ -1244,6 +1244,7 @@ test.describe('interaction quality', () => {
     await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(start.y - 180, 0)
     expect((await tab.boundingBox())!.x).toBeCloseTo(start.x, 0)
     await page.mouse.up()
+    await expect(tab).not.toHaveClass(/is-coasting/)
     await expect(page.getByRole('navigation')).toHaveCount(0)
     const placed = (await tab.boundingBox())!
     await page.reload()
@@ -1278,12 +1279,14 @@ test.describe('interaction quality', () => {
         })
       }
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-      await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(box.y + 80, 0)
+      await expect(tab).not.toHaveClass(/is-coasting/)
+      const touchPlaced = (await tab.boundingBox())!.y
+      expect(touchPlaced).toBeGreaterThanOrEqual(box.y + 79.5)
       await expect(page.getByRole('navigation')).toHaveCount(0)
       await cdp.detach()
       await page.reload()
       await expect(tab).toBeVisible()
-      await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(box.y + 80, 0)
+      await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(touchPlaced, 0)
     }
 
     // Place at the upper edge and verify that the complete menu stays in the wallet frame.
@@ -1401,6 +1404,53 @@ for (const theme of ['light', 'dark'] as const) {
     await page.screenshot({ path: testInfo.outputPath('protection-advanced.png'), animations: 'disabled' })
   })
 }
+
+test('@interaction launcher momentum glides, can be caught, and remembers its resting position', async ({
+  page,
+  browserName,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await openVault(page)
+  const tab = page.getByRole('button', { name: 'Open navigation' })
+  const start = (await tab.boundingBox())!
+  const x = start.x + 20
+  const y = start.y + 20
+  // Native touch input in Chromium; WebKit uses its native mouse pointer stream.
+  const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
+  if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  else {
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+  }
+  for (let step = 1; step <= 5; step++) {
+    if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - step * 24 }] })
+    else await page.mouse.move(x, y - step * 24)
+    await page.waitForTimeout(16)
+  }
+  const released = (await tab.boundingBox())!.y
+  if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  else await page.mouse.up()
+  await expect(tab).toHaveClass(/is-coasting/)
+  await expect.poll(async () => (await tab.boundingBox())!.y).toBeLessThan(released - 12)
+  await expect(page.getByRole('navigation')).toHaveCount(0)
+
+  // Catch with a real pointer without turning the catch into a menu activation.
+  const moving = (await tab.boundingBox())!
+  await page.mouse.move(moving.x + 20, moving.y + 20)
+  await page.mouse.down()
+  await expect(tab).not.toHaveClass(/is-coasting/)
+  const caught = (await tab.boundingBox())!.y
+  await page.mouse.up()
+  await expect(page.getByRole('navigation')).toHaveCount(0)
+  await page.waitForTimeout(100)
+  expect((await tab.boundingBox())!.y).toBeCloseTo(caught, 0)
+  await cdp?.detach()
+  await page.reload()
+  await expect(tab).toBeVisible()
+  await expect.poll(async () => (await tab.boundingBox())!.y).toBeCloseTo(caught, 0)
+  await tab.click()
+  await expect(page.getByRole('navigation')).toBeVisible()
+})
 
 test('@interaction Home camera returns to its originating account on cancel and close', async ({ page }) => {
   await openVault(page)
