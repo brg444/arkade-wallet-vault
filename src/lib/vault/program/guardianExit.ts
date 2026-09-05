@@ -1,6 +1,7 @@
 import { hex } from '@scure/base'
 import { Transaction } from '@scure/btc-signer'
 import { scriptHexFromAddress } from '../bitcoin'
+import { requireExactDefaultTapscriptSignatures, xOnlyTapscriptPub } from '../taprootSignatures'
 import { type Claimant } from './constants'
 import { pendingGuardians } from './trees'
 
@@ -80,6 +81,10 @@ export function acceptGuardianExitSignature(originalHex: string, signedHex: stri
   if (!/^[0-9a-f]{64}$/.test(expected) || !after.signaturePubs.includes(expected)) {
     throw new Error('signed cancel was not signed by the requested key')
   }
+  requireExactDefaultTapscriptSignatures(Transaction.fromPSBT(hex.decode(signedHex), TX_OPTS), 0, [
+    ...before.signaturePubs,
+    xOnlyTapscriptPub(expectedPub, 'requested signer'),
+  ])
   return signedHex
 }
 

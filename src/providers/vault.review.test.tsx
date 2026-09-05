@@ -301,8 +301,8 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(screen.getByTestId('destination')).toBeEmptyDOMElement()
   })
 
-  it('reviews a VTXO send with zero Face ID calls and unlocks once on Approve', async () => {
-    mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 0, operationId: reviewed.operationId })
+  it('requires another review when the authoritative VTXO fee changes', async () => {
+    mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 500, operationId: reviewed.operationId })
 
     render(
       <VaultProvider>
@@ -319,13 +319,20 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.reserve).not.toHaveBeenCalled()
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
+    await waitFor(() => expect(screen.getByTestId('fee')).toHaveTextContent('500'))
+    expect(screen.getByTestId('screen')).toHaveTextContent('review')
+    expect(screen.getByTestId('error')).toHaveTextContent('Review the updated total')
+    expect(mocks.send).not.toHaveBeenCalled()
+
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Approve' })))
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('success'))
-    expect(mocks.unlockSpend).toHaveBeenCalledTimes(1)
+    expect(mocks.unlockSpend).toHaveBeenCalledTimes(2)
     expect(mocks.unlock).not.toHaveBeenCalled()
-    expect(mocks.reserve).toHaveBeenCalledTimes(1)
+    expect(mocks.reserve).toHaveBeenCalledTimes(2)
   })
 
   it('clears a stale review and returns to Send without reporting success', async () => {
+    mocks.reserve.mockResolvedValueOnce({ ...reviewed, feeSats: 0 })
     render(
       <VaultProvider>
         <Probe />
@@ -342,7 +349,12 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     await waitFor(() => expect(screen.getByTestId('screen')).toHaveTextContent('send'))
     expect(screen.getByTestId('fee')).toHaveTextContent('0')
     expect(screen.getByTestId('error')).toHaveTextContent('This fee quote expired or changed. Review the send again.')
-    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(expect.any(Object), status, reviewed, expect.any(Function))
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Object),
+      status,
+      { ...reviewed, feeSats: 0 },
+      expect.any(Function),
+    )
   })
 
   it('does not open Home when a stored enrollment has no pinned Vault Program', async () => {

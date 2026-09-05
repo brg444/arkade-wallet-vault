@@ -6,8 +6,11 @@ const appOrigin = `http://localhost:${appPort}`
 const operatorOrigin = `http://127.0.0.1:${operatorPort}`
 
 export default defineConfig({
-  testDir: './src/test/e2e-vault',
-  globalSetup: './src/test/e2e-vault/globalSetup.ts',
+  testDir: './.vault-browser-tests',
+  globalSetup: './.vault-browser-tests/globalSetup.ts',
+  testMatch: '**/*.test.ts',
+  respectGitIgnore: false,
+  snapshotPathTemplate: '{testDir}/../src/test/e2e-vault/{testFilePath}-snapshots/{arg}{-projectName}{-platform}{ext}',
   timeout: 60000,
   fullyParallel: false,
   retries: 0,
@@ -30,7 +33,7 @@ export default defineConfig({
     contextOptions: { reducedMotion: 'reduce' },
   },
   webServer: {
-    command: `export NODE_ENV=production VITE_VAULT_RELEASE_NETWORK=mutinynet VITE_GIT_COMMIT=vault-e2e VAULT_E2E_BUILD=arkade-vault-e2e-only VAULT_E2E_OPERATOR_ORIGIN=${operatorOrigin} VAULT_E2E_AUTHORIZER_PROXY_TARGET=${operatorOrigin} VAULT_E2E_ESPLORA_PROXY_TARGET=${operatorOrigin}; pnpm build:worker && pnpm exec vite --port ${appPort} --host localhost`,
+    command: `export NODE_ENV=production VITE_VAULT_RELEASE_NETWORK=mutinynet VITE_GIT_COMMIT=vault-e2e VAULT_E2E_BUILD=arkade-vault-e2e-only VAULT_E2E_OPERATOR_ORIGIN=${operatorOrigin} VAULT_E2E_AUTHORIZER_PROXY_TARGET=${operatorOrigin} VAULT_E2E_ESPLORA_PROXY_TARGET=${operatorOrigin}; pnpm build:worker && pnpm exec vite -c vite.vault-e2e.config.ts --port ${appPort} --host localhost`,
     port: appPort,
     reuseExistingServer: false,
     timeout: 120000,

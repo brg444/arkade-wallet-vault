@@ -60,5 +60,6 @@ TASKS.md
 .vercel
 .env*
 
-# Generated Node-side visual test fixtures
+# Generated Node-side browser test fixtures
+.vault-browser-tests/
 .vault-visual-tests/

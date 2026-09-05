@@ -409,3 +409,22 @@ describe('useVaultBalances', () => {
     await waitFor(() => expect(mockedWorkerReload).toHaveBeenCalledWith(STATUS))
   })
 })
+
+it('keeps the last known Savings funds when Esplora fails', async () => {
+  saveBalanceSnapshot(STATUS.vaultId, {
+    boardingBalance: 0,
+    history: [],
+    savingsSats: 9000,
+    savingsSpendableSats: 9000,
+    vtxoSpendingSats: 42000,
+  })
+  mockedUtxos.mockImplementation(async (address) => {
+    if (address === STATUS.savingsAddress) throw new Error('Esplora unavailable')
+    return []
+  })
+  mockedSnapshot.mockResolvedValue({ balance: 42000, history: [] })
+  const { result } = setupHook(true)
+  await act(async () => result.current.refreshBalance())
+  expect(result.current.positions.savings.totalSats).toBe(9000)
+  expect(loadBalanceSnapshot(STATUS.vaultId)?.savingsSats).toBe(9000)
+})
