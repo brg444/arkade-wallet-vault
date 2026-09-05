@@ -5,6 +5,7 @@ import { createBoardingProgramScript, getNetwork } from '@arkade-os/sdk'
 import { describe, expect, it } from 'vitest'
 import type { BoardingDescriptor } from '../types'
 import {
+  boardingWorkerPins,
   activateBoardingKey,
   deleteBoardingKey,
   deriveBoardingKey,
@@ -59,6 +60,19 @@ function descriptor(): { descriptor: BoardingDescriptor; phonePub: string; board
 }
 
 describe('vault-board-v1 program binding', () => {
+  it('binds worker Operator and delay pins to the active vault network', () => {
+    expect(boardingWorkerPins('mutinynet', 'mutinynet')).toMatchObject({
+      network: 'mutinynet',
+      operatorOrigin: 'https://mutinynet.arkade.sh',
+      boardExitDelay: 604_672,
+    })
+    expect(boardingWorkerPins('mainnet', 'mainnet')).toMatchObject({
+      network: 'mainnet',
+      operatorOrigin: 'https://arkade.computer',
+      boardExitDelay: 7_776_256,
+    })
+    expect(() => boardingWorkerPins('mainnet', 'mutinynet')).toThrow(/different network/)
+  })
   it('accepts only the exact reconstructed release program', () => {
     const fixture = descriptor()
     expect(

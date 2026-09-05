@@ -2,7 +2,13 @@ import { ArkAddress } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
 import { Address, NETWORK, TEST_NETWORK } from '@scure/btc-signer'
 import { describe, expect, it } from 'vitest'
-import { isVaultArkAddress, isVaultBitcoinAddress, isVaultSpendAddress, scriptHexFromAddress } from './bitcoin'
+import {
+  bitcoinDustSats,
+  isVaultArkAddress,
+  isVaultBitcoinAddress,
+  isVaultSpendAddress,
+  scriptHexFromAddress,
+} from './bitcoin'
 
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 const BC1Q = Address(NETWORK).encode(Address(TEST_NETWORK).decode(TB1Q))
@@ -31,6 +37,22 @@ describe('vault bitcoin addresses', () => {
     expect(() => scriptHexFromAddress('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'mutinynet')).toThrow(
       /bitcoin address/,
     )
+  })
+
+  it('calculates the default relay dust threshold from the recipient script', () => {
+    const p2pkh = Address(TEST_NETWORK).encode({ type: 'pkh', hash: new Uint8Array(20).fill(1) })
+    const p2sh = Address(TEST_NETWORK).encode({ type: 'sh', hash: new Uint8Array(20).fill(2) })
+    const p2wpkh = Address(TEST_NETWORK).encode({ type: 'wpkh', hash: new Uint8Array(20).fill(3) })
+    const p2wsh = Address(TEST_NETWORK).encode({ type: 'wsh', hash: new Uint8Array(32).fill(4) })
+    const p2tr = Address(TEST_NETWORK).encode({
+      type: 'tr',
+      pubkey: hex.decode('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798'),
+    })
+    expect(bitcoinDustSats(p2pkh, 'mutinynet')).toBe(546)
+    expect(bitcoinDustSats(p2sh, 'mutinynet')).toBe(540)
+    expect(bitcoinDustSats(p2wpkh, 'mutinynet')).toBe(294)
+    expect(bitcoinDustSats(p2wsh, 'mutinynet')).toBe(330)
+    expect(bitcoinDustSats(p2tr, 'mutinynet')).toBe(330)
   })
 
   it('accepts only test-network Arkade addresses for the supported Vault networks', () => {

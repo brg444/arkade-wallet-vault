@@ -1,7 +1,7 @@
 import { hex } from '@scure/base'
 import { Transaction } from '@scure/btc-signer'
 import type { TransactionInput } from '@scure/btc-signer/psbt.js'
-import { scriptHexFromAddress } from '../bitcoin'
+import { bitcoinDustSats, scriptHexFromAddress } from '../bitcoin'
 import { ABSOLUTE_FEE_CEILING_SATS, DUST_SATS, FEERATE_CEILING_SAT_PER_V } from '../constants'
 import {
   P2A_SCRIPT_HEX,
@@ -136,7 +136,7 @@ export function buildGuardianExitPsbt(input: {
   const coin = requireCoin(input.coin)
   const feeSats = requireFee(input.feeSats)
   const destSats = coin.value - feeSats
-  if (destSats < DUST_SATS) throw new Error('cancel dest is below dust')
+  if (destSats < bitcoinDustSats(input.destAddress, input.network)) throw new Error('cancel dest is below dust')
   const key = familyKey(input.claimant)
   const source = input.family.pending[key]
   if (!source.guardianExit) throw new Error('this vault cannot cancel pending recovery without the services')
@@ -166,7 +166,7 @@ export function buildClaimPsbt(input: {
   const coin = requireCoin(input.coin)
   const feeSats = requireFee(input.feeSats)
   const destSats = coin.value - feeSats
-  if (destSats < DUST_SATS) throw new Error('claim dest is below dust')
+  if (destSats < bitcoinDustSats(input.destAddress, input.network)) throw new Error('claim dest is below dust')
   const key = familyKey(input.claimant)
   const source = input.family.pending[key]
   const dest = hex.decode(scriptHexFromAddress(input.destAddress, input.network))
