@@ -60,8 +60,11 @@ describe('Savings hardware handoff', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'I’ve signed it' }))
     fireEvent.change(screen.getByTestId('savings-signed-psbt-file'), { target: { files: [file] } })
-    expect(await screen.findByText('hardware-signed.psbt is ready to broadcast.')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Broadcast transaction' }))
+    expect(await screen.findByText('hardware-signed.psbt is ready to check.')).toBeTruthy()
+    expect(screen.getByText('Transaction received')).toBeTruthy()
+    expect(screen.queryByText('Hardware signature verified')).toBeNull()
+    expect(completeSavingsHandoff).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Check and send transaction' }))
 
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt'))
   })
@@ -74,7 +77,10 @@ describe('Savings hardware handoff', () => {
       target: { value: 'hardware-signed-psbt-base64' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Use this PSBT' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Broadcast transaction' }))
+    expect(screen.getByText('Transaction received')).toBeTruthy()
+    expect(screen.queryByText('Hardware signature verified')).toBeNull()
+    expect(completeSavingsHandoff).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Check and send transaction' }))
 
     await waitFor(() => expect(completeSavingsHandoff).toHaveBeenCalledExactlyOnceWith('hardware-signed-psbt-base64'))
   })
