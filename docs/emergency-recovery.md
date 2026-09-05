@@ -1,118 +1,97 @@
-# Emergency recovery
+# Recovery with your saved kit
 
-Keep this page **with** your Recovery Kit. The file is your vault. This page is
-how you put it back together if the Vaulted app or servers are gone.
+Keep this guide with the **Recovery Kit.json** downloaded from Vaulted. That
+file records your Savings addresses, recovery rules, protection tier, and
+Spending policy. Recovery also requires access to the keys and wallet
+information used by the route available to you.
 
-You should not need this for a lost phone while Vaulted still works. Use the
-normal app first.
+## Save the information you may need
 
----
+The current app downloads a public map, identified by `version: 3` in the
+file. It contains no private keys or encrypted copy of your device's wallet
+key. Your passkey and this file alone are insufficient to unlock that key
+if both the saved browser information and the Vault service's copy are gone.
 
-## Is Vaulted still working?
-
-If you can still open the app, open it → Recovery. Stop here.
-
----
-
-## What you should have saved
-
-| Item | What it is |
+| Item | What to keep |
 | --- | --- |
-| Recovery Kit (the zip or JSON) | Map of your vault, plus a **locked** copy of this phone’s key |
-| How to recover note | Saved next to the kit (included in the zip) |
-| This phone’s passkey | Face ID, Touch ID, or device PIN for the site you enrolled on |
-| Hardware key | Required to move ordinary savings |
-| Recovery key | Only if you chose Advanced |
+| Recovery Kit.json | Save a copy outside this device and keep a second durable copy. It includes your vault addresses, so keep it private for financial privacy. |
+| Your passkey | Preserve access to the passkey created for the website where you enrolled. Face recognition, a fingerprint, or your device PIN approves its use. |
+| Your hardware key | Keep access to the hardware wallet and its own backup. It provides the second approval for ordinary Savings transfers. |
+| Your recovery key | Keep this separately if you chose Advanced. It provides an additional delayed Savings recovery route. |
+| This guide and your enrollment website | Keep them with the kit so you can identify the instructions and site associated with your vault. |
 
-The kit is **not** a seed phrase. It cannot spend by itself. An older map-only
-file cannot unlock with Face ID if Vaulted is gone. Save a new kit from the app
-while it still works.
+A fresh download from this release contains the same kind of public map. It
+does not add an independent device-key backup. After creating a different
+vault, save that vault's kit too.
 
----
+## If you can still open your wallet
 
-## What you need to spend
+Open **Security → Recovery Kit** to download the map or retrieve an available
+copy. **Security → I lost a key** shows the recovery tools for Savings.
 
-- **Ordinary savings:** this phone **and** hardware. No wait.
-- **A recovery that already started:** wait, then claim with the key that
-  started it (about an hour to two days, depending which key).
-- **Bitcoin still arriving into spending:** this phone, after about **90 days**.
-- **Fast spending:** not with the phone alone. After a delay you still need two
-  keys (phone + hardware, or hardware + recovery on Advanced).
+The current recovery screen prepares transactions for external signing and
+submission. Preparing or copying a transaction leaves those steps unfinished.
+The waiting period starts when the submitted recovery transaction confirms on
+Bitcoin. A prepared cancellation likewise needs the required approvals and
+submission before it can protect the funds.
 
-Starting a *new* waiting period still needs Vaulted. If we are already gone,
-you cannot start one. You can only finish one that already began, or use the
-paths above.
+If you have only a saved file, the kit field in this release checks its
+contents. Importing that file as a wallet and restoring passkey access require
+additional capabilities beyond this inspection field.
 
----
+## If a device or key is unavailable
 
-## If Vaulted is gone
+First establish which keys you can still use. Losing a phone or hardware
+device can leave its key recoverable through an existing backup. Compatible
+passkey sign-in may restore device access while the required wallet
+information remains available.
 
-### 1. Preferred: the phone that enrolled
+| Keys you can still use | Savings option |
+| --- | --- |
+| Device key and hardware key | Approve an ordinary Savings transfer with both keys. This path has no recovery waiting period. |
+| Hardware key only | Start delayed recovery with the recovery services. The hardware path waits 6 Bitcoin blocks after confirmation of the recovery transaction. |
+| Device key only | Start delayed recovery with the recovery services. The device path waits 144 blocks after confirmation. |
+| Separate recovery key, enrolled with Advanced | Start delayed recovery with the recovery services. This path waits 288 blocks after confirmation. |
+| Neither normal key, with Standard protection | Standard has no separate recovery-key path. The public map cannot replace the missing keys. |
 
-1. Open the same site you enrolled on (`rc.getvaulted.xyz` or
-   `app.getvaulted.xyz`).
-2. Choose **Open a Recovery Kit**.
-3. Choose your Recovery Kit file.
-4. Choose **Use this kit on this device**.
-5. Approve with Face ID when asked.
-6. Follow Recovery in the app. Hardware signing is still a file you pass to
-   your hardware device — the app will not ask for that secret.
+On mainnet, 6, 144, and 288 blocks are approximately one hour, one day, and
+two days. Block times vary. Use the waiting period committed by your vault;
+test-network timing differs from mainnet.
 
-If that site will not load, a copy of the app already installed on this phone
-may still open. A brand-new phone with no passkey cannot unlock the kit.
+## If recovery services are unavailable
 
-### 2. Laptop, if the phone and the real website are both gone
+An ordinary Savings transfer remains possible with both the device and
+hardware keys, using compatible signing software and Bitcoin access. The
+device key must still be unlockable from the required saved wallet
+information.
 
-The passkey only speaks to **that website name**. A laptop can pretend to be
-that name on purpose, using a copy of the emergency page you already trust:
+Starting a new delayed Savings recovery requires both recovery cosigners.
+Advanced adds a recovery key, but that key alone cannot start this process
+when the services are unavailable.
 
-1. Clone [vaulted-emergency-recovery](https://github.com/brg444/vaulted-emergency-recovery)
-   from a source you already trust. Do not download a random “Vaulted recovery”
-   app. A Vaulted checkout you already trust also has this page at
-   `tools/offline-recovery`.
-2. Double-click **Recover.command** (Mac), or run `bun serve.ts` (or
-   `pnpm recover:local` from this wallet).
-3. If Face ID will not run, this page is using the **wrong website name**.
-   Point the enrolled name at this computer, then open that name in the
-   browser.
-4. Choose your kit, Face ID. Ordinary savings still need hardware.
+If recovery has already reached a pending Bitcoin output, the key that
+started it can claim after the committed delay. A service-free cancellation
+requires the remaining user keys specified by that recovery. Once the
+claimant can spend, cancellation competes with their claim.
 
-This is not a bypass. Someone still needs your passkey and your face or PIN.
-Do this on a machine you do not use every day. Remove the name mapping when you
-are done.
+Spending funds and Bitcoin still arriving into Spending have separate
+recovery rules. Each has its own transaction state, required keys, committed
+delays, and compatible tools. The public Savings map alone is insufficient
+as a complete Spending recovery backup.
 
----
+The current wallet has no **Open a Recovery Kit** action on its welcome
+screen. An emergency tool must explicitly support the file you saved and
+the information needed to unlock your key. A public map cannot supply a
+missing encrypted device-key backup, even when an external tool supports
+newer backup formats.
 
-## What the kit contains
+## If you see a recovery you did not start
 
-- Which website name the passkey belongs to
-- Addresses and waiting times for savings and recovery
-- A locked copy of this phone’s key
+Check which key started it and which remaining keys can cancel it. The
+wallet checks for recovery activity while it runs and when it regains focus.
+Continuous monitoring and guaranteed notifications are unavailable in this
+release.
 
-It does **not** contain the hardware key, the recovery key, or Vaulted’s
-co-signing key. Stolen kit without your passkey is a locked file.
-
----
-
-## What this cannot do
-
-- Replace a deleted passkey
-- Replace lost hardware
-- Spend ordinary savings with the phone alone
-- Start a new recovery clock after Vaulted is gone
-- Make a random new app store listing pretend to be your enrolled site
-
-Standard protection has no recovery key. If you lose hardware and Vaulted
-while savings never entered a waiting period, those coins can get stuck.
-Advanced is the extra way out.
-
----
-
-## How to keep this healthy
-
-1. Save the Recovery Kit **outside** the phone (and a second copy).
-2. Keep the **How to recover** note next to that file (the zip already includes
-   it).
-3. After any new enroll, save a **new** kit. Old kits do not follow a new
-   passkey.
-4. If the app can still open, prefer that over this emergency path.
+Keep access to the remaining keys while reviewing your options. Preparing a
+cancellation is only one step: confirm that the required transaction was
+signed, submitted, and confirmed before relying on its outcome.

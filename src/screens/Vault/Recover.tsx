@@ -101,6 +101,7 @@ export default function VaultRecover() {
   const [claimant, setClaimant] = useState<Claimant>('hardware')
   const [claimDest, setClaimDest] = useState('')
   const [psbtOut, setPsbtOut] = useState('')
+  const [preparedAction, setPreparedAction] = useState<'initiate' | 'cancel' | 'claim' | null>(null)
   const [cancelPsbt, setCancelPsbt] = useState('')
   const [cancelSigners, setCancelSigners] = useState<Claimant[]>([])
   const [cancelHave, setCancelHave] = useState<Claimant[]>([])
@@ -175,7 +176,7 @@ export default function VaultRecover() {
             <>
               <RecoverAlert text={error || localError} />
               <QgPrimary
-                label='Cancel recovery'
+                label='Prepare cancellation'
                 testId='recover-clawback'
                 onClick={() => {
                   setLocalError('')
@@ -191,10 +192,11 @@ export default function VaultRecover() {
                         vaultId: kit.descriptor.vaultId,
                       })
                       setPsbtOut(built.psbtHex)
-                      void copyToClipboard(built.psbtHex)
-                      toast('Cancel copied. This leaves out the key that started recovery.')
+                      setPreparedAction('cancel')
+                      await copyToClipboard(built.psbtHex)
+                      toast('Cancellation transaction copied')
                     } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not cancel recovery')
+                      setLocalError(err instanceof Error ? err.message : 'Could not prepare cancellation')
                     }
                   })()
                 }}
@@ -229,6 +231,7 @@ export default function VaultRecover() {
                         setCancelHave([])
                         setSignedCancelPsbt('')
                         setPsbtOut(built.psbtHex)
+                        setPreparedAction(null)
                         toast(`To cancel, ${describeGuardianExitSigners(signers)} must sign.`)
                       } catch (err) {
                         setLocalError(err instanceof Error ? err.message : 'Could not cancel without services')
@@ -238,7 +241,7 @@ export default function VaultRecover() {
                 />
               ) : null}
               <QgSecondary
-                label='Move coins'
+                label='Prepare recovery transfer'
                 testId='recover-claim'
                 disabled={!claimDest.trim()}
                 onClick={() => {
@@ -256,10 +259,11 @@ export default function VaultRecover() {
                         network: kit.descriptor.network,
                       })
                       setPsbtOut(built.psbtHex)
-                      void copyToClipboard(built.psbtHex)
-                      toast('Move copied. Only after the wait.')
+                      setPreparedAction('claim')
+                      await copyToClipboard(built.psbtHex)
+                      toast('Recovery transfer copied')
                     } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not move coins')
+                      setLocalError(err instanceof Error ? err.message : 'Could not prepare recovery transfer')
                     }
                   })()
                 }}
@@ -269,7 +273,7 @@ export default function VaultRecover() {
             <>
               <RecoverAlert text={error || localError} />
               <QgPrimary
-                label='Start recovery'
+                label='Prepare recovery'
                 testId='recover-initiate'
                 onClick={() => {
                   setLocalError('')
@@ -290,10 +294,11 @@ export default function VaultRecover() {
                         vaultId: kit.descriptor.vaultId,
                       })
                       setPsbtOut(built.psbtHex)
+                      setPreparedAction('initiate')
                       await copyToClipboard(built.psbtHex)
-                      toast('Recovery started. A waiting period begins once this confirms.')
+                      toast('Recovery transaction copied')
                     } catch (err) {
-                      setLocalError(err instanceof Error ? err.message : 'Could not start recovery')
+                      setLocalError(err instanceof Error ? err.message : 'Could not prepare recovery')
                     }
                   })()
                 }}
@@ -308,11 +313,11 @@ export default function VaultRecover() {
               <strong>Recovery protection</strong>
               <span className={inProcess ? 'is-attention' : 'is-ready'}>{inProcess ? 'In process' : 'Idle'}</span>
             </div>
-            <h2>{inProcess ? 'Recovery is waiting.' : 'Recover with a key you still control.'}</h2>
+            <h2>{inProcess ? 'Recovery detected on Savings.' : 'Recover with a key you still control.'}</h2>
             <p>
               {inProcess
-                ? initiateAlert || 'Savings is in a waiting period. Cancel if you didn’t start this.'
-                : 'Starting recovery creates a visible waiting period. Your other keys can cancel it if the request was not yours.'}
+                ? initiateAlert || 'Review this recovery and the keys available to cancel it.'
+                : 'Prepare a recovery transaction for external signing and submission. Starting recovery requires a key you still control and approval from the recovery services.'}
             </p>
           </section>
 
@@ -347,17 +352,35 @@ export default function VaultRecover() {
           </div>
           {inProcess ? (
             <label className='qg-field'>
-              <span>After the wait, send coins here</span>
+              <span>Recovery destination</span>
               <input
                 value={claimDest}
-                placeholder='tb1p…'
+                placeholder='Bitcoin address'
                 data-testid='recover-claim-dest'
                 onChange={(event) => setClaimDest(event.target.value)}
               />
             </label>
           ) : null}
-          {psbtOut && !cancelSigners.length ? (
-            <p className='qg-copy'>Transaction copied. Sign it with the key you still have.</p>
+          {psbtOut && preparedAction && !cancelSigners.length ? (
+            <section className='qg-note' role='status' data-testid='recovery-prepared'>
+              <FileKey />
+              <div>
+                <strong>
+                  {preparedAction === 'initiate'
+                    ? 'Recovery transaction prepared'
+                    : preparedAction === 'cancel'
+                      ? 'Cancellation transaction prepared'
+                      : 'Recovery transfer prepared'}
+                </strong>
+                <p>
+                  {preparedAction === 'initiate'
+                    ? 'This transaction still needs your selected key and the recovery services to approve it, then submission with compatible recovery software. The waiting period starts after Bitcoin confirmation.'
+                    : preparedAction === 'cancel'
+                      ? 'This transaction still needs an eligible remaining key and the recovery services to approve it, then submission with compatible recovery software. Recovery remains active until cancellation is confirmed.'
+                      : 'Sign with the key that started recovery and submit with compatible recovery software after the waiting period ends. Preparing this transaction does not move your funds.'}
+                </p>
+              </div>
+            </section>
           ) : null}
           {cancelSigners.length ? (
             <>
