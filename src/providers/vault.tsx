@@ -804,6 +804,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setReviewedVtxoQuote(null)
       setLightningQuote(null)
       setSpend({ address: '', amount: 0, fee: vaultDraftFee(account, liveNetwork) })
+      // Leave Review in the same update that clears its draft.
+      setScreen('success')
       if (status?.vaultId) {
         try {
           await refreshBalance(status.vaultId)
@@ -812,7 +814,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           // refresh is temporarily unavailable. The normal refresher will retry.
         }
       }
-      setScreen('success')
     },
     [account, liveNetwork, refreshBalance, spend, status],
   )
