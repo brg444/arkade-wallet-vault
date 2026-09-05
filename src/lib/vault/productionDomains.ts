@@ -61,3 +61,25 @@ export function requireMainnetWalletRpId(value: unknown): string {
   }
   return rpId
 }
+
+/**
+ * Passkeys are bound to the authorizer's rpId. This RC pins that to one host
+ * (`rc.getvaulted.xyz` today). The other wallet alias must move there before
+ * any WebAuthn ceremony, or Face ID looks up the wrong RP ID.
+ */
+export function authorizerWalletHref(clientOrigin: string, currentHref: string): string | undefined {
+  const canonical = requireMainnetWalletOrigin(clientOrigin)
+  let current: URL
+  try {
+    current = new URL(currentHref)
+  } catch {
+    return undefined
+  }
+  const here = `${current.protocol}//${current.host.toLowerCase()}`
+  if (!isMainnetWalletOrigin(here) || here === canonical) return undefined
+  const next = new URL(currentHref)
+  const dest = new URL(canonical)
+  next.protocol = dest.protocol
+  next.host = dest.host
+  return next.toString()
+}

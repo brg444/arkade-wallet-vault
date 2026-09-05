@@ -224,6 +224,9 @@ export async function unlockLocalEnrollment(
 export async function discoverVaultIdFromPasskey(): Promise<string> {
   const publicStatus = await vaultCosignerClient.enrollment.publicStatus()
   const rpId = String(publicStatus.rpId || location.hostname).toLowerCase()
+  if (rpId !== location.hostname.toLowerCase()) {
+    throw new Error('deployment RP ID does not match this signing client host')
+  }
   const challenge = crypto.getRandomValues(new Uint8Array(32))
   const got = (await navigator.credentials.get({
     publicKey: passkeyGetOptions(

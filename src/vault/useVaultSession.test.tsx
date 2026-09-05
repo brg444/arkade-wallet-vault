@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AddressPin } from '../lib/vault/pin'
-import type { VaultSetupPlan } from '../lib/vault/setupPlan'
+import { emptySetupPlan, type VaultSetupPlan } from '../lib/vault/setupPlan'
 import type { EnrollmentSecrets } from '../lib/vault/tenantEnrollment'
 import type { VaultStatus } from '../lib/vault/types'
 import { useVaultSession } from './useVaultSession'
@@ -9,6 +9,7 @@ import { useVaultSession } from './useVaultSession'
 const mocks = vi.hoisted(() => ({
   discover: vi.fn(),
   enable: vi.fn(),
+  enroll: vi.fn(),
   loadPin: vi.fn(),
   makePin: vi.fn(),
   pullMap: vi.fn(),
@@ -29,6 +30,11 @@ vi.mock('../lib/vault/signIn', () => ({
   enablePasskeyLogin: mocks.enable,
   signInWithPasskey: mocks.recover,
   unlockLocalEnrollment: mocks.unlock,
+}))
+
+vi.mock('../lib/vault/tenantEnrollment', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/vault/tenantEnrollment')>()),
+  enrollWithPasskey: mocks.enroll,
 }))
 
 vi.mock('../lib/vault/program/kitBackup', () => ({
@@ -150,5 +156,46 @@ describe('Vault session program-pin recovery', () => {
     expect(hook.reportError).not.toHaveBeenCalledWith('Something went wrong. Try again.')
 
     setItem.mockRestore()
+  })
+})
+
+describe('Vault session enrollment passkey install', () => {
+  const readySetup: VaultSetupPlan = {
+    ...emptySetupPlan(),
+    acceptedDesign: true,
+    hardwarePub: '02' + '11'.repeat(32),
+    complete: true,
+  }
+
+  it('pins the enrolled program even when other-device passkey install fails twice', async () => {
+    mocks.enroll.mockResolvedValue({ enrollment, status })
+    mocks.enable.mockRejectedValue(new Error('authorizer did not persist passkey sign-in recovery data'))
+    mocks.makePin.mockReturnValue(pin)
+    const state = {
+      reportError: vi.fn(),
+      sealPlan: vi.fn(() => readySetup),
+      setAddressPin: vi.fn(),
+      setBusy: vi.fn(),
+      setEnrollment: vi.fn(),
+      setLocked: vi.fn(),
+      setScreen: vi.fn(),
+      setStatus: vi.fn(),
+    }
+    const hook = renderHook(() =>
+      useVaultSession({
+        enrollment: null,
+        ...state,
+        setup: readySetup,
+        status: null,
+      }),
+    )
+
+    await act(async () => hook.result.current.enroll('a'.repeat(32)))
+
+    expect(mocks.enable).toHaveBeenCalledTimes(2)
+    expect(state.setAddressPin).toHaveBeenCalledWith(pin)
+    expect(state.setScreen).toHaveBeenCalledWith('created')
+    expect(state.setScreen).not.toHaveBeenCalledWith('problem')
+    expect(state.reportError).toHaveBeenCalledWith(expect.stringMatching(/sign-in after a restart is not on yet/i))
   })
 })

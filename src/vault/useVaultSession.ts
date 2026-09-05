@@ -105,7 +105,9 @@ export function useVaultSession({
         saveEnrollment(result.enrollment)
         saveSelectedVaultId(result.enrollment.vaultId)
         setStatus(result.status)
-        setAddressPin(loadAddressPin(localStorage, result.status.vaultId))
+        const enrolledPin = pinFromEnrolledStatus(result.status)
+        setAddressPin(enrolledPin)
+        bestEffortBrowserWrite(() => saveAddressPin(enrolledPin))
         sealPlan()
         try {
           const kit = kitFromFacts({
@@ -124,7 +126,13 @@ export function useVaultSession({
         try {
           setStatus(await enablePasskeyLogin(result.enrollment))
         } catch {
-          reportError('Vault is set up. Other-device sign-in is not on yet. Tap Allow other devices and use Face ID.')
+          try {
+            setStatus(await enablePasskeyLogin(result.enrollment))
+          } catch {
+            reportError(
+              'This device has the vault, but sign-in after a restart is not on yet. Open Settings, tap Allow other devices, and approve Face ID. Do not clear this browser until that succeeds.',
+            )
+          }
         }
         setScreen('created')
       } catch (error) {
