@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
 @import '@fontsource-variable/geist';
 
 /* Dark mode: use html.palette-dark class (matches tokens.css and config.tsx) */
@@ -99,7 +98,7 @@
   --color-neutral-900: var(--neutral-900);
   --color-neutral-950: var(--neutral-950);
 
-  /* shadcn required tokens */
+  /* Semantic control colors */
   --color-background: var(--bg);
   --color-foreground: var(--fg);
   --color-primary: var(--purple-700);
