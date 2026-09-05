@@ -259,7 +259,7 @@ html.palette-dark body:has([data-testid='vault-app'] > .qg-screen) {
 .qg-screen-welcome .qg-main {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: safe center;
   padding: 32px var(--qg-gutter);
   overflow: auto;
 }
