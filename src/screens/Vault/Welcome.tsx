@@ -1,17 +1,22 @@
-import { useContext, useEffect } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { Fingerprint, ShieldCheck } from 'lucide-react'
 import ErrorMessage from '../../components/Error'
 import { isCoarsePhone } from '../../lib/vault/webauthn'
 import { VaultContext } from '../../vault/context'
 import QgScreen, { QgPrimary, QgTextButton } from './qg/QgScreen'
 
+import RecoveryHelp from './RecoveryHelp'
+
 export default function VaultWelcome() {
   const { busy, error, hasLocalEnrollment, locked, navigate, signIn } = useContext(VaultContext)
   const onPhone = isCoarsePhone()
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     if (hasLocalEnrollment && !locked) navigate('home')
   }, [hasLocalEnrollment, locked, navigate])
+
+  if (showHelp) return <RecoveryHelp onBack={() => setShowHelp(false)} />
 
   return (
     <QgScreen
@@ -19,6 +24,7 @@ export default function VaultWelcome() {
       brand
       footer={
         <>
+          <QgTextButton onClick={() => setShowHelp(true)} label='Access and recovery help' />
           <ErrorMessage error={Boolean(error)} text={error} />
           {locked ? (
             <QgPrimary
@@ -38,7 +44,7 @@ export default function VaultWelcome() {
           <p>
             {locked
               ? onPhone
-                ? 'Use Face ID, Touch ID, or your device PIN'
+                ? 'Use face recognition, a fingerprint, or your device PIN'
                 : 'Approve with the passkey on this device'
               : 'Setup needs an invite and a compatible hardware wallet.'}
           </p>

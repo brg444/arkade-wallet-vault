@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 import { buildVaultProgramDescriptor } from '../../lib/vault/program/descriptor'
 import { PROGRAM_FIXTURE } from '../../lib/vault/program/fixtures'
+import { fetchFeeEstimates } from '../../lib/vault/esplora'
 import { buildRecoveryKit } from '../../lib/vault/program/kit'
 import { VaultContext, type VaultContextProps } from '../../vault/context'
 import VaultRecover from './Recover'
@@ -13,9 +14,19 @@ const boardingRecovery = vi.hoisted(() => ({
   find: vi.fn().mockResolvedValue({ inputs: [], totalSats: 0 }),
 }))
 
+vi.mock('../../lib/vault/esplora', () => ({
+  broadcastTx: vi.fn(),
+  fetchAddressUtxos: vi.fn().mockResolvedValue([]),
+  fetchFeeEstimates: vi.fn(),
+}))
+
 vi.mock('../../lib/vault/vtxo/boardingRecovery', () => ({
   findMatureBoardingInputs: boardingRecovery.find,
 }))
+
+beforeEach(() => {
+  vi.mocked(fetchFeeEstimates).mockResolvedValue({ '3': 1 })
+})
 
 const kit = buildRecoveryKit(buildVaultProgramDescriptor(PROGRAM_FIXTURE))
 const dest = kit.descriptor.savings.address
@@ -86,10 +97,11 @@ function renderKit(extra: Partial<VaultContextProps> = {}) {
   )
 }
 
-function startCancel(familyKey: FamilyKey) {
+async function startCancel(familyKey: FamilyKey) {
   renderLost(familyKey)
   fireEvent.change(screen.getByTestId('recover-claim-dest'), { target: { value: dest } })
   fireEvent.click(screen.getByTestId('recover-guardian-exit'))
+  await screen.findByTestId('recover-guardian-signers')
 }
 
 describe('Vaulted recovery chrome', () => {
@@ -106,9 +118,9 @@ describe('Vaulted recovery chrome', () => {
       recoverExit: 'home',
     })
     expect(document.querySelector('.qg-handle')).toBeTruthy()
-    expect(screen.getByTestId('screen-title')).toHaveTextContent('Recovery')
-    expect(screen.getByRole('heading', { name: 'Recover with a key you still control.' })).toBeTruthy()
-    expect(screen.queryByText('This device')).toBeTruthy()
+    expect(screen.getByTestId('screen-title')).toHaveTextContent('Access and recovery')
+    expect(screen.getByRole('heading', { name: 'What do you still have access to?' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'I can’t use my passkey' })).toBeTruthy()
     fireEvent.click(screen.getByTestId('header-back'))
     expect(navigate).toHaveBeenCalledWith('home')
   })
@@ -122,7 +134,7 @@ describe('Vaulted recovery chrome', () => {
       recoverExit: 'keys',
     })
     expect(document.querySelector('.qg-handle')).toBeNull()
-    expect(screen.getByTestId('screen-title')).toHaveTextContent('Lost a key')
+    expect(screen.getByTestId('screen-title')).toHaveTextContent('Access and recovery')
     fireEvent.click(screen.getByTestId('header-back'))
     expect(navigate).toHaveBeenCalledWith('keys')
   })
@@ -133,23 +145,23 @@ describe('claimant-aware cancel without services', () => {
     boardingRecovery.find.mockReset().mockResolvedValue({ inputs: [], totalSats: 0 })
   })
 
-  it('asks hardware and recovery after this device starts recovery', { timeout: 15_000 }, () => {
-    startCancel('savings-phone')
+  it('asks hardware and recovery after this device starts recovery', { timeout: 15_000 }, async () => {
+    await startCancel('savings-phone')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/Hardware and Recovery/)
     expect(screen.queryByTestId('recover-guardian-device')).toBeNull()
     expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)
     expect(screen.getByTestId('recover-guardian-signers').textContent).not.toMatch(/This device/)
   })
 
-  it('asks this device and recovery after hardware starts recovery', () => {
-    startCancel('savings-hardware')
+  it('asks this device and recovery after hardware starts recovery', async () => {
+    await startCancel('savings-hardware')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/This device and Recovery/)
     expect(screen.getByTestId('recover-guardian-device')).toBeTruthy()
     expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Recovery/)
   })
 
-  it('asks this device and hardware after recovery starts recovery', () => {
-    startCancel('savings-recovery')
+  it('asks this device and hardware after recovery starts recovery', async () => {
+    await startCancel('savings-recovery')
     expect(screen.getByTestId('recover-guardian-signers').textContent).toMatch(/This device and Hardware/)
     expect(screen.getByTestId('recover-guardian-device')).toBeTruthy()
     expect(screen.getByTestId('recover-guardian-external').textContent).toMatch(/Hardware/)
