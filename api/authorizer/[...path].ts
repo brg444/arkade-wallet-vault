@@ -330,7 +330,6 @@ export default async function handler(req: VercelLikeReq, res: VercelLikeRes) {
       JSON.stringify({
         status: upstream.status,
         path: pathOnly,
-        error: payload.toString('utf8').slice(0, 500),
       }),
     )
   }

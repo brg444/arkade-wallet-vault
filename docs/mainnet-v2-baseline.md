@@ -19,8 +19,8 @@ Vercel, and Guardian infrastructure are provisioned separately from Mutinynet:
 | Release candidate        | `https://rc.getvaulted.xyz`  |
 
 Mainnet WebAuthn RP IDs must equal the wallet hostname (`app.getvaulted.xyz` or
-`rc.getvaulted.xyz`). Do not reuse the Mutinynet Vercel project, origin, RP ID,
-gateway secret, rate-limit store, or browser storage.
+`rc.getvaulted.xyz`). Mainnet requires its own Vercel project, origin, RP ID,
+gateway secret, rate-limit store, and browser storage.
 
 ## Current boundary
 
@@ -50,7 +50,7 @@ boarding, and Operator communication remain inside the official SDK surface.
 
 1. Qualify ordinary VTXO receive and send, including reloads and lost responses.
 2. Qualify Savings-to-Spending boarding and recovery drills.
-3. Configure `https://mainnet-signer.invalid`, freeze its signer, the
+3. Privately configure the mainnet signer endpoint, freeze its signer, the
    `vault-spending-policy-v1` bounds and presets, and the program pins for
    `arkade.computer`, then regenerate both Contract Packs and cross-language
    vectors.
@@ -78,8 +78,7 @@ of scope.
   recipient, and keeps phone-only delayed recovery. Mainnet requires a separate
   per-device key registration and revocation decision.
 - Mainnet pins must match `arkade.computer`, including its network, signer,
-  checkpoint policy, delays, and fee bounds. The confirmed mainnet Emulator at
-  `https://mainnet-signer.invalid` advertises signer
+  checkpoint policy, delays, and fee bounds. The confirmed mainnet signer advertises key
   `0239c196415da47b26456a101daaa12ba9e445bfe153197f1e2b750bf40e52092e`,
   which matches the official SDK pin; release qualification and immutable
   Contract Pack binding remain required.
