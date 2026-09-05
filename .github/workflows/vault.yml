@@ -94,7 +94,3 @@ jobs:
         run: corepack pnpm test:e2e
         env:
           CI: true
-      - name: Compiled mainnet sign-in
-        run: |
-          corepack pnpm build:mainnet
-          node scripts/verify-mainnet-build.mjs

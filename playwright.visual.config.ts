@@ -5,10 +5,6 @@ import base from './playwright.vault.config'
 
 export default defineConfig({
   ...base,
-  testDir: './.vault-visual-tests',
-  globalSetup: './.vault-visual-tests/globalSetup.mjs',
-  testMatch: '**/*.pw.mjs',
-  respectGitIgnore: false,
   grep: /@visual-refinement|@interaction|iOS haptics/,
   outputDir: join(tmpdir(), 'vaulted-visual-refinement-results'),
   timeout: 120000,
