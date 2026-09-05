@@ -10,6 +10,7 @@ import {
 import { base64, hex } from '@scure/base'
 import { describe, expect, it, vi } from 'vitest'
 import { POLICY_VERSION } from '../constants'
+import { networkPins } from '../networkPins'
 import { SAVINGS_TEMPLATE } from '../program/constants'
 import type { VaultStatus } from '../types'
 import golden from './testdata/vault-policy-v1-tree.json'
@@ -147,10 +148,6 @@ function status(): VaultStatus {
 
 function reserve(): VtxoReserveResponse {
   const current = status()
-  const unroll = CSVMultisigTapscript.encode({
-    timelock: { type: 'seconds', value: 4096n },
-    pubkeys: [hex.decode(golden.fixtures.arkdServerPub)],
-  })
   return {
     operationId: OP_1,
     bundleDigest: '11'.repeat(32),
@@ -163,7 +160,7 @@ function reserve(): VtxoReserveResponse {
     destScript: `5120${golden.fixtures.exitHardwarePub}`,
     feeSats: 500,
     feePolicyDigest: FEE_POLICY_DIGEST,
-    checkpointTapscript: hex.encode(unroll.script),
+    checkpointTapscript: networkPins('mutinynet').checkpointTapscript,
   }
 }
 
@@ -940,6 +937,18 @@ describe('regular VTXO spend coordinator', () => {
     expect(built.arkTx.outputsLength).toBe(3)
     expect(built.arkTx.getOutput(0).amount).toBe(12_000n)
     expect(built.arkTx.getOutput(1).amount).toBe(7_500n)
+  })
+
+  it('rejects a server-selected checkpoint escape policy', () => {
+    const response = reserve()
+    const attacker = CSVMultisigTapscript.encode({
+      timelock: { type: 'blocks', value: 1n },
+      pubkeys: [hex.decode(golden.fixtures.exitHardwarePub)],
+    })
+    response.checkpointTapscript = hex.encode(attacker.script)
+    expect(() => buildReservedVtxoSpend(status(), response, 12_000, destination(), FEE_POLICY_DIGEST)).toThrow(
+      /checkpoint tapscript does not match this release/,
+    )
   })
 
   it('preserves canonical fragmented inputs through checkpoints and Ark inputs', () => {
