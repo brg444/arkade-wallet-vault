@@ -77,6 +77,37 @@ vi.mock('./sdkOperationAdapter', async (importOriginal) => ({
   submitExactVaultSdkOperation: sdkOperationAdapterMocks.submit,
 }))
 
+// PSBT map ordering is not part of the transaction or signature. The Go
+// Guardian and the SDK serialize the same fields in different orders.
+function reversePsbtMapOrder(raw: string): string {
+  const bytes = base64.decode(raw)
+  let offset = 5 // psbt magic
+  const result = [...bytes.slice(0, offset)]
+  const readSize = () => {
+    const prefix = bytes[offset++]
+    if (prefix < 253) return prefix
+    const width = prefix === 253 ? 2 : prefix === 254 ? 4 : 8
+    let value = 0
+    for (let i = 0; i < width; i++) value += bytes[offset++] * 256 ** i
+    return value
+  }
+  while (offset < bytes.length) {
+    const entries: Uint8Array[] = []
+    while (true) {
+      const start = offset
+      const keySize = readSize()
+      if (keySize === 0) break
+      offset += keySize
+      const valueSize = readSize()
+      offset += valueSize
+      entries.push(bytes.slice(start, offset))
+    }
+    for (const entry of entries.reverse()) result.push(...entry)
+    result.push(0)
+  }
+  return base64.encode(Uint8Array.from(result))
+}
+
 const TB1Q = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx'
 const OP_1 = '11'.repeat(16)
 const OP_2 = '22'.repeat(16)
@@ -534,9 +565,13 @@ describe('regular VTXO spend coordinator', () => {
     }
   })
 
-  it.each([false, true])(
-    'completes the real SDK lifecycle with signatures, including interrupted checkpoint authorization=%s',
-    async (interrupted) => {
+  it.each([
+    [false, false],
+    [false, true],
+    [true, true],
+  ])(
+    'completes the real SDK lifecycle with signatures, interrupted=%s, reordered Guardian fields=%s',
+    async (interrupted, reordered) => {
       const actual = await vi.importActual<typeof import('./sdkOperationAdapter')>('./sdkOperationAdapter')
       sdkOperationAdapterMocks.submit.mockImplementation(actual.submitExactVaultSdkOperation)
       const pending = freshPolicyPending()
@@ -553,17 +588,25 @@ describe('regular VTXO spend coordinator', () => {
       const unlocker = createVtxoSpendUnlocker({} as never, status(), pending.bundleDigest, unlock)
       vi.spyOn(RestArkProvider.prototype, 'getInfo').mockResolvedValue(currentOperatorInfo(pending))
       vi.spyOn(vaultCosignerClient.spending, 'operation').mockResolvedValue(reviewedOperation(pending) as never)
-      vi.spyOn(vaultCosignerClient.spending, 'authorize').mockImplementation(async (request) => ({
-        operationId: pending.operationId,
-        bundleDigest: pending.bundleDigest,
-        arkTxid: pending.arkTxid,
-        authorizedPsbt: base64.encode(
+      vi.spyOn(vaultCosignerClient.spending, 'authorize').mockImplementation(async (request) => {
+        const canonical = base64.encode(
           (await vault.sign(Transaction.fromPSBT(base64.decode(request.unsignedArkPsbt)))).toPSBT(),
-        ),
-        authorizedPendingProof: base64.encode(
-          (await vault.sign(Transaction.fromPSBT(base64.decode(request.pendingProof)))).toPSBT(),
-        ),
-      }))
+        )
+        const authorizedPsbt = reordered ? reversePsbtMapOrder(canonical) : canonical
+        if (reordered) {
+          expect(authorizedPsbt).not.toBe(canonical)
+          expect(base64.encode(Transaction.fromPSBT(base64.decode(authorizedPsbt)).toPSBT())).toBe(canonical)
+        }
+        return {
+          operationId: pending.operationId,
+          bundleDigest: pending.bundleDigest,
+          arkTxid: pending.arkTxid,
+          authorizedPsbt,
+          authorizedPendingProof: base64.encode(
+            (await vault.sign(Transaction.fromPSBT(base64.decode(request.pendingProof)))).toPSBT(),
+          ),
+        }
+      })
       const submit = vi.spyOn(RestArkProvider.prototype, 'submitTx').mockImplementation(async (ark, checkpoints) => ({
         arkTxid: pending.arkTxid,
         finalArkTx: base64.encode((await operator.sign(Transaction.fromPSBT(base64.decode(ark)))).toPSBT()),
