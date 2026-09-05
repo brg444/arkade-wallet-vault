@@ -15,6 +15,7 @@ import { VaultContext, VaultProvider } from './vault'
 
 const mocks = vi.hoisted(() => ({
   availableSats: 20000,
+  refreshBalance: vi.fn(),
   loadLightningFunding: vi.fn(),
   FundingNotStartedError: class FundingNotStartedError extends Error {},
   fetchStatus: vi.fn(),
@@ -108,7 +109,7 @@ vi.mock('../vault/useVaultBalances', () => ({
       spending: { availableSats: mocks.availableSats, pendingSats: 0, totalSats: mocks.availableSats },
       savings: { availableSats: 0, pendingSats: 0, totalSats: 0 },
     },
-    refreshBalance: vi.fn().mockResolvedValue(undefined),
+    refreshBalance: mocks.refreshBalance,
     refreshingBalance: false,
   }),
 }))
@@ -184,6 +185,8 @@ function Probe() {
       <span data-testid='destination'>{vault.spend.address}</span>
       <span data-testid='error'>{vault.error}</span>
       <span data-testid='kind'>{vault.lastTxKind}</span>
+      <span data-testid='sent-amount'>{vault.lastSend?.amount}</span>
+      <span data-testid='sent-destination'>{vault.lastSend?.address}</span>
       <span data-testid='activity'>{vault.history[0]?.activity || ''}</span>
       <button type='button' onClick={() => vault.setSpendDraft({ address: destination, amount: 12_000 })}>
         Set draft
@@ -223,6 +226,7 @@ describe('VaultProvider reviewed VTXO reservation', () => {
   })
 
   beforeEach(() => {
+    mocks.refreshBalance.mockReset().mockResolvedValue(undefined)
     mocks.availableSats = 20000
     mocks.loadLightningFunding.mockResolvedValue(undefined)
     localStorage.clear()
@@ -397,6 +401,44 @@ describe('VaultProvider reviewed VTXO reservation', () => {
     expect(mocks.unlock).not.toHaveBeenCalled()
     expect(mocks.reserve).toHaveBeenCalledTimes(2)
   })
+
+  it.each(['resolve', 'reject'] as const)(
+    'shows the completed payment before a delayed balance refresh can %s',
+    async (outcome) => {
+      let resolveRefresh!: () => void
+      let rejectRefresh!: (error: Error) => void
+      const refresh = new Promise<void>((resolve, reject) => {
+        resolveRefresh = resolve
+        rejectRefresh = reject
+      })
+      mocks.refreshBalance.mockReturnValue(refresh)
+      mocks.reserve.mockResolvedValue({ ...reviewed, feeSats: 0 })
+      mocks.send.mockResolvedValue({ txid: '55'.repeat(32), feeSats: 0, operationId: reviewed.operationId })
+      render(
+        <VaultProvider>
+          <Probe />
+        </VaultProvider>,
+      )
+      await waitFor(() => expect(screen.getByTestId('ready')).toHaveTextContent('true'))
+      fireEvent.click(screen.getByRole('button', { name: 'Set draft' }))
+      await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Review' })))
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+      try {
+        await waitFor(() => expect(mocks.refreshBalance).toHaveBeenCalled())
+        expect(screen.getByTestId('screen')).toHaveTextContent('success')
+        expect(screen.getByTestId('sent-amount')).toHaveTextContent('12000')
+        expect(screen.getByTestId('sent-destination')).toHaveTextContent(destination)
+      } finally {
+        await act(async () => {
+          if (outcome === 'resolve') resolveRefresh()
+          else rejectRefresh(new Error('balance service unavailable'))
+        })
+      }
+      expect(screen.getByTestId('screen')).toHaveTextContent('success')
+      expect(screen.getByTestId('error')).toBeEmptyDOMElement()
+      expect(mocks.send).toHaveBeenCalledTimes(1)
+    },
+  )
 
   it('clears a stale review and returns to Send without reporting success', async () => {
     mocks.reserve.mockResolvedValueOnce({ ...reviewed, feeSats: 0 })
