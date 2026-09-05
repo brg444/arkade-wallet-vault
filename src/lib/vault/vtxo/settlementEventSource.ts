@@ -186,13 +186,9 @@ export function createVaultEventSourceFactory(
   return (url) => {
     const source = nativeFactory(url)
     const topics = settlementTopics(url)
-    if (!topics) {
-      return {
-        addEventListener: (type, listener) => source.addEventListener(type, listener as EventListener),
-        removeEventListener: (type, listener) => source.removeEventListener(type, listener as EventListener),
-        close: () => source.close(),
-      }
-    }
+    // The SDK types error callbacks as MessageEvent; DOM transports emit Event.
+    // Preserve the transport object and its listeners for non-settlement URLs.
+    if (!topics) return source as unknown as EventSourceLike
 
     const record: SettlementStream = {
       topics,
