@@ -2,10 +2,11 @@ import { useContext, useState } from 'react'
 import { ShieldCheck } from 'lucide-react'
 import { useToast } from '../../components/Toast'
 import { copyToClipboard } from '../../lib/clipboard'
-import { prettyAmount, prettyNumber } from '../../lib/format'
+import { prettyAmount } from '../../lib/format'
 import { isVaultLightningInput } from '../../lib/vault/lightningConfig'
 import { truncateAddress } from '../../lib/vault/policy'
 import { VaultContext } from '../../vault/context'
+import QgAmount, { amountSizeStyle } from './qg/QgAmount'
 import QgScreen, { QgPrimary, QgTextButton } from './qg/QgScreen'
 
 export default function VaultReview() {
@@ -55,9 +56,8 @@ export default function VaultReview() {
     >
       <section className='qg-review-amount'>
         <small>{movingToSpending ? 'You’re moving' : lightning ? 'You’re paying' : 'You’re sending'}</small>
-        <strong>
-          <span>₿</span>
-          {prettyNumber(spend.amount, 0)}
+        <strong style={amountSizeStyle(prettyAmount(spend.amount))}>
+          <QgAmount value={prettyAmount(spend.amount)} />
         </strong>
         <p>{fromSavings ? 'From Savings' : 'From Spending'}</p>
         <QgTextButton onClick={() => navigate('send')} label='Edit amount' />
@@ -91,11 +91,15 @@ export default function VaultReview() {
         )}
         <div>
           <span>{fromSavings ? 'Network fee' : 'Fee'}</span>
-          <strong>{prettyAmount(spend.fee)}</strong>
+          <strong>
+            <QgAmount value={prettyAmount(spend.fee)} />
+          </strong>
         </div>
         <div>
           <span>Total</span>
-          <strong>{prettyAmount(spend.amount + spend.fee)}</strong>
+          <strong>
+            <QgAmount value={prettyAmount(spend.amount + spend.fee)} />
+          </strong>
         </div>
         <div>
           <span>Network</span>
