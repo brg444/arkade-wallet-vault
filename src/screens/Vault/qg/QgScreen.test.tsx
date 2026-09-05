@@ -74,3 +74,50 @@ describe('QgScreen input viewport lifecycle', () => {
     expect(cancel).toHaveBeenCalled()
   })
 })
+
+function sheetPointer(target: HTMLElement, type: string, y: number) {
+  const event = new MouseEvent(type, { bubbles: true, clientX: 180, clientY: y, button: 0 })
+  Object.defineProperty(event, 'pointerId', { value: 1 })
+  act(() => target.dispatchEvent(event))
+}
+
+describe('sheet gesture intent', () => {
+  it('keeps body drags inside the form and dismisses from the header', () => {
+    const dismiss = vi.fn()
+    render(
+      <QgScreen title='Send' dismiss={dismiss}>
+        <input aria-label='Amount' />
+      </QgScreen>,
+    )
+    const input = screen.getByRole('textbox')
+    sheetPointer(input, 'pointerdown', 100)
+    sheetPointer(input, 'pointermove', 230)
+    sheetPointer(input, 'pointerup', 230)
+    expect(dismiss).not.toHaveBeenCalled()
+    const title = screen.getByTestId('screen-title')
+    sheetPointer(title, 'pointerdown', 30)
+    sheetPointer(title, 'pointermove', 140)
+    sheetPointer(title, 'pointerup', 140)
+    expect(dismiss).toHaveBeenCalledOnce()
+  })
+
+  it('returns a cancelled sheet to rest and keeps the Back button usable', () => {
+    const dismiss = vi.fn()
+    render(
+      <QgScreen title='Send' dismiss={dismiss}>
+        <input aria-label='Amount' />
+      </QgScreen>,
+    )
+    const title = screen.getByTestId('screen-title')
+    sheetPointer(title, 'pointerdown', 30)
+    sheetPointer(title, 'pointermove', 140)
+    sheetPointer(title, 'pointercancel', 140)
+    expect(dismiss).not.toHaveBeenCalled()
+    expect(title.closest('.qg-screen')).toHaveStyle({ transform: '' })
+    const back = screen.getByRole('button', { name: 'Go back' })
+    sheetPointer(back, 'pointerdown', 30)
+    sheetPointer(back, 'pointerup', 30)
+    fireEvent.click(back)
+    expect(dismiss).toHaveBeenCalledOnce()
+  })
+})
