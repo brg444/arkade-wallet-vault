@@ -36,7 +36,6 @@
     "build:worker": "vite build -c vite.worker.config.ts",
     "start": "pnpm build:worker && vite --port 3003 --host localhost",
     "recover:local": "bun tools/offline-recovery/serve.ts",
-    "recover:sync": "WALLET_ROOT=. bun tools/offline-recovery/scripts/sync-from-wallet.ts",
     "build": "pnpm build:worker && vite build",
     "build:mainnet": "VITE_VAULT_RELEASE_NETWORK=mainnet VITE_VAULT_LIGHTNING_SEND=true pnpm build",
     "verify:deployment": "node scripts/verify-deployment.mjs",
