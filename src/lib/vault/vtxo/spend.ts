@@ -513,6 +513,9 @@ async function requirePinnedOperator(provider: ArkProvider, status: VaultStatus,
   }
   const reservedCheckpointTapscript = requireNonemptyHex(checkpointTapscript, 'reserved checkpoint tapscript')
   const operatorCheckpointTapscript = requireNonemptyHex(info.checkpointTapscript, 'Operator checkpoint tapscript')
+  if (operatorCheckpointTapscript !== pins.checkpointTapscript) {
+    throw new Error('Operator checkpoint tapscript does not match this release')
+  }
   if (operatorCheckpointTapscript !== reservedCheckpointTapscript) {
     throw new Error('Operator checkpoint tapscript changed after reservation')
   }
@@ -760,6 +763,9 @@ export function buildReservedVtxoSpend(
     outputs.push({ script: requireHex(reserve.changeScript, 34, 'change script'), amount: BigInt(reserve.changeSats) })
   }
   const checkpointTapscript = requireNonemptyHex(reserve.checkpointTapscript, 'checkpoint tapscript')
+  if (checkpointTapscript !== networkPins(status.network).checkpointTapscript) {
+    throw new Error('reserved checkpoint tapscript does not match this release')
+  }
   const unroll = CSVMultisigTapscript.decode(
     requireHex(checkpointTapscript, checkpointTapscript.length / 2, 'checkpoint tapscript'),
   )

@@ -15,6 +15,14 @@ export const BOARDING_EXIT_DELAY = networkPins('mutinynet').boardExitDelay
 export const BOARDING_EXIT_DELAY_UNIT = 'seconds' as const
 export const MUTINYNET_OPERATOR_SIGNER_PUB = networkPins('mutinynet').operatorSignerPub
 
+export function boardingWorkerPins(activeNetwork: string, statusNetwork: string) {
+  const active = requireSupportedVaultNetwork(activeNetwork)
+  if (active !== requireSupportedVaultNetwork(statusNetwork)) {
+    throw new Error('active vault-board-v1 key is bound to a different network')
+  }
+  return networkPins(active)
+}
+
 const BOARDING_KEY_DOMAIN = 'vault-board-v1/boarding-key'
 const BOARDING_KEY_SALT = sha256(encodeUtf8('arkade-vault/vault-board-v1/boarding-key/hkdf-sha256-v1'))
 const SECP256K1_ORDER = BigInt('0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141')

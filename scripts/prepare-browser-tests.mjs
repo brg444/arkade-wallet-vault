@@ -1,3 +1,4 @@
+import { readdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 
@@ -6,12 +7,13 @@ import { resolve } from 'node:path'
 const require = createRequire(import.meta.url)
 const viteRequire = createRequire(require.resolve('vite/package.json'))
 const { build } = viteRequire('esbuild')
-for (const name of ['globalSetup', 'vault-ui.test', 'haptics.test']) {
+const tests = readdirSync('src/test/e2e-vault').filter((name) => name.endsWith('.test.ts'))
+for (const name of ['globalSetup.ts', ...tests]) {
   await build({
-    entryPoints: [resolve(`src/test/e2e-vault/${name}.ts`)],
-    outfile: resolve(`.vault-visual-tests/${name.replace(/\.test$/, '.pw')}.mjs`),
+    entryPoints: [resolve(`src/test/e2e-vault/${name}`)],
+    outfile: resolve(`.vault-browser-tests/${name}`),
     bundle: true,
-    format: 'esm',
+    format: 'cjs',
     platform: 'node',
     packages: 'external',
     define: { 'import.meta.env': '{}' },

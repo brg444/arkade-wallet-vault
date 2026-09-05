@@ -20,6 +20,13 @@ const SAVINGS_TXID = '22'.repeat(32)
 const VTXO_TXID = 'aa'.repeat(32)
 const COMMITMENT_TXID = 'cc'.repeat(32)
 
+// Navigation tests must not depend on the host camera or permission prompts.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', { value: async () => [] })
+  })
+})
+
 type EsploraUtxo = {
   txid: string
   vout: number
@@ -640,7 +647,7 @@ async function expectReachableAbove(page: Page, targetSelector: string, chromeSe
   expect(chromeBox).not.toBeNull()
   const overlap = targetBox!.y + targetBox!.height - chromeBox!.y
   if (overlap > 0) {
-    await page.locator('.content').evaluate((content, amount) => content.scrollBy(0, amount + 16), overlap)
+    await page.locator('.qg-main').evaluate((content, amount) => content.scrollBy(0, amount + 16), overlap)
     targetBox = await target.boundingBox()
     chromeBox = await page.locator(chromeSelector).boundingBox()
   }
