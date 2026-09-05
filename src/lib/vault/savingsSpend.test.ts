@@ -1,5 +1,5 @@
+import { Transaction } from '@arkade-os/sdk'
 import { hex } from '@scure/base'
-import { Transaction } from '@scure/btc-signer'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { pinEnrolledStatus } from './pin'
 import {
@@ -165,12 +165,28 @@ describe('savings admin PSBT', () => {
       leaf: 'admin',
     })
     const phoneSigned = signSavingsPsbt(unsigned, scalarSecret(3))
-    expect(() => requireSameSavingsIntent(phoneSigned, phoneSigned, BOARDING_DEST, 50_000, descriptor.network)).toThrow(
-      /hardware did not sign every/,
-    )
+    expect(() =>
+      requireSameSavingsIntent(
+        phoneSigned,
+        phoneSigned,
+        BOARDING_DEST,
+        50_000,
+        descriptor.network,
+        descriptor.keys.phoneBip340,
+        descriptor.keys.hardware,
+      ),
+    ).toThrow(/wrong tapscript signer set/)
 
     const hardwareSigned = signSavingsPsbt(phoneSigned, scalarSecret(4))
-    requireSameSavingsIntent(phoneSigned, hardwareSigned, BOARDING_DEST, 50_000, descriptor.network)
+    requireSameSavingsIntent(
+      phoneSigned,
+      hardwareSigned,
+      BOARDING_DEST,
+      50_000,
+      descriptor.network,
+      descriptor.keys.phoneBip340,
+      descriptor.keys.hardware,
+    )
     const inspected = inspectSavingsPsbt(hardwareSigned)
     expect(inspected.inputs.map((input) => `${input.txid}:${input.vout}`)).toEqual([
       `${'11'.repeat(32)}:0`,
@@ -201,9 +217,90 @@ describe('savings admin PSBT', () => {
     const identicalRetry = signSavingsPsbt(build(50_000), scalarSecret(3))
     const differentAmount = signSavingsPsbt(build(40_000), scalarSecret(3))
 
-    requireSameSavingsIntent(identicalRetry, firstHardware, BOARDING_DEST, 50_000, descriptor.network)
+    requireSameSavingsIntent(
+      firstPhone,
+      firstHardware,
+      BOARDING_DEST,
+      50_000,
+      descriptor.network,
+      descriptor.keys.phoneBip340,
+      descriptor.keys.hardware,
+    )
     expect(() =>
-      requireSameSavingsIntent(differentAmount, firstHardware, BOARDING_DEST, 40_000, descriptor.network),
+      requireSameSavingsIntent(
+        identicalRetry,
+        firstHardware,
+        BOARDING_DEST,
+        50_000,
+        descriptor.network,
+        descriptor.keys.phoneBip340,
+        descriptor.keys.hardware,
+      ),
+    ).toThrow(/changed the phone Savings signature/)
+    expect(() =>
+      requireSameSavingsIntent(
+        differentAmount,
+        firstHardware,
+        BOARDING_DEST,
+        40_000,
+        descriptor.network,
+        descriptor.keys.phoneBip340,
+        descriptor.keys.hardware,
+      ),
     ).toThrow(/changed the unsigned Savings transaction/)
+  })
+
+  it('rejects an invalid hardware signature before finalization', () => {
+    const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
+    const status = statusFromDescriptor(descriptor)
+    saveLocalKit(buildRecoveryKit(descriptor))
+    pinEnrolledStatus(status)
+    const unsigned = buildSavingsPsbt({
+      status,
+      phonePub: descriptor.keys.phoneBip340,
+      destAddress: BOARDING_DEST,
+      amountSats: 50_000,
+      feeSats: 1_500,
+      coins: [{ txid: '11'.repeat(32), vout: 0, value: 100_000, confirmedHeight: 1 }],
+      leaf: 'admin',
+    })
+    const phoneSigned = signSavingsPsbt(unsigned, PHONE_PRIV)
+    const hardwareSigned = Transaction.fromPSBT(hex.decode(signSavingsPsbt(phoneSigned, HW_PRIV)))
+    const signatures = hardwareSigned.getInput(0).tapScriptSig!
+    const internal = hardwareSigned as unknown as { inputs: ReturnType<Transaction['getInput']>[] }
+    internal.inputs[0].tapScriptSig = signatures.map(([data, signature]) => [
+      data,
+      hex.encode(data.pubKey) === descriptor.keys.hardware.slice(2) ? new Uint8Array(64) : signature,
+    ])
+    expect(() =>
+      requireSameSavingsIntent(
+        phoneSigned,
+        hex.encode(hardwareSigned.toPSBT()),
+        BOARDING_DEST,
+        50_000,
+        descriptor.network,
+        descriptor.keys.phoneBip340,
+        descriptor.keys.hardware,
+      ),
+    ).toThrow(/Invalid signature/)
+  })
+
+  it('rejects non-default sighash metadata on an imported Savings PSBT', () => {
+    const descriptor = buildVaultProgramDescriptor(PROGRAM_FIXTURE)
+    const phoneSigned = signSavingsPsbt(currentAdminPsbt(), PHONE_PRIV)
+    const hardwareSigned = Transaction.fromPSBT(hex.decode(signSavingsPsbt(phoneSigned, HW_PRIV)))
+    const internal = hardwareSigned as unknown as { inputs: ReturnType<Transaction['getInput']>[] }
+    internal.inputs[0].sighashType = 1
+    expect(() =>
+      requireSameSavingsIntent(
+        phoneSigned,
+        hex.encode(hardwareSigned.toPSBT()),
+        descriptor.savings.address,
+        98_500,
+        descriptor.network,
+        descriptor.keys.phoneBip340,
+        descriptor.keys.hardware,
+      ),
+    ).toThrow(/SIGHASH_DEFAULT/)
   })
 })
