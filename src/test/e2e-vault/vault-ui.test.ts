@@ -1025,7 +1025,7 @@ test('@polish covers accessible account, send, Security, and Settings states', a
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('recovery-kit.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: /I lost a key/ }).click()
-  await expect(page.getByRole('heading', { name: 'Lost a key' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Access and recovery', exact: true })).toBeVisible()
   await expectNoBlockingAxeViolations(page)
   await expect(page).toHaveScreenshot('recovery-lost-key.png', { animations: 'disabled', fullPage: true })
   await page.getByRole('button', { name: 'Go back' }).click()
